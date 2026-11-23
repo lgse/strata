@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Translated labels and dynamic shortcut wording for C9's [`DrawerLabels`], C10b's
-//! [`CodeLabels`], C11's [`DocumentLabels`], and C11b's [`SheetLabels`].
-
 use strata_components::{
     code_view::CodeLabels,
     document_view::DocumentLabels,
@@ -149,7 +146,6 @@ pub(super) fn archive_prompt() -> PromptLabels {
     labels
 }
 
-/// GTK's `ListingPosition::caption`: "2 of 4 in folder", or "in results".
 pub(super) fn position_caption(position: Position) -> String {
     let (at, of) = (
         integer(position.index as u64),
@@ -171,9 +167,6 @@ pub(super) fn position_caption(position: Position) -> String {
     .into_owned()
 }
 
-/// `entry`'s place among the files of its kind (`kind`) the previewed column lists, as GTK
-/// counts them (`model_listing_position`, `listing_position`): in the listing's order, the
-/// hidden files left out while they are hidden.
 pub(super) fn listing_position(
     app: &crate::App,
     entry: &strata_core::model::FileEntry,

@@ -354,8 +354,6 @@ fn member_modes_and_times_are_restored_in_every_format() -> Result<(), Box<dyn E
 
 #[test]
 fn members_without_a_usable_mode_keep_the_default_permissions() -> Result<(), Box<dyn Error>> {
-    // ZIP external attributes `0x20` carry only the DOS archive bit, so a
-    // Unix creator reports mode 0. The 7z junk mode has no regular-file type.
     for (format, mode, zip_attributes) in [
         (ArchiveFormat::Zip, None, Some(0)),
         (ArchiveFormat::Zip, None, Some(0x20)),

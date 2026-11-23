@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! XDG Desktop Portal `FileChooser` backend (`src/portal.rs`): request validation, safe path and
-//! URI helpers, destination overwrite checks, D-Bus service registration ([`dbus`]), Hyprland
-//! placement hints ([`window_geometry`]), and standalone `--portal` windowed execution.
-//!
-//! The validation and path helpers here are a copy of the GTK application's, in `src/portal.rs`
-//! (its `tests.rs` holds the cases `portal/tests.rs` ports), until the two share a crate. A fix
-//! that lands on `main` reaches only GTK's copy: the merge into `strata-next` that brings it
-//! carries it here by hand.
-
 pub(crate) mod dbus;
 pub(crate) mod inbox;
 pub(crate) mod window_geometry;
@@ -428,8 +419,6 @@ async fn resolve_save_file_suggestion(
     (folder, name)
 }
 
-/// The folder and the name `current_file` suggests: a regular file, or none yet, with a safe
-/// name in a folder the caller can reach.
 async fn suggested_file(file: &Path) -> Option<(PathBuf, Option<OsString>)> {
     if !file.is_absolute() || !is_save_target(file).await {
         return None;

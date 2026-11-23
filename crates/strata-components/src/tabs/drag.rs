@@ -24,8 +24,6 @@ const AUTO_SCROLL_TOLERANCE: f32 = 10.0;
 /// 60 Hz auto-scroll repeat cadence.
 const AUTO_SCROLL_FRAME: Duration = Duration::from_micros(16_667);
 
-/// Live scroll viewport geometry and offset, kept across views for drag auto-scroll and incoming
-/// drop-slot hit testing.
 #[derive(Clone)]
 pub(super) struct ScrollView {
     pos: Rc<Cell<ScrollPos>>,
@@ -251,8 +249,6 @@ impl ReorderState {
         }
     }
 
-    /// Resolves and stores the incoming drop slot from the laid-out tab widths when an incoming
-    /// drag is hovering over the strip.
     pub(super) fn resolve_incoming(&self, widths: &[f32], gap: f32) -> Option<usize> {
         if !self.is_idle() {
             return None;
@@ -321,8 +317,6 @@ impl ReorderState {
         }
     }
 
-    /// Updates the active gesture from pointer motion `[dx, dy]`. Returns true when visual state
-    /// changed.
     pub(super) fn follow(&mut self, dx: f32, dy: f32) -> bool {
         let Some(active) = self.active_drag() else {
             return false;

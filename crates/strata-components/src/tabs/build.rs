@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`BrowserTabs`]: Strata's GTK-matched horizontal tab strip with compact content-sized tabs,
-//! graceful shrinking before horizontal scrolling, theme-aware accent colours, variable-width
-//! drag-to-reorder, file/content drops, and folder-opening sidebar drags.
-
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -35,7 +31,6 @@ const BADGED: usize = 10;
 /// Corner radius for subtle hover/drop/drag overlays, scaled by `look.roundness` (0 at sharp).
 const OVERLAY_RADIUS: f32 = 4.0;
 
-/// Corner radius for the close button, matching GTK's `.tab-close` (`border-radius: 5px`).
 const CLOSE_RADIUS: f32 = 5.0;
 
 /// Vertical inset above and below the 2 px accent insertion mark during an incoming sidebar drag.
@@ -44,8 +39,6 @@ const INSERTION_INSET: f32 = 6.0;
 /// Width of the vertical accent insertion mark during an incoming sidebar drag.
 const INSERTION_WIDTH: f32 = 2.0;
 
-/// The strip: `BrowserTabs::new(&data, &s.tabs, |s| &mut s.tabs, |s| &mut s.tabs.drag)
-/// .on_intent(..).build(look, cx)`. See the module docs for what the host does with it.
 pub struct BrowserTabs<'a, S: 'static> {
     data: &'a TabsData<'a>,
     state: &'a BrowserTabsState,
@@ -66,8 +59,6 @@ pub struct BrowserTabs<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> BrowserTabs<'a, S> {
-    /// The strip over `data`, with its `state` and the accessors that find them in the app's
-    /// state.
     pub fn new(
         data: &'a TabsData<'a>,
         state: &'a BrowserTabsState,
@@ -100,9 +91,6 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
         self
     }
 
-    /// The action a drag over tab `id` takes, or `None` to refuse it: W1's `choose_action`
-    /// with the host's volume lookup for the tab's folder. Without it, W1's rule with an
-    /// unknown volume.
     pub fn drop_action(
         mut self,
         f: impl Fn(&S, TabId, &DropOffer, Mods) -> Option<DropAction> + 'static,
@@ -111,8 +99,6 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
         self
     }
 
-    /// Which drags open tabs across the strip (`TabOpen::AtGap`): convenience wrapper for
-    /// [`BrowserTabs::tab_open`].
     pub fn opens_tabs(mut self, f: impl Fn(&S, &DropOffer) -> bool + 'static) -> Self {
         self.opens = Some(Rc::new(move |s, offer| {
             f(s, offer).then_some(TabOpen::AtGap)
@@ -121,44 +107,32 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
         self
     }
 
-    /// How an in-process drag opens tabs on the strip ([`TabOpen::AtGap`] for sidebar locations,
-    /// [`TabOpen::AtEnd`] for folder-only view drags), or `None` when it transfers or is refused.
     pub fn tab_open(mut self, f: impl Fn(&S, &DropOffer) -> Option<TabOpen> + 'static) -> Self {
         self.opens = Some(Rc::new(f));
         self.guard_none = true;
         self
     }
 
-    /// The content types a tab takes from other apps besides files, most wanted first (the
-    /// host's content-drops policy: text, images, web addresses). Default none.
     pub fn content_types(mut self, mimes: &'static [&'static str]) -> Self {
         self.content = mimes;
         self
     }
 
-    /// How long a file or content drag rests on a tab before it is selected (default
-    /// [`super::HOVER_DELAY`]); `None` never selects one.
     pub fn spring_delay(mut self, seconds: Option<f64>) -> Self {
         self.spring = seconds;
         self
     }
 
-    /// Lets a tab be dragged off the strip ([`TabsIntent::TearOut`], [`TabsIntent::TearMove`]).
-    /// Off by default.
     pub fn tear_out(mut self, on: bool) -> Self {
         self.tear = on;
         self
     }
 
-    /// Shows the number badges (1 to 9, then 0) on the first ten tabs, in place of their
-    /// icons: while the host sees Ctrl+Shift held.
     pub fn badges(mut self, on: bool) -> Self {
         self.badges = on;
         self
     }
 
-    /// Whether the strip ends in the New tab button (default true). With one tab, a host that
-    /// hides the strip puts a [`super::NewTabButton`] in its header instead.
     pub fn new_tab_button(mut self, on: bool) -> Self {
         self.new_tab = on;
         self
@@ -169,8 +143,6 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
         self
     }
 
-    /// Translated words for the strip's own chrome, including each tab's close button
-    /// ([`TabWords::close`], default `"Close tab"`).
     pub fn words(mut self, words: TabWords) -> Self {
         self.words = words;
         self
@@ -181,15 +153,10 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
         self
     }
 
-    /// The strip's band, a row: the tabs, then the New tab button. A host appends what else
-    /// the band holds after them with `.child` (Strata's window buttons, while the strip
-    /// shows). A torn-out tab stays inside the strip's clip; see [`BrowserTabs::build_layered`].
     pub fn build(self, look: &Look, cx: &mut Cx<S>) -> El {
         self.assemble(look, cx, None)
     }
 
-    /// The band, with a torn-out tab floating over the window in `layer`, which the view mounts
-    /// at its root with `rune_kit::root`.
     pub fn build_layered(self, look: &Look, cx: &mut Cx<S>, layer: &mut Vec<El>) -> El {
         self.assemble(look, cx, Some(layer))
     }

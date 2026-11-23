@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Blocking workers sharing one LIFO job queue. Taking the newest job first
-//! walks trees depth-first, which bounds the directories held open at once.
-
 use std::{
     io,
     panic::{AssertUnwindSafe, catch_unwind},
@@ -90,8 +87,6 @@ impl<J: Job> WorkQueue<J> {
         }
     }
 
-    /// Keeps `error` for the result like [`Self::fail`], but lets the other jobs finish. An error
-    /// that stops the queue still wins, since only it explains what the unfinished jobs left.
     pub(super) fn defer(&self, error: J::Error) {
         Self::record(&self.cancelled, &self.deferred, error);
     }

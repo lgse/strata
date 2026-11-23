@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`AutoscrollPointer`]: autoscroll on C1e's collection, as a decorator over its pointer
-//! controller (C1b), so the collection element needs no change for it.
-
 use rune::PointerButton;
 
 use super::{Autoscroll, AutoscrollSettings, Start, Target};
@@ -13,22 +10,6 @@ use crate::scroll::ScrollFeed;
 
 type BackgroundFn = fn(&PointerInput, &Ctx<'_>, &AutoscrollSettings) -> bool;
 
-/// The collection's pointer controller with middle-click autoscroll in front of it.
-///
-/// A middle press on the collection's background starts the window's [`Autoscroll`] when the
-/// listing can scroll, and the controller inside never sees that press. Everything else goes
-/// to the controller inside. Install it in the controller's place:
-///
-/// ```ignore
-/// coll.controllers.pointer = Some(Box::new(AutoscrollPointer::new(
-///     Some(Box::new(PointerIntent::new())), auto.clone(), "files", feed.clone())));
-/// ```
-///
-/// `feed` is the collection's scroll position, which the host fills from
-/// `Collection::on_scroll`. The host passes [`AutoscrollSettings`] with
-/// `Collection::settings`, and mounts the [`Shield`](super::Shield).
-///
-/// Used by: C2 (one per column, all sharing the window's autoscroll), C3, C4, hosts.
 pub struct AutoscrollPointer {
     inner: Option<Box<dyn PointerController>>,
     auto: Autoscroll,
@@ -36,14 +17,10 @@ pub struct AutoscrollPointer {
     feed: ScrollFeed,
     sideways: Option<Target>,
     background: BackgroundFn,
-    /// The gesture in progress is one this decorator took (it started or stopped an
-    /// autoscroll): its moves and release go no further.
     taken: bool,
 }
 
 impl AutoscrollPointer {
-    /// Autoscroll in front of `inner` (C1b's, or `None` for the element's default), for the
-    /// collection keyed `scope`, whose position `feed` holds, starting `auto`.
     pub fn new(
         inner: Option<Box<dyn PointerController>>,
         auto: Autoscroll,
@@ -61,15 +38,11 @@ impl AutoscrollPointer {
         }
     }
 
-    /// Also scroll the sideways viewport `target` around the collection (C4's table, wider
-    /// than its pane), on the horizontal axis.
     pub fn sideways(mut self, target: Target) -> Self {
         self.sideways = Some(target);
         self
     }
 
-    /// What counts as the collection's background, where a middle press starts autoscroll:
-    /// [`default_background`] unless a view's rows differ (C3's cards).
     pub fn background(mut self, f: BackgroundFn) -> Self {
         self.background = f;
         self
@@ -83,9 +56,6 @@ impl AutoscrollPointer {
     }
 }
 
-/// Strata's background (`ui::pointer::is_background`): no entry under the press, or the blank
-/// strip of [`AutoscrollSettings::margin`] along either side of a row, which lies outside the
-/// row in Strata's lists.
 pub fn default_background(input: &PointerInput, cx: &Ctx<'_>, s: &AutoscrollSettings) -> bool {
     let x = input.point.x - cx.visible.x;
     input.hit.index.is_none() || x < s.margin || x >= cx.visible.w - s.margin
@@ -100,10 +70,6 @@ impl PointerController for AutoscrollPointer {
         if input.phase == PointerPhase::Down {
             self.taken = false;
             if self.auto.active() {
-                // The shield takes every press while autoscroll runs; this is a host without
-                // one. Stop dead where the views are on the next drive, which has the
-                // transaction to stop every target's glide (another collection's, a sideways
-                // scroll's), and keep the press from the controller.
                 self.auto.request_stop();
                 cx.emit(Effect::WakeAfter(std::time::Duration::ZERO));
                 cx.repaint();
@@ -129,9 +95,6 @@ impl PointerController for AutoscrollPointer {
                     return Flow::Handled;
                 }
                 if input.hit.index.is_some() {
-                    // Background beside or within an entry's row (its margin, a tile's blank
-                    // space) in a listing that fits: Strata's start declines and the press
-                    // reaches no row there, so it does nothing (no new tab).
                     self.taken = true;
                     return Flow::Handled;
                 }
@@ -169,8 +132,6 @@ impl PointerController for AutoscrollPointer {
         if let Some(p) = self.inner.as_mut() {
             p.reset();
         }
-        // Another folder: its autoscroll goes with it. `CollectionState::enter` scrolls
-        // instantly, which stops the glide.
         self.auto.stop_gone(Some(&self.scope));
     }
 }

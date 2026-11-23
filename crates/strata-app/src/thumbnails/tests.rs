@@ -23,8 +23,6 @@ fn red(width: u32) -> Outcome {
     }
 }
 
-/// A result that comes back after its folder was left is dropped, and the store holds
-/// nothing for it; one still wanted lands.
 #[test]
 fn a_result_for_a_folder_left_is_dropped_without_touching_the_store() {
     let inbox = Inbox::new();
@@ -74,8 +72,6 @@ fn a_render_is_decoded_down_to_its_step() {
     assert_eq!(decode(b"not a png", 64), Outcome::Failed);
 }
 
-/// A failed render leaves the tile its icon: the store holds no image for the key and does
-/// not ask for it again.
 #[test]
 fn a_failed_render_leaves_the_icon_and_is_not_asked_again() {
     let inbox = Inbox::new();
@@ -181,8 +177,6 @@ fn pool_cases() -> Vec<Case> {
     ]
 }
 
-/// The pool's cases past the render limits: the STL rule, the readers, the queue's bound and
-/// a job cancelled while it waits, which `Pool::next` drops before any worker takes it.
 fn queue_cases() -> Vec<Case> {
     use Kind::{Image, Pdf, RenderedModel};
     let render = |kind| Some(Started::Render(kind));
@@ -236,7 +230,6 @@ fn queue_cases() -> Vec<Case> {
     ]
 }
 
-/// The pool's limits, as GTK's `jobs.rs` sets them.
 #[test]
 fn the_pool_starts_what_its_limits_allow() {
     for case in pool_cases().into_iter().chain(queue_cases()) {
@@ -268,9 +261,6 @@ fn photo_at(index: u64) -> ListSource {
     ListSource::new(vec![entry])
 }
 
-/// A viewer fitted to fewer parts (Columns' columns closing) drops the store's viewers past
-/// them, and their requests come back cancelled; however often columns open and close, the
-/// viewer holds one store viewer for each part open.
 #[test]
 fn a_viewer_fitted_to_fewer_parts_leaves_none_behind() {
     let inbox = Inbox::new();
@@ -309,8 +299,6 @@ fn a_viewer_fitted_to_fewer_parts_leaves_none_behind() {
     }
 }
 
-/// A folder's rows as the browser first lists them, `photo-<n>.png` with no time or size, or
-/// as a fill completes them.
 fn photos(filled: bool, ids: &crate::slots::Ids) -> Vec<crate::listing::Row> {
     use strata_core::model::{EntryKind as Kind, FileEntry, Location, MetadataValue};
     (0..3)
@@ -346,10 +334,6 @@ fn photos(filled: bool, ids: &crate::slots::Ids) -> Vec<crate::listing::Row> {
 /// How a view tells the store its listing changed after a fill.
 type Retell = fn(&mut ThumbnailStore, ViewerId, &crate::listing::Column);
 
-/// A view asks for a folder's thumbnails, and the browser's fill lands after the first poll:
-/// the store asks once for each image and cancels nothing, however the view tells it of the
-/// fill. Columns' poll resyncs a column whose listing changed (`columns/thumbs.rs`); the Icons
-/// grid and the List table sync again from their `on_visible`.
 #[test]
 fn a_fill_landing_after_the_first_poll_asks_nothing_again() {
     use crate::listing::{Column, Edit};
@@ -396,11 +380,6 @@ fn a_fill_landing_after_the_first_poll_asks_nothing_again() {
     }
 }
 
-/// A folder's rows are asked for, and then Rune reports the list as showing none, as it does
-/// before the list has laid them out: the poll that hears it, List's and Columns'
-/// (`Synced`), cancels no request, since a render running then would lose its worker, and
-/// GTK's rows keep theirs while they stay bound. Seen as sandboxes started too many in
-/// `browser-workers-reuse-processes/list` (lgse/strata#2296).
 #[test]
 fn a_report_of_no_rows_in_a_listed_folder_cancels_no_render() {
     use crate::{

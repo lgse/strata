@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A browser with a file operation running in the background: a delete the provider holds
-//! and never finishes, sent to the background as the progress dock's button sends one.
-
 use std::rc::Rc;
 
 use strata_core::model::FileEntry;

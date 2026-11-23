@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Variable surface transparency and frosted glass tokens for [`crate::look::Look`].
-//!
-//! When transparency is disabled (`TransparencyParams::enabled == false`), every surface color
-//! remains untouched at its theme alpha (`1.0` for standard themes) and `backdrop_blur` is `0.0`.
-//! When enabled, background surfaces (`bg_base`, `page`), raised chrome surfaces (`bg_deep`,
-//! `surface_raised`, `surface_raised_base`, `surface_weak`, `layer_02`–`layer_04`), and floating
-//! overlays (`layer_01`) are scaled independently while foreground text, icons, accents, borders,
-//! and syntax colors stay at full opacity.
-
 use std::hash::{Hash, Hasher};
 
 use rune::{Color, El};
@@ -22,8 +13,6 @@ mod tests;
 /// Gaussian blur sigma (in points) for frosted glass surfaces (`El::backdrop_blur`).
 pub const FROSTED_BLUR_SIGMA: f32 = 22.0;
 
-/// Minimum opacity kept on floating overlays (popovers, context menus, dialogs) when frosted
-/// glass is active so overlapping text stays legible over translucent panes.
 pub const OVERLAY_ALPHA_FLOOR_FROSTED: f32 = 0.72;
 
 /// Minimum opacity kept on floating overlays when transparency is active without frosted blur.
@@ -67,11 +56,7 @@ pub struct Transparency {
     pub enabled: bool,
     /// Effective alpha (`0.0..=1.0`) applied to main background surfaces (`bg_base`, `page`).
     pub background_alpha: f32,
-    /// Effective alpha (`0.0..=1.0`) applied to raised chrome surfaces (`bg_deep`,
-    /// `surface_raised`, headers, sidebar, tab strip, footer).
     pub raised_alpha: f32,
-    /// Effective alpha (`0.0..=1.0`) applied to floating overlays (popovers, menus, dialogs),
-    /// clamped to a legibility floor.
     pub overlay_alpha: f32,
     /// True when both `enabled` and the frosted glass toggle are on.
     pub frosted_glass: bool,
@@ -178,8 +163,6 @@ impl Transparency {
         }
     }
 
-    /// Returns `color` with its alpha set to `overlay_alpha` when transparency is enabled,
-    /// or unchanged when disabled.
     pub const fn overlay_color(self, color: Color) -> Color {
         if self.enabled {
             Color {
@@ -191,9 +174,6 @@ impl Transparency {
         }
     }
 
-    /// Returns `color` at full opacity (`a = 1.0`) when transparency is enabled, or unchanged
-    /// when disabled (for foreground spans, slider knobs, and media frames that derive from a
-    /// surface token).
     pub const fn opaque(self, color: Color) -> Color {
         if self.enabled {
             Color { a: 1.0, ..color }
@@ -202,8 +182,6 @@ impl Transparency {
         }
     }
 
-    /// Blends a subtle perceptual lightness lift into `border` in OKLab when frosted glass is
-    /// active, preserving the theme's hue and chroma, or returns `border` unchanged otherwise.
     pub fn frosted_border(self, border: Color) -> Color {
         if !self.frosted_glass {
             return border;
@@ -213,8 +191,6 @@ impl Transparency {
     }
 }
 
-/// Wraps `body` in `rune_kit::popover::raised`, applying Strata's floating-overlay legibility
-/// floor, frosted border sheen, and conditional GPU backdrop blur when transparency is enabled.
 pub fn raised_popover(look: &Look, body: El, radius: f32) -> El {
     let kit = &look.kit;
     let mut surface = rune_kit::popover::raised(kit, body, radius);
@@ -233,8 +209,6 @@ pub fn raised_popover(look: &Look, body: El, radius: f32) -> El {
     surface
 }
 
-/// Snapshot of the theme's original surface colors captured in [`Look::from_kit`], allowing
-/// [`Look::apply_params`] to stay idempotent across repeated parameter updates.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct BaseSurfaces {
     page: Color,

@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The page column's zoom: a level from 1 to 4 times the fitted width, as Strata's PDF zoom
-//! (`src/ui/preview/pdf/zoom.rs`, upstream/main e9a8993b7), on C14a's zoom math.
-//!
-//! The fitted width is the pane's width, at most [`CONTENT_MAX_WIDTH`], less a gap each side.
-//! Ctrl+wheel multiplies the level by `e^0.14` a notch (40 points of Rune's wheel; a wheel
-//! turned away zooms in) and keeps the view's centre where it was, as Strata does
-//! (`preserve_pdf_view_center`).
-
 use crate::preview_drawer::CONTENT_MAX_WIDTH;
 use crate::viewers::viewport::zoom::{ZoomLimits, wheel_factor_per};
 
@@ -17,8 +9,6 @@ pub const GAP: f32 = 6.0;
 /// Strata's PDF zoom range: 1× to 4× the fitted width.
 pub const LIMITS: ZoomLimits = ZoomLimits { min: 1.0, max: 4.0 };
 
-/// How long the zoom rests before pages render again at it, in seconds: a Ctrl+wheel gesture
-/// asks once, at its end, not once a notch.
 pub const SETTLE: f64 = 0.15;
 
 /// Natural log of the zoom factor per point of wheel: Strata's 0.14 a notch, a notch 40 points.

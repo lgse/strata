@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! Byte sizes, rates, durations and percentages as Strata writes them in English
-//! (lgse/strata `src/i18n.rs`: `file_size`, `transfer_rate`, `duration`, `percent`, `integer`).
-//! Hosts pass their own through [`Words`](super::Words) to translate them.
-
 /// Strata's size units: decimal, as GLib and GNOME write file sizes.
 const UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
 
-/// A byte count in decimal units with at most one fraction digit, shown only when it isn't
-/// zero: "999 B", "1.5 kB", "64 MB", "1 GB" (Strata's `i18n::file_size`). A value that rounds
-/// to 1000 of a unit moves to the next: 999,960 bytes is "1 MB", not "1000 kB".
 pub fn size(bytes: u64) -> String {
     if bytes < 1000 {
         return format!("{bytes} {}", UNITS[0]);
@@ -68,16 +61,11 @@ pub fn percent(value: u32) -> String {
     format!("{value}%")
 }
 
-/// The whole percentage a fraction shows, rounded down, as Strata's bar label rounds it. Once
-/// anything has moved (`started`), it shows at least 1 %, so a long copy never reads 0 %
-/// while it runs.
 pub fn whole_percent(fraction: f64, started: bool) -> u32 {
     let p = (fraction.clamp(0.0, 1.0) * 100.0) as u32;
     if started { p.max(1) } else { p }
 }
 
-/// The seconds left at `rate` bytes a second for `remaining` bytes, rounded up and at least 1
-/// (Strata's `transfer_rate_status`). `None` with no rate measured yet, or nothing left.
 pub fn seconds_left(rate: Option<f64>, remaining: Option<u64>) -> Option<u64> {
     let rate = rate.filter(|r| r.is_finite() && *r > 0.0)?;
     let remaining = remaining.filter(|&r| r > 0)?;

@@ -2,10 +2,8 @@
 
 //! The words assistive technology hears for the picker's parts. Strata translates them.
 
-/// The parts' names and value texts. [`Default`] is English, after GTK's colour editor.
 #[derive(Clone, Copy, Debug)]
 pub struct PickerWords {
-    /// The plane's name: "Saturation and value" (GTK's).
     pub plane: &'static str,
     /// The hue strip's name: "Hue".
     pub hue: &'static str,
@@ -13,8 +11,6 @@ pub struct PickerWords {
     pub alpha: &'static str,
     /// The hex field's name: "Hex color".
     pub hex: &'static str,
-    /// The plane's value text from whole percents of saturation and value:
-    /// "Saturation 80%, value 60%".
     pub plane_value: fn(u32, u32) -> String,
     /// The hue strip's value text from whole degrees: "200°".
     pub hue_value: fn(u32) -> String,

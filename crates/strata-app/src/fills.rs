@@ -1,29 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Metadata fills for the rows a view shows: what the browser does not know of an entry yet
-//! (its size, a folder's count, an image's dimensions, a video's length) is asked for while
-//! the row is on screen or near it. Shared code: the Icons view asks every row's details
-//! ([`Details::All`]), the List view a folder's only, for its item count ([`Details::Folders`],
-//! as GTK's List asks with `details = entry.is_directory()`), and Columns a folder's while
-//! sizes show, else none ([`Details::Off`]), one [`Fills`] for each column.
-//!
-//! GTK's rule (`schedule_refresh` in `src/ui/thumbnail/viewport.rs`, at `62bbb1609`; ported as
-//! new code and listed in `docs/rune/parity/packages/A1.md`, "Ported from GTK"):
-//! - **Once per idle.** A scroll schedules one refresh, however often it moves. Here the
-//!   view's `on_visible` only records the range ([`Fills::see`]), and the part's `poll`
-//!   asks once ([`Fills::request`]).
-//! - **On screen and near it.** GTK asks for rows on screen and within a quarter of the
-//!   viewport around it. Here that is the range widened by a quarter of its rows each way.
-//! - **Each row once while its fill is out.** GTK's browser drops a request already in
-//!   flight (`fill_in_flight`). A row here is asked for again only once what the browser
-//!   knows of it changed since it was asked for (its fill landed) and it still lacks
-//!   something, or once it left the range and came back, as GTK asks again for an item it
-//!   binds again.
-//! - **Visible first.** One `prioritize_metadata_fills` puts the rows near the viewport at
-//!   the head of the browser's queue.
-//! - **Not under an operation.** A folder a copy or move touches is not asked for
-//!   (`Browser::operation_touches`).
-
 use std::{
     collections::{HashMap, HashSet},
     ops::Range,
@@ -65,16 +41,10 @@ impl Filler for Rc<Browser> {
     }
 }
 
-/// Which rows a view asks the details of: a folder's item count, an image's dimensions and a
-/// video's length, which strata-fs reads only on a fill asked with details.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Details {
     /// Every row: the Icons view's details line shows all three.
     All,
-    /// Folders only, for their item count: the List view's Size column, and Columns' while
-    /// sizes show. GTK's List asks with `details = entry.is_directory()`
-    /// (`src/ui/browser_modes/list_factory.rs`), its Columns rows with
-    /// `show_sizes && entry.is_directory()` (`src/ui/browser/columns/rows/bind.rs`).
     Folders,
     /// No row: Columns while sizes are hidden.
     Off,
@@ -85,10 +55,6 @@ pub(crate) enum Details {
 enum Register {
     /// Every row: the Icons and List views.
     Every,
-    /// A row whose time, a file's size or a folder's `listable` is unknown, or whose details
-    /// are asked: GTK's Columns rows register a request only then (`request_metadata` in
-    /// `src/ui/browser/columns/rows/bind.rs:254-257`, with `metadata_needs_fill` in
-    /// `src/ui/browser/entry.rs:21-27`), so a row that lacks only its mode is not asked.
     Unfilled,
 }
 
@@ -102,14 +68,8 @@ impl Details {
     }
 }
 
-/// How long a scrolling viewport stays still before deferred fills or thumb-dragged
-/// thumbnails flush: GTK's 150 ms (`track_listing_scrolling` in
-/// `src/ui/browser/columns/append/surface.rs`).
 pub(crate) const SCROLL_SETTLE: f64 = 0.150;
 
-/// Tracks when a view's visible range last moved, so metadata fills (all scrolling) and
-/// thumbnails (while dragging the scrollbar thumb) wait until scrolling pauses for
-/// [`SCROLL_SETTLE`] or the thumb is released.
 #[derive(Clone, Default)]
 pub(crate) struct ScrollSettle {
     folder: Option<Location>,
@@ -133,8 +93,6 @@ impl ScrollSettle {
         }
     }
 
-    /// Records the visible range: a first range, or one that only grows as rows arrive, is
-    /// not a scroll. Returns true when the viewport's start moved.
     pub(crate) fn see(&mut self, range: &Range<usize>) -> bool {
         let scrolled = !self.last.is_empty() && self.last.start != range.start;
         self.moved |= scrolled;
@@ -142,8 +100,6 @@ impl ScrollSettle {
         scrolled
     }
 
-    /// Whether the viewport is settled for metadata fills: defers while scrolling, flushes
-    /// immediately on thumb release or after [`SCROLL_SETTLE`] of stillness.
     pub(crate) fn settled(&mut self, clock: f64, dragging: bool) -> Result<(), f64> {
         if dragging {
             self.was_dragging = true;
@@ -155,9 +111,6 @@ impl ScrollSettle {
         self.wait_still(clock)
     }
 
-    /// Whether a scrollbar thumb drag is settled enough to sync thumbnails: non-drag
-    /// scrolling always proceeds immediately; while dragging, defers until release or
-    /// [`SCROLL_SETTLE`] of stillness.
     pub(crate) fn settled_for_drag(&mut self, clock: f64, dragging: bool) -> Result<(), f64> {
         if !dragging {
             self.was_dragging = false;
@@ -239,8 +192,6 @@ impl Fills {
         Self::registering(details, Register::Every)
     }
 
-    /// A Columns column's fills, which ask only for the rows GTK's Columns rows register
-    /// ([`Register::Unfilled`]).
     pub(crate) fn unfilled(details: Details) -> Self {
         Self::registering(details, Register::Unfilled)
     }
@@ -257,8 +208,6 @@ impl Fills {
         }
     }
 
-    /// Which rows are asked their details now: when the detail level changes, previously
-    /// asked rows are re-admitted at the next poll.
     pub(crate) fn set_details(&mut self, details: Details) {
         if self.details != details {
             self.details = details;
@@ -267,8 +216,6 @@ impl Fills {
         }
     }
 
-    /// Re-admits rows near the viewport at the next poll after `FolderCountsInvalidated`,
-    /// `ColumnReloaded`, or `ColumnRefreshing`.
     pub(crate) fn invalidate(&mut self) {
         self.asked.clear();
         self.fresh = true;
@@ -283,8 +230,6 @@ impl Fills {
         }
     }
 
-    /// Asks for fills once the viewport has settled (or immediately on thumb release); returns
-    /// the remaining settle delay in seconds when still scrolling.
     pub(crate) fn request_settled(
         &mut self,
         browser: &impl Filler,
@@ -307,9 +252,6 @@ impl Fills {
         &mut self.settle
     }
 
-    /// Asks for the fills the rows near the viewport lack, once for each row while it is out:
-    /// call it from the part's `poll`. It does nothing when neither the range nor the listing
-    /// changed since the last call.
     pub(crate) fn request(&mut self, browser: &impl Filler, depth: usize, listing: &Column) {
         if !self.due(depth, listing) {
             return;
@@ -328,16 +270,11 @@ impl Fills {
         }
     }
 
-    /// Forgets the rows asked for outside `range`, as GTK forgets an item it unbinds
-    /// (`cancel_metadata`): a row asked for again when it comes back, if its fill never
-    /// landed. The browser has no public way to cancel a queued fill, and GTK cancels none.
     fn forget_beyond(&mut self, listing: &Column, range: Range<usize>) {
         let near: HashSet<EntryId> = range.map(|index| listing.id_at(index)).collect();
         self.asked.retain(|id, _| near.contains(id));
     }
 
-    /// Whether the range or the listing changed since the last poll asked; a new folder
-    /// forgets what was asked in the last.
     fn due(&mut self, depth: usize, listing: &Column) -> bool {
         let seen = (depth, listing.location().clone(), listing.version());
         let same_folder = self
@@ -355,8 +292,6 @@ impl Fills {
         true
     }
 
-    /// Asks for the row at view index `index` if it lacks something and is not asked for
-    /// already; gives its location if it lacks something, for the browser's priorities.
     fn consider(
         &mut self,
         browser: &impl Filler,
@@ -401,9 +336,6 @@ fn widened(range: &Range<usize>, len: usize) -> Range<usize> {
     range.start.saturating_sub(margin)..range.end.saturating_add(margin).min(len)
 }
 
-/// Whether the browser still lacks something a view shows of `entry`: GTK's test in
-/// `schedule_refresh`, from `metadata_needs_fill` (`src/ui/browser/entry.rs`) and
-/// `icon_details_need_fill` (`src/ui/browser_modes/metadata.rs`).
 fn needs_fill(entry: &FileEntry, details: bool) -> bool {
     metadata_needs_fill(entry)
         || entry.mode == MetadataValue::Unknown

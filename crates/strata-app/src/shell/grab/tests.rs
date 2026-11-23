@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A modal layer over the List view ends its click run, on the window the crate registers:
-//! what `executable-requires-confirmation` does with its second double click.
-
 use std::{cell::Cell, path::PathBuf, rc::Rc};
 
 use rune::{Key, KeyEvent, Mods};
@@ -32,9 +29,6 @@ fn turns(host: &mut Offscreen) {
     }
 }
 
-/// Registers a harmless no-op default handler for `text/plain` in the isolated test home so
-/// opening `todo.txt` never opens an "Open With" dialog in minimal containers or launches a
-/// real desktop editor on developer hosts.
 fn register_noop_text_handler() {
     let data = PathBuf::from(std::env::var_os("XDG_DATA_HOME").expect("XDG_DATA_HOME"));
     let config = PathBuf::from(std::env::var_os("XDG_CONFIG_HOME").expect("XDG_CONFIG_HOME"));
@@ -53,8 +47,6 @@ fn register_noop_text_handler() {
     .expect("mimeapps.list");
 }
 
-/// Finding lgse/strata#2454: a double click on a file, a dialog over the view, and a second
-/// double click within the double-click interval of the first, which opens the file again.
 #[test]
 fn a_double_click_after_a_dialog_closes_opens_again() {
     hosted_with(
@@ -80,8 +72,6 @@ fn a_double_click_after_a_dialog_closes_opens_again() {
             host.runtime().update(|app: &mut App, _| {
                 error_dialog::show(app, Error::new("Failed", "Why it failed"));
             });
-            // A few frames, not the dialog's whole entrance: the second double click has to
-            // come within the double-click interval of the first, as in the scenario.
             turns(&mut host);
             send_key(
                 &mut host,

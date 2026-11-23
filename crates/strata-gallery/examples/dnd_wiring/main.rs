@@ -1,30 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The drag-and-drop wiring demo (X2): Strata's views and chrome on a real folder, with every
-//! drop target and drag source joined to the system's drag and drop (P1) through
-//! `adapter.rs`, which an app copies as it is.
-//!
-//! ```text
-//! cargo run -p strata-gallery --example dnd_wiring -- --root DIR [--title T] [--two-windows] [--apply]
-//! ```
-//!
-//! - **Drag out** from Columns, List and Icons (tabs 1 to 3): `text/uri-list`, GNOME's and
-//!   KDE's file formats, and the typed payload for the demo's own windows.
-//! - **Drop in** on folder rows and pane backgrounds in each view, crumbs, tabs, New tab and
-//!   the strip (folders from this process open tabs), sidebar rows, the pin gaps and the USB
-//!   device (another volume: a plain drop asks). The action follows Ctrl and Shift where the
-//!   platform says, and is shown before the drop.
-//! - Folder rows and sidebar rows spring open after 750 ms, crumbs after 750 ms and tabs after
-//!   450 ms (their components'); Columns autoscrolls near its edges.
-//! - Every transfer is logged. `--apply` does it, inside `--root` only.
-//! - `--two-windows` opens a second window, `second`: drags between them take the fast path.
-//!
-//! Commands arrive as JSON lines on stdin (`"window"` picks one, else all):
-//! `{"cmd":"locate","what":[{"name":…,"row":…,"depth":…}|{"crumb":i}|{"tab":id}|{"new-tab":true}|{"gap":i}|{"place":rel}|{"trash":true}|{"device":true}|{"pane":true}|{"column":d}]}`
-//! (logs `rect` lines), `{"cmd":"tab","id":n}`, `{"cmd":"open","tab":n,"path":rel}`, `{"cmd":"group","tab":n}`, `{"cmd":"scroll","tab":n,"y":y}`, `{"cmd":"select","tab":n,"depth":d,"names":[…]}`,
-//! `{"cmd":"state"}`, `{"cmd":"peek","on":bool}`, `{"cmd":"cancel"}`, `{"cmd":"quit"}`. What
-//! happens goes to stdout as JSON lines (`{"ev":…,"window":…}`).
-
 mod adapter;
 mod fsys;
 mod host;
@@ -54,7 +29,6 @@ pub fn log(window: &str, event: &str, fields: Value) {
 
 type Handles = Arc<Mutex<Vec<(String, AppHandle<Win>)>>>;
 
-/// Windows open: P1 shuts down in the last one's `on_close` (and in `on_quit`).
 static OPEN: AtomicUsize = AtomicUsize::new(0);
 static SHUT_DOWN: AtomicBool = AtomicBool::new(false);
 

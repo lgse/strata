@@ -1,38 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The file clipboard over strata-platform's clipboard (P2): copy and cut of entries in the
-//! file managers' formats, the copy and cut marks rows show, the Files on clipboard badge
-//! (C19), and the paste read. An app copies this file as it is; it holds no file-manager
-//! policy beyond Strata's clipboard rules (`src/ui/browser/clipboard.rs`), and does no I/O of
-//! its own: the host applies a paste.
-//!
-//! ```ignore
-//! struct App { clip: FileClipboard<App>, … }
-//! let clip = FileClipboard::new(|s: &mut App| &mut s.clip);
-//! let handle = clip.handle(); // App::on_window: handle.attach(w, &app)
-//! // In the key handler that asked (the data device writes with its serial):
-//! s.clip.copy(&paths, cut)?;
-//! s.clip.paste(|s, paste, tx| s.apply(paste, tx))?;
-//! // After a cut's paste moved `moved`:
-//! s.clip.moved(&moved)?;
-//! // Rows: s.clip.mark(path); the footer: Footer::clipboard(s.clip.badge()).
-//! ```
-//!
-//! Strata's rules, which [`Board`] holds without P2 so they can be tested alone:
-//!
-//! - A copy or cut marks its entries at once, and shows the badge; only one copy is ours.
-//! - When another app takes the clipboard, or it is emptied, every mark clears.
-//! - The badge shows while the clipboard holds a non-empty file list, from any app: an
-//!   offer with the GNOME or `text/uri-list` type is read, and a late answer is dropped.
-//! - A paste moves when the files say cut, or when they are exactly what we cut.
-//! - Once a paste has moved some of what we cut, those leave the clipboard: with none left it
-//!   is emptied, else the rest is copied again as a cut; a newer copy (ours or another app's)
-//!   is left alone.
-//!
-//! On the data-device route (mutter) another app's copy is heard only at the window's next
-//! keyboard focus (P2's known limit), so the badge for it waits until then; losing the
-//! clipboard is heard at once on every route.
-
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -56,8 +23,6 @@ pub enum Mark {
 /// What a paste read.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Paste {
-    /// Local files, to be moved or copied. `foreign` lists the URIs that name no local file
-    /// (another scheme or host), which are left out.
     Files {
         paths: Vec<PathBuf>,
         moving: bool,
@@ -87,7 +52,6 @@ struct Held<I> {
     cut: bool,
 }
 
-/// Strata's clipboard rules, as plain state over copy ids `I` (P2's [`CopyId`]).
 #[derive(Clone, Debug)]
 pub struct Board<I> {
     held: Option<Held<I>>,
@@ -131,16 +95,12 @@ impl<I: Copy + PartialEq> Board<I> {
         self.read += 1;
     }
 
-    /// Copy `copy` no longer holds the clipboard. A copy of ours that was replaced changes
-    /// nothing.
     pub fn lost(&mut self, copy: I) {
         if self.held() == Some(copy) {
             self.forget();
         }
     }
 
-    /// Another app's copy holds the clipboard now. The read to ask for, when it may hold files
-    /// ([`Board::files_read`] takes its answer).
     pub fn offered(&mut self, may_hold_files: bool) -> Option<u64> {
         self.forget();
         may_hold_files.then_some(self.read)
@@ -252,15 +212,11 @@ impl<S: 'static> FileClipboard<S> {
         );
     }
 
-    /// A test switch for the session tests: behave as on mutter (the data device). Not for
-    /// apps.
     pub fn test_route(mut self, route: TestRoute) -> Self {
         self.clip = self.clip.test_route(route);
         self
     }
 
-    /// The clipboard, to attach from `App::on_window` each time it runs
-    /// (`handle.attach(window, &app)`), outside the state.
     pub fn handle(&self) -> Clipboard<S> {
         self.clip.clone()
     }
@@ -273,9 +229,6 @@ impl<S: 'static> FileClipboard<S> {
         self.board.badge()
     }
 
-    /// Copies or cuts `paths` (absolute): `x-special/gnome-copied-files`, `text/uri-list` and
-    /// `application/x-kde-cutselection`, no text, as Strata. Call it from the key or click
-    /// handler that asked: on the data device the write takes that event's serial.
     pub fn copy(&mut self, paths: &[PathBuf], cut: bool) -> Result<CopyId, Error> {
         if paths.is_empty() {
             return Err(Error::Empty);
@@ -288,12 +241,6 @@ impl<S: 'static> FileClipboard<S> {
         Ok(copy)
     }
 
-    /// Reads what a paste takes: the files, in the file managers' formats, else an image.
-    /// `f` runs once, in an update, unless this returns Err (not attached).
-    ///
-    /// A deviation from Strata, which reads any image type and also falls back to the image
-    /// when the files offered can't be read: this reads only `image/png`, and only when no
-    /// file list is offered at all (`NothingOffered`).
     pub fn paste(&self, f: impl Fn(&mut S, Paste, &mut Tx) + 'static) -> Result<(), Error> {
         let f = Rc::new(f);
         let (at, clip) = (self.at, self.clip.clone());
@@ -340,14 +287,10 @@ impl<S: 'static> FileClipboard<S> {
         )
     }
 
-    /// A paste moved `moved`: what we cut among them leaves the clipboard (see the module
-    /// docs). True if the clipboard was emptied or cut again.
     pub fn moved(&mut self, moved: &[PathBuf]) -> Result<bool, Error> {
         match self.board.moved(moved) {
             After::Keep => Ok(false),
             After::Clear(copy) => self.clip.clear(copy),
-            // Strata's check: a cut list of ours doesn't mean the clipboard is still ours (its
-            // loss may not have been heard yet).
             After::Recut(copy, rest) => match self.clip.state(copy) {
                 Some(CopyState::Holding | CopyState::Pending) => {
                     self.copy(&rest, true).map(|_| true)
@@ -360,8 +303,6 @@ impl<S: 'static> FileClipboard<S> {
         }
     }
 
-    /// Lets go of our copy and its marks (Strata's unyank, 10xer `Y`): empties the clipboard
-    /// if it still holds our copy.
     pub fn release(&mut self) -> Result<bool, Error> {
         match self.board.release() {
             Some(copy) => self.clip.clear(copy),

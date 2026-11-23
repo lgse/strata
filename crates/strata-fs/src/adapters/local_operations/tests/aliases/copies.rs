@@ -34,8 +34,6 @@ fn expect_links(expected: &[(PathBuf, &str)]) -> io::Result<()> {
 #[test]
 fn case_aliases_inside_a_copied_folder_are_numbered_and_reported() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
-    // Names are claimed in byte order where they may collide, so the later
-    // one is numbered; elsewhere the one made last is.
     let rows: [(&str, Preset, &str, &str); 2] = [
         ("claimed", ciopfs, "makefile", "makefile (2)"),
         ("made", casefolded_ext4, "Makefile", "Makefile (2)"),
@@ -135,8 +133,6 @@ fn a_linked_name_that_aliases_another_is_numbered_and_reported() -> Result<(), B
     let _destination = FsQuirks::install(&destination, casefolded_ext4());
     let target = destination.join("copy");
 
-    // One worker takes the folder's files last first, so `B` is linked
-    // after `b` is made.
     let renamed = copy_renaming(&source, &target, Some(1))?;
 
     assert_eq!(renamed, [("B".to_owned(), "B (1)".to_owned())]);

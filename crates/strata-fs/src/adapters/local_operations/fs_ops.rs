@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The directory-relative syscalls that placement uses, behind one seam so
-//! tests can emulate filesystems that lack a primitive.
-
 use std::{
     ffi::{OsStr, OsString},
     mem::MaybeUninit,
@@ -140,9 +137,6 @@ pub(super) trait FsOps: super::environment::FsEnvironment {
     fn names(&self, dir: Entry<'_>) -> Result<Vec<OsString>, Errno>;
     fn mount_key(&self, dir: BorrowedFd<'_>) -> MountKey;
     fn statfs(&self, dir: BorrowedFd<'_>) -> Option<FsStat>;
-    /// The regular file at `at`, opened for reading without following it,
-    /// or `None` when something else is there. `listed` skips looking at it
-    /// by name first, where the caller just saw a regular file there.
     fn open_source(
         &self,
         at: Entry<'_>,
@@ -150,8 +144,6 @@ pub(super) trait FsOps: super::environment::FsEnvironment {
     ) -> Result<Option<(OwnedFd, EntryStat)>, Errno>;
     /// An unnamed file in `dir`, readable so a failed link can copy it out.
     fn open_tmpfile(&self, dir: BorrowedFd<'_>, mode: Mode) -> Result<OwnedFd, Errno>;
-    /// Gives an unnamed file a name, never replacing one; `through_proc`
-    /// links `/proc/self/fd/N` where `AT_EMPTY_PATH` needs privileges.
     fn link_fd(&self, fd: BorrowedFd<'_>, to: Entry<'_>, through_proc: bool) -> Result<(), Errno>;
     fn reflink(&self, target: BorrowedFd<'_>, source: BorrowedFd<'_>) -> Result<(), Errno>;
     fn copy_range(
@@ -186,8 +178,6 @@ pub(super) trait FsOps: super::environment::FsEnvironment {
     fn xattr_names(&self, fd: BorrowedFd<'_>) -> Result<Vec<OsString>, Errno>;
     fn get_xattr(&self, fd: BorrowedFd<'_>, name: &OsStr) -> Result<Vec<u8>, Errno>;
     fn set_xattr(&self, fd: BorrowedFd<'_>, name: &OsStr, value: &[u8]) -> Result<(), Errno>;
-    /// The folder at `at`, which may name several components, opened
-    /// without following a symlink anywhere on the way.
     fn open_dir(&self, at: Entry<'_>) -> Result<OwnedFd, Errno>;
     fn list(&self, dir: BorrowedFd<'_>) -> Result<Vec<(OsString, FileType)>, Errno>;
     fn list_chunks(
@@ -198,11 +188,7 @@ pub(super) trait FsOps: super::environment::FsEnvironment {
     fn folder_stamp(&self, path: &Path, force_sync: bool) -> Result<FolderStamp, Errno>;
     fn access(&self, path: &Path, access: Access) -> Result<(), Errno>;
     fn create_node(&self, at: Entry<'_>, kind: FileType, mode: Mode) -> Result<(), Errno>;
-    /// Opens the named pipe at `at` for its metadata, which never waits for
-    /// a writer.
     fn open_fifo(&self, at: Entry<'_>) -> Result<OwnedFd, Errno>;
-    /// Creates a file exclusively without opening it for writing, so its
-    /// close flushes nothing (vfat mounted with `flush` waits there).
     fn create_readonly(&self, at: Entry<'_>, mode: Mode) -> Result<OwnedFd, Errno>;
     fn open_write(&self, at: Entry<'_>) -> Result<OwnedFd, Errno>;
     fn file_flags(&self, fd: BorrowedFd<'_>) -> Result<u32, Errno>;
@@ -347,8 +333,6 @@ fn entry_stat(stat: &rustix::fs::Statx) -> EntryStat {
     }
 }
 
-/// `st_nlink` is `u64` on x86_64 but `u32` on aarch64; widening through a
-/// generic keeps the conversion valid on both without a same-type cast.
 fn link_count<N: Into<u64>>(nlink: N) -> u64 {
     nlink.into()
 }

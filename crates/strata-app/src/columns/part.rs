@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Columns view as a part of the window: the first of the view slot, and the worked
-//! example of [`crate::slots`].
-
 use rune::Tx;
 use strata_core::util::DateFormat;
 use strata_fs::app::VisibleDepths;
@@ -85,7 +82,6 @@ impl Part for Columns {
         },
         #[cfg(feature = "qa")]
         probe: Probe {
-            // `view_name` in `src/ui/accessibility.rs`.
             name: "Columns",
             roles: ("list-box", "list-box-option"),
             listed: |app| {
@@ -144,8 +140,6 @@ impl Part for Columns {
         app.columns.caught_up();
     }
 
-    /// What another tab changed while this one was hidden: the sizes shown, the width new
-    /// columns open at, and saved item customizations.
     fn tab_shown(app: &mut App, _: &mut Tx) {
         let saved = shell::preferences(app);
         app.columns.refresh_mirror_preferences(saved);

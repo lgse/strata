@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Where the rename editor sits in the columns: the row it opens on, the listing it is
-//! judged against, and the neighbour Tab carries it to. What a rename does is
-//! [`crate::rename`]'s.
-
 use std::rc::Rc;
 
 use rune::Tx;
@@ -29,8 +25,6 @@ impl Columns {
             .flatten()
     }
 
-    /// Opens `editor` on the row of entry `id` in column `depth` and shows the row. `None`
-    /// when the column does not show the entry: a hidden one has no row to edit in.
     pub(crate) fn begin_rename(
         &self,
         editor: &mut RenameState,
@@ -59,8 +53,6 @@ impl Columns {
         }
     }
 
-    /// One poll of `editor`, against the listing and the viewport of the column its edit is
-    /// in. An edit whose column has closed ends, and keeps the name.
     pub(crate) fn tick_rename(&self, editor: &mut RenameState) -> Polled {
         let Some(scope) = editor.scope().map(str::to_owned) else {
             return Polled::default();
@@ -82,8 +74,6 @@ impl Columns {
         (index < column.len()).then(|| column.id_at(index))
     }
 
-    /// Selects entry `id` of column `depth` alone, with the cursor and the keyboard on it:
-    /// what `Browser::select` does for the GTK views.
     pub(crate) fn select_only(&mut self, (depth, id): (usize, EntryId), look: &Look, tx: &mut Tx) {
         let (Some(column), Some(state)) =
             (self.listings.shown(depth), self.state.column_mut(depth))
@@ -100,8 +90,6 @@ impl Columns {
         }
     }
 
-    /// The child column follows the cursor at once, with no wait: Tab carried a rename to
-    /// the cursor's entry, and the editor that opens on it holds the mirror back.
     pub(crate) fn mirror_now(&self, browser: &Rc<Browser>) {
         if let Some((depth, id)) = self.focused()
             && let Some(position) = self.position(depth, id)
@@ -115,8 +103,6 @@ impl Columns {
         self.mirror.hold(editing);
     }
 
-    /// One of the browser's operations gave the entry `from` the id `to`: a rename gives an
-    /// entry another location ([`Moving`](crate::handover::Moving)).
     pub(super) fn moved(&mut self, from: EntryId, to: EntryId) {
         self.moving.moved_in(from, to, &self.listings.columns);
     }
@@ -126,9 +112,6 @@ impl Columns {
         self.moving.take_thumbnails()
     }
 
-    /// Column `depth`'s rows changed, and its selection has not been brought in step with
-    /// them yet: what it holds by an old id it holds by the new one, and so does the cursor
-    /// the child column follows.
     pub(super) fn arrived(&mut self, depth: usize) {
         let Some(column) = self.listings.columns.get(depth) else {
             return;

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A plain popover opened from another, as A8's "Customize columns…" is from its Appearance
-//! popover, on made-up parts: the keyboard going into the child leaves the parent open, and a
-//! press outside the child, on the parent's surface included, closes both.
-
 use std::{any::TypeId, cell::Cell};
 
 use rune::{El, Tx, col, el, row};
@@ -89,8 +85,6 @@ fn nest(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     Some(row().absolute(400.0, 200.0).child(button(app, ANCHOR)))
 }
 
-/// Each popover closes when the keyboard leaves it, the parent counting its open child's
-/// controls as its own.
 fn poll(_: &mut App, _: f64, tx: &mut Tx) -> bool {
     let child: &[&str] = if CHILD.get() { &CHILD_STOPS } else { &[] };
     let mut changed = false;

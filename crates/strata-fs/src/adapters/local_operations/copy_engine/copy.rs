@@ -7,8 +7,6 @@ pub(super) struct Copy {
     pub(super) item: OsString,
     pub(super) cancelled: Arc<AtomicBool>,
     pub(super) progress: Arc<SharedProgress>,
-    /// False for a copy from a stage, whose bytes were counted already and
-    /// which is removed afterwards, so the copy may leave nothing out.
     pub(super) counted: bool,
     pub(super) names: NamePolicy,
     pub(super) data: Mutex<Vec<Data>>,
@@ -39,9 +37,6 @@ type Pass = (
     Option<manifest::Unsettled>,
 );
 
-/// A rewrite within one tick of a coarse clock keeps the times, not
-/// always the size the copy read up to. Virtual files report none.
-/// `None` where the source changed while it was read.
 fn settled_read(
     stat: &EntryStat,
     read: EntryStat,
@@ -60,8 +55,6 @@ fn settled_read(
     })
 }
 
-/// A mode that gives the owner no read, as a copy of another
-/// user's file readable through its group or others may have.
 fn reopen_for_times(
     fs: &dyn FsOps,
     entry: Entry<'_>,
@@ -167,8 +160,6 @@ impl Copy {
         self.names.profiles.site(mount.key, mount.names, dir)
     }
 
-    /// Names given back, as undo does, stay refused. A name planned otherwise than for Keep Both
-    /// is reported by the planner.
     pub(super) fn retry_item<T>(
         &self,
         (dir, ((name, refused_name), is_directory, taken)): RetriedItem<'_>,
@@ -196,8 +187,6 @@ impl Copy {
         Ok((made, value))
     }
 
-    /// A target the mount refuses fails as a name stricter rules could not help. A mount without
-    /// links at all learns.
     pub(super) fn refused_link(&self, site: &Site, failure: &Failure) -> Option<Errno> {
         let error = match failure {
             Failure::LinkRefused(error)
@@ -361,10 +350,6 @@ impl Copy {
         )
     }
 
-    /// When recording, a source that changed while it was read is read once
-    /// more (`None` if it changed again), and one read within a tick of its
-    /// mount's coarse times, or of the destination's, is digested for the
-    /// move to compare.
     pub(super) fn copy_file(
         &self,
         data: &mut Data,
@@ -454,8 +439,6 @@ impl Copy {
         }
     }
 
-    /// A copy digested as it was written is compared by content before its
-    /// source is deleted, as within a tick another file can take its place.
     pub(super) fn wrote(&self, identity: LocalFileIdentity, read: &manifest::Read) {
         let Some(copied) = read.copied else {
             return;
@@ -468,9 +451,6 @@ impl Copy {
         }
     }
 
-    /// NFSv4 write delegations set the times at close, and FUSE daemons with
-    /// a writeback cache and some SMB servers may too, so a closed file gets
-    /// its times again: always on NFSv4, and where a check finds them lost.
     pub(super) fn settle_times(
         &self,
         (entry, identity): (Entry<'_>, LocalFileIdentity),

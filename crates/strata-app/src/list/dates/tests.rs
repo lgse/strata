@@ -8,9 +8,6 @@ fn wake(seconds: f64) -> Option<Duration> {
     Some(Duration::from_secs_f64(seconds))
 }
 
-/// On the poll's clock: while dates are relative and rows show, the dates read again every
-/// 30 s, the poll waking for it; once not (another format, or no row), nothing wakes and a
-/// new period starts when they are again.
 #[test]
 fn relative_dates_read_again_every_thirty_seconds_and_nothing_wakes_otherwise() {
     let mut dates = Dates::default();

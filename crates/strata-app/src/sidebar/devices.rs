@@ -1,25 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! DEVICES: the volumes, orphaned password-start drives, and mounts GIO's volume monitor reports,
-//! on C8's device rows, as the GTK window's sidebar lists them (`append_devices` in
-//! `src/ui/window/sidebar_devices.rs`).
-//!
-//! - **The rows** follow plug and unplug: the monitor's signals read it again ([`Watch`]). Each
-//!   drive's rows go together ([`order`]). Encrypted volumes show their lock/unlock button
-//!   ([`crypto`]), unmounted system loops and exclusively held block devices stay hidden
-//!   ([`probes`]), and a device that disappears while its release runs keeps a stand-in spinner
-//!   row ([`release`]).
-//! - **Clicking or unlocking** mounts plain volumes, prompts for a passphrase on locked encrypted
-//!   volumes via C26's mount prompts ([`unlock`]), starts password-protected drives, handles the
-//!   `AlreadyMounted` automounter race, and retries authentication failures.
-//! - **Locking** checks Secret Service for a cached passphrase, confirms forgetting it, leaves
-//!   the volume across every tab and window, flushes, unmounts, and closes the LUKS container via
-//!   UDisks2 or stops a password drive ([`lock`]).
-//! - **Eject, Unmount, and Disconnect** leave the device across every tab and window, cancel
-//!   Strata's own reads (`ActiveOperation::release_lexically`), flush off-thread, show the 350 ms
-//!   progress / safe-to-remove overlay, and return browsers if a release fails while still mounted
-//!   ([`release`]).
-
 use std::{cell::Cell, collections::HashMap, rc::Rc};
 
 use gio::prelude::*;
@@ -50,8 +30,6 @@ use release::{
 /// The labels the user gave devices, by `label_identity`.
 type Labels = HashMap<String, String>;
 
-/// How a device is safely removed: Eject wherever its drive or mount reports it, else Unmount
-/// (GTK's `MediaRelease`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum MediaRelease {
     EjectVolume,
@@ -80,7 +58,6 @@ pub(super) struct DeviceMenuInfo {
     pub(super) pending: bool,
 }
 
-/// GTK's `volume_release_action`: none for fixed storage that can do neither.
 pub(super) fn release_action(
     can_eject_volume: bool,
     mount_can_eject: bool,
@@ -136,8 +113,6 @@ impl Devices {
         })
     }
 
-    /// Draws the rows again from what was last read, with the labels the settings give and
-    /// stand-in ghost rows for any pending release whose device already left GIO.
     pub(super) fn dress(&mut self, labels: &Labels) {
         let mut live_ids = Vec::new();
         let mut groups: Vec<DeviceGroup> = self
@@ -201,8 +176,6 @@ fn device(seen: &Seen, labels: &Labels, releasing: bool) -> Device {
     row
 }
 
-/// The label the user gave the device, when it is one the settings may hold, else the
-/// system's name (`device_label` in `src/ui/preferences/file_settings.rs`).
 pub(super) fn display_name(label_id: Option<&str>, name: &str, labels: &Labels) -> String {
     label_id
         .and_then(|id| labels.get(id))
@@ -215,8 +188,6 @@ fn is_shown_label(label: &str) -> bool {
     !label.trim().is_empty() && label.chars().count() <= 255 && !label.chars().any(char::is_control)
 }
 
-/// Where a mounted row opens: a volume's root at once, as GTK's `navigate_to_gio_file`; a
-/// mount's checked first, as its place row.
 fn place_row(seen: &Seen) -> Option<places::Row> {
     let navigation = match seen.source {
         Source::Volume(_) | Source::PasswordDrive(_) => Navigation::Direct,
@@ -231,8 +202,6 @@ fn place_row(seen: &Seen) -> Option<places::Row> {
     })
 }
 
-/// The sidebar starts: the rows as the monitor shows them, the process-wide sidebar watch,
-/// and the GIO volume-monitor watch that reads it again.
 pub(super) fn start(app: &mut App) {
     app.sidebar.devices.sidebar_watch = Some(release::register_sidebar(app));
     if !cfg!(test) {
@@ -259,8 +228,6 @@ pub(super) fn redress(app: &mut App) {
     app.sidebar.follow(&app.browser);
 }
 
-/// The monitor's signals, held while the sidebar is: each reads it again once, after what is
-/// queued (`connect_device_changes` in `src/ui/window/sidebar.rs`).
 struct Watch {
     monitor: gio::VolumeMonitor,
     handlers: Vec<glib::SignalHandlerId>,
@@ -339,8 +306,6 @@ impl Drop for Watch {
     }
 }
 
-/// A click on an unmounted volume or password drive, or "Mount" / "Unlock" from its menu or
-/// lock button: mounts or unlocks it through C26's prompts and opens its root.
 pub(super) fn mount(app: &mut App, id: &str) {
     let Some(source) = app.sidebar.devices.find(id).map(|seen| seen.source.clone()) else {
         return;

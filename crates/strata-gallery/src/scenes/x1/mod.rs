@@ -1,73 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for X1 Shell demo: Strata's header component and the shell window
-//! `examples/shell` runs, on fake data. Scene names start with `x1-` and end in `-light` or
-//! `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-2-composites/X1-shell-demo.md`.
-//!
-//! - `x1-header-states-*` stacks four headers: a fresh profile (Close only), X11 with every
-//!   button, a maximised window, and Wayland with every button turned on (Minimize can't work
-//!   and the maximised state is unknown). A window without focus draws the same until the
-//!   owner decides its look, so it has no row; `tests/x1.rs` checks that focus reaches
-//!   `WindowChrome::active`.
-//! - `x1-shell-*` is the themed empty window (a bundled theme, the desktop's settings, a fake
-//!   overrides file) with its header and readout; `x1-shell-maximized-*` the same maximised.
-//! - `x1-volumes-*` has the mounted-volumes dialog open over it.
-//!
-//! The page stands in for the platform: a press on Maximize flips the window's maximised state
-//! as an X11 report would, the volumes arrive [`VOLUMES_AFTER`] seconds after they are asked
-//! for, and keys stand in for the user and the desktop (all unmodified):
-//!
-//! | Key | Does |
-//! | --- | --- |
-//! | `1`, `2`, `3` | Turns the Minimize, Maximize or Close button preference off or on |
-//! | `e` | Edits the fake overrides file: it alternates between [`FILE`] and [`FILE_BROKEN`] |
-//! | `d` | Deletes the fake file |
-//! | `t` | Touches the fake file: a change event, the same bytes |
-//! | `n` | Empties the fake file: present, with no rows |
-//! | `s` | The desktop's text scale moves between 1 and 1.25 |
-//! | `a` | The desktop's animations switch |
-//!
-//! A file edit is read [`reload::SETTLE`] after the last one, as `examples/shell` reads the
-//! real file; the look then moves through `theme::switch`, as a theme switch does.
-//!
-//! # Coverage
-//!
-//! The header's own bullets (`app/window`) are in `strata_components::header`'s docs, with its
-//! Rune drafts (U-X1-1, U-X1-2). The shell's, as scripts (`tests/scripts/x1/`), tests
-//! (`crates/strata-gallery/tests/x1.rs`) and unit tests (`scenes/x1/tests.rs`) check them:
-//!
-//! | Bullet (opening words) | Checked by |
-//! | --- | --- |
-//! | settings/themes: Creating, editing, or deleting the file while Strata runs re-applies it in every open window… | script `override-burst` (the readout's bar inset is read from the look); tests `an_edit_re_applies_the_file_to_the_look`, `a_reload_moves_the_colours_as_a_theme_switch_does`. "Every open window" is `examples/shell`'s broadcast: **hand test pending** |
-//! | settings/themes: Changes to the file less than 75 ms apart trigger one reload, 75 ms after the last | script `override-burst` (three edits, one reload); unit `changes_less_than_the_settle_apart_read_once_after_the_last` |
-//! | K4's host rule: a read that finds the same overrides changes nothing | script `override-unchanged`; test `a_read_that_finds_nothing_new_changes_nothing`; unit `a_read_changes_the_look_only_when_the_overrides_differ` |
-//! | settings/themes: Deleting the file, or making it unreadable, restores Strata's default appearance… | script `override-delete`; test `a_reload_moves_the_colours_as_a_theme_switch_does`. The log line is the demo's ("cannot read overrides file") |
-//! | settings/themes: A rule GTK cannot parse … is skipped … Valid rules in the same file still apply | script `override-problem` (the count; the salvage itself is K4's) |
-//! | settings/themes: With `~/.config/strata/style.css` present at startup, its rules apply in every window…; The file follows `$XDG_CONFIG_HOME`… | `examples/shell` (read before the first window; the path's rule in `args.rs`): **hand test pending** |
-//! | settings/themes/portal-text-scaling: In that process, changing `text-scaling-factor` while the window is open rescales its text and interface icons without a restart | script `text-scale` (the readout's interface text size is read from the look); test `a_text_scale_change_rescales_the_look`. The portal's side is P5's |
-//! | browser/navigation/startup-arguments: Each argument opens its own window, both at launch and when Strata is already running | `examples/shell` (`controller::on_launch`); the forwarding is P8's, whose session tests check it with its own demo: **hand test pending** for the shell |
-//! | app/dialogs: Closing the last open dialog by any route returns focus… | script `volumes-dialog` (X1's wiring of C15) |
-//!
-//! The volumes dialog without a GLib bridge shows the failure rather than a spinner that never
-//! ends: test `without_a_bridge_the_dialog_shows_the_failure_not_a_spinner` (no bullet: the
-//! review scenes `x1-shell-no-bridge-*`).
-//!
-//! Not X1's: the rest of `browser/navigation/startup-arguments` (what a path opens and
-//! selects), `integration/file-manager-interface` (P8 and Strata; the demo doesn't opt into
-//! FileManager1), the GTK-only `portal-text-scaling` bullets (`GDK_DEBUG=no-portals`,
-//! `gtk-xft-dpi`), and the user stylesheet's references and roundness (K4's unit tests).
-//!
-//! # Hand tests pending
-//!
-//! `examples/shell` on Hyprland, GNOME (Wayland, and mutter on X11) and KWin on X11: a
-//! borderless themed window with the header; drag, double-click maximise, Close; Minimize hidden
-//! on Wayland with `--all-buttons`; edge resize, Minimize and the window menu on X11; a second
-//! launch with paths opening focused windows in the first process; a live text-scale change
-//! (on Hyprland through xdg-desktop-portal-gtk); a live edit of the overrides file reaching
-//! every window; the volumes dialog listing real mounts.
-
 pub mod reload;
 pub mod shell;
 
@@ -80,8 +12,6 @@ use crate::{Gallery, Scene};
 use reload::{Change, Debounce};
 use shell::{Hooks, ShellWindow, Volume, Volumes};
 
-/// The fake overrides file the shell scenes open with: a Frame density inset, and the bar's
-/// fill and hairline colours per appearance, so the header shows each.
 pub const FILE: &str = r##"# The gallery's fake overrides.toml: the page never reads a real file.
 frame.inset = 3
 
@@ -94,8 +24,6 @@ color.border_base = "#7aa2f7"
 color.bg_deep = "#16161e"
 "##;
 
-/// [`FILE`] edited: a wider inset, and a row that has a problem, which doesn't apply while the
-/// rest still does.
 pub const FILE_BROKEN: &str = r##"# The gallery's fake overrides.toml: the page never reads a real file.
 frame.inset = 4
 color.text_base = "nope"
@@ -122,7 +50,6 @@ pub enum Mode {
     HeaderStates,
 }
 
-/// X1's demo state, held in `Gallery::x1`.
 #[derive(Default)]
 pub struct Demo {
     pub mode: Mode,
@@ -229,8 +156,6 @@ pub const SCENES: &[Scene] = &[
     }),
 ];
 
-/// Scenes for review with `--scene` only: the dialog's other states, and a shell whose bridge
-/// didn't start.
 pub const REVIEW: &[Scene] = &[
     ("x1-volumes-loading-light", |g| {
         volumes(g, false, Volumes::Loading)
@@ -272,8 +197,6 @@ fn on_action(g: &mut Gallery, action: WindowAction, _: &mut Tx) {
     }
 }
 
-/// As `examples/shell`'s controller answers: a listing on the bridge, or the bridge's failure
-/// at once.
 fn on_volumes(g: &mut Gallery) {
     let d = &mut g.x1;
     match d.no_bridge {
@@ -407,8 +330,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     true
 }
 
-/// Rebuilds the look from the theme, the desktop's settings and the overrides, and moves to it
-/// as a theme switch does.
 fn relook(g: &mut Gallery, tx: &mut Tx) {
     let d = &g.x1;
     let next = reload::build(theme_for(d.theme), &d.window.desktop, &d.overrides);

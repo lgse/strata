@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! Keeps each drive's rows together under DEVICES, whatever order the volume monitor reports
-//! them in: GTK's `src/ui/window/device_order.rs`, which stays where it is. The cases in
-//! `devices/tests.rs` are its `device_order/tests.rs`.
-
 use std::cmp::Ordering;
 
 use strata_fs::app::compare_display_names;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct DriveRank {
-    /// The backend's own ranking: udisks puts fixed disks before removable and hot-plugged
-    /// ones.
     pub(super) sort_key: Option<String>,
     pub(super) name: String,
     /// Keeps two drives of the same model apart.
@@ -55,8 +49,6 @@ impl DeviceHome {
 pub(super) struct DevicePlacement {
     pub(super) home: DeviceHome,
     pub(super) name: String,
-    /// Keeps volumes that share a name, such as "129 GB Volume", from swapping places between
-    /// rebuilds.
     pub(super) identity: Option<String>,
 }
 
@@ -69,8 +61,6 @@ impl DevicePlacement {
     }
 }
 
-/// One list per drive in display order, followed by the rows with no drive and then the
-/// network shares.
 pub(super) fn group_by_drive<T>(mut rows: Vec<(DevicePlacement, T)>) -> Vec<Vec<T>> {
     rows.sort_by(|(left, _), (right, _)| left.compare(right));
     let mut groups: Vec<(DeviceHome, Vec<T>)> = Vec::new();

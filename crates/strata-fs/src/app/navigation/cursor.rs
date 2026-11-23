@@ -28,8 +28,6 @@ impl ColumnState {
         self.load_cursor = None;
     }
 
-    /// The next visible entry in `direction`, or the cursor itself when no
-    /// visible entry lies that way.
     fn stepped_cursor(&self, direction: i32) -> Option<usize> {
         match (self.selected, direction.cmp(&0)) {
             (None, Ordering::Less) => self.last_displayed_entry(),
@@ -193,9 +191,6 @@ impl NavigationState {
         Some((depth, position))
     }
 
-    /// Moves the focus `page` visible entries at a time, clamped to the first and
-    /// last visible entry, for page-sized keyboard navigation. `order` is the
-    /// displayed source indices when the view is not in source order.
     pub fn page_along(
         &mut self,
         direction: i32,
@@ -307,9 +302,6 @@ impl NavigationState {
         self.active_column = Some(depth);
     }
 
-    /// A parent restored by Back has no cursor yet; it takes the folder it has
-    /// open, as descending into that folder would have left it. A parent still
-    /// loading takes it once listed, unless a cursor was placed meanwhile.
     pub fn focus_parent(&mut self) -> Option<(usize, Option<usize>)> {
         let depth = self.active_column?;
         let parent_depth = depth.checked_sub(1)?;

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The pointer state machine: presses, moves and releases in, selection operations and
-//! [`Outcome`]s out. Plain data, no Rune elements.
-
 use std::time::Duration;
 
 use rune::Mods;
@@ -14,8 +11,6 @@ use crate::collection::selection::{AnchorRule, Changed, Extend, Selection};
 use crate::contract::{EntryId, EntrySource, Point};
 
 /// The button behind a press.
-///
-/// Used by: the C1e adapter.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Button {
     /// The primary button: select, open, drag, marquee, rename.
@@ -26,14 +21,10 @@ pub enum Button {
     Secondary,
 }
 
-/// Where in an entry's row a press lands, as Strata's pointer intent tells them apart
-/// (`src/ui/pointer.rs`).
-///
-/// Used by: the C1e adapter.
+/// Where in an entry's row a press lands, as Strata's pointer intent tells them apart.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Spot {
-    /// The drawn text of the entry's name: content, and where a slow click renames. In Icons,
-    /// the caption band.
+    /// The drawn text of the entry's name: content, and where a slow click renames.
     Name,
     /// The rest of the entry's hit content: its icon or thumbnail (and Icons' details text).
     Content,
@@ -42,8 +33,6 @@ pub enum Spot {
 }
 
 /// A button going down.
-///
-/// Used by: the C1e adapter.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Press {
     /// Which button.
@@ -56,16 +45,13 @@ pub struct Press {
     pub index: Option<usize>,
     /// Which part of the entry. Empty space is [`Spot::Gutter`].
     pub spot: Spot,
-    /// The modifiers held. The press keeps them: letting go of one before the button changes
-    /// nothing.
+    /// The modifiers held.
     pub mods: Mods,
     /// The host's clock, in seconds.
     pub now: f64,
 }
 
 /// The button coming up, or the gesture ending without a release.
-///
-/// Used by: the C1e adapter.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Release {
     /// The pointer's travel since the press, in points.
@@ -74,14 +60,11 @@ pub struct Release {
     pub mods: Mods,
     /// The host's clock, in seconds.
     pub now: f64,
-    /// The gesture ended without a release (Escape, focus lost): nothing it would have done
-    /// on release happens.
+    /// The gesture ended without a release (Escape, focus lost): nothing it would have done on release happens.
     pub cancelled: bool,
 }
 
 /// How an entry was opened.
-///
-/// Used by: the C1e adapter, hosts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ActivateBy {
     /// A single click, where the entry's kind opens on one.
@@ -90,11 +73,7 @@ pub enum ActivateBy {
     DoubleClick,
 }
 
-/// What the machine asks for besides selection changes. What each means is the host's policy.
-///
-/// Variants may be added.
-///
-/// Used by: the C1e adapter, hosts.
+/// What the machine asks for besides selection changes.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Outcome {
@@ -105,8 +84,7 @@ pub enum Outcome {
         /// By one click or two.
         how: ActivateBy,
     },
-    /// A plain single click on the entry finished without opening or arming a rename: where
-    /// single-click previews follow. Never sent for a press that dragged.
+    /// A plain single click on the entry finished without opening or arming a rename: where single-click previews follow.
     Clicked {
         /// The entry.
         id: EntryId,
@@ -153,11 +131,7 @@ pub enum Outcome {
     WakeAfter(Duration),
 }
 
-/// What the machine reads and changes: its settings, the source, the selection, and where its
-/// outcomes go. C1e's `Ctx` is one ([`PointerIntent`](super::PointerIntent)); tests use a
-/// plain one.
-///
-/// Used by: the C1e adapter.
+/// What the machine reads and changes: its settings, the source, the selection, and where its outcomes go.
 pub trait Surface {
     /// The settings now.
     fn settings(&self) -> PointerSettings;
@@ -184,8 +158,6 @@ enum Plan {
     Nothing,
 }
 
-/// A selection operation a press leaves to its release, because a drag would do something
-/// else instead.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Deferred {
     None,
@@ -211,12 +183,6 @@ struct Gesture {
 }
 
 /// The pointer state machine of one collection.
-///
-/// Feed it each press, move and release, and run [`PointerMachine::tick`] when it asked to be
-/// woken. It reads its settings from the [`Surface`], changes the selection through it and
-/// emits [`Outcome`]s for the rest. The [module docs](super) give the rules.
-///
-/// Used by: the C1e adapter.
 #[derive(Debug, Default)]
 pub struct PointerMachine {
     clicks: Clicks,
@@ -235,9 +201,7 @@ impl PointerMachine {
         self.rename.is_some()
     }
 
-    /// A button went down. Any press cancels a pending rename and ends the last gesture, even
-    /// one whose release never came (a system drag can take it). True when the machine took
-    /// the press.
+    /// A button went down.
     pub fn press(&mut self, press: &Press, s: &mut dyn Surface) -> bool {
         self.rename = None;
         self.gesture = None;
@@ -284,8 +248,7 @@ impl PointerMachine {
         )
     }
 
-    /// The held pointer moved; `travel` is its travel since the press. Past the threshold, the
-    /// press becomes a drag or a marquee and is no longer a click. True while a gesture is held.
+    /// The held pointer moved; `travel` is its travel since the press.
     pub fn moved(&mut self, travel: Point, s: &mut dyn Surface) -> bool {
         let threshold = s.settings().drag_threshold;
         let Some(g) = self.gesture.as_mut() else {
@@ -322,8 +285,7 @@ impl PointerMachine {
         true
     }
 
-    /// The button came up, or the gesture was cancelled. A press that crossed the threshold,
-    /// was cancelled, or whose entry moved during it (a re-sort, a reload) does nothing more.
+    /// The button came up, or the gesture was cancelled.
     pub fn release(&mut self, release: &Release, s: &mut dyn Surface) -> bool {
         let settings = s.settings();
         let threshold = settings.drag_threshold;
@@ -388,8 +350,7 @@ impl PointerMachine {
         self.rename = None;
     }
 
-    /// Drops the press held and a pending rename, and ends the click run: the collection shows
-    /// another folder, or the host saw a press or a key elsewhere (another Columns column).
+    /// Drops the press held and a pending rename, and ends the click run.
     pub fn reset(&mut self) {
         self.gesture = None;
         self.rename = None;
@@ -412,8 +373,6 @@ impl Gesture {
     }
 }
 
-/// Travel past `threshold` on either axis, as GTK's drag check and Strata's
-/// `exceeds_drag_threshold` measure it.
 fn past(travel: Point, threshold: f32) -> bool {
     travel.x.abs() > threshold || travel.y.abs() > threshold
 }
@@ -422,8 +381,6 @@ fn apply(s: &mut dyn Surface, mut op: impl FnMut(&mut Selection, &dyn EntrySourc
     s.apply(&mut op);
 }
 
-/// A secondary press selects an unselected entry alone and opens its menu; inside the
-/// selection it keeps the selection. With `missing_stays` a missing anchor stays missing.
 fn secondary(
     press: &Press,
     entry: Option<(usize, EntryId)>,
@@ -468,8 +425,6 @@ fn primary(
     let selected = s.selection().is_selected_at(s.source(), index);
     let len = s.selection().len();
     g.sole_before = selected && len == 1;
-    // The entry itself, or blank space on a selected one when this view reserves selected rows
-    // for outgoing file drags, is where a drag drags files.
     let on_entry =
         press.spot != Spot::Gutter || (settings.drag_selected_rows && settings.drags && selected);
     if !settings.multiple {
@@ -504,8 +459,6 @@ fn primary_multi(
         modified_press(&mut g, (index, selected, on_entry), settings, s);
     } else if on_entry && selected && len > 1 {
         g.kept_group = true;
-        // The keyboard and the anchor move to the entry now, as GTK's do in every view; the
-        // group stays for a drag (#2592).
         apply(s, |sel, src| match sel.is_provisional() {
             true => Changed::NONE,
             false => sel.move_cursor(src, index, AnchorRule::Move),
@@ -517,10 +470,6 @@ fn primary_multi(
     g
 }
 
-/// A Shift or Ctrl press on entry `index`. A file drag carries the selection the press makes,
-/// so it is made now. A band applies Ctrl or Shift to the selection as it was before the press
-/// (Strata takes it at the band's press, `marquee/state.rs`), so where a drag is a band they
-/// wait for the release.
 fn modified_press(
     g: &mut Gesture,
     (index, selected, on_entry): (usize, bool, bool),
@@ -550,8 +499,6 @@ fn modified_press(
     }
 }
 
-/// What a drag from the press does: a band from blank space or with Alt held, else a file
-/// drag where the collection drags files.
 fn drag_plan(g: &Gesture, on_entry: bool, settings: &PointerSettings) -> Plan {
     if g.press.mods.alt || !on_entry {
         Plan::Marquee
@@ -596,8 +543,6 @@ fn arms_slow_rename(g: &Gesture, id: EntryId, activates: bool, settings: &Pointe
     plain_name && eligible && (!activates || settings.already_open == Some(id))
 }
 
-/// A primary click's release: the deferred operation, the group collapse, then opening,
-/// arming a rename (returns its delay in seconds) or a plain click, in Strata's order.
 fn primary_release(
     g: &Gesture,
     (index, id): (usize, EntryId),
@@ -625,8 +570,6 @@ fn primary_release(
     None
 }
 
-/// A middle click opens a folder in a new tab, or a window with Ctrl or Shift held at release,
-/// and selects and reveals a file. Only the first click of a run counts.
 fn middle(g: &Gesture, (index, id): (usize, EntryId), mods: Mods, s: &mut dyn Surface) {
     if g.count != 1 {
         return;

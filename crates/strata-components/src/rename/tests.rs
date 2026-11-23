@@ -299,8 +299,6 @@ enum HostMenu {
     /// Nothing.
     #[default]
     None,
-    /// Opens a menu (rune-kit's, as C21's), which takes the keyboard, and says when it
-    /// closes.
     Real,
     /// Opens that menu, and never calls `menu_closed`.
     Forgetful,
@@ -501,8 +499,6 @@ fn closing_from_the_field_gives_the_keyboard_back_to_the_collection() {
 const HOST: &str = "strip";
 const BAR: &str = "bar";
 
-/// A page as Columns builds one: the collection is keyed by its host and takes no keyboard,
-/// and the element around it does (with or without a sibling control inside the host).
 fn hosted_view(s: &App, sibling: bool) -> El {
     let editor = match s.returns {
         Some(key) => editor().focus_return(key),
@@ -587,9 +583,6 @@ fn a_row_scrolled_out_of_view_cancels_its_edit_once_it_had_shown() {
     );
 }
 
-/// lgse/strata#2277: an entry listed above the row moves it down a line, still in view. The
-/// edit goes on, as GTK's lease on its bound entry does; the range Rune reported for the
-/// frame before the change ends one entry too early.
 #[test]
 fn an_entry_listed_above_the_row_keeps_its_edit() {
     let mut rt = mount(5);
@@ -611,10 +604,6 @@ fn an_entry_listed_above_the_row_keeps_its_edit() {
     assert_eq!(rt.state.rename.renaming(), Some(EntryId::new(5)));
 }
 
-/// A tile size changed at the same width (Icons' Ctrl+Alt+= and Ctrl+Shift+wheel, which run
-/// before the edit's stage): the tiles flow into lines of another count, and for a frame the
-/// row is placed against the scroll from before the cursor's reveal. The edit goes on, as
-/// GTK's does.
 #[test]
 fn a_tile_size_change_keeps_the_edit() {
     let mut rt = Runtime::new(
@@ -778,8 +767,6 @@ fn a_host_menu_holds_the_edit_open_while_it_has_the_keyboard() {
 
 #[test]
 fn page_keys_stay_in_the_field() {
-    // Rune would scroll the listing a page with them, the row would leave the viewport, and
-    // the edit would end as scrolled out, dropping the typed name.
     let shift = Mods {
         shift: true,
         ..Mods::default()
@@ -844,8 +831,6 @@ fn a_middle_press_in_the_editor_is_not_the_rows() {
 
 #[test]
 fn a_menu_hold_ends_once_the_field_has_the_keyboard_back() {
-    // The host's menu closed and the host never said so: the keyboard came back to the
-    // field, so the next press away commits.
     let mut rt = mount(20);
     rt.state.menu = HostMenu::Forgetful;
     begin(&mut rt, 1);
@@ -864,8 +849,6 @@ fn a_menu_hold_ends_once_the_field_has_the_keyboard_back() {
 
 #[test]
 fn a_hold_whose_menu_never_takes_the_keyboard_ends_at_once() {
-    // `menu_opened` with no menu that takes the keyboard, and no `menu_closed`: the field
-    // keeps the keyboard, and a press away still commits.
     let mut rt = mount(20);
     rt.state.menu = HostMenu::HoldOnly;
     begin(&mut rt, 1);
@@ -923,8 +906,6 @@ fn the_validators_message_is_a_status_and_a_press_on_it_is_a_press_outside() {
 
 #[test]
 fn a_field_the_host_closes_with_a_blur_survives_runes_focus_sync() {
-    // Upstream #180: Rune syncs focus into every field of the last view, also the one the
-    // host just closed; the spare edit takes it.
     let mut rt = mount(20);
     begin(&mut rt, 1);
     rt.update(|s, tx| {

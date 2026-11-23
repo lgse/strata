@@ -1,24 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Drag and drop between a Rune window and other apps, and between two windows of one app:
-//! a demo of the `dnd` feature, and the app strata-platform's session tests drive
-//! (`tests/session/p1.rs`). Commands arrive as JSON lines on stdin; what happens goes to
-//! stdout as JSON lines (`{"ev": …, "window": …}`).
-//!
-//! Each window shows a drag tile (`tile`, a [`DragSource`]), a second tile (`manual`) whose
-//! own `on_drag` starts the drag through [`Dnd::start_drag`] and logs every phase with
-//! whether [`Dnd::owns`] claimed it, a drop zone (`zone`), and a plain element (`plain`)
-//! that logs its hover.
-//!
-//! Commands (`"window"` picks one; without it, both):
-//! - `{"cmd":"offer","offers":[Offer],"actions":["copy","move"],"local":"text"|null,"icon":"image"|"snapshot"|null}`:
-//!   what the tiles drag (lazy writers log `writer`); `local` adds an in-process payload;
-//! - `{"cmd":"zone","mimes":[…],"read_all":bool,"local":bool,"action":"copy"|"move"|"ask"|"refuse"|null,"ask_answer":"move"|null,"peek":[…]}`;
-//! - `{"cmd":"cancel"}`, `{"cmd":"quit"}`.
-//!
-//! Flags: `--title T`, `--two-windows` (a second window, `second`, titled `T second`), and the
-//! test switches `--as-if-libwayland-1-22` and `--as-if-no-data-control` (P0's).
-
 #[cfg(feature = "dnd")]
 fn main() {
     demo::main();
@@ -100,7 +81,6 @@ mod demo {
         mimes: Vec<String>,
         read_all: bool,
         local: bool,
-        /// None: P1's rule; Some(None): refuse.
         action: Option<Option<DragAction>>,
         ask_answer: Option<DragAction>,
         peek: Vec<String>,

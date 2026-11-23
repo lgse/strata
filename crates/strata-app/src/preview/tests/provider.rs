@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A preview provider that keeps every request for a test to answer, and how a test sets it
-//! up in place of the sandboxed one.
-
 use std::{
     cell::{Cell, RefCell},
     io::Cursor,
@@ -18,8 +15,6 @@ use strata_fs::services::{
 
 use crate::{App, host::offscreen::Offscreen, test_support::PATIENCE};
 
-/// A request the provider was handed: what it asked, how to answer, and whether its load was
-/// dropped before an answer.
 struct Asked {
     request: PreviewRequest,
     emit: Rc<dyn Fn(PreviewEvent)>,

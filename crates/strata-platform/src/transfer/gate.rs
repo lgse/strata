@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The handshake between a Wayland reader thread and the UI thread (S2's driver C).
-//!
-//! The reader asks the UI thread for a turn after each read that queued events, then waits
-//! here until the UI has dispatched them, so it doesn't spin on a queue that stays non-empty.
-//! It holds no read intent while it waits, so winit reads freely. Stopping releases a waiting
-//! reader at once: the UI thread joins the reader during teardown, and must never wait on a
-//! turn only it could give.
-
 use std::sync::{Condvar, Mutex, PoisonError};
 
 #[derive(Default)]
@@ -38,8 +30,6 @@ impl Gate {
         self.changed.notify_all();
     }
 
-    /// Waits until a turn after `before`, or until stopped. No timeout: a reader parked here
-    /// after the event loop ended stays parked, and never touches libwayland again.
     pub(crate) fn wait(&self, before: u64) {
         let mut state = self.lock();
         while state.turns == before && !state.stopped {

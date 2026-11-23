@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The password prompt an encrypted archive shows instead of its tree (Strata's
-//! `render_archive_password_prompt`): a lock, "Password-protected archive", a line of detail,
-//! a password field with an Unlock button, and the last attempt's error.
-//!
-//! The host checks the password (in Strata's sandbox) and answers with a tree or with
-//! [`PromptState::set_error`], which empties the field, as Strata's prompt comes back empty.
-//!
-//! **The error is heard** as it appears and when the field is focused: it is a polite live
-//! region (`<key>-error-<n>`, a new node per attempt so a second wrong password with the same
-//! words is announced too), and `TextInput::description` attaches it to the invalid field.
-//!
-//! Whether the field takes focus when the prompt shows is the host's: with the preview closed,
-//! Space on the archive focuses it, and Right does in List and Columns
-//! ([`PromptState::focus`]); moving the cursor onto the archive leaves it unfocused.
-
 use std::rc::Rc;
 
 use rune::{El, KeyEvent, LiveRegion, TextEdit, Tx, col, icon, row, text};
@@ -47,8 +32,6 @@ impl PromptState {
         self.edit.focused = true;
     }
 
-    /// "The password is incorrect.", or none. An error empties the field, and each one is
-    /// announced, even with the words of the last.
     pub fn set_error(&mut self, error: Option<String>) {
         if error.is_some() {
             self.edit.clear();
@@ -108,8 +91,6 @@ impl<'a, S: 'static> ArchivePrompt<'a, S> {
         }
     }
 
-    /// The prompt's key ("archive-prompt" unless set): its parts are `<key>-field`,
-    /// `<key>-unlock` and `<key>-error-<n>`, where `n` counts the errors set, from 1.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
@@ -169,8 +150,6 @@ impl<'a, S: 'static> ArchivePrompt<'a, S> {
             )
             .child(controls);
         if let Some(error) = self.state.error() {
-            // AT-SPI announces a live region only when its node is added or its name changes
-            // (accesskit_atspi_common), so a second error with the same words is a new node.
             body = body.child(
                 text(error.to_owned())
                     .key(format!("{key}-error-{}", self.state.attempt))

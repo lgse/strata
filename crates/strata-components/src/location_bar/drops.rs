@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! An ancestor crumb's drop zone, attached through the host's `Dnd`, and its spring.
-//!
-//! Spring-loading is the crumb's own model, so a host and X2's binder need nothing more than
-//! hover reports: an accepting hover arms it at the handler's clock (`Tx::clock`) and asks for
-//! a wake when the delay ends, and `LocationBarState::tick` opens the crumb
-//! ([`super::Via::Spring`]) then; a leave, a drop or a navigation disarms it, and the same
-//! hover reported again keeps its start. C8 and X2 can adopt the same model for
-//! rows and sidebar places.
-
 use rune::Tx;
 
 use super::build::Ctx;

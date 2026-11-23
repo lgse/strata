@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Unit tests for the document view: the model's conversions, what a unit shows and copies,
-//! find, and, on Rune's headless runtime, selection, copy, links, Copy code and code colours.
-
 mod perf;
 mod selection_perf;
 mod table;
@@ -254,8 +251,6 @@ fn settle(rt: &mut Runtime<Host>) {
     }
 }
 
-/// Whether `path` is element `leaf` of row `row` (`doc-u3/t`): rows hold unkeyed boxes
-/// between the row and its texts.
 fn is(path: &str, row_leaf: &str) -> bool {
     let (row, leaf) = row_leaf.split_once('/').expect("row/leaf");
     path.split('/').any(|s| s == row) && path.ends_with(&format!("/{leaf}"))
@@ -554,8 +549,6 @@ fn plain_left_asks_to_leave_the_document() {
 
 #[test]
 fn code_colours_are_asked_for_near_the_viewport_only() {
-    // 3,000 units with a coloured block every 30: only those near the viewport are asked
-    // for, and a copy of the whole document (which builds every row) asks for none.
     let units: Vec<Unit> = (0..3000)
         .map(|i| {
             if i % 30 == 0 {
@@ -630,8 +623,6 @@ fn a_block_in_parts_draws_plain_with_copy_code_on_its_first_part_only() {
 
 #[test]
 fn find_maps_folded_matches_back_through_characters_that_change_length() {
-    // "İ" lowercases to two characters (i and a combining dot), "ẞ" to "ß": a match after,
-    // across or inside them still lands on the original text's characters.
     let text = "aİb ẞtraße x";
     let r = match_ranges(text, "b");
     assert_eq!(
@@ -663,8 +654,6 @@ fn host_poll(h: &mut Host, t: f64, tx: &mut Tx) -> bool {
     a | b
 }
 
-/// Runs the window as a shell that sleeps between wakes: only to each wake deadline, and no
-/// further once there is none.
 fn rest(rt: &mut Runtime<Host>) {
     for _ in 0..10 {
         let Some(due) = rt.wake_deadline() else {
@@ -677,8 +666,6 @@ fn rest(rt: &mut Runtime<Host>) {
 
 #[test]
 fn copy_code_turns_back_on_a_window_at_rest() {
-    // Review 1, B1: the 2 s ran from the first poll after the press, and the press's only
-    // wake came 2 s after the press, before it: a resting window kept "Code copied".
     let mut rt = runtime(vec![Unit::new(
         UnitKind::Code {
             list_depth: None,
@@ -774,8 +761,6 @@ fn a_double_click_on_a_link_opens_it_once() {
 
 #[test]
 fn a_find_queued_before_a_document_swap_selects_nothing_in_the_new_one() {
-    // Review 1, should-fix 3: the queued selection kept the old match's unit and bytes, and
-    // selected whatever the new document had there.
     let mut rt = runtime(vec![
         Unit::new(UnitKind::Paragraph, "zz"),
         Unit::new(UnitKind::Paragraph, "the second line"),
@@ -803,9 +788,6 @@ fn a_find_queued_before_a_document_swap_selects_nothing_in_the_new_one() {
 
 #[test]
 fn ctrl_a_over_a_full_selection_does_not_make_a_later_shift_click_copy_everything() {
-    // Review 1: with everything already selected, Ctrl+A changes no selection, so its pending
-    // flag waited for the next change, and a Shift-click that narrowed the selection then
-    // copied the whole document.
     let mut rt = runtime(vec![
         Unit::new(UnitKind::Paragraph, "Alpha beta"),
         Unit::new(UnitKind::Paragraph, "Gamma delta"),
@@ -870,8 +852,6 @@ fn copy_source_copies_a_display_equation_source() {
 
 #[test]
 fn find_skips_text_in_tables_images_and_rules() {
-    // D8: these units carry text (a table's, should Strata's converter give it one, an
-    // image's alt, a rule's line), and find still reads only the text blocks.
     let mut d = doc(vec![
         Unit::new(UnitKind::Paragraph, "a needle in prose"),
         table(&[&["needle"], &["needle"]]).copy_text("needle\nneedle\n"),
@@ -921,8 +901,6 @@ fn a_coloured_block_coming_into_reach_asks_for_a_build() {
     assert!(d.set_visible(150..160), "it left reach");
 }
 
-/// Frames as a shell does: one, then more only while something animates or input is
-/// queued. The number of frames run.
 fn shell(rt: &mut Runtime<Host>) -> u32 {
     let mut n = 0;
     loop {
@@ -936,10 +914,6 @@ fn shell(rt: &mut Runtime<Host>) -> u32 {
 
 #[test]
 fn ctrl_a_over_a_full_selection_then_a_shift_click_on_a_resting_window_copies_the_click() {
-    // Review 2, SF-A: Ctrl+A over a selection that already held everything changed nothing
-    // and queued no frame, and the modifier presses frame nothing either, so the Shift-click's
-    // own change came while the poll countdown still waited for select-all's: it turned
-    // copy-everything on, and Ctrl+C copied the whole document.
     let mut rt = runtime(vec![
         Unit::new(UnitKind::Paragraph, "Alpha beta"),
         Unit::new(UnitKind::Paragraph, "Gamma delta"),
@@ -994,8 +968,6 @@ fn ctrl_a_over_a_full_selection_then_a_shift_click_on_a_resting_window_copies_th
 
 #[test]
 fn past_runes_cap_a_shift_click_after_ctrl_a_copies_the_click_not_the_document() {
-    // SF-A where Rune's report is cut at its 10,000-row cap: a second Ctrl+A changes nothing,
-    // and the Shift-click that narrows the selection after it must still end copy-everything.
     let units: Vec<Unit> = (0..12_000)
         .map(|i| Unit::new(UnitKind::Paragraph, format!("unit {i}")))
         .collect();
@@ -1039,8 +1011,6 @@ fn past_runes_cap_a_shift_click_after_ctrl_a_copies_the_click_not_the_document()
 
 #[test]
 fn a_second_copy_press_keeps_the_check_two_seconds_from_itself() {
-    // Each press asks for its own wake: the first one's comes while the second's check still
-    // has time left, and the second's turns it back, on a window at rest.
     let mut rt = runtime(vec![Unit::new(
         UnitKind::Code {
             list_depth: None,
@@ -1084,8 +1054,6 @@ fn a_second_copy_press_keeps_the_check_two_seconds_from_itself() {
 
 #[test]
 fn the_double_click_time_is_the_hosts() {
-    // Two clicks on one link `gap` apart open it twice when the host's double-click time is
-    // shorter than the gap, once when it is longer (neither holds at the 0.5 s default).
     for (interval, gap, opens) in [(0.2, 0.3, 2), (1.0, 0.6, 1)] {
         let (mut rt, at) = link_runtime();
         rt.update(|h, _| h.doc.set_double_click_interval(interval));

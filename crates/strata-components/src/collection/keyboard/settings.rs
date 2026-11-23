@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the keyboard machine reads on every key ([`KeySettings`], which the host passes as a
-//! collection setting), and the [`KeyHandle`] it shares with the host: the 10xer range state
-//! and the commands the host queues.
-
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -13,28 +9,18 @@ use super::command::{Command, RangeKind};
 use super::keymap::KeyMap;
 
 /// What plain printable keys (no Ctrl, Alt or Super) do when the map doesn't bind them.
-///
-/// Used by: C2, C3, C4, and hosts.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Letters {
-    /// They go on to the host: Strata's default, where Type to search is on and the typed
-    /// character starts a search (C18). `h j k l` don't move.
+    /// They go on to the host: Strata's default, where Type to search is on and the typed character starts a search.
     #[default]
     Pass,
     /// The map's printable aliases act as the arrows: `h j k l` with Type to search off.
     Arrows,
-    /// They find an entry by its name's prefix (see the [module docs](super#type-ahead)).
-    /// Strata has no counterpart; it is off unless a host asks for it.
+    /// They find an entry by its name's prefix (see the module docs).
     TypeAhead,
 }
 
-/// The keyboard machine's settings. The host passes them as a collection setting,
-/// `Collection::settings(settings)`, with its current values each time it builds the view, and
-/// the machine reads them with `Ctx::settings`; with none, it uses [`KeySettings::default`].
-///
-/// Fields may be added: start from [`KeySettings::default`] or [`KeySettings::tenxer`].
-///
-/// Used by: C2, C3, C4, C18, and hosts.
+/// The keyboard machine's settings.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct KeySettings {
@@ -43,33 +29,16 @@ pub struct KeySettings {
     /// What unbound plain printable keys do.
     pub letters: Letters,
     /// How long after a typed character the next one still extends the type-ahead prefix.
-    /// 1 s by default. It is measured on the keys' times, which come from the collection's
-    /// clock (`Collection::clock`): without one, every key comes at 0 and a prefix never times
-    /// out.
     pub type_ahead_timeout: Duration,
-    /// Whether Left and Right cross row ends, to the previous or next entry, when the geometry
-    /// has no neighbour that way. On for the icons grid (C3), as Strata's Icons does
-    /// (lgse/strata#2044); W1's geometries never wrap themselves. Off for lists and columns,
-    /// where Left and Right then reach the view's edge.
+    /// Whether Left and Right cross row ends, to the previous or next entry, when the geometry has no neighbour that way.
     pub wrap_rows: bool,
-    /// Whether a Select key that cannot move the cursor still selects the cursor's entry
-    /// alone, and says so with `Outcome::Rested`: Home on the first entry, End on the last, a
-    /// page key or an arrow at the list's end. On for Columns (C2 sets it whatever the host
-    /// passes), where Strata's `Browser` re-places the cursor on such a key
-    /// (`move_selection`, `page_along`), so a multi-selection collapses and the child column
-    /// follows the cursor again. Off elsewhere: nothing changes and an arrow reports its edge.
+    /// Whether a Select key that cannot move the cursor still selects the cursor's entry alone.
     pub reselects_in_place: bool,
     /// Whether Ctrl+A moves the cursor to the last entry, with the anchor left where it was.
-    /// On for Columns (C2 sets it), where the GTK view's selection model reports its newest
-    /// selected row to `Browser` as the cursor. Off elsewhere: the cursor stays.
     pub select_all_to_last: bool,
-    /// Whether Left with no cursor reports its edge, where it otherwise lands on the last
-    /// entry. On for Columns (C2 sets it), where Strata's Left is `Browser::focus_parent`
-    /// whether or not the column has a cursor: a click on a folder gives its column the
-    /// keyboard and no cursor, and Left then goes back to the folder. Off elsewhere.
+    /// Whether Left with no cursor reports its edge, where it otherwise lands on the last entry.
     pub left_leaves_without_cursor: bool,
-    /// Whether multi-selection keys (Shift ranges, Ctrl+Space, Space, `v`/`V`, Ctrl+A, Ctrl+R)
-    /// may select more than one entry. True by default; false in single-selection file choosers.
+    /// Whether multi-selection keys (Shift ranges, Ctrl+Space, Space, `v`/`V`, Ctrl+A, Ctrl+R) may select more than one entry.
     pub multiple: bool,
 }
 
@@ -125,14 +94,6 @@ struct Shared {
 }
 
 /// One keyboard machine's 10xer range, and commands for it to run, shared with the host.
-///
-/// Clones share one value. The element keeps its controllers boxed in its `CollectionState`,
-/// where the host can't reach them, so the host keeps a clone: it reads the range for the
-/// footer, ends it from its Escape ladder, and queues commands that start outside the
-/// collection, which run at the collection's next `tick` (C1e's `KeyController::tick`).
-/// Settings don't live here: they come through `Ctx::settings`.
-///
-/// Used by: C2, C3, C4, C18, and hosts.
 #[derive(Clone, Debug, Default)]
 pub struct KeyHandle(Rc<Shared>);
 
@@ -142,14 +103,12 @@ impl KeyHandle {
         Self::default()
     }
 
-    /// The active 10xer range, for the `VISUAL` and `UNSET` footer (C18) and Columns' mirroring
-    /// (C2).
+    /// The active 10xer range, for the `VISUAL` and `UNSET` footer and Columns' mirroring.
     pub fn range(&self) -> Option<RangeKind> {
         self.0.range.get()
     }
 
-    /// Ends a 10xer range and keeps what it selected: a step of the host's Escape ladder, or
-    /// leaving 10xer mode. False if none was active.
+    /// Ends a 10xer range and keeps what it selected: a step of the host's Escape ladder, or leaving 10xer mode.
     pub fn end_range(&self) -> bool {
         self.0.range.take().is_some()
     }
@@ -158,9 +117,7 @@ impl KeyHandle {
         self.0.range.set(range);
     }
 
-    /// Queues `command` for the machine to run at its next `tick`, as a key would run it: a
-    /// 10xer chord step (`g g` is `Command::Cursor(Target::First)`), a window-level Ctrl+A, the
-    /// host's Escape ladder. The host then calls the collection's `tick`.
+    /// Queues `command` for the machine to run at its next `tick`, as a key would run it.
     pub fn run(&self, command: Command) {
         self.0.queue.borrow_mut().push_back(command);
     }

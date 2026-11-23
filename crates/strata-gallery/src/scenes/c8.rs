@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C8 PlacesSidebar: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c8-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C8-places-sidebar.md`.
-//!
-//! The page draws a header with the sidebar toggle, the sidebar, and a stand-in file pane: a
-//! focusable `c8-files` element and a `c8-log` line naming the last intent, which scripts read.
-//! The demo plays Strata's part with fake data: it opens places, pins the folders dropped into
-//! a gap (a path with no extension is a folder), reorders, and marks an ejected device
-//! pending. Page keys stand in for navigation elsewhere: Ctrl+B steps the sidebar, Alt+Up
-//! opens Home, and 1–3 open a pin.
-
 use rune::{Cx, El, Key, KeyEvent, Tx, col, el, row, text};
 use strata_components::contract::dnd::DropHover;
 use strata_components::sidebar::{
@@ -23,7 +11,6 @@ use strata_kit::icons::IconName;
 
 use crate::{Gallery, Scene};
 
-/// C8's demo state, held in `Gallery::c8`.
 pub struct Demo {
     pub sidebar: SidebarState,
     pub places: Vec<Place>,
@@ -103,8 +90,6 @@ fn devices() -> Vec<DeviceGroup> {
     ]
 }
 
-/// Every kind of device row: a fixed disk, an unmount-only volume, a USB stick, a locked and an
-/// unlocked encrypted volume, a share, and a pending release after every group.
 fn all_devices() -> Vec<DeviceGroup> {
     vec![
         DeviceGroup::new(vec![
@@ -347,8 +332,6 @@ fn no_pins(g: &mut Gallery, dark: bool) {
     g.c8.pins.clear();
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c8", dark)`, then fills in `g.c8`.
 pub const SCENES: &[Scene] = &[
     ("c8-full-light", |g| full(g, false)),
     ("c8-full-dark", |g| full(g, true)),
@@ -477,8 +460,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     )
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, _tx: &mut Tx) -> bool {
     let d = &mut g.c8;
     match &key.key {
@@ -502,8 +483,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, _tx: &mut Tx) -> bool {
     }
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds. A
-/// reorder reports its move as it drops, so there is nothing to drain.
 pub fn poll(_g: &mut Gallery, _t: f64, _tx: &mut Tx) -> bool {
     false
 }

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MIT
-//! Opt-in external file providers. No provider code runs on the GTK thread.
 use serde::Deserialize;
 use std::{
     collections::BTreeMap,

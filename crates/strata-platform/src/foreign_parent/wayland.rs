@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Wayland: `zxdg_importer_v2` on P0's queue on winit's display.
-//!
-//! `set_parent_of` needs winit's own `wl_surface`, so the import goes on winit's display,
-//! through P0's substrate (`transfer`): its registry, queue and teardown. The imports live in
-//! P0's queue state (`State::extension`), one per window key, never in a thread-local: S3's
-//! thread-local import, destroyed by a TLS destructor after winit had closed the display,
-//! crashed every run.
-//!
-//! Destroying an import undoes the parenting, so each one lives until [`release`], until the
-//! window's next [`super::apply`], until a later `apply` finds its window closed, or until
-//! P0's teardown.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -29,7 +17,6 @@ use crate::transfer::{Error, Status, Transfer, Turn, Unsupported, Wants};
 /// Runs a window's `on_lost` in its app, through `AppHandle::update`.
 pub(super) type Lost = Box<dyn FnOnce() + Send>;
 
-/// P4's state on P0's queue.
 #[derive(Default)]
 struct Imports {
     importer: Option<ZxdgImporterV2>,
@@ -87,7 +74,6 @@ pub(super) fn apply<S: 'static>(
     test: Test,
 ) -> Outcome {
     let handle_app = app.clone();
-    // As P0's docs build it: false keeps the turn from redrawing.
     let turn: Turn = Arc::new(move |f| {
         handle_app.update_if(move |_, _| {
             f();
@@ -96,8 +82,6 @@ pub(super) fn apply<S: 'static>(
     });
     let wants = Wants {
         as_if_libwayland_below_1_23: test.as_if_libwayland_below_1_23,
-        // Default wants otherwise: P0 binds once per process, and a clipboard attached later
-        // must still find data control.
         ..Wants::default()
     };
     let transfer = match Transfer::attach(window, turn, wants) {
@@ -133,7 +117,6 @@ fn import(
         imports.sweep(&key);
         if !imports.hooked {
             imports.hooked = true;
-            // P4's objects go before P0 tears down, on the UI thread.
             transfer.before_shutdown(Box::new(teardown));
         }
         if imports.importer.is_none() && !imports.no_importer {
@@ -161,8 +144,6 @@ fn import(
         Some(None) => return Outcome::parentless(Reason::NoImporter, Fallback::Compositor),
         Some(Some(())) => {}
     }
-    // Every compositor sends `destroyed` for a bad handle within this round trip (S3, Q1).
-    // Waiting for it first means `set_parent_of` never goes out on a dead import.
     if let Err(e) = conn.roundtrip() {
         return failed(e.to_string());
     }
@@ -222,7 +203,6 @@ pub(super) fn release(key: &str) -> bool {
     had
 }
 
-/// Before P0's teardown, on the UI thread: nothing of P4's is left on winit's display.
 fn teardown(transfer: &Transfer) {
     if let Some(conn) = transfer.shared_conn() {
         let _ = conn.with_globals(|_, _, st| st.extension::<Imports>().destroy_all());
@@ -230,7 +210,6 @@ fn teardown(transfer: &Transfer) {
     }
 }
 
-/// Why P0's attach failed, as an outcome.
 pub(super) fn attach_failed(e: &Error) -> Outcome {
     match e {
         Error::Unsupported(Unsupported::LibwaylandBelow1_23) => policy::without_winit_display(),
@@ -242,7 +221,6 @@ pub(super) fn attach_failed(e: &Error) -> Outcome {
     }
 }
 
-/// P0 attached without winit's display (a data-control connection of its own only).
 pub(super) fn no_shared_conn(status: &Status) -> Outcome {
     match &status.unsupported {
         Some(Unsupported::LibwaylandBelow1_23) => policy::without_winit_display(),
@@ -266,8 +244,6 @@ impl Dispatch<ZxdgImporterV2, ()> for State {
     }
 }
 
-/// `destroyed`: at import (a bad handle) or later (the parent went away). On the UI thread,
-/// in P0's dispatch.
 impl Dispatch<ZxdgImportedV2, String> for State {
     fn event(
         st: &mut Self,

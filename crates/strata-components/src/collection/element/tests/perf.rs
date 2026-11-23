@@ -1,35 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf: 100,000 entries, held to rune-kit's Table, measured side by side in the same run.
-//!
-//! `cargo test --profile perf -p strata-components --lib collection::element::tests::perf -- --ignored --nocapture`
-//!
-//! Both lists fill a 900 pt window at scale 2, as rune-kit's own `table_time` does
-//! (`crates/rune-kit/tests/table.rs` at the pinned rev): the first frame, then 600 frames at
-//! 120 Hz each scrolled 48 pt by the wheel, then 30 clicks on rows. The element also times a
-//! refresh (a new listing version, the same entries in the same order), a re-sort (a new
-//! version and a new order) and a live update that adds rows (a new length). Each figure is
-//! the best of three runs.
-//!
-//! A re-sort and a change of length cost Rune O(rows) at the pinned rev: it re-reads, copies
-//! and re-maps every row's key (Rune issue #203). They happen once per user action, not per
-//! frame, so they are reported and guarded against regressions (60 ms), not held to the frame
-//! budget.
-//!
-//! The bar (plan §4 C1, "no view commit per frame"; work package C1e):
-//! - no view run while scrolling;
-//! - no view run for the moves of a drag that changes nothing;
-//! - scroll frames at p50 within max(1.5 × Table's, 0.5 ms) and p95 within max(1.5 × Table's,
-//!   1.5 ms), and none over a 60 Hz frame (16.7 ms);
-//! - a click that changes the selection commits within 4 ms at p95, and rebuilds at most 4
-//!   rows on average;
-//! - a refresh commits within 8 ms (`RUNE_COMMIT_BUDGET_MS=8`).
-//!
-//! Grouped (C1f) runs the same in 100 groups of 1,000 and in 2,000 groups of 50, held to the
-//! same bars except that scrolling builds the view once per group crossed (the stuck header's
-//! label, see the element's Decisions) and never otherwise; each crosses at least one. A
-//! regroup (new groups, the same entries) is reported against the re-sort's guard.
-
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::time::Instant;

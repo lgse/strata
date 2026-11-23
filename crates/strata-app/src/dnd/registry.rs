@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The drop zones the in-window router hit-tests, by element key, and where a drag lands among
-//! them: the innermost zone along the picked element's path that accepts the offer, or that
-//! stops the drag by rejecting it.
-
 use std::{collections::HashMap, rc::Rc};
 
 use rune::{DragOutcome, Live, Mods, PointerEvent};

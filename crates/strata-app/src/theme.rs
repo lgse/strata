@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Theme library, Omarchy Quattro, system light/dark appearance, and live `Look` updates
-//! (`src/ui/theme/` on `strata_kit::theme`).
-
 use std::{
     fs,
     path::{Path, PathBuf},

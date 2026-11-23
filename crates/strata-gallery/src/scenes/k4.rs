@@ -1,25 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for K4 User overrides: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `k4-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/K4-user-overrides.md`.
-//!
-//! The page shows an override file applied to a bundled theme (Omarchy Light in light, Tokyo
-//! Night in dark): the file with its line numbers down the left, its problems as a user reads
-//! them in the middle, and on the right what the overrides reach. That is the real
-//! PlacesSidebar (C8), file rows drawn from the list and collection slots, and each token the
-//! file sets with the theme's value beside the override's. The migration scenes start from a
-//! user stylesheet instead, and show what `migrate_css` wrote and what it left.
-//!
-//! `o` turns the overrides off and on again through `theme::switch`, as a reload does, so
-//! the colours animate. The `k4-file-*` review scenes read any file, as Strata reads the user's
-//! (an `.css` path is migrated first):
-//!
-//! ```text
-//! STRATA_K4_FILE=~/.config/strata/overrides.toml mise run gallery -- --scene k4-file-dark
-//! ```
-
 use rune::{Color, Cx, El, Key, KeyEvent, Mods, ScrollSpec, Tx, col, el, icon, row, text};
 use strata_components::sidebar::{
     Device, DeviceGroup, ItemId, Pin, Place, PlacesSidebar, SidebarData, SidebarState,
@@ -34,8 +14,6 @@ use strata_kit::tokens::Value;
 
 use crate::{Gallery, Scene};
 
-/// The page's override file: a token of each kind, slot tables, colours taken from another
-/// token, both scopes, and one row of each problem a user can make.
 pub const FIXTURE: &str = r##"# The gallery's overrides.toml
 radius.md = 2
 color.border_focus = "#ff9e64"
@@ -105,7 +83,6 @@ pub enum Shown {
     File(String),
 }
 
-/// K4's demo state, held in `Gallery::k4`.
 #[derive(Default)]
 pub struct Demo {
     pub shown: Shown,
@@ -172,8 +149,6 @@ fn open(g: &mut Gallery, dark: bool, shown: Shown) {
     };
 }
 
-/// The host's part, for the review scenes: read the file, as Strata does, and migrate a
-/// stylesheet first. A file that can't be read is no overrides.
 fn read(path: &str) -> (String, Overrides, Option<Migration>) {
     let bytes = std::fs::read(path).unwrap_or_default();
     if path.ends_with(".css") {
@@ -191,8 +166,6 @@ fn file_scene(g: &mut Gallery, dark: bool) {
     open(g, dark, Shown::File(path));
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("k4", dark)`, then fills in `g.k4`.
 pub const SCENES: &[Scene] = &[
     ("k4-overrides-light", |g| open(g, false, Shown::Overrides)),
     ("k4-overrides-dark", |g| open(g, true, Shown::Overrides)),
@@ -200,8 +173,6 @@ pub const SCENES: &[Scene] = &[
     ("k4-migration-dark", |g| open(g, true, Shown::Migration)),
 ];
 
-/// Scenes for review with `--scene` only, kept out of the goldens: the file `STRATA_K4_FILE`
-/// names.
 pub const REVIEW: &[Scene] = &[
     ("k4-file-light", |g| file_scene(g, false)),
     ("k4-file-dark", |g| file_scene(g, true)),
@@ -313,8 +284,6 @@ fn source(g: &Gallery, look: &Look) -> El {
     panel(look, "k4-source", 250.0, title.to_owned()).child(lines(look, &d.source, &marked))
 }
 
-/// The problems as Strata's settings row and log read them; for a migration, the file it
-/// wrote and what it left.
 fn report(g: &Gallery, look: &Look) -> El {
     let kit = &look.kit;
     let d = &g.k4;
@@ -497,9 +466,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     }
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Deliver fake async results here; a worker wakes the loop with `Gallery::waker`. True when
-/// state changed.
 pub fn poll(_g: &mut Gallery, _t: f64, _tx: &mut Tx) -> bool {
     false
 }

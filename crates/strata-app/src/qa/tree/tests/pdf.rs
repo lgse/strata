@@ -6,8 +6,6 @@ use serde_json::json;
 
 use super::super::{Drawn, Snapshot};
 
-/// The node of a remembered `image` "PDF page text" in the snapshot of `tree`, as `recall`
-/// finds it again in the snapshot of `later`.
 fn page_text_across(tree: &serde_json::Value, later: &serde_json::Value) -> Option<String> {
     let page = |snapshot: &Snapshot| {
         (0..)
@@ -30,8 +28,6 @@ fn pdf_tree(list: &str, row: &str) -> serde_json::Value {
                     { "role": "image", "key": "text-area", "name": "PDF page text" } ] } ] } ] } ] })
 }
 
-/// A PDF page remembered before a zoom is the same page after it, though C12 keys its row by
-/// the zoom; a key of the same shape outside the preview's PDF is a key like any other.
 #[test]
 fn a_remembered_pdf_page_survives_a_zoom_and_only_the_pdfs_keys_are_read_so() {
     let pdf = |row: &str| pdf_tree("preview-pdf-pages", row);

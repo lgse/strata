@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C22's page in process: the peek's waits stepped from wake to wake in a resting window
-//! (animations on and off), what the host hears, and what assistive technology hears of a
-//! keyboard peek. The scripts in `tests/scripts/c22/` check the bullets' end states.
-
 mod c22 {
     use rune::runtime::ElementInfo;
     use rune::{Env, Key, KeyEvent, Mods, Runtime};
@@ -67,10 +63,6 @@ mod c22 {
         rt.frame(FRAME);
     }
 
-    /// Steps a still window for at most `limit` seconds: a frame only at each wake the page or
-    /// Rune asked for (or for queued input), none in between and none for motion, which would
-    /// hide a wait that asked for no wake (C7's review 2). Stops once `done` holds; returns the
-    /// seconds from the start to the frame it stopped at.
     fn wake_until(rt: &mut Runtime<Gallery>, limit: f64, done: impl Fn(&Gallery) -> bool) -> f64 {
         let start = rt.state.c22.clock;
         for _ in 0..400 {
@@ -97,8 +89,6 @@ mod c22 {
         g.c22.peek.target().map(|t| t.folder)
     }
 
-    /// Home's entry ids: Projects 1, Music 2, Photos 3, Empty 4, Locked 5, Slow 6,
-    /// Archive 7, Downloads 8, the long-named folder 13, then the files 9 to 12.
     fn id(n: u64) -> EntryId {
         EntryId::new(n)
     }
@@ -112,10 +102,6 @@ mod c22 {
         row_key(id(n))
     }
 
-    // preview/quick-preview/folder-peek: "With Folder peeking on, hovering a folder in Icons or
-    // List for 500 ms opens a popover headed by the folder's name." In a resting window, which
-    // runs frames only at the wakes asked for (C11's, C6's and C7's timer reviews), in both
-    // views, with animations on and off; and the host's listing lands on its own wake.
     #[test]
     fn a_folder_peeks_500_ms_after_the_pointer_rests_on_it_in_a_resting_window() {
         for (scene, scope) in [("c22-list-light", LIST), ("c22-icons-light", ICONS)] {
@@ -143,8 +129,6 @@ mod c22 {
         }
     }
 
-    // preview/quick-preview/folder-peek: "Moving the pointer from the folder onto the popover
-    // keeps it open; leaving both closes it after 80 ms."
     #[test]
     fn the_card_holds_the_peek_and_leaving_both_closes_it_80_ms_later() {
         for animations in [true, false] {
@@ -176,8 +160,6 @@ mod c22 {
         }
     }
 
-    // preview/quick-preview/folder-peek: "Leaving a folder before the delay elapses opens no
-    // peek." Nothing is left waiting either.
     #[test]
     fn a_pass_shorter_than_the_delay_opens_nothing_and_leaves_no_wake() {
         let mut rt = mount_with("c22-list-light", |_| {});
@@ -189,8 +171,6 @@ mod c22 {
         assert_eq!(rt.wake_deadline(), None);
     }
 
-    // preview/quick-preview/folder-peek: "Turning Folder peeking off closes an open peek and
-    // cancels a pending one."
     #[test]
     fn turning_peeking_off_closes_the_peek_and_ends_a_pending_wait() {
         let mut rt = mount_with("c22-list-light", |_| {});
@@ -207,16 +187,11 @@ mod c22 {
         command(&mut rt, 'p');
         wake_until(&mut rt, 2.0, |_| false);
         assert_eq!(open(&rt.state), None);
-        // On again with the pointer still there: nothing, as in Strata, whose peek starts only
-        // from the pointer arriving on a folder (coordinator ruling; c22_round1 checks the
-        // arrival).
         command(&mut rt, 'p');
         wake_until(&mut rt, 2.0, |_| false);
         assert_eq!(open(&rt.state), None);
     }
 
-    // preview/quick-preview/folder-peek: "Columns never shows a folder peek, whatever the saved
-    // preference, and switching to Columns closes an open or pending peek."
     #[test]
     fn switching_to_columns_closes_the_peek_and_columns_never_peeks() {
         let mut rt = mount_with("c22-list-light", |_| {});
@@ -242,10 +217,6 @@ mod c22 {
         assert_eq!(open(&rt.state), None, "no peek in Columns");
     }
 
-    // integration/10xer-mode: "In Icons and List, `i` on a directory toggles the folder peek
-    // without moving focus" (the key is the page's, as Strata's 10xer keymap): it opens at
-    // once, stays when the pointer is elsewhere, and is announced (owner ruling: a keyboard
-    // peek is a polite live region). Escape closes it first.
     #[test]
     fn the_keyboard_peek_opens_at_once_is_announced_and_escape_closes_it_first() {
         let mut rt = mount_with("c22-list-light", |g| {
@@ -313,8 +284,6 @@ mod c22 {
     }
 
     mod round1 {
-        //! Review round 1: what assistive technology and the pointer must not see.
-
         use rune::runtime::ElementInfo;
         use rune::{Env, Key, KeyEvent, Mods, Runtime};
         use strata_components::collection::element::{row_key, viewport_path};
@@ -405,9 +374,6 @@ mod c22 {
             row_key(EntryId::new(n))
         }
 
-        // B1. preview/quick-preview/folder-peek: "When neither side fits, the popover overlays the
-        // viewport's trailing edge." The viewport is the pane the person sees, not the columns'
-        // width C4 scrolls sideways inside it.
         #[test]
         fn a_trailing_edge_card_stays_inside_a_sideways_scrolled_pane() {
             for (pane, scroll) in [(400.0, 150.0), (300.0, 0.0)] {
@@ -464,8 +430,6 @@ mod c22 {
                 .find(|r| r[0] < -0.5 || r[0] + r[2] > pane + 0.5)
         }
 
-        // B1-r2 (coordinator ruling): a sideways scroll after the peek opened closes it, and the
-        // card is never drawn outside the pane on the way, by the wheel or from code.
         #[test]
         fn a_sideways_scroll_closes_the_peek_and_never_draws_it_outside_the_pane() {
             for by_wheel in [true, false] {
@@ -500,10 +464,6 @@ mod c22 {
             }
         }
 
-        // C24b: C4 keeps its sideways scroll's one `on_scroll_offset` (Rune's replaces) and
-        // calls the peek's follower from it after its own bars, so neither drops the other: in
-        // the frame a sideways scroll moves the peeked folder, the card is hidden (the peek's
-        // follower) and the table's sideways bar shows (C4's own).
         #[test]
         fn one_sideways_frame_hides_the_card_and_shows_the_tables_sideways_bar() {
             let mut rt = mount_with("c22-list-light", |g| {
@@ -565,8 +525,6 @@ mod c22 {
             assert_eq!(open(&rt.state), None, "through the menu");
         }
 
-        // B3. preview/quick-preview/folder-peek: "Starting or ending a drag cancels a pending peek
-        // and closes an open one": a drag from outside the collection, dropped on a folder.
         #[test]
         fn a_drag_from_elsewhere_dropped_on_a_folder_peeks_nothing() {
             let mut rt = mount_with("c22-list-light", |_| {});
@@ -592,8 +550,6 @@ mod c22 {
             assert_eq!(open(&rt.state), None);
         }
 
-        // A press of the collection's own on a folder, then a move inside it within its wait:
-        // no arrival either.
         #[test]
         fn a_click_on_a_folder_then_a_move_inside_it_peeks_nothing() {
             let mut rt = mount_with("c22-list-light", |_| {});
@@ -627,9 +583,6 @@ mod c22 {
             }
         }
 
-        // SF2 (coordinator ruling: Strata). A peek starts only from the pointer arriving on a
-        // folder: peeking on again with the pointer parked shows nothing, moving inside the row
-        // doesn't count, and leaving and coming back does.
         #[test]
         fn peeking_on_again_with_the_pointer_parked_waits_for_an_arrival() {
             let mut rt = mount_with("c22-list-light", |_| {});
@@ -644,8 +597,6 @@ mod c22 {
             rt.frame(FRAME);
             wake_until(&mut rt, 2.0, |_| false);
             assert_eq!(open(&rt.state), None, "a move inside the row");
-            // Off it for longer than its 80 ms leave delay (a quicker out and back is no leave to
-            // Rune), then back.
             point(&mut rt, &item(9));
             wake_until(&mut rt, 0.3, |_| false);
             point(&mut rt, &item(3));
@@ -654,8 +605,6 @@ mod c22 {
             assert!((0.48..0.52).contains(&took), "after {took:.3} s");
         }
 
-        // Owner item 3: peeking turned on (or off and on) within a folder's wait never peeks it,
-        // even with a move inside the row before the wait ends.
         #[test]
         fn turning_peeking_on_within_a_wait_never_peeks_that_folder() {
             for off_first in [true, false] {
@@ -683,8 +632,6 @@ mod c22 {
             }
         }
 
-        // SF3. A peek whose folder's row scrolls out of view closes, with the pointer on the card
-        // (the row's own leave came long before).
         #[test]
         fn a_peek_closes_when_its_row_scrolls_out_of_view() {
             let mut rt = mount_with("c22-list-light", |g| lengthen(&mut g.c22, 400));
@@ -760,8 +707,6 @@ mod c22 {
             assert!(element(&rt, "peek-more").is_none());
         }
 
-        // C3: a tile a peek is open from shows no name tooltip, so the card and a tooltip
-        // never cover each other.
         #[test]
         fn a_peeked_tile_shows_no_name_tooltip() {
             let mut rt = mount_with("c22-icons-light", |_| {});

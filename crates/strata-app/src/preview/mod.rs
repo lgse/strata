@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Preview drawer part (`A15`, `Place::Drawer`): mounts C9's [`PreviewDrawer`] around the shown
-//! file view, routes Space / Escape / Right / `F8` / `preview-panel`, follows `Browser` focus
-//! and selection events, and hosts read-only text and code previews (`C10a` / `C10b`).
-//!
-//! Other preview packages plug into [`viewer::Viewer`] and [`load`]:
-//! - `A16` adds PDF, media, 3D model, and GPS route viewers.
-//! - `A13` adds archive tree previews and archive password prompts.
-
 use std::{cell::RefCell, path::Path, rc::Rc};
 
 use rune::{El, Tx};
@@ -83,12 +75,7 @@ pub(crate) struct Preview {
     current_depth: Option<usize>,
     header_source: Option<(FileEntry, Option<String>)>,
     content_focus: ContentFocus,
-    /// Whether keyboard focus is currently inside `preview-drawer` (excluding its resize grip):
-    /// drives the Miller column header's active-destination bar (`UI-30`).
     owns_focus: bool,
-    /// An in-flight focus-into-preview handoff (waiting for a focus stub commit or an async
-    /// preview load to mount its viewer); keeps `owns_focus` armed without bouncing `true ->
-    /// false -> true` until focus lands or moves elsewhere (`UI-49`).
     focus_handoff: Option<FocusHandoff>,
     tab_shown: bool,
     click_opening: Option<ClickOpening>,
@@ -110,8 +97,6 @@ pub(super) struct ClickOpening {
     pub(super) folder: Location,
 }
 
-/// Whether a `No visual preview` card has the keyboard: asked for until it shows, then owned
-/// until the keyboard leaves it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum ContentFocus {
     #[default]
@@ -123,8 +108,6 @@ pub(super) enum ContentFocus {
 /// An in-flight focus-into-preview handoff armed by `arm_focus_handoff`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct FocusHandoff {
-    /// Focus key when the handoff was armed; if focus moves to a different non-preview control
-    /// while waiting, the handoff cancels immediately.
     from: Option<String>,
     /// Remaining post-load reconciliation polls before giving up if focus never lands.
     polls_left: u8,
@@ -150,9 +133,6 @@ impl Preview {
             || self.reserves_column_space(app)
     }
 
-    /// Follows the keyboard into and out of a `No visual preview` card, which takes it only
-    /// while it owns it (GTK's `content.set_focusable(true)` and focus-leave controller,
-    /// `src/ui/preview/keyboard.rs`). Whether the card stops taking it, so the view redraws.
     fn sync_message_focus(&mut self, tx: &Tx) -> bool {
         let on_card = tx.focused() == Some(viewer::MESSAGE_KEY);
         match (self.content_focus, on_card) {
@@ -323,8 +303,6 @@ pub(crate) fn is_open(app: &App) -> bool {
     app.preview.drawer.is_open()
 }
 
-/// Marks a focus-into-preview handoff that commits on this frame or when an async preview load
-/// mounts its viewer so `Preview::poll` does not drop `owns_focus` before focus lands.
 pub(crate) fn arm_focus_handoff(app: &mut App, tx: &mut Tx) {
     app.preview.owns_focus = true;
     app.preview.focus_handoff = Some(FocusHandoff {
@@ -550,7 +528,6 @@ pub(crate) fn dismiss_escape(app: &mut App, tx: &mut Tx) -> bool {
     true
 }
 
-/// Document-body scroll motions matching GTK's `DocumentScroll` (`src/ui/preview/keyboard.rs`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DocumentScroll {
     Line(i32),
@@ -563,8 +540,6 @@ pub(crate) enum DocumentScroll {
 /// Default line-scroll step in points when a viewer has no line-height metric of its own.
 const DOCUMENT_LINE_STEP: f32 = 40.0;
 
-/// Scrolls the open scrollable preview viewer (`CodeView`, `DocumentView`, `SheetGrid`, or
-/// `PdfView`) by `motion`. Returns `false` when no scrollable document viewer is showing.
 pub(crate) fn scroll_document(app: &mut App, motion: DocumentScroll, tx: &mut Tx) -> bool {
     if !app.preview.enabled {
         return false;
@@ -623,15 +598,10 @@ fn line_scroll_step(app: &App, kind: viewer::ScrollTargetKind, page: f32) -> f32
     }
 }
 
-/// 10xer's `J` and `K` (`scroll_open_preview`): scrolls the open document preview by `lines`
-/// lines from either the listing or inside the preview.
 pub(crate) fn scroll_lines(app: &mut App, lines: i32, tx: &mut Tx) -> bool {
     scroll_document(app, DocumentScroll::Line(lines), tx)
 }
 
-/// Whether keyboard focus (or an active text selection) is inside a scrollable preview document
-/// body (excluding the find field, archive password prompt, resize grip, header buttons, archive
-/// tree, and media player).
 pub(crate) fn in_document_body(app: &App, at: &Situation) -> bool {
     let available = app.preview.enabled
         && !app.preview.drawer.is_find_focused()
@@ -663,8 +633,6 @@ pub(crate) fn is_media_preview(app: &App) -> bool {
     app.preview.enabled && matches!(app.preview.viewer, Viewer::Media(_))
 }
 
-/// Whether the open preview has a top for 10xer's `g g`: source text, rendered document, PDF,
-/// sheet, or archive (`preview_to_top`'s surfaces).
 pub(crate) fn has_top(app: &App) -> bool {
     app.preview.enabled
         && matches!(
@@ -676,8 +644,6 @@ pub(crate) fn has_top(app: &App) -> bool {
         )
 }
 
-/// 10xer's `g g` in the preview (`preview_to_top`): a document's top, or an archive's first
-/// member, which its tree takes as Home.
 pub(crate) fn to_top(app: &mut App, tx: &mut Tx) {
     if matches!(app.preview.viewer, viewer::Viewer::Archive(_)) {
         tx.send_key(rune::KeyEvent {
@@ -689,8 +655,6 @@ pub(crate) fn to_top(app: &mut App, tx: &mut Tx) {
     let _ = scroll_document(app, DocumentScroll::Start, tx);
 }
 
-/// Opens Strata's styled read-only text context menu (`Copy`, `Select All`) for the active
-/// preview text viewer at `at`.
 pub(super) fn open_text_context_menu(
     app: &mut App,
     at: strata_components::contract::Point,
@@ -744,8 +708,6 @@ fn reconcile_stale_text_menu(app: &mut App, tx: &mut Tx) {
     tx.wake_after(std::time::Duration::ZERO);
 }
 
-/// Runs a chosen item from a preview text viewer's context menu. Ignores viewer mutations and
-/// focus handoffs when the preview closed, reloaded, or switched files while the menu was open.
 pub(crate) fn run_text_menu_action(
     app: &mut App,
     action: &str,
@@ -780,8 +742,6 @@ pub(crate) fn run_text_menu_action(
     }
 }
 
-/// Restores preview focus and any active text selection when the preview text menu dismisses via
-/// Escape or click-away, unless the preview closed or switched while the menu was open.
 pub(crate) fn dismiss_text_menu(
     app: &mut App,
     outcome: &crate::menus::PreviewTextMenuOutcome<'_>,
@@ -806,7 +766,6 @@ pub(crate) fn return_to_files(app: &mut App) {
     app.preview.drawer.focus_files();
 }
 
-/// Toggles the preview for `entry` at `depth` (called by C18's `FilterIntent::Preview`).
 pub(crate) fn toggle_entry(
     app: &mut App,
     entry: Option<FileEntry>,
@@ -845,8 +804,6 @@ pub(crate) fn show_search_file(app: &mut App, path: &Path, name: String, tx: &mu
     session::show(app, entry, app.browser.active_depth(), tx);
 }
 
-/// Opens or updates the preview drawer on `entry` at `depth` without closing an already-open
-/// drawer, and hands it keyboard focus (`enter_preview` in `src/ui/window/keyboard/preview.rs`).
 pub(crate) fn show_entry(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &mut Tx) {
     keys::enter_entry(app, entry, depth, tx);
 }
@@ -871,8 +828,6 @@ pub(crate) fn preview_target(entry: Option<FileEntry>) -> Option<FileEntry> {
     entry.filter(entry_supports_quick_preview)
 }
 
-/// Whether `entry` supports Quick Preview (`entry_supports_quick_preview` in
-/// `src/ui/preview.rs`).
 pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
         return false;

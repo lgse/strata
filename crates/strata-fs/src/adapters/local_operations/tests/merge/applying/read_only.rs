@@ -59,8 +59,6 @@ enum Undo {
     IntoLockedTarget,
 }
 
-/// The modes of the target and its merged `incoming` and `incoming/inner`,
-/// and what each of those two still holds.
 type Left = ([Option<u32>; 3], [Option<Vec<String>>; 2]);
 
 impl Undo {
@@ -95,8 +93,6 @@ impl Undo {
     }
 }
 
-/// Merges a read-only `incoming/inner` folder pair into `target` without
-/// Trash, returning what undo needs.
 fn merge_read_only_folders(
     root: &Path,
     source: &Path,

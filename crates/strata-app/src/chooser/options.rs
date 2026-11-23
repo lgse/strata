@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Portal filter normalization and `Choice` control state (`src/ui/chooser/options.rs`).
-
 use super::source::CompiledFilter;
 use crate::portal::{PortalChoice, PortalFileFilter};
 

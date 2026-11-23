@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Review round 3: Rune drops a capture without an `Up` (a press replaces it; a modal
-//! mounting clears it), so nothing may end a capture "later" on a timer; the source is picked
-//! at the press point, not its centre; and a source that loses its `on_drag` is a known limit.
-
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -74,8 +70,6 @@ fn heard(s: &mut P, ev: &KeyEvent, _: &mut Tx) -> bool {
 
 type Jobs = Arc<Mutex<Vec<Job>>>;
 
-/// A runtime whose window posts its jobs into `Jobs`, as an attached window's go to its
-/// update: a timer of P1's, if it had one, would fire through them.
 fn runtime(mode: Mode) -> (Runtime<P>, Jobs) {
     FAKE_START.set(Some(Release::Escape));
     let st = P {
@@ -128,8 +122,6 @@ fn holding(rt: &mut Runtime<P>) {
     rt.frame(0.0);
 }
 
-/// Waits out any timer P1 started (the old late Escape waited 150 ms), then runs whatever it
-/// posted, as the window's updates would.
 fn let_time_pass(rt: &mut Runtime<P>, jobs: &Jobs) {
     std::thread::sleep(Duration::from_millis(400));
     let posted: Vec<Job> =
@@ -145,8 +137,6 @@ fn let_time_pass(rt: &mut Runtime<P>, jobs: &Jobs) {
     rt.frame(0.0);
 }
 
-/// B1: no proof reached the drag, and after it ended the user clicked a button: Rune's press
-/// replaced the capture without an Up. Nothing may later send an Escape to the app.
 #[test]
 fn a_click_after_a_drag_no_proof_reached_gets_no_escape() {
     let (mut rt, jobs) = runtime(Mode::Plain);
@@ -175,8 +165,6 @@ fn a_click_after_a_drag_no_proof_reached_gets_no_escape() {
     );
 }
 
-/// B1: the user's next press, on another drag element, is held when time passes: it must not
-/// be cancelled.
 #[test]
 fn the_next_drag_is_not_cancelled_by_an_earlier_one() {
     let (mut rt, jobs) = runtime(Mode::Plain);
@@ -203,8 +191,6 @@ fn the_next_drag_is_not_cancelled_by_an_earlier_one() {
     assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
 }
 
-/// What a drag no proof reached leaves: Rune holds the capture until the next press (or a
-/// focus change), with no Escape of P1's. Path 3 in the module docs.
 #[test]
 fn a_drag_no_proof_reached_holds_the_capture_until_the_next_press() {
     let (mut rt, jobs) = runtime(Mode::Plain);
@@ -228,9 +214,6 @@ fn a_drag_no_proof_reached_holds_the_capture_until_the_next_press() {
     assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
 }
 
-/// SF1: the source's centre is clipped away at the start (a row more than half scrolled out),
-/// and it was pressed on its visible strip: the pick at the press point still finds it, so
-/// the proof ends the capture.
 #[test]
 fn a_source_whose_centre_is_clipped_still_gets_its_escape() {
     let (mut rt, _) = runtime(Mode::Clipped);
@@ -241,10 +224,6 @@ fn a_source_whose_centre_is_clipped_still_gets_its_escape() {
     assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
 }
 
-/// B2, a known limit (path 5 in the module docs): a source drawn without its `on_drag` after
-/// the start, same key and path. P1 can't see handlers, so it sends its Escape; Rune's
-/// `cancel_drag` refuses a capture whose element lost its `on_drag`, the Escape reaches the
-/// app's keys once, and the capture stays held. If a Rune move changes this, update the docs.
 #[test]
 fn known_limit_a_source_that_loses_its_on_drag_lets_one_escape_through() {
     let (mut rt, _) = runtime(Mode::LosesHandler);
@@ -290,8 +269,6 @@ mod modal {
         false
     }
 
-    /// B1: no proof; the drag ends and `on_end` opens a modal, whose mounting clears Rune's
-    /// capture without an Up. Nothing may dismiss it later.
     #[test]
     fn a_modal_opened_in_on_end_is_not_dismissed() {
         FAKE_START.set(Some(Release::Escape));
@@ -382,10 +359,6 @@ mod modal_at_start {
         false
     }
 
-    /// A known limit (path 2 in the module docs): `on_start` opens a modal, whose mounting
-    /// clears Rune's capture without an Up before the compositor's proof arrives. P1 can't
-    /// see that, so the proof's Escape goes to the modal, which closes. If a Rune move
-    /// changes this, update the docs.
     #[test]
     fn known_limit_a_modal_opened_in_on_start_takes_the_escape() {
         FAKE_START.set(Some(Release::Escape));

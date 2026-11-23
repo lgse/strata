@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The audio view (Strata's `src/ui/preview/audio.rs`): art (or the record), the tags, the
-//! live spectrum, the waveform timeline and the transport.
-
 pub mod layout;
 pub mod spectrum;
 
@@ -44,8 +41,6 @@ fn audio_title_style(look: &Look) -> rune::TextStyle {
     .lh((size * 1.2).round())
 }
 
-/// The height the tags, timeline and transport take: the title line, the byline, the
-/// eyebrow, the waveform, the transport and the gaps between them.
 fn fixed_height(look: &Look) -> f32 {
     let k = &look.kit;
     let lh = |t: rune::TextStyle| t.line_height.max(t.size * 1.2);
@@ -142,8 +137,6 @@ pub(crate) fn audio<S: 'static>(
             .children(art)
             .child(panel)
     };
-    // The view takes the player's keys when it has the keyboard, as Strata's drawer content
-    // does for audio (`media_key_command`): Right from the listing lands here.
     col()
         .key(key.to_owned())
         .focusable(true)
@@ -174,8 +167,6 @@ pub(crate) fn audio<S: 'static>(
         .child(body)
 }
 
-/// The artist (accent, bold) and album (muted), matching `.preview-audio-artist` and
-/// `.preview-audio-album` in a single accessible text node.
 fn byline_el(key: &str, tags: &AudioTags, look: &Look) -> El {
     let k = &look.kit;
     let byline = time::byline(tags.artist.as_deref(), tags.album.as_deref());
@@ -195,9 +186,6 @@ fn byline_el(key: &str, tags: &AudioTags, look: &Look) -> El {
     e
 }
 
-/// The art (square sleeve with peeking grooved vinyl disc behind its right side), or the
-/// centered record when the track has none. A press toggles playback. Art keeps its key
-/// while its id stays, so a track with the same art keeps it in place.
 fn art<S: 'static>(
     st: &MediaState,
     access: fn(&mut S) -> &mut MediaState,
@@ -218,9 +206,6 @@ fn art<S: 'static>(
         })
 }
 
-/// Square album cover on the left with the grooved vinyl disc peeking from behind its right
-/// side (`artwork.rs`: `ASPECT = 1.3`, sliding from `TUCKED` when paused to `SLID_OUT` while
-/// playing via `live_offset`).
 fn sleeve_art(st: &MediaState, a: &Art, key: &str, side: f32, look: &Look) -> El {
     let k = &look.kit;
     let radius = (side * 0.035).clamp(4.0, 14.0);
@@ -301,10 +286,6 @@ fn disc_shape(side: f32, look: &Look) -> Shape {
         .fill(circle((r * 0.035).max(1.5)), look.kit.c.bg_base)
 }
 
-/// Strata's record (`paint_disc`, `paint_label`), simplified (deviation D4): a dark disc with
-/// grooves and the accent label, whose mark turns while playing. Only icon quads can turn
-/// without a view commit at this Rune rev (`LoopSpec::rotation`), so the turning mark is an
-/// icon; under reduced motion it holds still.
 fn record(st: &MediaState, key: &str, side: f32, look: &Look) -> El {
     let r = side * DISC / 2.0;
     let mark = r * LABEL * 1.2;
@@ -327,8 +308,6 @@ fn record(st: &MediaState, key: &str, side: f32, look: &Look) -> El {
         .child(turning)
 }
 
-/// The spectrum: bars, peak caps and reflections bound to live values. Its bar count follows
-/// its width; a press toggles playback.
 fn spectrum_el<S: 'static>(
     st: &MediaState,
     access: fn(&mut S) -> &mut MediaState,
@@ -377,8 +356,6 @@ fn spectrum_el<S: 'static>(
     e
 }
 
-/// The caption with the volume at its end, the title and byline going under both (Strata's
-/// `DetailsHeader`).
 fn caption_row(key: &str, caption: String, volume: El, look: &Look) -> El {
     let k = &look.kit;
     row()

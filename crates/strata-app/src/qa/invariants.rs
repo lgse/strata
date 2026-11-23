@@ -1,65 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the QA backend holds the window to at rest, when the fuzz runner asks after a step
-//! (`{"invariants":{}}`; `docs/testing.md`, "Invariants"). These are properties of one
-//! target, with no GTK peer to compare, so the differential mode cannot see them break: above
-//! all that the browser, which every command acts on, holds what the view shows. A view that
-//! shows one selection while the browser holds another deletes, renames and opens what the
-//! user did not choose, and the snapshot, read off the tree, would never say so.
-//!
-//! Each failure is one line: the invariant, the browser's column by its depth, and entries by
-//! name, never by id or by path, so that two replays failing alike say the same words, as the
-//! shrinker needs. An empty list is a window that holds to all of them.
-//!
-//! - **`browser-view`:** the view keeps a listing for each of the browser's columns, of the
-//!   same folder, loading while it loads; Columns draws a column for each; the active column
-//!   is the browser's; each listing shows the browser's entries that are not hidden, each row
-//!   at its entry's position under its entry's id, none twice; and each column shown has the
-//!   browser's cursor, selection, Shift anchor, and whether the selection is the cursor a load
-//!   placed ([`crate::handover`], whose `adopt` and `hand_over` keep the two in step). The
-//!   one cursor the browser does not hold is a neighbour kept after a move out of the folder
-//!   ([`crate::handover::Kept`]): while the browser holds no cursor and selects nothing, the
-//!   view's cursor may be that row, as GTK's list view keeps its focus there.
-//! - **`browser`:** the browser lists no entry twice, and selects none it does not list.
-//! - **`tree-view`:** each pane the snapshot reads out of the accessibility tree is a column
-//!   the view shows, by its name and in order, every column shown has one, and each has the
-//!   view's entries selected. The tree leaves out rows scrolled out of sight, so only the rows
-//!   it has are held to the view.
-//! - **`handover`:** no view, shown or hidden, holds a change of a selection the browser has
-//!   not taken: the shown view hands every change over before GLib dispatches, and a hidden
-//!   view does nothing at all.
-//! - **`keyboard`** ([`keyboard`]): who has the keyboard, against what the tree shows.
-//! - **`hidden-tab`:** a hidden tab runs nothing. Every update its browser and its parts'
-//!   services queued since it was hidden is still held for it, or was dropped for the rebuild
-//!   it gets when it is shown (`shell::tabs`): none ran on the shown tab's state.
-//!
-//! Some reads are narrower than they look, and `docs/testing.md` says so too:
-//!
-//! - **A column still loading** is held to rows at the browser's positions, never to the
-//!   browser's whole listing: a large folder is published in stages, and the view lists what
-//!   has been published.
-//! - **The anchor** is compared as a view ranges from it: the anchor, or the cursor where
-//!   there is none. So no anchor and an anchor on the cursor read the same.
-//! - **A column showing a filter's results** is held to the browser by its listing, and its
-//!   pane by the results the tree draws in its place ([`Presented::drawn`]). Where the
-//!   results' selection is the column's own collection's, Columns' ([`Presented::results`]),
-//!   its marks and its pending hand-over are left alone: the browser holds none of the
-//!   results' selection, as on GTK.
-//! - **The load cursor** is read on the browser's side through `Browser::filled_entries`, as
-//!   `events::marks` reads it, so the two cannot disagree on that predicate: the check holds
-//!   the view to the marks it was given, not the predicate to the browser's `load_cursor`.
-//!
-//! Known limits, which no alphabet reaches yet:
-//!
-//! - **Marks are compared while a column loads.** A cursor the browser holds on an entry not
-//!   yet published reads as `None` in the view, so a large-folder alphabet would see it break.
-//! - **A modal layer is taken to show as a dialog.** `keyboard` holds `Holds::Modal` to the
-//!   snapshot's `dialog`, so a modal that is no dialog there (a palette, F1's reference) needs
-//!   a `dialog` of its own, or the check breaks on a correct window.
-//! - **A plain popover's hold satisfies any dialog.** So a real modal dialog with no `Modal`
-//!   hold passes while some part holds a plain popover. Narrowing it to the popovers' own
-//!   dialogs needs the snapshot to mark them; their localized names are not hard-coded.
-
 use std::collections::HashSet;
 
 use strata_components::{
@@ -89,8 +29,6 @@ impl Failures {
 
 mod keyboard;
 
-/// Every invariant of the window as it is now, against what the snapshot read and whether
-/// an element of the tree has the keyboard.
 pub(super) fn check(app: &App, observation: &Observation, focused: bool) -> Vec<String> {
     let mut failures = Failures::default();
     let shown = keyboard::Shown {
@@ -119,8 +57,6 @@ pub(super) fn check(app: &App, observation: &Observation, focused: bool) -> Vec<
         column.holds_itself(&mut failures);
     }
     held_columns(app, &presented, &columns, &mut failures);
-    // A filter's results show in the column's place, and the browser holds none of their
-    // selection: its marks and its pane are left alone while they show.
     let marked = presented.shown.iter();
     for shown in marked.filter(|shown| !presented.results.contains(&shown.depth)) {
         if let Some(browsed) = columns.get(shown.depth) {
@@ -147,8 +83,6 @@ fn hidden_tabs(app: &App, failures: &mut Failures) {
     }
 }
 
-/// A view that is not shown hears nothing and is changed by nothing until it is shown again,
-/// when it is rebuilt from the browser (`slots`, "The slots").
 fn hidden_views(app: &App, failures: &mut Failures) {
     for view in shell::parts(app).hidden_views() {
         let presented = (view.probe.presented)(app);
@@ -174,10 +108,6 @@ struct Browsed {
     selected: Vec<usize>,
     cursor: Option<usize>,
     anchor: Option<usize>,
-    /// The column has a selection that is no fill (`Browser::filled_entries`): with the cursor
-    /// alone selected, the cursor a load placed. `Browser::selection_is_load_cursor`, which
-    /// `events::marks` reads, says so of the active column only, and every column keeps its
-    /// own.
     unfilled: bool,
 }
 
@@ -421,8 +351,6 @@ fn marks(shown: &Shown<'_>, browsed: &Browsed, kept: Option<EntryId>, failures: 
     let unplaced = browser.cursor.is_none() && browser.selected.is_empty();
     if unplaced && let Some(id) = kept.filter(|id| shown.collection.selection.cursor() == Some(*id))
     {
-        // The kept neighbour reads as the browser's cursor would, as `adopt` was given it; the
-        // browser's own anchor, if it has one, is still compared.
         browser.cursor = shown.column.position_of(id);
         browser.anchor = browsed.anchor.or(browser.cursor);
     }
@@ -460,9 +388,6 @@ fn marks(shown: &Shown<'_>, browsed: &Browsed, kept: Option<EntryId>, failures: 
     }
 }
 
-/// The panes the snapshot read out of the tree against the columns the view shows: each pane
-/// is the next column of its name, and every column has one. A column the strip has scrolled
-/// out of sight stays in the tree, as a narrow window shows (360 points with two columns).
 fn tree(presented: &Presented<'_>, panes: &[PaneObservation], failures: &mut Failures) {
     let mut columns = presented.shown.iter();
     for pane in panes {
@@ -516,8 +441,6 @@ fn tree(presented: &Presented<'_>, panes: &[PaneObservation], failures: &mut Fai
     }
 }
 
-/// A pane against the rows the view draws in it, `drawn`: a column's listing and its
-/// collection, or a filter's results in its place.
 fn pane_of(
     pane: &PaneObservation,
     depth: usize,

@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A tile: the thumbnail frame (C1e's icon slot), the name (its label slot) and the card that
-//! stacks them with the details line (its content slot). The collection draws no chrome of
-//! its own around a tile (`Collection::bare_items`): the frame and the name light up for the
-//! tile's state, as Strata's `.file-icons` rules light `.icons-card-icon-frame` and
-//! `.icons-card-label`, never the gutters between tiles.
-//!
-//! A line mounts all its tiles in one frame, and every element costs there (C3 review round
-//! 1, B1: a 32 pt grid's scroll frames), so a tile is kept to the fewest: the card, which is
-//! the cell itself (`Collection::bare_items`), the frame with the icon and the image in it, the
-//! name and the details line, five or six. The gap and the reserved lines are margins, not
-//! wrappers, and the name is sized from its measured cut, so layout never measures it.
-
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -51,10 +39,6 @@ impl Built {
         )
     }
 
-    /// A hash of everything this build draws every tile with: its sizes, the caption width
-    /// and the fonts' epoch (a name's cut follows from them and the name, which the row's own
-    /// version holds: a fallback font loading re-cuts names at the next build), and the
-    /// thumbnail step.
     pub fn key(&self) -> u64 {
         let mut h = std::hash::DefaultHasher::new();
         self.m.key().hash(&mut h);
@@ -65,8 +49,6 @@ impl Built {
     }
 }
 
-/// The frame's look for a tile: its state's fill and outline, and its hover fill, none in
-/// keyboard mode (`RowCx::hover_live` off) until the pointer moves.
 pub(super) fn frame_look(rcx: &RowCx<'_>) -> (Option<Color>, Option<(f32, Color)>, Option<Color>) {
     let (look, st, hover) = (rcx.look, rcx.state, rcx.hover_live);
     let k = &look.kit;
@@ -96,8 +78,6 @@ pub(super) fn frame_look(rcx: &RowCx<'_>) -> (Option<Color>, Option<(f32, Color)
     (None, ring, hover.then(|| tokens::frame_hover_fill(look)))
 }
 
-/// The name box's look for a tile: its fill and text colour when selected or a drop target,
-/// and its hover fill otherwise, none in keyboard mode until the pointer moves.
 pub(super) fn name_look(rcx: &RowCx<'_>) -> (Option<Color>, Color, Option<Color>) {
     let (look, st) = (rcx.look, rcx.state);
     if st.selected || st.drop_target {
@@ -115,8 +95,6 @@ pub(super) fn name_look(rcx: &RowCx<'_>) -> (Option<Color>, Color, Option<Color>
     }
 }
 
-/// The clipboard mark icon, else the entry's catalog icon or custom decoration, else the Folder
-/// or File icon, in the frame's icon colour.
 fn placeholder(rcx: &RowCx<'_>, points: f32) -> El {
     let look = rcx.look;
     let default_color = tokens::frame_icon(look);
@@ -127,21 +105,12 @@ fn placeholder(rcx: &RowCx<'_>, points: f32) -> El {
             .a11y_hidden(),
         None => entry_glyph(look, rcx.entry, points, default_color),
     };
-    // A file's icon draws fainter than a folder's, as Strata's tiles draw it
-    // (`FILE_ICON_OPACITY` in `src/ui/browser_modes/icons_card.rs`).
     match icon_opacity(rcx, true) {
         opacity if opacity < 1.0 => glyph.opacity(opacity),
         _ => glyph,
     }
 }
 
-/// The icon slot: the frame (keyed [`ICON`], so C23's flights fly it, selection and all), with
-/// the entry's placeholder icon centred in it and, when the entry has a thumbnail key, wears no
-/// custom glyph, and thumbnails show, its image over the slot. As C25's `picture` draws them:
-/// the image is fitted (letterboxed) in the slot, and the icon fades out through the handle's
-/// opacity while an image is held, so a thumbnail landing, changing size or going needs no build.
-///
-/// Versioned by the store's handles for the key and the step, never the key's state.
 fn tile_icon_version<S>(shared: &Shared<S>, key: u64, s: &S, rcx: &RowCx<'_>) -> u64 {
     let mark = crate::thumbnails::mark_icon(rcx.state.marks);
     let thumb = rcx.entry.thumbnail.filter(|_| rcx.entry.glyph.is_none());
@@ -226,10 +195,6 @@ pub(super) fn icon_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S>
     )
 }
 
-/// The label slot: the name, cut to its lines, in a padded box that lights up for the tile's
-/// state, with the space its lines leave below it as margin, so the details line sits where
-/// the name's reserved lines end. Rename's editor takes its place while the tile renames
-/// (C1e's rename slot).
 pub(super) fn label_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S> {
     let build_shared = shared.clone();
     let key = b.key();
@@ -256,8 +221,6 @@ pub(super) fn label_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S
                 .py(m.caption_pad / 2.0)
                 .mb(below)
                 .radius(tokens::caption_radius(look))
-                // Its measured size, so layout doesn't measure the text again for its min- and
-                // max-content widths.
                 .w(cut.size.0 + 2.0 * m.caption_pad)
                 .h(cut.size.1 + m.caption_pad);
             if let Some(fill) = fill {
@@ -279,8 +242,6 @@ pub(super) fn details_of<S>(shared: &Shared<S>, s: &S, rcx: &RowCx<'_>) -> Optio
 
 /// The hover tooltip text for a tile, none while it renames, drags, or anchors a folder peek.
 fn tile_help<S>(shared: &Shared<S>, b: &Built, s: &S, rcx: &RowCx<'_>) -> Option<String> {
-    // A tile a folder peek is open from (C22) shows no tooltip: the card beside it holds
-    // the folder's name, and a tooltip would cover one or the other.
     if rcx.state.renaming
         || rcx.state.marks.peek_anchor
         || rcx.state.marks.dragging
@@ -295,10 +256,6 @@ fn tile_help<S>(shared: &Shared<S>, b: &Built, s: &S, rcx: &RowCx<'_>) -> Option
     }
 }
 
-/// The content slot: the card, its frame, name and details stacked and centred, inside the
-/// tile's margin and the card's padding. A tile with tooltip text carries it over its frame,
-/// its name and its details, none while it renames, drags, or a folder peek is open from it
-/// (C22).
 pub(super) fn content_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> ContentSlot<S> {
     let (version_shared, build_shared) = (shared.clone(), shared.clone());
     let key = b.key();
@@ -321,10 +278,6 @@ pub(super) fn content_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Cont
                 Some(name) => (frame.help(name.clone()), label.help(name.clone())),
                 None => (frame, label),
             };
-            // The card takes no padding of its own: it is the cell, and a padded cell would be
-            // wider than the empty cells that fill a short last row, so the cells of that row
-            // wouldn't share its width equally as the geometry says. Its children keep inside
-            // the card's inner width instead.
             let inner = (b.cell_w - 2.0 * (m.margin + m.card_x)).max(0.0);
             let mut card = col()
                 .w_full()
@@ -332,10 +285,6 @@ pub(super) fn content_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Cont
                 .items_center()
                 .child(frame.mt(m.margin + m.card_y));
             if m.name_lines > 0 {
-                // The rename editor (C5's) keeps the name's reserved lines, so the details line
-                // stays put. It takes the card's inner width: centred, a field that grows from no
-                // width of its own would be laid out with none, and Rune gives the keyboard to
-                // no field it cannot show.
                 let label = if rcx.state.renaming {
                     col().w(inner).h(m.caption_height()).child(label.w_full())
                 } else {
@@ -346,7 +295,6 @@ pub(super) fn content_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Cont
             if m.details_line > 0.0
                 && let Some(details) = details_of(&build_shared, s, rcx).filter(|d| !d.is_empty())
             {
-                // A label assistive technology reads, as GTK's details label is.
                 let mut line = text(details)
                     .key(DETAILS)
                     .font(m.details_font)

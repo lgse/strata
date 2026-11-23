@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The host without a window: one thread owns a Rune `Runtime` and the default GLib context,
-//! and steps both in real time. The in-process tests run on it, and the `--qa` mode does.
-
 use std::time::{Duration, Instant};
 
 use rune::{Env, Mods, PhysicalInput, Runtime, text::TextSystem};
@@ -96,8 +93,6 @@ impl Offscreen {
         self.runtime.state.start(initial);
     }
 
-    /// Turns the look's motion off, as the GTK QA runs do through `gtk-enable-animations`:
-    /// a column that closes then leaves the tree at once.
     #[cfg(feature = "qa")]
     pub(crate) fn without_animations(mut self) -> Self {
         self.runtime.update(|app, _| shell::disable_animations(app));
@@ -109,9 +104,6 @@ impl Offscreen {
         &mut self.runtime
     }
 
-    /// Tells Rune which modifiers are held, as a keyboard does before the key they modify,
-    /// and the shell with it: the hook the windowed host registers is one this host cannot
-    /// (Rune packet entry 107; `shell::held` has the order this keeps).
     pub(crate) fn modifiers(&mut self, mods: Mods) {
         self.runtime.physical_input(PhysicalInput::Modifiers(mods));
         self.runtime.update_if(|app, tx| {
@@ -121,8 +113,6 @@ impl Offscreen {
         });
     }
 
-    /// Sets or clears the physical origin the offscreen QA host attaches to the queued key
-    /// press while `Runtime::physical_key_input` is private (Rune packet entry 97).
     #[cfg(any(test, feature = "qa"))]
     pub(crate) fn set_key_origin(&mut self, origin: Option<commands::Origin>) {
         shell::live_keys(self.app()).set_qa_origin(origin);
@@ -153,9 +143,6 @@ impl Offscreen {
         dispatched
     }
 
-    /// One turn of the loop: what GLib has ready, then one Rune frame stepped by the wall
-    /// clock, whose `poll` applies what the dispatch queued. Returns whether either side did
-    /// anything.
     pub(crate) fn turn(&mut self) -> bool {
         shell::publish(&mut self.runtime.state);
         let dispatched = self.dispatch_ready();

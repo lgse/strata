@@ -2,10 +2,6 @@
 
 use super::*;
 
-// FAT, exFAT, sshfs and HFS+ keep coarse times, so a rewrite of the same
-// size within one tick shows neither in the modification time nor in the
-// change time, which they lack or keep as coarse.
-
 fn vfat() -> Quirks {
     Quirks {
         ctime_is_mtime: true,
@@ -51,8 +47,6 @@ fn hfsplus() -> Quirks {
     }
 }
 
-/// An SMB share of a FAT disk, whose times only their lack of a fraction
-/// of a second tells coarse.
 fn fat_share() -> Quirks {
     Quirks {
         ctime_is_mtime: true,
@@ -84,8 +78,6 @@ enum Rewrite {
     ClockSetBack,
 }
 
-/// The source `a.txt` of a moved folder, stamped at whole two-second steps
-/// with the fraction its mount keeps.
 struct Stamped {
     folder: PathBuf,
     file: PathBuf,
@@ -101,8 +93,6 @@ fn kernel_clock() -> Duration {
 }
 
 impl Stamped {
-    /// A rewrite keeps the file's times, or, `clocked`, takes the kernel's
-    /// coarse clock in FAT's two-second steps.
     fn rewriter(&self, contents: &'static [u8], clocked: bool) -> Racer {
         let (path, seconds, fraction) = (self.file.clone(), self.seconds, self.fraction);
         Box::new(move || {
@@ -155,8 +145,6 @@ impl Stamped {
         })
     }
 
-    /// Whether the move selects the file itself, and the racers before and
-    /// after calls that make `rewrite` happen.
     fn racers(&self, rewrite: Rewrite) -> (bool, Vec<Before>, Vec<Before>) {
         let deleting = |racer| vec![(Op::OpenDir, "folder", 1, racer)];
         match rewrite {
@@ -210,8 +198,6 @@ impl Stamped {
                 let racer = self.reached(self.rewriter(b"ORIGINAL", false));
                 (false, vec![(Op::Stat, "a.txt", 0, racer)], Vec::new())
             }
-            // The copy reads two chunks and the end, then the comparison its
-            // first chunk.
             Rewrite::ChunkCompared => {
                 let after = vec![(Op::Read, "a.txt", 3, self.rewrite_chunk())];
                 (false, Vec::new(), after)
@@ -222,8 +208,6 @@ impl Stamped {
 }
 
 impl Stamped {
-    /// What the deletion found at the source: gone, or kept as changed with
-    /// the contents `rewrite` left.
     fn assert_left(
         &self,
         rewrite: Rewrite,
@@ -252,8 +236,6 @@ impl Stamped {
     }
 }
 
-/// Whether the deletion reopened the source and read it again; a file
-/// renamed over reads as deleted through the descriptor.
 fn read_again(calls: &[super::super::fs_quirks::Call]) -> bool {
     let opened: Vec<usize> = calls
         .iter()
@@ -269,9 +251,6 @@ fn read_again(calls: &[super::super::fs_quirks::Call]) -> bool {
         .is_some_and(|&reopened| calls[reopened..].iter().any(reads_source))
 }
 
-/// A row, the mount, how many milliseconds after its modification time the
-/// copy reads the file (negative: dated ahead of the clock), how it is
-/// rewritten, and whether the deletion reads it again.
 type CoarseRow = (&'static str, Preset, i64, Rewrite, bool);
 
 fn check_coarse_tick(
@@ -284,8 +263,6 @@ fn check_coarse_tick(
     fs::write(&file, b"original")?;
     let epoch = SystemTime::UNIX_EPOCH;
     let seconds = SystemTime::now().duration_since(epoch)?.as_secs() / 2 * 2;
-    // ext4 keeps nanoseconds and exFAT hundredths of a second; FAT,
-    // sshfs and HFS+ keep whole seconds.
     let fraction = match preset().mount_type {
         Some(("ext4", _)) => 250_000_000,
         Some(("fuseblk", _)) => 500_000_000,

@@ -1,32 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the single-pane views, Icons and List, share beside their [`Pane`]: one
-//! implementation of what both do with it, as `AGENTS.md` asks of the list and icons modes.
-//! Shared code, owned by the contract ([`crate::slots`], "Who owns what").
-//!
-//! A view keeps a [`Single`] in its state and names it with [`SinglePane`]; what stays in
-//! its own module is its component, its [`KeySettings`], its probe's name and roles, and its
-//! words. Everything here takes the view by that trait:
-//!
-//! - **Events in.** [`listen`] queues what each event changed ([`crate::events`]), and the
-//!   pane puts what is for its folder into its listing and its collection. A new listing
-//!   takes the keyboard, as the GTK window gives it.
-//! - **Intents out.** [`heard`] takes what the collection asks to the browser: a folder opens
-//!   in place, as GTK's Icons and List views open it (`activate_in_place`), a middle click
-//!   (`MiddleClick::clicked`) runs `open-in-tab` or `open-in-window` on a folder and reveals a
-//!   file in its folder, and Left at the view's start leaves it for the sidebar. Where the start
-//!   is, is the component's: the first tile in Icons, any row in List (`at_left_edge` in
-//!   `src/ui/browser_modes/focus.rs`).
-//!   A secondary click or the Menu key opens the context menu through `menus::open`.
-//! - **What the window asks of a view:** [`rows`] for the context menu, [`editing`] for the
-//!   rename editor, [`publish`], and for the QA backend [`listed`] and [`lists`].
-//! - **What both build:** the base [`collection`] a view's component adds its parts to, and
-//!   the [`group`] around it, named by the folder and described as the view.
-//! - **A filter's results** (A10's [`crate::filter::pane`]) show in the component's place, in
-//!   a collection of their own built on [`results`], under the filter's band in the group.
-//!   Their rows are no listing's: the view's rows hooks ask the filter first for an entry of
-//!   theirs, and the rename editor opens and follows its row in the results.
-
 use std::{borrow::Cow, cell::Cell, rc::Rc};
 
 use rune::{El, Mods, Tx, WheelEvent, col};
@@ -73,8 +46,6 @@ pub(crate) struct Single {
     wrap_rows: bool,
     left_leaves: bool,
     words: Words,
-    /// `view_name` in `src/ui/accessibility.rs`: what the pane is described as, and how the
-    /// QA harness finds it.
     described: String,
     /// `ENTRY_CONTAINER_DESCRIPTION` there: what the list of entries is.
     entries: String,
@@ -95,9 +66,6 @@ fn controlled(handle: KeyHandle) -> CollectionState {
     collection
 }
 
-/// The state of a filter's results in the pane (A10's [`crate::filter`]), with the controllers
-/// and the keys the pane's listing has, the Menu key's menu where the view opens it: the
-/// centre in List, the right edge in Icons.
 pub(crate) fn results_state(list: bool, handle: KeyHandle) -> CollectionState {
     let mut collection = controlled(handle);
     let menu_at = match list {
@@ -116,8 +84,6 @@ pub(crate) struct Made {
     pub(crate) left_leaves: bool,
     /// The view's translated `view_name`.
     pub(crate) described: String,
-    /// Where on the cursor's entry the Menu key opens its menu (`item_menu_target` in
-    /// `src/ui/browser_modes/context_menu.rs`): the centre in List, the right edge elsewhere.
     pub(crate) menu_at: AnchorEdge,
     pub(crate) worn: Rc<Worn>,
 }
@@ -169,8 +135,6 @@ pub(crate) fn sync_worn<V: SinglePane>(app: &mut App) {
 
 /// A view that shows one pane: its key, and where its [`Single`] is in the [`App`].
 pub(crate) trait SinglePane: 'static {
-    /// The view's collection's key, the element that takes the keyboard, and the start of
-    /// every element key the view makes.
     const KEY: &'static str;
 
     fn single(app: &App) -> &Single;
@@ -185,9 +149,6 @@ pub(crate) trait SinglePane: 'static {
     /// The view's live click-activation modes, read from `settings`.
     fn clicks(settings: &Preferences) -> ClickModes;
 
-    /// The view's layout, as C1e keys a remembered scroll offset: the mode and anything that
-    /// changes wrapping. An offset comes back only in the layout it was measured in, as GTK's
-    /// comes back only in the same mode, and in Icons at the same page width.
     fn layout_key(app: &App) -> u64;
 }
 
@@ -195,8 +156,6 @@ fn pane<V: SinglePane>(app: &App) -> &Pane {
     &V::single(app).pane
 }
 
-/// The folder the view shows, as the pane and its list are named: `display_name`, as GTK's
-/// `describe_pane` and `describe_entry_container` name them.
 pub(crate) fn title<V: SinglePane>(app: &App) -> String {
     pane::<V>(app)
         .listing()
@@ -205,16 +164,11 @@ pub(crate) fn title<V: SinglePane>(app: &App) -> String {
         .to_owned()
 }
 
-/// What the view says in place of entries while it shows none ([`status`]), and whether it
-/// draws it.
 fn status<V: SinglePane>(app: &App) -> Option<(Cow<'_, str>, bool)> {
     let single = V::single(app);
     single.surface.status(0, single.pane.listing()?)
 }
 
-/// What the entry list is described as: what it is, or, while it shows no entry, what the
-/// GTK pane surface that holds the keyboard then is described as (`describe_pane_surface` in
-/// `src/ui/accessibility.rs`).
 fn described<V: SinglePane>(app: &App) -> String {
     match status::<V>(app) {
         Some((status, _)) => status.into_owned(),
@@ -266,8 +220,6 @@ fn live_pointer<V: SinglePane>(app: &App) -> PointerSettings {
         .multiple(app.chooser.allows_multiple())
 }
 
-/// The collection under the view's component: what the host sets on it, before the
-/// component adds its own parts.
 pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     let single = V::single(app);
     // The registry reads a key ahead of the view's own, and a first visit hears it first.
@@ -317,9 +269,6 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     )
 }
 
-/// The collection a filter's results show in, in the listing's place (GTK's "Search
-/// results"): keyed as the view's, so its keyboard and commands are the view's, with the view's
-/// keys and clicks. Its rows are the filter's ([`filter::pane`]).
 pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
     let single = V::single(app);
     commands::in_view(Collection::new(
@@ -334,8 +283,6 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
     ))
     .name(tr(filter::pane::SEARCH_RESULTS))
     .settings(live_keys(app, single))
-    // GTK's results keep an anchor of their own, which neither a right-click nor a
-    // Shift+press sets (findings lgse/strata#2375 and #2431).
     .settings(live_pointer::<V>(app).missing_anchor_stays(true))
     .settings(autoscroll_settings(app))
     .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
@@ -352,9 +299,6 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
     )
 }
 
-/// The view's element: a group keyed `<key>-pane`, named by the folder and described as
-/// the view, around the pane's header ([`pane_header`]), with the view's own `actions` among
-/// the header's, and the component's.
 pub(crate) fn group<V: SinglePane>(app: &App, component: El, actions: Option<El>) -> El {
     let title = title::<V>(app);
     let tenxer = shell::preferences(app).tenxer_mode;
@@ -371,20 +315,14 @@ pub(crate) fn group<V: SinglePane>(app: &App, component: El, actions: Option<El>
             .map(|band| col().w_full().fill(app.look.kit.c.bg_base).child(band));
         group = group
             .child(pane_header::bar(app, V::KEY, &title, actions))
-            // The filter's field, under the header as GTK's revealer is.
             .children(filter_band);
     }
     // What is left under the header: the component fills its parent's height.
     group.child(body::<V>(app).child(component))
 }
 
-/// The box under the header the component fills. A filter's results take the view's key, so
-/// theirs is keyed apart: Rune then lays them out as new elements, and their collection hears
-/// its viewport's size, which an element in the place of one of the same size never reports.
 fn body<V: SinglePane>(app: &App) -> El {
     let mut body = col().w_full().grow(1.0).min_h(0.0);
-    // `ListTable` paints its own `bg_deep` heading strip and `bg_base` rows viewport, so skip
-    // an outer `bg_base` fill behind it to avoid double-compositing the column headers.
     let table_paints_own_surface = V::KEY == crate::list::VIEW && !app.filter.pane.shows();
     if !table_paints_own_surface {
         body = body.fill(app.look.kit.c.bg_base);
@@ -395,10 +333,6 @@ fn body<V: SinglePane>(app: &App) -> El {
     }
 }
 
-/// One poll of what the view says while it shows no entry, a read announced once it outlasts
-/// GTK's grace period, and of a first visit whose load ended, whose cursor the window keeps
-/// as the visit's and on the first row shown ([`first_visit::keep_on_first_row`]). True when
-/// the view has to run.
 pub(crate) fn poll<V: SinglePane>(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let memory = shell::restore_memory(app).clone();
     let Single {
@@ -480,7 +414,6 @@ pub(crate) fn apply<V: SinglePane>(app: &mut App, change: Change, tx: &mut Tx) -
         app.window.thumbnails_mut().relocate(from, to);
     }
     if matches!(applied, Applied::Entered | Applied::Returned) {
-        // The GTK window gives a new listing the keyboard.
         tx.focus(V::KEY, false);
     }
     true
@@ -497,10 +430,6 @@ pub(crate) fn publish<V: SinglePane>(app: &mut App) {
     V::single_mut(app).pane.publish(&browser);
 }
 
-/// Opens entry `id` of column `depth` in place, as GTK's Icons and List views do: a folder
-/// becomes the folder shown. Return opens the browser's focused item (`activate_focused` in
-/// `src/ui/browser/view_navigation.rs`), a click the entry clicked (`activate_in_place` in
-/// `src/ui/browser_modes/clicks.rs`).
 fn open_in_place<V: SinglePane>(app: &mut App, (depth, id): At, how: Activation, tx: &mut Tx) {
     let Some(position) = pane::<V>(app).position(depth, id) else {
         return;
@@ -518,8 +447,6 @@ fn open_in_place<V: SinglePane>(app: &mut App, (depth, id): At, how: Activation,
     }
 }
 
-/// A middle click on a folder row (`MiddleClick::clicked` in
-/// `src/ui/browser_modes/clicks.rs`): `open-in-tab`, or `open-in-window` with Ctrl or Shift.
 fn open_in_new<V: SinglePane>(app: &mut App, (depth, id): At, window: bool, tx: &mut Tx) {
     let Some(position) = pane::<V>(app).position(depth, id) else {
         return;
@@ -535,9 +462,6 @@ fn open_in_new<V: SinglePane>(app: &mut App, (depth, id): At, window: bool, tx: 
     commands::run(app, command, On::Place(entry.location), tx);
 }
 
-/// A middle click on a file row (`MiddleClick::clicked` in
-/// `src/ui/browser_modes/clicks.rs`): empties the folder's filter and reveals the file in its
-/// folder.
 fn reveal<V: SinglePane>(app: &mut App, (depth, id): At, tx: &mut Tx) {
     let Some(position) = pane::<V>(app).position(depth, id) else {
         return;
@@ -558,8 +482,6 @@ fn reveal<V: SinglePane>(app: &mut App, (depth, id): At, tx: &mut Tx) {
 
 /// What the view's collection asks of its host, taken to `Browser`.
 fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
-    // What the input did to the cursor and the selection goes first: the browser acts on
-    // its own.
     shell::publish(app);
     let Some(depth) = pane::<V>(app).depth() else {
         return;
@@ -569,7 +491,6 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
         // A slow second click on the name.
         Intent::BeginRename { id } => rename::begin_on(app, depth, id, tx),
         Intent::Clicked { id } => clicked::<V>(app, depth, id),
-        // The opener ends an open rename itself, as a press outside the field does in GTK.
         Intent::ContextMenu { target, anchor } => {
             let request = Request {
                 depth,
@@ -580,10 +501,6 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
         }
         Intent::OpenInNew { id, window } => open_in_new::<V>(app, (depth, id), window, tx),
         Intent::Reveal { id } => reveal::<V>(app, (depth, id), tx),
-        // Left at the view's start: the sidebar takes the keyboard, when there is one. The
-        // component decides where its start is, from the view's keys (the first tile in Icons,
-        // any row in List); only that Left reaches here. 10xer's keep it in the view, as GTK's
-        // native arrows there stop at the edge (`move_icon_cursor`).
         Intent::Edge(Direction::Left) => {
             if !shell::preferences(app).tenxer_mode {
                 shell::leave_view_at_start(app, tx);
@@ -659,8 +576,6 @@ pub(crate) fn spring_open(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx)
     shell::settle(app, tx);
 }
 
-/// A plain click on a file previews it when single-click previews are enabled and two clicks
-/// open files (`PendingActivationKind::Standard { preview: true }`).
 fn clicked<V: SinglePane>(app: &App, depth: usize, id: EntryId) {
     let settings = shell::preferences(app);
     let modes = crate::clicks::for_chooser(V::clicks(settings), app.browser.is_chooser_mode());
@@ -678,16 +593,12 @@ fn clicked<V: SinglePane>(app: &App, depth: usize, id: EntryId) {
     }
 }
 
-/// The collection moved its cursor or changed its selection: the browser takes it now, so
-/// the frame drawn for the input shows the browser in step.
 pub(crate) fn moved(app: &mut App, tx: &mut Tx) {
     // The user's own move: the cursor is no first visit's any more.
     shell::restore_memory(app).set_visit_cursor(None);
     shell::settle(app, tx);
 }
 
-/// Listing row `id`'s marks: copied, cut, dragging, its name's find highlight and the peek's
-/// anchor.
 pub(crate) fn listing_marks<V: SinglePane>(app: &App, id: EntryId) -> RowMarks {
     let marks = crate::dnd::with_marks(app, id, crate::clipboard::marks(app, id));
     let row = pane::<V>(app)
@@ -697,8 +608,6 @@ pub(crate) fn listing_marks<V: SinglePane>(app: &App, id: EntryId) -> RowMarks {
     crate::peek::with_marks(app, V::KEY, id, marks)
 }
 
-/// Result `id`'s marks: the filter's Enter target, its name's highlight, copied, cut and
-/// dragging.
 pub(crate) fn result_marks(app: &App, id: EntryId) -> RowMarks {
     let marks = highlight::hit_marks(app, id, filter::pane::marks(app, id));
     crate::dnd::with_marks(app, id, crate::clipboard::with_marks(app, id, marks))
@@ -709,9 +618,6 @@ pub(crate) const fn rows<V: SinglePane>() -> Rows<App> {
     Rows {
         position: |app, (depth, id)| pane::<V>(app).position(depth, id),
         neighbour: |app, (depth, id), step| pane::<V>(app).neighbour(depth, id, step),
-        // What the context menu's Open asks (`open_context_entry` in
-        // `src/ui/browser/context_menu/item_menu.rs`): what a click on the row does, or on a
-        // filter's result.
         activate: |app, (depth, id)| match filter::targets::at(app, depth, id) {
             Some(_) => filter::open_hit(app, depth, id),
             None => {
@@ -720,24 +626,15 @@ pub(crate) const fn rows<V: SinglePane>() -> Rows<App> {
                 }
             }
         },
-        // The keyboard is the editor's that opens next (Tab's `advance` and the menu's Rename
-        // both open one on the row): focusing the list here would take it from the field, as
-        // the Columns view does not either.
         select_only: |app, (depth, id), tx| match filter::targets::at(app, depth, id) {
             Some(_) => filter::pane::select_only::<V>(app, id, tx),
             None => V::single_mut(app).pane.select_only(depth, id),
         },
-        // Select All in a single pane is the browser's (`select_all` in
-        // `src/ui/browser/view_state.rs`): the view adopts it. GTK's does so under a filter's
-        // results too, where the listing it selects is not shown (finding lgse/strata#2422); Ctrl+A
-        // in the results is their own key.
         select_all: |app, depth| app.browser.select_all(depth),
         reveal: reveal_row::<V>,
     }
 }
 
-/// Scrolls the row of entry `id` into view, when the pane shows column `depth`: a filter's
-/// result's, while they show.
 fn reveal_row<V: SinglePane>(app: &mut App, (depth, id): At, tx: &mut Tx) {
     if filter::targets::at(app, depth, id).is_some() {
         filter::pane::reveal::<V>(app, id, tx);
@@ -762,8 +659,6 @@ pub(crate) const fn editing<V: SinglePane>() -> Editing<App> {
     }
 }
 
-/// Opens the editor on the entry `id` and shows it. `None` when the view does not show the
-/// entry: a hidden one has nowhere to edit in.
 fn begin_rename<V: SinglePane>(app: &mut App, (depth, id): At, tx: &mut Tx) -> Option<Polled> {
     // A filter's result renames in the results, which the listing under them does not draw.
     if app.filter.pane.shows() {
@@ -789,8 +684,6 @@ fn begin_rename<V: SinglePane>(app: &mut App, (depth, id): At, tx: &mut Tx) -> O
     Some(polled)
 }
 
-/// One poll of the editor against the view's listing and viewport. An edit whose folder has
-/// gone ends, and keeps the name.
 fn tick_rename<V: SinglePane>(app: &mut App) -> Polled {
     if app.filter.pane.shows() {
         let hits = &app.filter.pane;
@@ -823,8 +716,6 @@ pub(crate) fn lists<V: SinglePane>(app: &App) -> Vec<String> {
     }
 }
 
-/// What the view holds of the browser's columns, and the filter's results it draws in the
-/// listing's place while they show: the probe's.
 #[cfg(feature = "qa")]
 pub(crate) fn presented<V: SinglePane>(app: &App) -> crate::handover::Presented<'_> {
     let pane = pane::<V>(app);

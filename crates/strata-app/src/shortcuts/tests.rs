@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The reference on the window the crate registers: F1 opens it over the listing and gives
-//! the keyboard back when it closes, and F1 in a rename is the rename's.
-
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_core::model::Location;
 
@@ -115,8 +112,6 @@ fn f1_in_a_rename_opens_nothing() {
     });
 }
 
-/// In 10xer mode a typed `~` toggles the reference too, and it lists 10xer's sections: its
-/// "10xer mode" and "Places" (`tenxer_sections`, C19's `ReferenceKeys::tenxer`).
 #[test]
 fn tilde_toggles_the_tenxer_reference_with_its_own_sections() {
     hosted(

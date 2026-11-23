@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The pointer machine on the collection element's seam (C1e): [`PointerIntent`] is the
-//! `PointerController` a host installs, and a `Ctx` is the machine's [`Surface`].
-
 use rune::PointerButton;
 
 use super::machine::{ActivateBy, Button, Outcome, PointerMachine, Press, Release, Spot, Surface};
@@ -15,21 +12,6 @@ use crate::collection::selection::{Changed, Selection};
 use crate::contract::{EntrySource, Rect};
 
 /// Pointer intent for one collection: install it as the collection's pointer controller.
-///
-/// ```ignore
-/// coll.controllers.pointer = Some(Box::new(PointerIntent::new()));
-/// // and, as the view builds:
-/// Collection::new(..).settings(PointerSettings::default().modes(modes))
-/// ```
-///
-/// It reads its [`PointerSettings`] from `Collection::settings` on every input, the default
-/// when the host gave none, and turns a read-only collection's drags and renames off.
-///
-/// It needs the element's clock (`Collection::clock`): it times double clicks and the
-/// slow-click rename by it. With none, every input reads time 0, so any second press on an
-/// entry is a double click and a rename never comes due.
-///
-/// Used by: C2, C3, C4, C14b, and hosts.
 #[derive(Debug, Default)]
 pub struct PointerIntent {
     machine: PointerMachine,

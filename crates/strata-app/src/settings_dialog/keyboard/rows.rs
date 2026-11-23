@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One command's row: its name, the notes on its keys, a chip per key with its remove
-//! button, and Add, the capture and Reset. GTK's `Row::new`, `Row::render` and `Row::chip`
-//! (`src/ui/settings/keyboard.rs`).
-
 use std::collections::HashMap;
 
 use rune::{El, Tx, col, row, text};
@@ -226,8 +222,6 @@ fn turn_off_typing(look: &Look, base: &str) -> El {
         .child(buttons::on_return(format!("{base}-typing"), button))
 }
 
-/// The 10xer chord's key before a step, the chips, "Not bound", then Add or the capture and
-/// Cancel, and Reset.
 fn controls_row(
     page: &Page<'_>,
     (map, command): (Map, Command),

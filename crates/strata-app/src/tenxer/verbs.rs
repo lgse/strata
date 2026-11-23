@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer's footer prompt keys and file verbs on the focused listing: `tenxer_prompt_keys`
-//! (`src/ui/window/keyboard/prompts.rs`) and the verbs of `tenxer_file_keys`
-//! (`src/ui/window/keyboard/files.rs`).
-
 use std::rc::Rc;
 
 use rune::Tx;
@@ -97,8 +93,6 @@ fn paste(app: &mut App, focus: ConflictFocus, tx: &mut Tx) {
     );
 }
 
-/// `restore_targets`'s refusals. Restoring items that are in the Trash waits on the Rune side's
-/// restore from the Trash (GTK's `request_restore`), which is not ported yet.
 fn restore_targets(app: &mut App, tx: &mut Tx) {
     let entries = super::command_targets(app);
     let refusal = if entries.is_empty() {
@@ -120,7 +114,6 @@ fn delete_targets(app: &mut App, permanent: bool, tx: &mut Tx) {
     }
 }
 
-/// `open_with_targets` (`src/ui/window/keyboard/files.rs`): refusals land in the footer.
 fn open_with_targets(app: &mut App, tx: &mut Tx) {
     let report: open_with::RefusalReport = Rc::new(|app: &mut App, reason: &str, tx: &mut Tx| {
         app.tenxer.flash.show(tr(reason), tx);

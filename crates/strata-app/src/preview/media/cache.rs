@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Shared track key and bounded LRU cache for media preview background decodes
-//! (waveform peaks and video storyboards), matching GTK's `TrackKey` and `Lru`
-//! (`src/ui/preview/audio/details.rs`).
-
 use std::collections::VecDeque;
 
 use strata_core::model::{FileEntry, MetadataValue};

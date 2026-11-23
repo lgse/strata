@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! How the grid draws: the header (corner, column letters and titles, dividers), the rows
-//! (a sticky row number, then the cells) and the look they take from the Kit.
-
 use std::rc::Rc;
 
 use rune::{Color, Cursor, Drag, El, Phase, TextStyle, Tx, col, icon, row, text};
@@ -14,7 +11,6 @@ use super::range::Columns;
 use super::state::{SheetGridState, SheetLabels, SheetView, fill};
 use super::widths::{MAX_WIDTH, MIN_WIDTH};
 
-/// The look, from rune-kit's `TableStyle` and the colours C11's document tables use.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Paint {
     pub style: TableStyle,
@@ -78,9 +74,6 @@ pub(crate) fn column_name(v: &SheetView, labels: &SheetLabels, j: usize) -> Stri
     }
 }
 
-/// The header: the corner over the row numbers, then each column's letters and title, which
-/// sort on a click, with a divider on its trailing edge. The titles move sideways with the
-/// rows through `strip_x`, the body's offset (probe P1: the same frame).
 pub(crate) fn header<S: 'static>(
     ctx: &Rc<Ctx<S>>,
     st: &SheetGridState,
@@ -205,9 +198,6 @@ pub(crate) fn header<S: 'static>(
         )
 }
 
-/// Column `j`'s divider: a drag resizes it (every column, the last included), a double click
-/// puts it back to its fitted width (D7). Its value is the width, so assistive technology and
-/// scripts hear a resize.
 fn divider<S: 'static>(ctx: &Rc<Ctx<S>>, key: &str, j: usize, w: f32, name: &str) -> El {
     let get_mut = ctx.get_mut;
     row()
@@ -236,8 +226,6 @@ fn divider<S: 'static>(ctx: &Rc<Ctx<S>>, key: &str, j: usize, w: f32, name: &str
         .on_double_press(move |s: &mut S| get_mut(s).fit_column(j))
 }
 
-/// Display row `i`: its row number, kept at the left edge as the rows scroll sideways, then
-/// its cells.
 pub(crate) fn build_row<S: 'static>(ctx: &Ctx<S>, s: &S, i: usize) -> El {
     let st = (ctx.get)(s);
     let p = &ctx.paint;
@@ -326,8 +314,6 @@ fn lead(cols: &Columns, built: &std::ops::Range<usize>) -> El {
     rune::el().w(w).h_full().a11y_hidden()
 }
 
-/// A sheet that couldn't be read, in the grid's place: Strata's "Preview unavailable" over
-/// the reason, and Try again, which asks for it once more.
 pub(crate) fn failure<S: 'static>(
     look: &Look,
     key: &str,

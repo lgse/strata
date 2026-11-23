@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Sort by menu on the offscreen host: a menu-kind plain popover's keys, as GTK's
-//! `PopoverMenu` moved when driven (the module docs of `crate::popover`), and a Columns
-//! column's menu, which hangs from that column's button and sorts that column only.
-
 use rune::{Key, KeyEvent, Mods, Tx};
 use serde_json::Value;
 use strata_core::model::{Location, SortKey};
@@ -96,8 +92,6 @@ fn opened(host: &mut Offscreen, button: &str) {
     );
 }
 
-/// Up and Down wrap, Tab and Shift+Tab move as Down and Up, Home and End go to the ends, and
-/// Return runs a row with the menu left open; Escape closes it to its button.
 #[test]
 fn the_menus_keys_wrap_and_a_row_leaves_it_open() {
     let name = "the_menus_keys_wrap_and_a_row_leaves_it_open";
@@ -141,9 +135,6 @@ fn the_menus_keys_wrap_and_a_row_leaves_it_open() {
     });
 }
 
-/// In Columns the menu hangs from the targeted column's own button, keyed by its depth, and
-/// sorts that column only; closing it gives the view the keyboard, the header's buttons being
-/// no focus stops.
 #[test]
 fn a_columns_menu_sorts_its_own_column() {
     let name = "a_columns_menu_sorts_its_own_column";
@@ -199,8 +190,6 @@ fn a_columns_menu_sorts_its_own_column() {
     });
 }
 
-/// Activating Make default or Reset to default sort hides that row while leaving the menu open
-/// with focus on its surface (`sort-menu`), so Down lands on the first row and Up on the last.
 #[test]
 fn hiding_make_default_or_reset_keeps_the_menu_open_and_focused() {
     let name = "hiding_make_default_or_reset_keeps_the_menu_open_and_focused";
@@ -232,9 +221,6 @@ fn hiding_make_default_or_reset_keeps_the_menu_open_and_focused() {
     });
 }
 
-/// Optional Duration, Dimensions and Created sorts show in the Sort menu, display a List
-/// toolbar sort label while their column is hidden, and hide that label once the column is
-/// shown so clicking the heading sorts and toggles direction.
 #[test]
 fn optional_column_sorts_follow_column_visibility_and_headings() {
     let name = "optional_column_sorts_follow_column_visibility_and_headings";

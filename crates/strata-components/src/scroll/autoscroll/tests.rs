@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The autoscroll machine, its speed curve and the collection decorator, with no Rune runtime.
-//! Each test names the `browser/scrolling` bullet it checks.
-
 use std::rc::Rc;
 
 use rune::{PointerButton, ScrollPos, Spring};
@@ -120,8 +117,6 @@ fn a_listing_that_fits_starts_no_autoscroll() {
 
 #[test]
 fn only_one_autoscroll_runs_at_a_time() {
-    // No bullet of its own: Strata's design holds one autoscroll a window
-    // (`browser/scrolling`, Design), which is what lets any press end it.
     let (mut m, f) = running(0.0);
     assert!(!start(&mut m, vec![Target::vertical("other/viewport", f)]));
     assert_eq!(m.owner(), Some("list"));
@@ -238,8 +233,6 @@ fn a_sideways_only_viewport_moves_on_x_alone() {
 
 #[test]
 fn a_target_that_stops_is_stopped_once_while_another_moves_on() {
-    // browser/scrolling: Moving the pointer away from the anchor scrolls toward it, faster the further away, on both axes the listing can scroll.
-    // (Review: with two targets, one at its end was jumped on every frame the other moved.)
     let down = feed([0.0, 0.0], [0.0, 10_000.0]);
     let side = feed([0.0, 0.0], [900.0, 0.0]);
     let mut m = Machine::default();
@@ -313,8 +306,6 @@ fn an_escape_stops_on_the_next_frame() {
 
 #[test]
 fn an_escape_in_the_dead_zone_stops_at_once() {
-    // browser/scrolling: Escape, or another click with any button anywhere in the window, stops autoscroll.
-    // (Review round 1: with nothing moving there is no glide to stop, so no frame need pass.)
     let (mut m, _) = running(1000.0);
     m.request_stop();
     assert!(!m.active(), "idle, not stopping");
@@ -360,7 +351,6 @@ impl Rig {
         Self::with(len, None)
     }
 
-    /// `len` rows, and autoscroll also moving `sideways` (C4's sideways scroll).
     fn with(len: usize, sideways: Option<Target>) -> Self {
         let entries = (0..len as u64)
             .map(|i| {
@@ -467,8 +457,6 @@ fn a_press_without_a_shield_stops_autoscroll_and_goes_no_further() {
     assert_eq!(flow, Flow::Handled);
     assert!(!r.auto.active());
     assert!(r.heard.borrow().is_empty());
-    // It doesn't scroll its own viewport to stop (the autoscroll may be another listing's);
-    // the next drive stops every target, with the transaction it has.
     assert!(!effects.iter().any(|e| matches!(e, Effect::ScrollTo { .. })));
 }
 
@@ -520,8 +508,6 @@ fn a_middle_press_moves_the_sideways_scroll_around_the_collection_too() {
 
 #[test]
 fn a_middle_press_on_a_rows_margin_in_a_listing_that_fits_does_nothing() {
-    // browser/scrolling: Middle-clicking a listing that fits its viewport starts no autoscroll.
-    // (Strata's margin is background: the row's open-in-new-tab doesn't run either.)
     let mut r = Rig::new(10);
     let (flow, _) = r.press(PointerButton::Middle, 2.0, 100.0);
     assert_eq!(flow, Flow::Handled);
@@ -544,8 +530,6 @@ fn a_folder_change_stops_the_collections_autoscroll() {
 
 #[test]
 fn an_escape_on_the_shield_stops_autoscroll_in_the_same_frame() {
-    // browser/scrolling: Escape, or another click with any button anywhere in the window, stops autoscroll.
-    // (`El::modal_tx` hands dismiss a `Tx`, retiring U-C24-6.)
     use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, col};
     use strata_kit::look::Look;
 
@@ -605,8 +589,6 @@ fn an_escape_on_the_shield_stops_autoscroll_in_the_same_frame() {
         key: Key::Escape,
         mods: Mods::default(),
     });
-    // `rt.poll` is unset (`drive` never runs): the single frame that dispatches Escape stops
-    // `auto` directly from `modal_tx`'s dismiss handler.
     rt.frame(1.0 / 60.0);
     assert!(
         !rt.state.auto.active(),

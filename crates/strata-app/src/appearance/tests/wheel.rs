@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The window's zoom wheel (`appearance::wheel`): Ctrl+wheel over a view's entries steps the
-//! text size in each view and over the window's header, where no scroll view holds it; with
-//! Alt it does not. Ctrl+Shift+wheel steps the Icons tiles a step a notch, once, and sizes
-//! nothing in List.
-
 use rune::{Mods, Tx, WheelEvent};
 use strata_desktop::settings::TextSize;
 
@@ -66,8 +61,6 @@ fn wheel_over_header(host: &mut Offscreen, mods: Mods) {
     idle(host);
 }
 
-/// In the view `mode` shows, two notches of Ctrl+wheel over an entry make the text two pixels
-/// larger, one with Ctrl+Alt changes nothing, and one over the header one pixel more.
 fn ctrl_wheel_steps_the_text_size(mode: &'static str, shape: Shape, name: &str) {
     hosted_with(
         MODULE,
@@ -141,8 +134,6 @@ fn ctrl_shift() -> Mods {
     })
 }
 
-/// Ctrl+Shift+wheel steps the Icons tiles one step a notch, over the grid (C3's) and over the
-/// header (the window's), and leaves the text.
 #[test]
 fn ctrl_shift_wheel_steps_the_icons_tiles_once_a_notch() {
     hosted_with(

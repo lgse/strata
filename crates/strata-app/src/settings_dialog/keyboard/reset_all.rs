@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Reset all's confirmation: GTK's `confirm_reset_all` (`src/ui/settings/keyboard.rs`), a
-//! message over the Settings pages (`settings_dialog::message`) that names the shown mode and
-//! restores its shipped keys. Cancel, Close dialog and a press on the scrim close it and give
-//! Reset all the keyboard back, as on GTK.
-//!
-//! **A deliberate difference:** Escape closes it too, as every other modal of either interface
-//! does. GTK's stays open, since `confirm_reset_all` never calls `close_on_escape`: the fault of
-//! `oracle` finding [#2547](https://github.com/lgse/strata/issues/2547)
-//! (`docs/rune/parity/findings.md`), whose fix belongs on `main`.
-
 use rune::{El, Tx};
 use rune_kit::ButtonVariant;
 use strata_core::i18n::tr;
@@ -66,7 +56,6 @@ pub(in crate::settings_dialog) fn overlay(app: &App) -> Option<El> {
         &app.look,
         MessageSpec {
             key: "settings-keymap-reset-all",
-            // GTK's is Lucide's `undo-2`, which `strata-kit` does not ship.
             icon: IconName::Refresh,
             title: tr("Reset all keybinds?"),
             subtitle: mode_name(map),

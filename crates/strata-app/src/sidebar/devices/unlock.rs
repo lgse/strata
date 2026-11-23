@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Mounting volumes, unlocking encrypted volumes with C26's passphrase prompt, starting
-//! password-protected drives, waiting on competing automounters, and showing unlock progress
-//! (`src/ui/browser/location/volumes.rs`, `devices.rs`, `mount_errors.rs`, `unlock_progress.rs`).
-
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -163,8 +159,6 @@ struct DeviceMount {
     guard: UnlockSlotGuard,
 }
 
-/// RAII guard for an in-flight unlock slot; releases the slot and dismisses its progress
-/// overlay on drop even if the initiating window closes or an async step is abandoned.
 pub(super) struct UnlockSlotGuard {
     keys: Option<DeviceKeys>,
     window_later: WeakLater<App>,
@@ -771,8 +765,6 @@ fn finish_unlock_slot(window_later: &WeakLater<App>, keys: &DeviceKeys) {
             .retain(|slot| !unlock_target_matches(&slot.keys, keys));
     });
 }
-
-// Pure classification & matching rules (matching GTK's `mount_errors.rs` and `devices.rs`).
 
 pub(super) fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
     match result {

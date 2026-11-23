@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Drawing a menu directly on Rune's anchored popover primitives (`rune_kit::popover`,
-//! `rune_kit::scrim`) and Strata's C24 accent scroll bar (`crate::scroll::Bar`), with Strata's
-//! corners, icon tinting, submenu chevrons, right-edge spacing, and keyboard navigation.
-
 use std::borrow::Cow;
 use std::rc::Rc;
 
@@ -25,31 +21,23 @@ const ROW_RADIUS: f32 = 5.0;
 pub(super) const MIN_WIDTH: f32 = 160.0;
 /// The widest a menu grows to show its rows whole; past it, labels end in an ellipsis.
 pub(super) const MAX_WIDTH: f32 = 360.0;
-/// The longest header line drawn whole, in characters; a longer one is shortened in the middle
-/// (Strata's `ITEM_CONTEXT_SUMMARY_MAX_CHARS`, its header labels' `max_width_chars`).
 pub(super) const HEADER_CHARS: usize = 30;
 /// A compact row's height, and a group label's.
 const ROW: f32 = 28.0;
 /// Row left padding, in points.
 const ROW_PL: f32 = 12.0;
-/// Row right padding, in points: together with [`LIST_PAD`] this keeps 16 pt from the menu's
-/// right edge (matching GTK's 8 + 8 px) so shortcuts and chevrons stay clear of the 4 pt bar.
 const ROW_PR: f32 = 14.0;
 /// Gap between a row's leading icon, label, shortcut, indicator, and chevron.
 const ROW_GAP: f32 = 8.0;
 /// List padding inside the menu frame, in points.
 const LIST_PAD: f32 = 2.0;
-/// Leading icon size, matching GTK's 15 px menu icons.
 const ICON_SIZE: f32 = 15.0;
 /// Trailing submenu chevron size, in points.
 const CHEVRON_SIZE: f32 = 14.0;
 /// Trailing check indicator slot size, in points.
 const INDICATOR_SIZE: f32 = 16.0;
-/// Gap keeping the C24 scroll bar inside the 1 pt menu border and rounded corners.
 const BAR_INSET: f32 = 2.0;
 
-/// A header line as the menu draws it. Group labels never shrink or ellipsize, so a line is
-/// cut before it reaches one, or the menu would widen to show it whole.
 fn shown(line: &str) -> Cow<'_, str> {
     elide_middle(line, HEADER_CHARS)
 }
@@ -80,7 +68,6 @@ pub(super) struct Render<'a, S> {
     pub top_width: f32,
     /// Keeps underlying selectable text non-inert while open (omits Rune's modal trap).
     pub keeps_text_selection: bool,
-    /// One C24 scroll bar per open surface depth (`0` = top-level, `1..` = open submenus).
     pub scroll_bars: Vec<Bar>,
     pub look: &'a Look,
     /// An item without a submenu was chosen: its path.
@@ -149,8 +136,6 @@ struct SubmenuMount<'a> {
 }
 
 impl<S: 'static> Render<'_, S> {
-    /// The menu's anchor element (zero size, out of the layout), with its surfaces pushed into
-    /// `layer`.
     pub fn build(self, layer: &mut Vec<El>) -> El {
         let kit = &self.look.kit;
         let anchor_key = format!("{}-trigger", self.key);
@@ -222,8 +207,6 @@ impl<S: 'static> Render<'_, S> {
         trigger
     }
 
-    /// Builds one menu surface (top-level or submenu) and pushes any open child submenus into
-    /// `subs`.
     fn build_surface(&self, spec: &SurfaceSpec<'_>, rows: &Rc<Vec<Row>>, subs: &mut Vec<El>) -> El {
         let look = self.look;
         let kit = &look.kit;
@@ -370,7 +353,6 @@ impl<S: 'static> Render<'_, S> {
         subs.extend(deeper);
     }
 
-    /// Builds one menu item row, matching GTK's accent/danger icon tinting and thin chevron.
     fn build_item(&self, row_spec: &RowSpec<'_>) -> El {
         let look = self.look;
         let item = row_spec.item;
@@ -609,7 +591,6 @@ fn separator_row(look: &Look, index: usize) -> El {
         .a11y_hidden()
 }
 
-/// Strata's C24 accent scroll bar over the shrinking menu scroll viewport.
 fn scroll_body<S: 'static>(prefix: &str, bar: &Bar, look: &Look, list: El) -> El {
     let scroll_key = format!("{prefix}-scroll");
     let bar_key = format!("{prefix}-scrollbar");
@@ -632,8 +613,6 @@ fn scroll_body<S: 'static>(prefix: &str, bar: &Bar, look: &Look, list: El) -> El
         .child(anchor(0.0, 0.0, bar_el))
 }
 
-/// Collects every mounted item row's key and submenu metadata across top-level and open
-/// submenus, matching the exact entry indices assigned by [`Render::build_list`].
 fn collect_rows(scope: &CollectScope<'_>, rows: &mut Vec<Row>) {
     let has_body = scope.sections.iter().any(|s| !s.items.is_empty());
     let mut entry_index = scope.header.len() + usize::from(!scope.header.is_empty() && has_body);
@@ -687,18 +666,6 @@ struct Hands<S> {
     dismiss: Option<Dismiss<S>>,
 }
 
-/// The surface `depth` levels in heard `ev`:
-///
-/// - Right, Enter and Space on a submenu's row open it and focus its surface (`Tx::focus`),
-///   which lands on its first sensitive row in the same commit without making the submenu a
-///   separate modal (so a click on the parent's rows still runs them, and a press outside both
-///   closes the whole menu). A submenu with no sensitive row opens with the keyboard left on its
-///   row.
-/// - Left in a submenu closes it, and its `focus_return` brings focus back to its row. Escape
-///   anywhere is the top menu's modal's: it closes the whole menu.
-/// - Tab and Shift+Tab move as Down and Up do, wrapping, as GTK's menus move (Rune's Tab
-///   leaves a focus group whole).
-/// - Ctrl+A stays in the menu.
 fn menu_key<S>(
     s: &mut S,
     ev: &KeyEvent,
@@ -736,12 +703,8 @@ fn menu_key<S>(
             (hands.close_to)(s, depth - 1);
             return true;
         }
-        // Escape in a modal menu needs no arm: the top menu's modal takes it and closes the
-        // whole menu.
         _ => return false,
     }
-    // A surface hears only its own rows' keys: a submenu is the layer's, not a child of its
-    // parent's surface.
     match focused {
         Some(row) if row.submenu => {
             (hands.open)(s, row.path.clone());
@@ -754,9 +717,6 @@ fn menu_key<S>(
     }
 }
 
-/// Keys a non-modal (`keeps_text_selection`) menu keeps from leaking to Rune's landmark cycle
-/// (`F6` / `Shift+F6`), background `page_scroll` (when all items are disabled and the menu
-/// surface holds focus directly), or `Escape` / `Shift+Escape` dismissal.
 fn non_modal_key<S>(
     s: &mut S,
     ev: &KeyEvent,
@@ -781,8 +741,6 @@ fn non_modal_key<S>(
     }
 }
 
-/// How wide a menu must be to show `header` and `sections` whole: each row's parts as
-/// [`Render::build_item`] lays them out, plus the list's padding.
 pub(super) fn width(look: &Look, header: &[String], sections: &[Section]) -> f32 {
     width_with_min(look, header, sections, MIN_WIDTH)
 }
@@ -835,9 +793,6 @@ pub(super) fn width_with_min(
     (w + 2.0 * LIST_PAD).clamp(floor, ceiling)
 }
 
-/// How tall a menu of `header` and `sections` is: 28 pt rows and labels, a described row as
-/// tall as its two lines and 6 pt above and below them, a 1 pt separator with 2 pt either
-/// side, and 2 pt of padding top and bottom.
 pub(super) fn height(look: &Look, header: &[String], sections: &[Section]) -> f32 {
     let ty = &look.kit.ty;
     let described = (12.0 + ty.ui_compact.line_px() + 2.0 + ty.small.line_px()).max(ROW);

@@ -319,8 +319,6 @@ impl ProcStep {
             let raw = pid(target)?;
             let target = rustix::process::Pid::from_raw(raw)
                 .ok_or_else(|| format!("{target} is not a pid"))?;
-            // The pidfd pins the process before its parent is checked, so a
-            // reused pid can never receive the signal.
             let pidfd = rustix::process::pidfd_open(target, rustix::process::PidfdFlags::empty())
                 .map_err(|error| format!("cannot open {target:?}: {error}"))?;
             parent_is_app(raw).map_err(|error| format!("refusing to kill: {error}"))?;

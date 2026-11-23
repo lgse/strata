@@ -1,15 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! [`PromptSpec`]: what one kind of footer prompt shows and which keys it keeps, as data, with
-//! presets for Strata's twelve 10xer prompts (`src/ui/tenxer_mode.rs`, `Prompt`).
-
-/// What Up and Down do in a prompt.
-///
-/// Used by: hosts.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Arrows {
-    /// They move the listing's cursor while the prompt keeps the keyboard
-    /// ([`super::PromptIntent::Step`]): `/`, `?`, `f`, `s`, `create ›`.
     #[default]
     Listing,
     /// They choose another candidate, wrapping: the folder pickers and the history prompts.
@@ -18,9 +10,6 @@ pub enum Arrows {
     Swallow,
 }
 
-/// The words under a candidate list: its keys and what they do. Shown as keycaps with words.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Legend {
     /// Up and Down: "Choose".
@@ -45,26 +34,16 @@ impl Legend {
     }
 }
 
-/// One kind of footer prompt: its label, its accessible name, and which keys it keeps.
-/// Strata's words are the defaults; a translated host replaces them.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PromptSpec {
     /// The label before the field, in the accent: `filter:`, `go ›`, or a keycap (`/`).
     pub label: String,
     /// The field's accessible name: "Filter this listing".
     pub name: String,
-    /// Whether Ctrl+Z and its kin undo. Off for `go ›`, so undo history can never bring back a
-    /// typed credential.
     pub undo: bool,
     /// What Up and Down do.
     pub arrows: Arrows,
-    /// The candidate list's legend, for a prompt with [`Arrows::Candidates`]; Tab completes
-    /// only where it says so.
     pub legend: Option<Legend>,
-    /// Whether the hint shows the chosen candidate's place ("2 of 5") when the host gives none:
-    /// the history prompts.
     pub position: bool,
 }
 

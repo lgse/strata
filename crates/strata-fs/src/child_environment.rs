@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! Launched programs get the `GDK_DEBUG` Strata started with, not the
-//! `no-portals` override it added for its own D-Bus service activation.
-
 use std::{ffi::OsStr, process::Command};
 
 use gio::prelude::*;
 
-/// Present only in a process Strata restarted with `no-portals`; empty when
-/// `GDK_DEBUG` was originally unset.
 pub const ORIGINAL_GDK_DEBUG: &str = "STRATA_ORIGINAL_GDK_DEBUG";
 const GDK_DEBUG: &str = "GDK_DEBUG";
 

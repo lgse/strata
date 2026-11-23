@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The guard of a drag source against Rune's capture, headless at the pinned Rune rev: the
-//! workaround for U10 (draft, not filed) relies on Rune ending a held drag on Escape, and on
-//! `Tx::send_key` delivering one. If a Rune move changes either, these fail. The
-//! compositor's proof that it took the pointer, which a session gets from the drag's own
-//! `wl_data_device.enter`, is delivered here by [`holding`].
-
 use rune::{Cx, El, Env, KeyEvent, Phase, Runtime, Tx, col, el};
 
 use super::hub::tests::FAKE_START;
@@ -17,8 +11,6 @@ struct S {
     phases: Vec<(Phase, bool)>,
     started: u32,
     keys: Vec<String>,
-    /// Phases an app's own `on_drag` heard, which starts its drag with `start_drag` and
-    /// routes nothing through `owns`.
     own: Vec<(Phase, bool)>,
 }
 
@@ -80,9 +72,6 @@ fn runtime(release: Release) -> (Runtime<S>, (f32, f32)) {
     (rt, at)
 }
 
-/// Wayland: once the system drag starts, the synthetic Escape ends Rune's capture at once
-/// (no focus bounce needed), the cancelled Up it brings is swallowed, the Escape reaches no
-/// key handler, and the pointer coming back with no button reaches the element no more.
 #[test]
 fn on_wayland_the_escape_ends_runes_capture_at_the_start() {
     let (mut rt, (x, y)) = runtime(Release::Escape);
@@ -125,8 +114,6 @@ fn on_wayland_the_escape_ends_runes_capture_at_the_start() {
     assert_eq!(rt.state.phases.last(), Some(&(Phase::Down, false)));
 }
 
-/// X11: Rune keeps the capture through the drag (winit has the grab), the real release is
-/// swallowed, and a user's Escape cancels the press, which the guard turns into a cancel.
 #[test]
 fn on_x11_the_real_release_is_swallowed() {
     let (mut rt, (x, y)) = runtime(Release::RealUp);
@@ -151,9 +138,6 @@ fn on_x11_the_real_release_is_swallowed() {
     assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
 }
 
-/// Review round 1, B2: a fast flick. The threshold move and the release reach Rune in one
-/// batch, so the release has ended the capture before any Escape P1 sends is handled: an
-/// Escape sent then would reach the app's key handlers.
 #[test]
 fn a_fast_flick_on_wayland_sends_no_escape_to_the_app() {
     let (mut rt, (x, y)) = runtime(Release::Escape);
@@ -173,8 +157,6 @@ fn a_fast_flick_on_wayland_sends_no_escape_to_the_app() {
     );
 }
 
-/// The flick again, with the compositor's proof arriving after the release: the guard has
-/// seen the Up, so no Escape goes out.
 #[test]
 fn a_proof_after_the_release_sends_no_escape() {
     let (mut rt, (x, y)) = runtime(Release::Escape);
@@ -194,8 +176,6 @@ fn a_proof_after_the_release_sends_no_escape() {
     );
 }
 
-/// Review round 1: an app's own `on_drag` calling `start_drag` without routing its press
-/// through `owns` gets no Escape, so no cancelled Up it didn't ask for.
 #[test]
 fn start_drag_from_a_press_the_guard_never_saw_sends_no_escape() {
     let (mut rt, _) = runtime(Release::Escape);
@@ -216,9 +196,6 @@ fn start_drag_from_a_press_the_guard_never_saw_sends_no_escape() {
     assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
 }
 
-/// Review round 2, R2-B1: the source leaves the tree when its drag starts (an app hiding what
-/// it moves, a tab torn off). Rune's `cancel_drag` finds no live element, so an Escape would
-/// go on to the app's keys: none may be sent.
 mod gone {
     use rune::{Cx, El, Env, KeyEvent, Runtime, Tx, col, el};
 
@@ -299,9 +276,6 @@ fn route(rt: &mut Runtime<S>, r: super::hub::Routed) {
     });
 }
 
-/// Review round 2: the proof's update first checks the drag still runs (`still_holding`).
-/// Here the window lost focus before the update (Rune ended the capture at that input, and
-/// its cancelled Up waits for the next frame), and the drag has dropped meanwhile: no Escape.
 #[test]
 fn a_proof_for_a_drag_that_already_dropped_sends_no_escape() {
     let (mut rt, at) = runtime(Release::Escape);
@@ -319,8 +293,6 @@ fn a_proof_for_a_drag_that_already_dropped_sends_no_escape() {
     );
 }
 
-/// R2-B1: the source moves to another place in the tree when its drag starts (wrapped in a
-/// new parent): Rune's capture names the old path, so no Escape may be sent.
 mod moved {
     use rune::{Cx, El, Env, KeyEvent, Runtime, Tx, col, el};
 
@@ -385,8 +357,6 @@ mod moved {
 mod reads;
 mod review3;
 
-/// A drop reads each listed type in the form the drag offers it, an exact form first, and
-/// reads a type two listed names share once.
 #[test]
 fn a_target_reads_the_offered_form_of_each_listed_type() {
     let offer = DropOffer {

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C11 [`DocumentView`] adapter and asynchronous sandboxed media renderer (`MediaQueue`) for
-//! Markdown, HTML, RTF, DOCX, and ODT previews.
-
 use std::{
     collections::VecDeque,
     path::PathBuf,
@@ -41,8 +38,6 @@ const MEDIA_RENDER_SLOTS: usize = 4;
 
 static NEXT_DOC_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Semantic sRGB endpoints GTK's `MediaPicture::snapshot` maps diagram and equation luminance onto:
-/// black ink (`luma = 0`) becomes `text`, white background/box fills (`luma = 1`) become `surface`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct DiagramPalette {
     pub(super) text: Rgba8,
@@ -56,8 +51,6 @@ pub(super) fn diagram_palette(look: &Look) -> DiagramPalette {
     }
 }
 
-/// Maps a straight-alpha sRGB RGBA8 equation or Mermaid raster's luminance onto `palette`
-/// (`src/ui/document_media.rs` `MediaPicture::snapshot`), preserving alpha unchanged.
 pub(super) fn tint_diagram_rgba(raw: &[u8], palette: DiagramPalette) -> Vec<u8> {
     let text = [
         f32::from(palette.text.r),

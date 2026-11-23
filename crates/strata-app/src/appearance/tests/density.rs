@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Frame and Content densities: the look follows the saved ones from the start, the
-//! popover's sliders show them as GTK's do, and each change a slider makes is saved and drawn
-//! at once, by its keys and by its Compact and Airy toggles, Return included.
-
 use rune::{Key, KeyEvent, Mods, Tx};
 use serde_json::Value;
 
@@ -42,8 +38,6 @@ fn checked(node: &Value) -> bool {
         .is_some_and(|states| states.iter().any(|seen| seen == "checked"))
 }
 
-/// The slider keyed `key`: its name and value text, and whether its Compact and Airy toggles
-/// are pressed.
 fn slider(host: &Offscreen, key: &str) -> (String, String, [bool; 2]) {
     let slider = node(host, key);
     let snap = |i: usize| checked(&node(host, &format!("{key}-snap-{i}")));
@@ -110,8 +104,6 @@ fn open_popover(host: &mut Offscreen) {
     assert!(opened, "the popover to open");
 }
 
-/// The window draws at the saved densities from the start, and the popover's sliders are
-/// named and valued as GTK's, the toggle of the preset the value rests on pressed.
 #[test]
 fn the_saved_densities_are_drawn_from_the_start_and_shown_by_the_sliders() {
     hosted_with(
@@ -147,9 +139,6 @@ fn the_saved_densities_are_drawn_from_the_start_and_shown_by_the_sliders() {
     );
 }
 
-/// Each change a slider makes is saved and drawn at once and the popover stays open: an arrow
-/// steps 1 px, Page Up the distance between the presets, and Return on the Compact toggle
-/// sets that preset, saved by its name.
 #[test]
 fn a_sliders_change_is_saved_and_drawn_at_once() {
     hosted_with(

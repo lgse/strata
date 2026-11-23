@@ -5,10 +5,6 @@ use super::*;
 #[test]
 fn a_source_is_deleted_once_its_copy_was_stamped_again_at_close() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // A FUSE writeback cache stamps the close time, within the 2 s of a
-    // recent source's that the times check lets stand. An NFSv4.2 write
-    // delegation stamps any copy, which gets the source's times again after
-    // the close, by name where its owner may neither read nor write it.
     let fuse_writeback = || Quirks {
         times_reset_at_close: true,
         ..Quirks::sshfs()
@@ -65,8 +61,6 @@ fn a_source_is_deleted_once_its_copy_was_stamped_again_at_close() -> Result<(), 
 #[test]
 fn a_copy_replaced_before_its_times_are_settled_keeps_its_source() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // Outside sshfs's 3 s window, so the copy of a recent source is not
-    // compared by content.
     let fuse_daemon = || Quirks {
         mount_type: Some(("fuse.rclone", "rw,user_id=1000,group_id=1000")),
         ..Quirks::sshfs()
@@ -126,8 +120,6 @@ fn a_copy_replaced_before_its_times_are_settled_keeps_its_source() -> Result<(),
     Ok(())
 }
 
-/// A special file the move publishes, whether the mount can place it, and
-/// whether another program replaces what it published.
 #[derive(Clone, Copy)]
 struct Special {
     pipe: bool,
@@ -145,8 +137,6 @@ impl Special {
         format!("pipe: {pipe}, can_place: {can_place}, replace: {replace}")
     }
 
-    /// A link made again at its name holds the copy once it points where
-    /// the staged link did.
     fn proven(self) -> bool {
         !self.pipe && !self.replace
     }
@@ -165,8 +155,6 @@ impl Special {
         Ok(())
     }
 
-    /// After each call that publishes the file, puts `arrival` in its place
-    /// once.
     fn replacing(self, arrival: &Path, target: &Path, replaced: &Arc<AtomicBool>) -> Vec<Before> {
         let creation = if self.pipe {
             Op::CreateNode

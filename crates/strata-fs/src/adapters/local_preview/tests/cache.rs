@@ -63,8 +63,6 @@ fn assert_cache_holds(cache: &PreviewCache, entries: usize, bytes: usize) {
     );
 }
 
-/// Writes one PNG page into the shared thumbnail cache and returns the page,
-/// which differs from the thumbnail the cache now holds.
 fn store_shared_thumbnail(path: &Path) -> Vec<u8> {
     let surface =
         cairo::ImageSurface::create(cairo::Format::ARgb32, 640, 800).expect("page surface");

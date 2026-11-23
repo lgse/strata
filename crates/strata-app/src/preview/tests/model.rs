@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The model preview's host (`preview::model`): the frame shows at once and follows the load's
-//! stages; a mesh's picture lands with its badges; a camera button asks the provider for that
-//! view; a failed render keeps the picture; a render for a viewer that has gone is dropped; and
-//! a picture saved in the file shows alone.
-
 use rune::Tx;
 use strata_components::viewers::model::{CameraView, ModelState};
 use strata_core::model::Location;
@@ -172,8 +167,6 @@ fn a_picture_saved_in_a_model_file_shows_alone() {
     );
 }
 
-/// A first load that fails at once, as the 128 MiB limit does, replaces the frame while its
-/// picture's layout report is still queued: the report lands nowhere, and nothing panics.
 #[test]
 fn a_load_that_fails_at_once_leaves_no_report_for_the_frame() {
     hosted(

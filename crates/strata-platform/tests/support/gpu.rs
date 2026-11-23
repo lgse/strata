@@ -1,20 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! The Vulkan driver clients use and the renderer sway composites with.
-//!
-//! The pairs that give a Rune window:
-//!
-//! - lavapipe with sway's pixman renderer: CI's path. Lavapipe presents through `wl_shm` (and
-//!   plain X11 images), so the compositor needs no GPU and no `/dev/dri`.
-//! - a hardware driver with sway's gles2 renderer: the hardware driver presents through
-//!   `linux-dmabuf`, which pixman doesn't offer (S1: NVIDIA gives no window under pixman).
-
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
-/// `STRATA_VK_ICD`, else lavapipe's ICD for this architecture, else `lvp_icd.json`, else every
-/// lavapipe ICD found; none leaves the loader's default. The same order as the gallery's
-/// goldens (`docs/rune/testing.md`), so a machine renders on CI's driver where it has it.
 pub(super) fn icd() -> Option<OsString> {
     if let Some(icd) = std::env::var_os("STRATA_VK_ICD").filter(|v| !v.is_empty()) {
         return Some(icd);

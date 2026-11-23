@@ -217,8 +217,6 @@ struct Host {
     heard: Vec<f64>,
 }
 
-/// A field whose host opens no menu for it (it has none to show now), and a button to move
-/// the keyboard to.
 fn field() -> NumberField<Host> {
     NumberField::new("n", |h: &Host| &h.field, |h: &mut Host| &mut h.field)
         .label("Workers")
@@ -247,8 +245,6 @@ fn a_menu_press_that_opens_no_menu_keeps_the_blur_commit() {
         look: Look::fallback(false),
         heard: Vec::new(),
     };
-    // Rune's own font: a text system built here would move the fonts the crate's other tests
-    // measure with (docs/rune/testing.md, R-K6-1).
     let mut rt = Runtime::new(host, view, (400.0, 200.0), Env::new(false, 1.0));
     rt.poll = Some(poll);
     let frames = |rt: &mut Runtime<Host>| {

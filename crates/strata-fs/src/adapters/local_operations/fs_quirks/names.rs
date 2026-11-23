@@ -2,8 +2,6 @@
 
 use super::*;
 
-/// How a name breaks UTF-8, worst last. A decoder that only checks the
-/// shape of each sequence takes overlong forms and encoded surrogates.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Utf8Fault {
     None,
@@ -60,8 +58,6 @@ pub fn ends_with_dot_or_space(name: &OsStr) -> bool {
     matches!(name.as_encoded_bytes().last(), Some(b'.' | b' '))
 }
 
-/// The device names both `windows_names` drivers check: `CON`, `PRN`,
-/// `AUX`, `NUL`, `COM1`-`COM9` and `LPT1`-`LPT9`, alone or before a dot.
 pub fn device_name(name: &OsStr) -> bool {
     let bytes = name.as_encoded_bytes();
     let ends_at = |len: usize| bytes.len() == len || bytes.get(len) == Some(&b'.');
@@ -98,9 +94,6 @@ pub fn exfat_refuses(name: &OsStr) -> Option<Errno> {
     }
 }
 
-/// The daemon stores overlong forms and encoded surrogates, writing an
-/// overlong `/` as a real one and aborting at the next listing. Nothing may
-/// send them, so they fail with an errno no driver gives.
 pub fn exfat_fuse_refuses(name: &OsStr) -> Option<Errno> {
     match utf8_fault(name) {
         Utf8Fault::Shape => Some(Errno::ILSEQ),
@@ -151,8 +144,6 @@ pub fn cifs_nocase_refuses(name: &OsStr) -> Option<Errno> {
         .then_some(Errno::INVAL)
 }
 
-/// What the SMB client lists: the character each `mapposix` code point
-/// stands for, and an 8.3 alias for a name Samba takes for a device.
 pub fn smb_listed(name: &OsStr) -> Option<OsString> {
     let name = name.to_str()?;
     let (base, extension) = name.split_once('.').unwrap_or((name, ""));

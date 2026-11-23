@@ -139,8 +139,6 @@ impl BlindEvidence {
         self.same_names && (self.moved || self.lagged)
     }
 
-    /// Names changed under a stamp that did not move, with no daemon cache to
-    /// blame: this mount hides changes from stamps.
     fn proves_blind(&self) -> bool {
         self.unchanged && !self.same_names && !self.lagged && !self.cached
     }

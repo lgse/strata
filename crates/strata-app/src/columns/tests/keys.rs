@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The key sequences of gate G2's Columns runs, against the adapter. Each step names the
-//! scenario file it comes from under `tests/qa/scenarios/`, and expects what that file
-//! waits for. After every step the browser must hold what the view shows.
-
 use super::{
     MODULE, Seen, assert_browser_agrees, fixture, folder_name, hosted, open, press, save_settings,
     wait,
@@ -221,10 +217,6 @@ const SEQUENCES: &[(&str, &[Step])] = &[
     ),
 ];
 
-/// The five of slice decision 17's six behaviours the fixture can show: what the GTK view
-/// does, which the Columns component now does too, with the browser holding the result.
-/// The sixth, a key that only changes the active column, is
-/// `a_key_between_open_columns_mirrors_though_the_pointer_moved_last`.
 const AS_THE_GTK_VIEW: &[(&str, &[Step])] = &[
     (
         "Return on a folder whose column mirroring opened lands on its first entry",
@@ -320,9 +312,6 @@ fn keys_do_what_the_gtk_view_does_where_the_component_differed() {
     );
 }
 
-/// `Browser::focus_child` raises `FocusChanged`, so the GTK views mirror the entry the
-/// keyboard lands on whatever moved last. The view now reports the key, so the adapter knows
-/// the keyboard is navigating again.
 #[test]
 fn a_key_between_open_columns_mirrors_though_the_pointer_moved_last() {
     hosted(

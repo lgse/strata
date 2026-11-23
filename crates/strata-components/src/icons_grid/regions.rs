@@ -1,22 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! Which part of a tile a point is on, for C1b's click, drag and band decision.
-//!
-//! After Strata's `hits_item_content` (`src/ui/pointer.rs`, lgse/strata `upstream/main`
-//! 35ee677ab): the thumbnail slot and the details text are the entry's content, the drawn box
-//! of the name is its name (where a slow second click renames), and the rest is blank space
-//! a band starts from: the frame's padding around the slot, the card's padding, the space
-//! beside a short centred name, and the margin between tiles. Strata's hover and drag treat
-//! the frame padding as content; a band, as here, treats it as blank (lgse/strata#998).
-
 use crate::collection::element::Region;
 use crate::contract::{Point, Rect};
 
 use super::caption::Cut;
 use super::metrics::TileMetrics;
 
-/// The part of a cell `cell_w` wide that `local` (in the cell's points) is on, for a tile
-/// whose name shows as `cut` and whose details line is `details_w` points wide (0: none).
 pub fn region(m: &TileMetrics, cell_w: f32, cut: &Cut, details_w: f32, local: Point) -> Region {
     if m.slot_rect(cell_w).contains(local) {
         return Region::Content;

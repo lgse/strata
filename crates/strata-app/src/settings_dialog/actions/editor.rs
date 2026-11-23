@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The action editor form's state, defaults, template application, and validation,
-//! matching `src/ui/settings/actions/editor.rs`.
-
 use rune::{TextEdit, Tx};
 use strata_components::{
     code_view::{editor::EditorState, highlight::Highlighter},

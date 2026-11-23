@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! W1e: every drop zone C1e, C2, C6, C7 and C8 attach, and every drag source C9 and the viewers
-//! attach, reaches a keyed binder (as X2's is) with the key its element carries, unique in the
-//! window or inside the scope it names. Each test
-//! mounts a page's own component state with a binder that records what it hears.
-
 mod w1e {
     use std::cell::RefCell;
     use std::collections::HashSet;
@@ -75,10 +70,6 @@ mod w1e {
         )
     }
 
-    /// The zones and sources heard since the last call, each once. No build may hear one key
-    /// twice in one scope: two zones (or two sources) built under one key would be one target
-    /// to a binder that finds them by key, whatever keys Rune leaves on the elements (a
-    /// virtual row keeps its own).
     fn heard_all() -> (HashSet<Heard>, HashSet<Heard>) {
         let builds = BUILDS.with(|b| std::mem::take(&mut *b.borrow_mut()));
         assert!(!builds.is_empty(), "the view never built");
@@ -130,10 +121,6 @@ mod w1e {
             .collect()
     }
 
-    /// Each heard key is on exactly one live element: in the window, or under the element
-    /// keyed its scope when it has one. Rune renames a sibling that repeats a key
-    /// `key#dup1`, `key#dup2` (and warns), so those count as the same key: two zones given one
-    /// key show up as two elements, not one.
     fn check_heard_against_tree<S>(rt: &Runtime<S>, heard: &HashSet<Heard>) {
         let elements: Vec<ElementInfo> = rt.elements().into_iter().filter(|e| !e.exiting).collect();
         let same_key = |name: &str, key: &str| {
@@ -172,8 +159,6 @@ mod w1e {
         assert!(heard.contains(&want), "{want:?} not heard among {heard:?}");
     }
 
-    // ---- C1e: folder rows (scoped by the collection) and the background ----
-
     fn c1_view(g: &Gallery, _: &mut Cx<Gallery>) -> El {
         begin_build();
         let list = scenes::c1::collection().dnd(recording()).build(g);
@@ -206,8 +191,6 @@ mod w1e {
         );
     }
 
-    // ---- C2: each column's rows and background, and the blank strip ----
-
     fn c2_view(g: &Gallery, _: &mut Cx<Gallery>) -> El {
         begin_build();
         let strip = scenes::c2::columns_view().dnd(recording()).build(g);
@@ -235,8 +218,6 @@ mod w1e {
             );
         }
     }
-
-    // ---- C6: each ancestor crumb ----
 
     const LOC: &str = "w1e-loc";
 
@@ -271,8 +252,6 @@ mod w1e {
             "the current crumb takes no drop"
         );
     }
-
-    // ---- C7: tabs, New tab and the strip ----
 
     const STRIP: &str = "w1e-tabs";
 
@@ -322,8 +301,6 @@ mod w1e {
             "Trash builds no zone"
         );
     }
-
-    // ---- C8: the sidebar, its rows and its pin gaps ----
 
     fn c8_view(g: &Gallery, _: &mut Cx<Gallery>) -> El {
         begin_build();
@@ -379,9 +356,6 @@ mod w1e {
         assert_eq!(heard_rows(&heard), rows);
     }
 
-    /// The rows the sidebar shows that take drops, as the binder should hear them: places and
-    /// pins that accept drops (pins only while PINNED is open), and devices that accept drops,
-    /// mounted and not releasing.
     fn accepting_rows(g: &Gallery) -> HashSet<Heard> {
         let d = &g.c8;
         let places = d
@@ -415,8 +389,6 @@ mod w1e {
         };
         heard.iter().filter(|(k, _)| row(k)).cloned().collect()
     }
-
-    // ---- C9 and the viewers: drag sources ----
 
     fn none<S: 'static>() -> DragSource<S> {
         DragSource::new(|_: &S| None)

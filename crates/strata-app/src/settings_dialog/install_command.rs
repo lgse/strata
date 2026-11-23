@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Copyable and terminal-runnable package install command widget and reaped terminal launcher,
-//! ported from `src/ui/settings/install_command.rs` and shared by Diagnostics and Integrations.
-
 use std::sync::mpsc;
 
 use rune::{El, Tx, row, text};
@@ -82,8 +79,6 @@ pub(super) fn command_box(look: &Look, spec: CommandBoxSpec) -> El {
         .child(buttons::on_return(spec.copy_key, copy_btn))
 }
 
-/// Runs `command` in the user's resolved terminal on a reaped background thread, then delivers
-/// the launch outcome back to `App` through `weak`.
 pub(super) fn run_in_terminal(
     weak: WeakLater<App>,
     command: &str,
@@ -138,8 +133,6 @@ fn spawn_reaped(
     });
 }
 
-/// Keeps the terminal open after the install so its output stays readable. The prompt and command
-/// words are positional arguments, never parsed by the shell.
 pub(super) fn terminal_install_arguments(command: &str) -> Vec<String> {
     let mut arguments = vec![
         "sh".to_owned(),

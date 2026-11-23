@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for W2 Look contract: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `w2-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-0-groundwork/W2-look-contract.md`.
-//!
-//! Three sheets, all read from `Gallery::look`: the core tokens (colour swatches by registry
-//! name, the type ramp, spacing and sizes, radii, glow, the ladders, roundness and the
-//! animations switch), every semantic icon in each catalog, and the slot tokens. K3's
-//! catalogs replace the placeholders behind the icon sheet with no change here.
-//!
-//! The slot sheet is a review scene only. Each component's work package adds slot tokens, so
-//! a golden listing them would move on every such branch and collide between parallel ones;
-//! a slot's values show in its own page's goldens instead.
-
 use rune::{Color, Cx, El, KeyEvent, ScrollSpec, TextStyle, Tx, col, el, icon, row, text};
 use strata_kit::icons::{self, IconName, IconSet};
 use strata_kit::look::Look;
@@ -22,7 +8,6 @@ use strata_kit::tokens::{self, Kind, Value};
 
 use crate::{Gallery, Scene};
 
-/// W2's demo state, held in `Gallery::w2`.
 #[derive(Default)]
 pub struct Demo {
     pub sheet: Sheet,
@@ -42,8 +27,6 @@ fn open(g: &mut Gallery, dark: bool, sheet: Sheet) {
     g.w2.sheet = sheet;
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("w2", dark)`, then fills in `g.w2`.
 pub const SCENES: &[Scene] = &[
     ("w2-tokens-light", |g| open(g, false, Sheet::Tokens)),
     ("w2-tokens-dark", |g| open(g, true, Sheet::Tokens)),
@@ -51,8 +34,6 @@ pub const SCENES: &[Scene] = &[
     ("w2-icons-dark", |g| open(g, true, Sheet::Icons)),
 ];
 
-/// Scenes for review with `--scene` only, kept out of the goldens.
-/// The slot tokens are here, not in a golden: see the module doc.
 pub const REVIEW: &[Scene] = &[
     ("w2-slots-light", |g| open(g, false, Sheet::Slots)),
     ("w2-slots-dark", |g| open(g, true, Sheet::Slots)),
@@ -67,15 +48,10 @@ pub fn view(g: &Gallery, _cx: &mut Cx<Gallery>) -> El {
     }
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Deliver fake async results here; a worker wakes the loop with `Gallery::waker`. True when
-/// state changed.
 pub fn poll(_g: &mut Gallery, _t: f64, _tx: &mut Tx) -> bool {
     false
 }
@@ -152,8 +128,6 @@ fn note(look: &Look, s: String) -> El {
     text(s).font(look.kit.ty.small).color(look.kit.c.text_base)
 }
 
-/// A swatch per colour token whose name starts with `prefix`, labelled with the rest of
-/// its name, `per_column` to a column.
 fn swatches(look: &Look, prefix: &str, per_column: usize) -> El {
     let colours: Vec<(&'static str, Color)> = tokens::all()
         .filter_map(|t| match t.get(look) {
@@ -307,8 +281,6 @@ fn shape_and_motion(look: &Look) -> El {
 const SLOT_NAME: f32 = 220.0;
 const SLOT_VALUE: f32 = 110.0;
 
-/// Every slot token, a section per slot, each with its name, value and kind. Scrolls when
-/// the slots outgrow the window.
 fn slots_sheet(look: &Look) -> El {
     let s = &look.space;
     col()

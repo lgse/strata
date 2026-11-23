@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf on a 500-page PDF: 500 Letter pages, each with a 2,700-character text layer.
-//! `#[ignore]`d; run with the `perf` profile, and Rune's commit budget to hear slow commits:
-//!
-//! ```sh
-//! RUNE_COMMIT_BUDGET_MS=8 cargo test --profile perf -p strata-components --lib \
-//!     pdf_view::tests::perf -- --ignored --test-threads=1 --nocapture
-//! ```
-//!
-//! The host renders at once in its poll (an image of the size asked, filled with one value,
-//! and the page's layer), so the times are the view's, not a renderer's. It times the first
-//! frame; 600 wheel frames at 120 Hz of 48 points each; 60 Ctrl+wheel notches, one a frame,
-//! and the requests once the zoom rests; Ctrl+End and the 10 frames after; a drag selecting
-//! across three pages; Ctrl+A then Ctrl+C with every page's layer held; and `pop`.
-
 use std::cell::Cell as StdCell;
 use std::time::Instant;
 
@@ -171,9 +157,6 @@ fn five_hundred_pages() {
     let wheel = frames(&mut rt, 600, |rt| rt.wheel(350.0, 450.0, -48.0));
     let (wheel_views, wheel_renders) = (VIEWS.get(), RENDERS.get());
 
-    // Ctrl+wheel: 60 notches, one a frame, in and out by turns, the last five in (ending near
-    // 2×), then rest. Strata's caps (1400 pixels wide, 2.5 MP) already stop a 700-point pane at
-    // 2× scale from rendering sharper, so this part runs with a renderer that allows more.
     rt.update(|h, _| {
         h.pdf.set_caps(RenderCaps {
             max_width: 4096,

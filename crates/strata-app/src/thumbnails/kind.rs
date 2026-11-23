@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Which files get thumbnails, and the sandboxed renderer each kind uses.
-//!
-//! Ported from GTK's `src/ui/thumbnail/kind.rs` at `b4b459dcb`, as new code: nothing under
-//! `src/ui` moves. A change to that file on a merge from `main` is a change here too
-//! (`docs/rune/parity/packages/A1.md`, "Ported from GTK"). The camera kind is left out: it
-//! takes its picture from the camera's preview service, which the Rune side has no part for.
-
 use std::path::Path;
 
 use strata_preview::{
@@ -32,7 +25,6 @@ pub(crate) enum Kind {
 }
 
 impl Kind {
-    /// A kind whose render is slow: one worker stays free of them, as GTK keeps one.
     pub(crate) fn heavy(self) -> bool {
         !matches!(self, Self::Image | Self::AppImage)
     }

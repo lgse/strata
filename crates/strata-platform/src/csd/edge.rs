@@ -29,8 +29,6 @@ impl Edge {
         Edge::NorthWest,
     ];
 
-    /// The cursor over this edge's band. Corners show `Move` until Rune has diagonal resize
-    /// cursors (upstream #145).
     pub fn cursor(self) -> Cursor {
         match self {
             Edge::East | Edge::West => Cursor::ResizeColumn,

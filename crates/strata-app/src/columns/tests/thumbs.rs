@@ -6,8 +6,6 @@ use strata_components::{contract::EntrySource, thumbnails::State};
 
 use super::{Seen, click, fixture, folder_name, host_listed, hosted, open, press, rest, wait};
 
-/// Opening a folder adds a column and its viewer; closing it drops the viewer again, however
-/// often the two alternate.
 #[test]
 fn a_closed_column_leaves_no_thumbnail_viewer_behind() {
     hosted(
@@ -45,8 +43,6 @@ fn a_closed_column_leaves_no_thumbnail_viewer_behind() {
     );
 }
 
-/// A sibling opened at the same depth is another folder: the column's viewer asks for its
-/// rows' thumbnails, not the last folder's.
 #[test]
 fn a_sibling_opened_in_place_has_its_thumbnails_asked_for() {
     hosted(

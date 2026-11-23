@@ -504,9 +504,6 @@ fn stale_mutation_keeps_new_busy_lock_and_refresh_mid_mutation_rescans() {
                 find_by_key(&h.tree(), "integration-example-install").is_some()
             }));
 
-            // 1. Start a mutation in session 1, close Settings, reopen, and start a newer
-            //    mutation for the same id. The stale first mutation must not clear the new lock
-            //    or inject its error into the reopened session.
             let (stale_tx, stale_rx) = mpsc::channel::<()>();
             super::probe::run_mutation(host.app_mut(), "example".to_owned(), move || {
                 let _ = stale_rx.recv();
@@ -568,8 +565,6 @@ fn stale_mutation_keeps_new_busy_lock_and_refresh_mid_mutation_rescans() {
                     .contains_key("example")
             }));
 
-            // 2. Clicking Refresh while a mutation is in flight must still rescan once the
-            //    mutation finishes writing to disk, so the UI never stays stale.
             let (install_tx, install_rx) = mpsc::channel::<()>();
             let install_entry = entry_data.clone();
             let install_root = root.clone();

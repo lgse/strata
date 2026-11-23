@@ -1,28 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C12 [`PdfView`] adapter for PDF previews (`PreviewContent::Pdf`), as GTK's
-//! `src/ui/preview/pdf.rs` hosts its pages.
-//!
-//! - **The first page** arrives with the preview, already rendered (`render_ready`), and opens
-//!   the document at that page's shape: GTK's renderer says a page's size only when it renders
-//!   it.
-//! - **Every other page** is asked of the same [`PreviewProvider`] with its page number and the
-//!   width the view wants, one render at a time across the preview, as GTK's page loader asks on
-//!   bind. The PNG is decoded off the UI thread (`gio::spawn_blocking`) before the view takes it.
-//!   Background [`RenderKind::TextOnly`] requests for find use a minimal box and pass the text
-//!   layer directly to the view without decoding the PNG. A reply for a viewer that has gone, or
-//!   a request the view cancelled, is dropped.
-//! - **Zoom:** Ctrl+wheel over the pages is the view's own, and the window's zoom wheel leaves
-//!   it to the view (`appearance::wheel`), as GTK's `claims_zoom` leaves the PDF's scroll.
-//!   The reset is the key map's `pdf_zoom_reset` ([`RESET`]), read at the dispatcher's
-//!   `zoom_shortcut` stage ahead of the window's `text-reset` while the keyboard is in the
-//!   pages, as GTK's `zoom_shortcut` asks `reset_pdf_zoom` first. The view's own Ctrl+0 is off,
-//!   so a rebound reset follows the key map and an unbound Ctrl+0 reaches the text size.
-//! - **A password-protected PDF** keeps the preview's message card with its Open button
-//!   (`load::render_failed`), as GTK's does.
-//!
-//! Every element is keyed under [`PDF_KEY`], so the preview's guards and focus memory cover it.
-
 use std::{cell::Cell, rc::Rc, sync::Arc};
 
 use rune::{Cx, El, Tx};
@@ -49,25 +26,17 @@ use crate::{
 /// Key of the PDF viewer inside the preview drawer.
 pub(crate) const PDF_KEY: &str = "preview-pdf";
 
-/// The renderer's limits: GTK's `PdfRenderSize`, whose width comes through the request's
-/// `MediaPreviewSize`, which stops at 1280 pixels.
 const CAPS: RenderCaps = RenderCaps {
     max_width: MediaPreviewSize::MAX_EDGE as u32,
     max_height: 1_800,
     max_pixels: 2_500_000,
 };
 
-/// Minimal render box for [`RenderKind::TextOnly`] background find requests: `MediaPreviewSize`
-/// clamps to 16 px, avoiding full-page rasterization while keeping glyph boxes normalized to
-/// `layer.width` × `layer.height`.
 const TEXT_ONLY_SIZE: MediaPreviewSize = MediaPreviewSize {
     width: 16,
     height: 16,
 };
 
-/// Render box if a [`RenderKind::TextOnly`] request ever re-fetches page 0 (after text-budget
-/// eviction), so `LocalPreviewProvider` never overwrites page 0's cached thumbnail with a 16 px
-/// PNG.
 const TEXT_ONLY_FIRST_PAGE_SIZE: MediaPreviewSize = MediaPreviewSize {
     width: 256,
     height: 256,
@@ -222,8 +191,6 @@ pub(super) fn build_view(app: &App, cx: &mut Cx<App>) -> El {
         .no_focus_ring()
 }
 
-/// `pdf_zoom_reset` while the keyboard is in the pages: the PDF back to its fitted width, ahead
-/// of `text-reset` at the same stage (`reset_pdf_zoom` in `src/ui/preview/keyboard.rs`).
 pub(super) const RESET: Action<App> = Action::new("preview-pdf-reset", reset_zoom)
     .command(PDF_ZOOM_RESET)
     .keys(&[Keys::at(
@@ -259,8 +226,6 @@ fn on_intent(app: &mut App, intent: PdfIntent, tx: &mut Tx) {
     }
 }
 
-/// The PDF view's state, or, for a handler Rune queued before the viewer changed, the
-/// preview's detached one (`viewer::Detached`).
 fn pdf_ref(app: &App) -> &PdfState {
     match &app.preview.viewer {
         Viewer::Pdf(pdf) => &pdf.state,
@@ -283,8 +248,6 @@ fn viewer_mut(app: &mut App, id: u64) -> Option<&mut PdfViewer> {
     }
 }
 
-/// The view's frame work, from the preview's poll: its zoom's rest, a reveal, and the next
-/// render. True when the view changed.
 pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let Viewer::Pdf(pdf) = &mut app.preview.viewer else {
         return false;
@@ -357,8 +320,6 @@ fn on_text_index(
     true
 }
 
-/// Drops a render the view no longer wants, starts single-pass find indexing if needed, and starts
-/// the next page render when none runs. True when the header busy indicator changed.
 fn pump(app: &mut App) -> bool {
     let started_index = maybe_start_text_index(app);
     let provider = app.preview.loader.provider();
@@ -426,8 +387,6 @@ fn page_request(pdf: &mut PdfViewer, asked: &RenderRequest) -> PreviewRequest {
     }
 }
 
-/// A page render's answer: `TextOnly` replies skip PNG decoding and land directly on the UI
-/// thread; full page renders decode off the UI thread, then land.
 fn on_page(app: &mut App, (id, ticket): (u64, Ticket), event: PreviewEvent, tx: &mut Tx) -> bool {
     if viewer_mut(app, id).is_none_or(|pdf| !is_busy_with(pdf, ticket)) {
         return false;

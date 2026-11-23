@@ -151,8 +151,6 @@ const RUNNER_COMMANDS: [&str; 23] = [
 ];
 const NOTED_PLACEHOLDER: &str = "noted";
 const FFMPEG_TIMEOUT: Duration = Duration::from_secs(30);
-/// `SESSION_BUS_CONFIG` in `scripts/headless/display.py`: no service directories, so
-/// nothing on the bus is D-Bus-activatable.
 const SESSION_BUS_CONFIG: &str = r#"<!DOCTYPE busconfig PUBLIC
  "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
@@ -194,8 +192,6 @@ const RUNNER_OWNED_ENVIRONMENT: [&str; 8] = [
 ];
 /// No AT-SPI: the process reads its own widget tree.
 const QA_ENVIRONMENT: [(&str, &str); 2] = [("GTK_A11Y", "none"), ("NO_AT_BRIDGE", "1")];
-/// One Mesa shader cache for every run, so launches do not recompile shaders in their
-/// fresh `XDG_CACHE_HOME`.
 const SHADER_CACHE_VARIABLE: &str = "MESA_SHADER_CACHE_DIR";
 static SHADER_CACHE: Mutex<Option<tempfile::TempDir>> = Mutex::new(None);
 
@@ -369,8 +365,6 @@ impl Display {
         }
     }
 
-    /// `-displayfd` confirms this server, not a concurrently starting one, owns the number;
-    /// one that loses a number to another server tries the next.
     fn start_x11(log: PathBuf) -> Result<Self, String> {
         let first = NEXT_DISPLAY.fetch_add(1, Ordering::Relaxed);
         for offset in 0..DISPLAY_TRIES {
@@ -430,8 +424,6 @@ impl Display {
                 Err(_) => break false,
             }
         };
-        // Xvfb writes the number and the newline separately; the pipe stays
-        // open until both arrived so the newline cannot hit EPIPE.
         drop(writer);
         let name = format!(":{number}");
         let connection = owned.then(|| x11rb::connect(Some(&name)).ok()).flatten();
@@ -464,8 +456,6 @@ impl Display {
                     sway.ipc.display().to_string(),
                 ),
                 ("GDK_BACKEND", "wayland".to_owned()),
-                // strata-rune opens its window here, the session host, rather than drawing
-                // offscreen (`crates/strata-app/src/qa/session.rs`); GTK reads nothing of it.
                 (wayland::WINDOW_VARIABLE, "1".to_owned()),
             ],
         }
@@ -573,8 +563,6 @@ struct Application {
     traced: std::cell::OnceCell<u32>,
 }
 
-/// The one argument after `--qa`: a restart's folder, `--plain` for a plain launch, `--portal`
-/// for the portal backend, or else the fixture.
 fn launch_argument<'a>(launch: &'a Launch, relaunch: &'a Relaunch) -> &'a std::ffi::OsStr {
     match (&relaunch.directory, launch.portal) {
         (Some(directory), _) => directory.as_ref(),
@@ -668,8 +656,6 @@ impl Application {
             Ok(line) => {
                 let reply: Value = serde_json::from_str(&line)
                     .map_err(|error| format!("unreadable reply {line:?}: {error}"))?;
-                // A pane shows once the first window is up: the browser, or the
-                // portal backend's first chooser.
                 if let Some(capture) = &mut self.capture
                     && reply["app"]["panes"]
                         .as_array()
@@ -744,8 +730,6 @@ struct BusPlaces<'a> {
     display: &'a Display,
 }
 
-/// The header's processes on the run's private bus, which must be up before the application:
-/// its input method and its fake volume monitor.
 fn start_bus_peers(
     scenario: &Scenario,
     bus: Option<&Bus>,

@@ -1,28 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! P8's session tests: launches of one app id meeting on a private session bus.
-//!
-//! The bus tests run `single-instance-probe` (the shim without Rune) on a bus alone; the window
-//! tests run `single-instance-demo` under headless sway, on Wayland and X11. The interop tests
-//! (with `glib-bridge`) put a real GLib `GApplication` (`gapplication-peer`) on either side.
-//!
-//! Every process gets the session's environment (`Session::command`), whose
-//! `DBUS_SESSION_BUS_ADDRESS` and `XDG_RUNTIME_DIR` are the session's own: [`command`] checks
-//! that before each launch. The tests' own D-Bus client connects to `s.bus().address()` and
-//! never to `Connection::session()`, which with no address set would reach the desktop's bus
-//! through `$XDG_RUNTIME_DIR/bus`.
-//!
-//! Feature map: `browser/navigation/startup-arguments` ("Each argument opens its own window …
-//! when Strata is already running", "A path whose name is not valid UTF-8 opens normally",
-//! "Launching with stdout or stderr connected to a closed pipe still opens the window"),
-//! `devices/volumes/udiskie-unlock` ("With Strata already running, either usage error prints to
-//! the invoking terminal's stderr … and the command exits with status 1"), and
-//! `integration/file-manager-interface` (the export, `InvalidArgs` and `UnknownMethod`, not
-//! taking the name from another owner, D-Bus activation). What a window opens and selects is
-//! Strata's.
-//!
-//! Work package: P8, `docs/rune/work/phase-1-leaves/P8-single-instance.md`.
-
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
@@ -553,11 +530,6 @@ fn file_manager1_waits_behind_another_owner() {
     });
 }
 
-/// A primary that prints, answers and gives the app id up at once: the launch still ends
-/// with that answer, its line printed once, and never runs again as a primary of its own. A
-/// release that cut the answer off would look to the launch like a primary gone, and it would
-/// claim the app id and handle itself a second time. Half the rounds release from the main
-/// thread, half from the bus thread (inside the sink).
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_release_right_after_answering_never_hands_the_launch_on() {
@@ -584,8 +556,6 @@ fn a_release_right_after_answering_never_hands_the_launch_on() {
     }
 }
 
-/// A launch the app still holds when it gives the app id up hears that the primary left, at
-/// once rather than after `Options::forward_timeout`, and claims the app id itself.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_launch_held_through_a_release_claims_the_app_id_again() {
@@ -606,9 +576,6 @@ fn a_launch_held_through_a_release_claims_the_app_id_again() {
     });
 }
 
-/// A bus that won't let the primary have `org.freedesktop.FileManager1` (a sandbox without
-/// permission to own it) leaves it the primary without that name. The probe asks for
-/// `org.freedesktop.DBus` in its place, which every bus refuses.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_refused_file_manager1_leaves_the_primary_claimed() {
@@ -633,8 +600,6 @@ fn a_refused_file_manager1_leaves_the_primary_claimed() {
     });
 }
 
-/// A primary that takes a launch and leaves without answering: the launch hears `NoReply`,
-/// claims the app id again, becomes the primary and handles itself, once.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_launch_whose_primary_vanishes_unanswered_becomes_the_primary() {
@@ -928,10 +893,6 @@ fn second_window_focused(display: Display) {
 
     let mut second = command(&s, DEMO, display);
     second.arg("c");
-    // On Wayland the launch carries a launcher's token, made by a focused peer, so the
-    // primary gives it to the new window's app before `open_window`. sway focuses a new window
-    // with or without one, so this shows the token reaching that path, not the compositor
-    // using it; the WAYLAND_DEBUG probe (P-a) showed the window created with it.
     let peer = (display == Display::Wayland).then(|| {
         let peer = s.peer(Display::Wayland);
         peer.map("launcher");
@@ -977,11 +938,6 @@ fn second_launch_opens_a_focused_window_in_the_primary_x11() {
     second_window_focused(Display::X11);
 }
 
-/// A bare launch of the running app brings its window forward. On Wayland only a token lets
-/// it take focus; without one sway marks it urgent. sway focuses an X11 window that asks
-/// (`focus_on_window_activation focus`, W3's config) with or without a startup id, so the X11
-/// case can't show what mutter and KWin do with the timestamp-less request (U-P8-1,
-/// `docs/rune/decisions/S5-upstream.md#u-p8-1`).
 fn bare_launch_raises(display: Display) {
     let s = Session::start();
     let primary = start_primary(&s, "demo", command(&s, DEMO, display));

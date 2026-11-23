@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The heading strip: sortable headings with the sort arrow, a resize handle on each
-//! heading's right edge, reordering by dragging a heading, and the columns menu on a
-//! right-click.
-
 use std::rc::Rc;
 
 use rune::{Cursor, Drag, El, Phase, PointerPress, Tx, el, icon, row, text};
@@ -20,21 +16,15 @@ use crate::collection::element::RowCx;
 use crate::collection::element::RowState;
 use crate::contract::{Point, Rect};
 
-/// How far (points) a heading press travels sideways before it becomes a reorder drag, as
-/// Strata's `REORDER_THRESHOLD`. A shorter press and release stays a sort click.
+/// How far (points) a heading press travels sideways before it becomes a reorder drag, as Strata's `REORDER_THRESHOLD`.
 pub const REORDER_THRESHOLD: f32 = 10.0;
 
-/// How close (points) to a heading's right edge a press resizes rather than reorders, as
-/// Strata's `RESIZE_EDGE`: the resize handle's width.
+/// How close (points) to a heading's right edge a press resizes rather than reorders, as Strata's `RESIZE_EDGE`.
 pub const RESIZE_EDGE: f32 = 8.0;
 
-/// How far (points) a press may move and still be a click of a run: Rune's own pairing
-/// distance.
 const CLICK_SLOP: f32 = 4.0;
 
 /// The key of column `id`'s heading, under the strip.
-///
-/// Used by: C4, scripts.
 pub fn heading_key(id: &str) -> String {
     format!("head-{id}")
 }
@@ -68,8 +58,6 @@ pub(super) fn strip<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>,
     strip
 }
 
-/// Heading text style: `small_medium` at Strata's bold heading weight (`.list-headings` is
-/// `font-weight: 700`).
 fn heading_font(kit: &rune_kit::Kit) -> rune::TextStyle {
     rune::TextStyle {
         weight: 700.0,
@@ -77,8 +65,6 @@ fn heading_font(kit: &rune_kit::Kit) -> rune::TextStyle {
     }
 }
 
-/// The label and optional trailing sort arrow inside a heading button: the label expands so the
-/// sort arrow sits right-aligned at the heading's trailing edge, matching GTK's `list_headings`.
 fn heading_content<S>(
     column: &Column<S>,
     look: &strata_kit::look::Look,
@@ -133,7 +119,6 @@ fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p
     let drag = parts.table.drag.as_ref().filter(|d| d.active);
     let mut h = row()
         .key(heading_key(id.as_str()))
-        // GTK's headings are buttons in a box over a list (`list_headings.rs`).
         .role("button")
         .label(column.title.clone())
         .sorted(sorted.map(|d| d == SortDir::Ascending))
@@ -193,8 +178,6 @@ fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p
         );
     }
     let h = h.child(resize_handle(shared, resolved, column, p));
-    // GTK's heading button sits in a box as wide as its column (`list_headings.rs`), heard as
-    // an unnamed panel around it: keyed, this one is a group, its parent in the tree.
     row()
         .key(heading_cell_key(id.as_str()))
         .w(p.w)
@@ -208,8 +191,6 @@ pub(super) fn heading_cell_key(id: &str) -> String {
     format!("{}-cell", heading_key(id))
 }
 
-/// The heading's drag: a sort click below the threshold (its `on_press` runs it), a reorder
-/// past it.
 fn reorder<S: 'static>(
     shared: &Rc<Shared<S>>,
     resolved: &Rc<Resolved>,
@@ -266,13 +247,6 @@ fn reorder<S: 'static>(
                     tx.live_only();
                     return;
                 }
-                // Rune presses the heading after a drag released on it (Rune draft R-C4-1):
-                // that press isn't a sort click. Whether Rune presses depends on what it drew
-                // (a heading the sideways scroll clips presses only where it shows), so the
-                // table doesn't predict it: Rune runs that press in the same frame as this
-                // release, before the view, and the next build clears a flag no press took
-                // (`ListTableState::end_frame`). A press from assistive technology comes in a
-                // later frame, and is never taken for this one.
                 if d.cancelled() {
                     return;
                 }
@@ -293,9 +267,6 @@ fn reorder<S: 'static>(
     }
 }
 
-/// The 8 pt strip on a heading's right edge: a drag resizes the column from its drawn width,
-/// within its bounds; a double press fits it to the widest of its heading and the cells the
-/// rows on screen show (Strata's autofit measures its bound cells).
 fn resize_handle<S: 'static>(
     shared: &Rc<Shared<S>>,
     resolved: &Rc<Resolved>,
@@ -310,8 +281,6 @@ fn resize_handle<S: 'static>(
     let def = p.def;
     row()
         .key("resize")
-        // Assistive technology can't move it (it takes no steps), so it would only add a
-        // "Resize …" splitter under every column header: hidden. See the module docs.
         .a11y_hidden()
         .pin(None, Some(0.0), Some(0.0), Some(0.0))
         .w(RESIZE_EDGE)
@@ -347,8 +316,6 @@ fn resize_handle<S: 'static>(
                         tx.live_only();
                         return;
                     };
-                    // The second click of a run fits the column (Rune counts the run, with its
-                    // fixed 0.5 s on Linux: S5 U13).
                     let still = d.dx.abs() <= CLICK_SLOP && d.dy.abs() <= CLICK_SLOP;
                     if d.clicks == 2 && still && !d.cancelled() {
                         let w = fit(&drag_shared, &fit_resolved, s, def);
@@ -359,8 +326,6 @@ fn resize_handle<S: 'static>(
                         return;
                     }
                     let live = column.bounded(r.start + d.dx / scale);
-                    // A cancelled drag puts the width back; a press that moved nothing (half
-                    // a double press) changes nothing.
                     if d.cancelled() || live == r.start {
                         return;
                     }
@@ -374,9 +339,6 @@ fn resize_handle<S: 'static>(
         .child(el().w(1.0).h_full().a11y_hidden())
 }
 
-/// The widest of column `def`'s heading and the cells of the rows on screen, in base points,
-/// within its bounds. A cell that is an element can't be measured: the column's drawn width
-/// stands in for it.
 pub(super) fn fit<S: 'static>(shared: &Shared<S>, resolved: &Resolved, s: &S, def: usize) -> f32 {
     let parts = (shared.parts)(s);
     let look = parts.look;

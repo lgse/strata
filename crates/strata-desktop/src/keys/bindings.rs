@@ -1,23 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! Every shortcut as a named constant, grouped by area. Handlers match these
-//! constants, and the F1 reference, hints and labels show the same ones.
-
 use super::{Binding, Command, Digits, Letters};
 
-/// Declares an area's constants and lists them for the registry and the
-/// catalog tests. The F1 reference shows `listed` constants in both maps,
-/// `default_only` and `tenxer_only` ones in that map alone, and `unlisted` ones
-/// in neither.
-///
-/// A `Command` names its id, and `trigger(Group)` or `step(Group)` for a
-/// chord key or `structural` for a key read through aliases. `= binding` binds
-/// one key and `=> [first, second]` alternates, primary first, in the maps its
-/// block lists it in; `live in both` also binds it in the other map, and an
-/// unlisted command names its maps with `live in default`, `live in tenxer` or
-/// `live in both`. A command whose maps bind different keys lists each,
-/// `=> default [..], tenxer [..]`, whatever its block. A single command that
-/// follows another names it with `after`.
 macro_rules! catalog {
     (@after) => { None };
     (@after $prefix:path) => { Some($prefix) };

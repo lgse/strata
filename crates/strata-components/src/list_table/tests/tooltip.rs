@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Behavioral hover-tooltip tests for [`ListTable::tooltip`]: omits date when the Modified
-//! column is visible (truncated names only), includes date when Modified is hidden without
-//! running the truncation probe, suppresses while renaming/dragging, and never attaches to
-//! group headers.
-
 use std::cell::Cell as StdCell;
 use std::rc::Rc;
 use std::sync::Arc;

@@ -59,7 +59,6 @@ fn a_directory_without_a_whole_size_is_left_out() {
     let index = parse(text).expect("an index");
     assert_eq!(index.dirs.len(), 1);
     let c = index.dirs[0].params;
-    // An unknown Type is Threshold, as in GTK; a bad MinSize takes the default (GTK reads 0).
     assert_eq!((c.kind, c.min), (DirKind::Threshold, 16));
 }
 

@@ -282,8 +282,6 @@ impl Browser {
         self.select_entries_matching_at(depth, |entry| requested.get(&entry.location).copied())
     }
 
-    /// [`Self::select_entries_by_location_at`] among the items shown, never
-    /// showing hidden files for a hidden one.
     pub fn select_shown_entries_by_location_at(
         &self,
         depth: usize,

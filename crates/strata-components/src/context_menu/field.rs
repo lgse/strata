@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The text-field menu: Cut, Copy, Paste, Delete and Select All (GTK's text menu, which
-//! Strata styles as its file menus), with Undo and Redo above them when the host asks.
-//!
-//! At Rune 5d421fd a right-click, the Menu key or Shift+F10 on a text field without an
-//! `on_secondary_press` of its own asks for Rune's native field menu, which shows nothing on
-//! Linux (`popup_menu_supported()` is false). A field gets this menu instead through its own
-//! `on_secondary_press` ([`FieldMenu::hook`]); Rune hands the field's Menu key and Shift+F10
-//! to the same handler, at the field's bottom-left. rune-kit's `TextInput`, `TextArea` and
-//! `TextField` build their inner field themselves and take no such handler, so they can't
-//! have it yet (Rune draft U-C21-2).
-
 use std::rc::Rc;
 
 use rune::{El, PointerPress, TextEdit, Tx, el};
@@ -114,8 +103,6 @@ struct Open<F> {
     field: F,
     at: Point,
     clipboard: Clipboard,
-    /// Whether the field had a step to undo and one to redo when the menu opened. Nothing
-    /// edits it while the menu holds the keyboard.
     history: (bool, bool),
     scroll_bar: Bar,
 }
@@ -159,9 +146,6 @@ impl<F: Copy + PartialEq> FieldMenuState<F> {
         Some(open.field)
     }
 
-    /// Opens field `field`'s menu at window point `at` without reading the clipboard or the
-    /// field's history, so Paste stays sensitive until [`Self::clipboard_known`] and Undo and
-    /// Redo are insensitive. [`FieldMenu::open`] reads both.
     pub fn open(&mut self, field: F, at: Point) {
         self.open_serial(field, at, (false, false));
     }
@@ -181,8 +165,6 @@ impl<F: Copy + PartialEq> FieldMenuState<F> {
         self.serial
     }
 
-    /// What the clipboard holds, as the host knows it (a scene, or P2's offers): Paste is
-    /// insensitive when it holds no text.
     pub fn clipboard_known(&mut self, has_text: bool) {
         self.clipboard_read(self.serial, has_text);
     }
@@ -207,31 +189,6 @@ type Changed<S, F> = Rc<dyn Fn(&mut S, F, &mut Tx)>;
 type Pasted<S, F> = Rc<dyn Fn(&mut S, F, &str, &mut Tx)>;
 type Closed<S, F> = Rc<dyn Fn(&mut S, F)>;
 
-/// A text-field menu over [`FieldMenuState`], acting on the field's [`TextEdit`] through the
-/// host's accessors:
-///
-/// ```ignore
-/// fn menu() -> FieldMenu<App, Field> {
-///     FieldMenu::new("field-menu", |s| &s.field_menu, |s| &mut s.field_menu, App::edit_mut, App::edit)
-///         .on_change(|s, field, tx| s.edited(field, tx))
-/// }
-/// // On the field: text_input(..).on_secondary_press(menu().hook(Field::Search))
-/// // In the view:  menu().build(s, &s.look, &mut layer)
-/// ```
-///
-/// Each command runs on the `TextEdit` and records one undo step:
-///
-/// | Item | Does | Sensitive when |
-/// | --- | --- | --- |
-/// | Undo, Redo (with [`FieldMenu::undo`]) | `TextEdit::undo`, `redo` | there is one to undo or redo |
-/// | Cut | copies the selection, then deletes it | text is selected, the field is editable and not secure |
-/// | Copy | copies the selection | text is selected and the field isn't secure |
-/// | Paste | reads the clipboard, then pastes its text over the selection | the field is editable and the clipboard isn't known to be empty |
-/// | Delete | deletes the selection | text is selected and the field is editable |
-/// | Select All | selects the whole text | the field has text |
-///
-/// The keyboard goes back to the field when the menu closes, whatever closed it. The menu
-/// moves neither the caret nor the selection when it opens, as GTK's doesn't.
 pub struct FieldMenu<S, F> {
     key: String,
     get: fn(&S) -> &FieldMenuState<F>,
@@ -247,8 +204,6 @@ pub struct FieldMenu<S, F> {
 }
 
 impl<S: 'static, F: Copy + PartialEq + 'static> FieldMenu<S, F> {
-    /// The menu keyed `key` over the state `get` and `get_mut` reach, for the fields
-    /// `edit_mut` and `edit` reach (`None` when the field is gone: the menu closes).
     pub fn new(
         key: impl Into<String>,
         get: fn(&S) -> &FieldMenuState<F>,
@@ -283,8 +238,6 @@ impl<S: 'static, F: Copy + PartialEq + 'static> FieldMenu<S, F> {
         self
     }
 
-    /// Undo and Redo above the other items. Off by default: Strata's (GTK's) text menu has
-    /// neither.
     pub fn undo(mut self, on: bool) -> Self {
         self.undo = on;
         self
@@ -296,26 +249,16 @@ impl<S: 'static, F: Copy + PartialEq + 'static> FieldMenu<S, F> {
         self
     }
 
-    /// Pastes `text` (the clipboard's) itself, in place of `TextEdit::paste` and
-    /// [`FieldMenu::on_change`]: for a field whose own paste filters text, as C5's editor does.
-    /// `TextEdit::paste` keeps a single-line field on one line: Rune gives every mounted field
-    /// its line mode when the menu takes the keyboard.
     pub fn on_paste(mut self, f: impl Fn(&mut S, F, &str, &mut Tx) + 'static) -> Self {
         self.pasted = Some(Rc::new(f));
         self
     }
 
-    /// Hears the menu close: an item chosen, Escape or a press outside, or its field gone
-    /// ([`FieldMenu::check`]). C5's `RenameState::menu_closed` goes here.
     pub fn on_close(mut self, f: impl Fn(&mut S, F) + 'static) -> Self {
         self.closed = Some(Rc::new(f));
         self
     }
 
-    /// Closes the menu if its field has gone (the edit ended, the entry was deleted), and
-    /// tells [`FieldMenu::on_close`], as C5's `menu_closed` needs. Call it from the host's
-    /// poll: a menu over a missing field draws nothing but stays open, and the next field with
-    /// the same `F` would bring it back. True when it closed.
     pub fn check(&self, s: &mut S) -> bool {
         let Some(field) = (self.get)(s).field() else {
             return false;
@@ -330,8 +273,6 @@ impl<S: 'static, F: Copy + PartialEq + 'static> FieldMenu<S, F> {
         true
     }
 
-    /// Opens field `field`'s menu at window point `at`: what a host calls for C5's
-    /// `RenameIntent::FieldMenu { id, at }`. A field that isn't there opens nothing.
     pub fn open(&self, s: &mut S, field: F, at: Point, tx: &mut Tx) {
         self.check(s);
         let Some(e) = (self.edit)(s, field) else {
@@ -349,14 +290,10 @@ impl<S: 'static, F: Copy + PartialEq + 'static> FieldMenu<S, F> {
         });
     }
 
-    /// An `on_secondary_press` for field `field`: its right-click, Menu key and Shift+F10
-    /// open this menu where Rune says.
     pub fn hook(self, field: F) -> impl Fn(&mut S, PointerPress, &mut Tx) + 'static {
         move |s: &mut S, p: PointerPress, tx: &mut Tx| self.open(s, field, Point::new(p.x, p.y), tx)
     }
 
-    /// The menu's anchor element (zero size, out of the layout), with its surface pushed into
-    /// `layer` while it is open.
     pub fn build(self, s: &S, look: &Look, layer: &mut Vec<El>) -> El {
         let st = (self.get)(s);
         let Some(open) = &st.open else {
@@ -461,8 +398,6 @@ impl<S: 'static, F: Copy + PartialEq + 'static> FieldMenu<S, F> {
                 let asked = generation(e);
                 tx.read_clipboard(move |s: &mut S, content, tx| {
                     let text = content.text();
-                    // Only into the edit it was asked for: not a field that changed while the
-                    // read was out (another rename in the same slot, say).
                     let same = edit_mut(s, field).is_some_and(|e| generation(e) == asked);
                     if text.is_empty() || !same {
                         return;
@@ -517,9 +452,6 @@ fn sections(commands: &[(FieldCommand, bool)], labels: &FieldLabels) -> Vec<Sect
     ]
 }
 
-/// Whether `e` has a step to undo and one to redo. Rune exposes neither (draft U-C21-3), so
-/// this undoes and redoes a copy and sees whether the text or selection moved. It copies the
-/// field once, when its menu opens.
 fn history(e: &TextEdit) -> (bool, bool) {
     let moved = |f: fn(&mut TextEdit)| {
         let mut c = e.clone();
@@ -529,8 +461,6 @@ fn history(e: &TextEdit) -> (bool, bool) {
     (moved(TextEdit::undo), moved(TextEdit::redo))
 }
 
-/// What a field holds, as a number: its text and selection. A paste lands only if this is
-/// unchanged since Paste was chosen. Hashed, so a secret isn't kept while the read is out.
 fn generation(e: &TextEdit) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();

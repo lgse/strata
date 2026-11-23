@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A message drawn over the Settings pages: GTK's `message_dialog_layout` in a `modal_layer`
-//! over the Settings window (`src/ui/controls.rs`, `src/ui/modal.rs`), which the save notice
-//! (`notice.rs`) and Keyboard's Reset all confirmation (`keyboard/reset_all.rs`) share.
-//!
-//! It is drawn inside Settings rather than as a second `El::modal`, which would prune Settings
-//! from the accessibility tree, where GTK's overlay leaves it (`unsaved-changes-one-notice`
-//! line 12): a scrim layer whose blank parts dismiss it, a card with a danger badge, the
-//! title and subtitle, a paragraph, the buttons and a corner Close. Escape dismisses it, and Tab
-//! and Shift+Tab cycle its buttons, the corner Close last.
-
 use rune::{El, Key, KeyEvent, Mods, Tx, col, el, icon, row, text};
 use rune_kit::{Button, ButtonVariant, IconButton, IconButtonVariant};
 use strata_components::dialog::{
@@ -33,8 +23,6 @@ pub(super) struct MessageButton {
     pub(super) autofocus: bool,
 }
 
-/// What a message says and does. `key` names its layer (`{key}-layer`) and card
-/// (`{key}-dialog`).
 pub(super) struct MessageSpec {
     pub(super) key: &'static str,
     pub(super) icon: IconName,

@@ -56,8 +56,6 @@ fn opening_asks_for_the_empty_query_and_each_edit_asks_again() {
     assert!(second.generation > first.generation);
 }
 
-// browser/search: "On open, the empty query shows 'Type to search Home and mounted local
-// drives'; clearing a typed query adds 'Fuzzy matching · try a name or path fragment'."
 #[test]
 fn an_empty_search_query_is_idle_with_the_first_words_then_the_cleared_ones() {
     let mut s = PaletteState::new();
@@ -101,8 +99,6 @@ fn a_query_loads_then_shows_results_or_no_results() {
     );
 }
 
-// browser/search folder jump: "Before any folder is recorded, the palette shows 'No folder
-// history yet'"; "A query that matches no visited folder shows 'No matching folders'."
 #[test]
 fn the_jump_lists_its_empty_query_and_names_its_two_empty_states() {
     let mut s = PaletteState::new();
@@ -155,8 +151,6 @@ fn an_answer_for_a_superseded_query_is_dropped_and_the_old_results_stay_until_th
     );
 }
 
-// browser/search: "When the first result is preselected, one Down highlights the second
-// result"; "Up and Down move the highlight…".
 #[test]
 fn a_new_query_highlights_its_first_result_and_arrows_stop_at_the_ends() {
     let (mut s, g) = typed("a");
@@ -175,8 +169,6 @@ fn a_new_query_highlights_its_first_result_and_arrows_stop_at_the_ends() {
     assert!(!empty.step(1), "nothing to move through");
 }
 
-// browser/search: "While indexing adds results, the highlighted result stays selected by
-// path and unchanged rows are not rebuilt."
 #[test]
 fn a_same_query_batch_keeps_the_highlight_on_its_result() {
     let (mut s, g) = typed("a");
@@ -291,8 +283,6 @@ fn an_unavailable_palette_drops_every_answer_until_it_closes() {
     assert!(matches!(s.phase(), Some(Phase::Idle(_))));
 }
 
-// The count assistive technology hears (owner ruling): at a query's first results and when
-// it is done, not on every batch.
 #[test]
 fn the_count_is_announced_at_the_first_results_and_when_done() {
     let (mut s, g) = typed("a");
@@ -368,8 +358,6 @@ fn builds(rt: &mut Runtime<Host>, f: impl FnOnce(&mut Host)) -> usize {
     ROW_BUILDS.with(Cell::get) - before
 }
 
-// browser/search: "While indexing adds results, the highlighted result stays selected by
-// path and unchanged rows are not rebuilt."
 #[test]
 fn rows_build_again_only_when_their_result_or_highlight_changes() {
     let mut palette = PaletteState::new();
@@ -413,8 +401,6 @@ fn rows_build_again_only_when_their_result_or_highlight_changes() {
 
 mod perf;
 
-// Review round 1 (B1, B2, SF1): how each answer scrolls the list, as Strata's restore_scroll
-// does with its navigation_started.
 #[test]
 fn answers_scroll_as_strata_restores_them() {
     use super::model::{Follow, Model};
@@ -455,8 +441,6 @@ fn answers_scroll_as_strata_restores_them() {
     assert_eq!(m.arrive(Answer::new(g + 1, Vec::new()), &mode), None);
 }
 
-/// The option at `index` in the accessibility tree: its name, and the names of the labels
-/// under it.
 fn option_node(rt: &Runtime<Host>, index: usize) -> (String, Vec<String>) {
     let key = option_key("p", index);
     let mut stack = vec![rt.accessibility_json()];
@@ -496,10 +480,6 @@ fn option_texts(rt: &Runtime<Host>, index: usize) -> Vec<String> {
         .collect()
 }
 
-// browser/search: GTK's result row holds two labels, the name over the full path. Since Rune
-// `7a707454` (anomalyco/rune#1115) an option's repeated words are its name alone: the option
-// says the full path once and draws the name over it, and the QA snapshot presents the drawn
-// texts as GTK's labels (finding lgse/strata#2674).
 #[test]
 fn an_option_draws_its_name_over_its_path_and_says_the_path_once() {
     let mut palette = PaletteState::new();
@@ -549,8 +529,6 @@ fn quiet_view(h: &QuietHost, _cx: &mut Cx<QuietHost>) -> El {
     rune_kit::root(rune::col().w_full().h_full(), layer)
 }
 
-// Strata's palette rows take no middle click: with `middle_click_opens(false)` it opens
-// nothing, and the palette stays open with its query and highlight.
 #[test]
 fn a_middle_click_opens_nothing_when_the_host_turns_it_off() {
     let mut palette = PaletteState::new();

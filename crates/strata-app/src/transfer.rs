@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Paste (`Ctrl+V`, folder menu), Duplicate (`Ctrl+D`, entry menu), and the move half of
-//! New Folder with Selection (`Ctrl+Alt+N`, entry menu), destination conflict
-//! resolution through [`crate::conflict_dialog`], transfer progress in C16's
-//! [`DockView`](strata_components::progress_dock::DockView) and
-//! [`ProgressDialog`](strata_components::progress_dock::ProgressDialog), and revealing placed
-//! items (`src/ui/browser/transfer.rs`, `transfer/collisions.rs`, `view_edit.rs`,
-//! `events/reveal.rs`).
-
 use gio::prelude::*;
 use rune::Tx;
 use strata_core::{
@@ -60,13 +52,9 @@ pub(crate) struct Transfer {
     ops: dock::Ops,
     preparing: Vec<PreparingKey>,
     pending_reveal: Option<reveal::PendingReveal>,
-    /// Where a chosen transfer goes once it finishes, unless its reveal went there first
-    /// (`chosen`).
     pending_navigate: Option<Location>,
 }
 
-/// Mounts the blocking progress dialog in `Slot::Dialogs` while `Transfer` mounts the
-/// bottom-right progress dock in `Slot::Overlays`.
 pub(crate) struct TransferDialog;
 
 impl Part for Transfer {
@@ -388,8 +376,6 @@ fn paste(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
 /// What a paste says when the clipboard holds no files.
 pub(crate) type OnEmpty = std::rc::Rc<dyn Fn(&mut App, &mut Tx)>;
 
-/// What a paste reads the clipboard for: where it goes, the conflict button it focuses, and
-/// what to say when the clipboard holds no files.
 struct PasteInto {
     destination: Location,
     focus: ConflictFocus,
@@ -502,8 +488,6 @@ type TargetTuple = (
     bool,
 );
 
-/// A tab-scoped [`Later`] handle for posting async drop classification completions back to the
-/// shown tab's transfer state.
 pub(crate) fn later(app: &App) -> Later<App> {
     app.transfer.later.clone()
 }
@@ -539,9 +523,6 @@ impl TransferRequest {
     }
 }
 
-/// Starts a file drop transfer on the shown tab (`start_drop_transfer` in
-/// `src/ui/browser/transfer/drop.rs`), revealing placed items only when
-/// `open_folder_after_drop` is enabled.
 pub(crate) fn start_drop_transfer(
     app: &mut App,
     destination: Location,
@@ -553,8 +534,6 @@ pub(crate) fn start_drop_transfer(
     begin_transfer_request(app, request.revealing(reveal));
 }
 
-/// Moves `sources` into a newly created group folder (`move_selection_into_created` in
-/// `src/ui/browser/inline_edit/new_entry.rs`), without revealing the moved children inside it.
 pub(crate) fn move_into_group_folder(app: &mut App, destination: Location, sources: Vec<Location>) {
     let request = TransferRequest::new(destination, sources, true);
     begin_transfer_request(app, request.revealing(false));

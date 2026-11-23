@@ -20,8 +20,6 @@ fn reads(host: &mut Offscreen, wanted: impl Fn(&Preferences) -> bool) -> bool {
     host.run_until(PATIENCE, |host| wanted(shell::preferences(host.app())))
 }
 
-/// As every GTK window binds to the one `PreferenceManager`: a change made in either window is
-/// the other's once its queue runs, neither undoes the other's, and the file holds both.
 #[test]
 fn the_windows_of_a_process_share_their_settings_and_their_saves() {
     in_own_process(

@@ -23,8 +23,6 @@ pub(crate) fn spawn(command: &mut Command) -> Result<Child, String> {
 pub(crate) fn wait_for_exit(child: &mut Child, timeout: Duration) -> Option<ExitStatus> {
     use rustix::event::{PollFd, PollFlags, Timespec, poll};
     let deadline = Instant::now() + timeout;
-    // Only an unreaped child's pid is still its own, so the pidfd opens after
-    // a first check.
     if let Some(status) = child.try_wait().ok()? {
         return Some(status);
     }

@@ -10,8 +10,6 @@ use crate::collection::element::{
 use crate::collection::selection::Selection;
 use crate::contract::{CollectionGeometry, EntryId, EntrySource, Point, Rect};
 
-/// Which point of the cursor's entry a keyboard-opened item menu opens at, vertically
-/// centred: Strata's `item_menu_target`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AnchorEdge {
     /// The entry's right edge: Columns and Icons.
@@ -28,20 +26,9 @@ pub struct KeyboardAnchor {
     pub target: Option<EntryId>,
     /// Where the menu opens, in window points.
     pub at: Point,
-    /// The cursor's index when it lies outside the viewport: reveal it. `at` is where it
-    /// lands once revealed.
     pub reveal: Option<usize>,
 }
 
-/// The keyboard menu's anchor, as Strata's `open_focused_context_menu` places it.
-///
-/// - The cursor's entry, when it is selected: the item (or multi-selection) menu at the
-///   entry's `edge`, vertically centred.
-/// - Otherwise: the background menu at the viewport's centre.
-///
-/// `visible` is the content the viewport shows and `window` where the viewport sits, in
-/// window points. A cursor out of view is scrolled to the nearer edge first, as
-/// `scroll_into_view` brings it, and the anchor follows it there.
 pub fn keyboard_anchor(
     source: &dyn EntrySource,
     selection: &Selection,
@@ -83,11 +70,6 @@ pub fn keyboard_anchor(
     }
 }
 
-/// What the Menu key or Shift+F10 asks for: open (`Some(true)`), nothing (`Some(false)`, a
-/// chord that opens no menu), or not a menu key (`None`).
-///
-/// Plain Menu and Shift+F10 open, with Super (Rune's `logo`, which stands for Hyper and
-/// Meta too) or without it. With Ctrl, Alt, or Shift on Menu, they open nothing.
 pub fn menu_chord(ev: &KeyEvent) -> Option<bool> {
     let m = ev.mods;
     match ev.key {
@@ -97,15 +79,6 @@ pub fn menu_chord(ev: &KeyEvent) -> Option<bool> {
     }
 }
 
-/// A collection keyboard controller that opens the context menu from the keyboard, then
-/// passes every other key to the controller it wraps (C1c's `Keyboard`).
-///
-/// Rune hands an untaken Menu key to the focused element's `on_secondary_press` at the
-/// element's bottom-left (`context_menu_key`), which for a collection is outside its
-/// viewport. The collection's keys come first, so this takes them there: it emits
-/// [`Intent::ContextMenu`] with [`keyboard_anchor`]'s target, and a zero-size rect at its
-/// point as `anchor`, as C1b sends a press. A held key opens one menu. The chords that open
-/// none ([`menu_chord`]'s `Some(false)`) stop here too, so the page never hears them.
 pub struct MenuKeys {
     inner: Option<Box<dyn KeyController>>,
     edge: AnchorEdge,
@@ -135,9 +108,6 @@ impl KeyController for MenuKeys {
                 }
                 Flow::Handled
             }
-            // Passed on, Rune would hand Shift+Menu (its rule lets Shift through) to the
-            // collection's own secondary press at its bottom-left, which opens nothing only
-            // because that point lies on the viewport's bottom edge, outside it. Taken here.
             Some(false) => Flow::Handled,
             None => match self.inner.as_mut() {
                 Some(k) => k.key(input, cx),

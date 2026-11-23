@@ -1,17 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! What the sidebar lists, as plain data the host rebuilds each view: places, pins and
-//! devices. Which places show, the pins' order, which devices exist and how they group by
-//! drive are Strata's: the sidebar draws what it is given, in the order given.
-
 use rune::Color;
 use strata_kit::icons::IconName;
 
 use super::intent::Section;
 
-/// A row's identity, stable across rebuilds. Ids are part of element keys
-/// (`<key>-place-<id>`, `<key>-pin-<id>`, `<key>-device-<id>`), so they hold only
-/// characters a key may: letters, digits, `-` and `_`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ItemId {
     /// A built-in place: `home`, `trash`, `downloads`, …
@@ -46,8 +39,6 @@ impl ItemId {
 pub enum RowIcon {
     /// A semantic icon from [`IconName`].
     Name(IconName),
-    /// A catalog icon key drawn inside a filled folder, falling back to [`IconName::Folder`]
-    /// when the catalog has none.
     Catalog(String),
     /// An emoji sequence drawn inside a filled folder.
     Emoji(String),
@@ -58,7 +49,6 @@ pub enum RowIcon {
 pub enum PlaceKind {
     /// A folder: Home, Desktop, Documents, …
     Folder,
-    /// The Trash: a drop target, and C23's flight target ([`super::TRASH_TARGET`]).
     Trash {
         /// Trash holds items: it draws [`IconName::TrashFull`].
         full: bool,
@@ -155,8 +145,6 @@ pub struct Pin {
     pub label: String,
     pub icon: RowIcon,
     pub tint: Option<Color>,
-    /// Files dropped on the row go into the folder. False for remote pins: they keep their
-    /// gaps but their rows take no drops.
     pub accepts_drops: bool,
     pub keycap: Option<String>,
     /// The row's accessible description: Strata gives its location.
@@ -307,14 +295,10 @@ impl Device {
     }
 }
 
-/// The devices of one drive (or the rows with no drive, or the network shares), in the order
-/// Strata sorted them. A divider separates each group from the one before it.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct DeviceGroup {
     pub devices: Vec<Device>,
-    /// A divider goes before this group (unless it is the first). False for the stand-in of a
-    /// device whose release is still pending, which follows every group with no divider.
     pub divided: bool,
 }
 
@@ -340,8 +324,6 @@ pub(crate) enum DeviceLine<'a> {
     Device(&'a Device),
 }
 
-/// DEVICES as drawn: a divider before each divided group that has rows and follows a group
-/// with rows, never above the first row or below the last.
 pub(crate) fn device_lines(groups: &[DeviceGroup]) -> Vec<DeviceLine<'_>> {
     let mut lines = Vec::new();
     for (g, group) in groups.iter().enumerate() {
@@ -362,16 +344,11 @@ pub struct SidebarData<'a> {
     pub places: &'a [Place],
     pub pins: &'a [Pin],
     pub devices: &'a [DeviceGroup],
-    /// The open location's row, which shows the accent tint. `None` when the open location
-    /// has no row.
     pub current: Option<&'a ItemId>,
     /// What the sidebar says, in the host's language.
     pub labels: SidebarLabels<'a>,
 }
 
-/// What the sidebar says, which the host gives in the user's language: each section's
-/// heading, which is also its accessible name and its rail tooltip, and the heading's
-/// accessible description of how many rows the section holds ("3 items").
 #[derive(Clone, Copy, Debug)]
 pub struct SidebarLabels<'a> {
     pub pinned: &'a str,
@@ -393,8 +370,6 @@ impl Default for SidebarLabels<'_> {
     }
 }
 
-/// What a device row says, in the host's language: each button's tooltip and accessible name,
-/// and the accessible description of a row whose release is still running.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DeviceLabels<'a> {
     /// The release button of a device that can eject.

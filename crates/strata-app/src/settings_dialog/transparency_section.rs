@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Transparency section of Settings → Appearance (UI-54):
-//! master transparency toggle, independent background and raised-surface transparency sliders,
-//! frosted glass toggle, and unfocused-window multiplier slider.
-
 use rune::{El, TextStyle, Tx, row, text};
 use strata_components::controls::slider::{Range, Slider, SliderChange, SliderState, Snap};
 use strata_core::i18n::tr;

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! CodeView's own logic, with no window: how a text splits into rows, where matches fall,
-//! which row a selected text is, the position bar's rule and the editor's indent edits. What
-//! the view does on screen is the gallery's (`strata-gallery/tests/c10.rs`, the c10 scripts).
-
 use std::sync::Arc;
 
 use rune::{ScrollPos, TextEdit, Tx};
@@ -97,8 +93,6 @@ fn columns_count_tabs_to_four_column_stops() {
 
 #[test]
 fn rows_drawn_by_a_fallback_face_rank_widest() {
-    // Ten ASCII characters against six that a fallback face draws: a dingbat, an Indic
-    // script, CJK and emoji rank first however few they are.
     for wide in ["❤❤❤❤❤❤", "कककककक", "漢漢漢漢漢漢", "😀😀😀😀😀😀"]
     {
         let r = rows(&format!("abcdefghij\n{wide}\n"));
@@ -177,8 +171,6 @@ fn new_text_runs_find_again_with_no_match_selected() {
     assert_eq!(st.current_match(), Some(0));
 }
 
-/// A bar over `n` rows in a viewport 100 points tall at window y 0, rows
-/// mounted as Rune would report them at `offset`.
 fn bar(n: usize) -> Position {
     let p = Position::default();
     let look = BarLook::app(&strata_kit::look::Look::fallback(false));
@@ -243,8 +235,6 @@ fn a_row_measured_in_view_holds_the_thumb() {
     let mut heights = vec![10.0; 100];
     scroll(&p, 450.0, &heights);
     let before = p.progress();
-    // A row inside the viewport measures taller: fewer rows show, which alone would move
-    // the progress, but the content's top holds, so the thumb does too.
     heights[53] = 40.0;
     scroll(&p, 450.0, &heights);
     assert_eq!(p.progress(), before);
@@ -256,8 +246,6 @@ fn the_last_row_s_end_in_view_puts_the_thumb_at_the_bottom() {
     let mut heights = vec![10.0; 100];
     scroll(&p, 850.0, &heights);
     assert!(p.progress() < 1.0);
-    // Rows below measure shorter while the content holds: the last row's end comes into
-    // view, so the thumb goes to the bottom, though nothing moved forward.
     for h in &mut heights[90..] {
         *h = 5.0;
     }
@@ -351,8 +339,6 @@ fn keyboard_caret_and_shift_arrows_copy_ranges() {
     }
     assert_eq!(st.copy_keyboard().as_deref(), Some("the"));
 
-    // Plain Left collapses a non-empty keyboard selection to its start instead of leaving;
-    // a second plain Left returns None so the host leaves the preview.
     assert_eq!(
         caret::on_key(&mut st, &press(Key::Left, Mods::default()), &mut tx),
         Some(true)

@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Shared drop policy across views, tabs, location crumbs, and sidebar rows:
-//! - Volume relation lookup and caching (`lookup_drop_volumes`).
-//! - Copy / move / cross-volume prompt (`choose_action` -> `transfer::start_drop_transfer` or
-//!   `drop_dialog::prompt`).
-//! - Trash drop validation and async `FileEntry` lookup (`trash_dropped`).
-//! - 750 ms spring-loaded opening on hovered view folder rows and sidebar folder/pin rows.
-
 use std::{cell::RefCell, time::Duration};
 
 use rune::{Mods, Tx};
@@ -248,8 +241,6 @@ pub(crate) fn commit_file_drop(
     commit(app, FileDrop::to(destination), dropped, tx)
 }
 
-/// Commits `drop`: at once when the volumes cannot change what it does, else once they are
-/// looked up. True when it will commit.
 pub(crate) fn commit(app: &mut App, drop: FileDrop, dropped: &Dropped, tx: &mut Tx) -> bool {
     let FileDrop {
         destination,
@@ -502,8 +493,6 @@ impl Spring {
     }
 }
 
-/// A dragged folder and its descendants are not spring-load navigation destinations
-/// (`file_drag_hover_target` in `src/ui/browser/clipboard.rs`).
 fn is_drag_self_or_descendant(app: &App, destination: &Location) -> bool {
     let Some(sources) = super::drag_sources(app) else {
         return false;

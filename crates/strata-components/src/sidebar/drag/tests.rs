@@ -12,13 +12,8 @@ const fn row(index: usize, after: bool) -> Option<Landing> {
     Some(Landing::Row { index, after })
 }
 
-/// Where a dragged row lands by Strata's rule, at the half-row boundaries, in the gaps, at
-/// either end and past them. Row 2 of 3 dragged up: row 1 spans -38 to -14 from row 2's
-/// middle, its middle at -26, and the gap above row 2 is -14 to -12.
 #[test]
 fn a_drop_lands_on_the_row_under_the_pointer_by_its_half_or_in_a_gap_or_nowhere() {
-    // (from, count, pointer past the row's middle, where it lands, where it goes, what is under
-    // the pointer)
     let cases = [
         (
             2,
@@ -110,8 +105,6 @@ fn a_drop_lands_on_the_row_under_the_pointer_by_its_half_or_in_a_gap_or_nowhere(
     }
 }
 
-/// Past the gap at either end of a block, which is where the other block or the sidebar's edge
-/// is, Strata's sidebar takes no drop, where rune-kit's `Reorder` clamped to the end.
 #[test]
 fn a_drop_past_either_end_of_its_block_lands_nowhere() {
     let cases = [
@@ -124,7 +117,6 @@ fn a_drop_past_either_end_of_its_block_lands_nowhere() {
     }
 }
 
-/// GTK starts a drag once the pointer has gone past 8 points along either axis.
 #[test]
 fn a_press_becomes_a_drag_past_the_threshold_along_either_axis() {
     let cases = [
@@ -139,8 +131,6 @@ fn a_press_becomes_a_drag_past_the_threshold_along_either_axis() {
     }
 }
 
-/// A row held while its block is listed again lands nowhere on its release, which is still a
-/// drop, so the press on that release opens nothing.
 #[test]
 fn a_held_row_let_go_by_a_relist_drops_nowhere() {
     let mut drag = RowDrag::new();

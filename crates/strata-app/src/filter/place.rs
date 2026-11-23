@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Where the filter is open, and what it asks of that view: a Columns column, whose rows its
-//! results take the place of ([`crate::columns`]), or the one pane of Icons or List, where its
-//! results show in a collection of their own ([`super::pane`]), as GTK's "Search results" list
-//! or grid takes the pane's listing's place (`inline_search::wrap`).
-
 use rune::Tx;
 use strata_components::{
     collection::selection::{Position, Selection},
@@ -60,8 +55,6 @@ impl Where {
         }
     }
 
-    /// The column the filter opens in: the one the pointer or the keys last targeted in
-    /// Columns (GTK's `destination_depth`), the folder shown in a pane.
     pub(crate) fn targeted(self, app: &App) -> Option<usize> {
         match self {
             Self::Columns => Some(app.columns.targeted()),
@@ -114,8 +107,6 @@ impl Where {
         self.listing(app, depth).map_or(0, EntrySource::len)
     }
 
-    /// Column `depth`'s selection over its folder's rows. A pane keeps its own under the
-    /// results, so it has none to give back.
     pub(crate) fn listing_position(self, app: &App, depth: usize) -> Position {
         match self {
             Self::Columns => app.columns.listing_position(depth),
@@ -149,8 +140,6 @@ impl Where {
         }
     }
 
-    /// Down from the field: the cursor on result `id`, which alone is selected, with the
-    /// keyboard in the results.
     pub(crate) fn land(self, app: &mut App, depth: usize, id: EntryId, tx: &mut Tx) {
         match self {
             Self::Columns => app.columns.land(depth, id, &app.look, tx),

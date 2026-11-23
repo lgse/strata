@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A source's owner, xattrs, mode and times, applied best effort in that
-//! order: `chown` clears `security.capability` and the special bits, and
-//! xattrs go in before a read-only mode would refuse them.
-
 use std::{
     collections::HashSet,
     ffi::{OsStr, OsString},
@@ -19,8 +15,6 @@ use crate::adapters::{
     volume::{Family, XattrNamespace},
 };
 
-/// Never copied: the skip entries of libattr's `xattr.conf`, and ntfs3's
-/// names that would set owner and mode behind `fchown` and `fchmod`.
 const SKIPPED_XATTRS: [&str; 9] = [
     "security.evm",
     "trusted.SGI_*",
@@ -33,8 +27,6 @@ const SKIPPED_XATTRS: [&str; 9] = [
     "$LXDEV",
 ];
 
-/// ACLs, the permissions entries of `xattr.conf`. They can take away the
-/// owner's write access, which setting the other xattrs needs.
 const ACL_XATTRS: [&str; 4] = [
     "system.nfs4_acl",
     "system.nfs4acl",
@@ -126,8 +118,6 @@ impl Snapshot {
         self.apply_times(fs, fd)
     }
 
-    /// As [`Self::apply`] for a named pipe, whose times nothing written
-    /// resets.
     pub(super) fn apply_to_pipe(
         &self,
         fs: &dyn FsOps,
@@ -142,9 +132,6 @@ impl Snapshot {
         self.apply_times(fs, fd)
     }
 
-    /// As [`Self::apply`], and a setgid parent hands its bit on. A mode that
-    /// would lock the owner out is returned instead of set, and the owner
-    /// keeps access until the copy is done.
     pub(super) fn apply_to_folder(
         &self,
         fs: &dyn FsOps,

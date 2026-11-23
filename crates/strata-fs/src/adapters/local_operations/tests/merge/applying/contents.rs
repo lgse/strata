@@ -2,8 +2,6 @@
 
 use super::*;
 
-/// The merge recorded two plans: the first created `created` and overwrote
-/// `overwritten`, the second holds only what the copy put over it.
 fn assert_overwrite_plans(plans: &[MergePlan], created: &Path, overwritten: &Path) {
     assert_eq!(plans.len(), 2);
     assert_eq!(
@@ -225,8 +223,6 @@ fn a_new_subdirectory_is_reported_as_a_single_created_entry() -> Result<(), Box<
     Ok(())
 }
 
-/// Before `new.txt` is unlinked, holds it open in each copy stage of `live`
-/// until `release` runs after the stage is listed.
 fn holding_staged_copies(live: PathBuf) -> (Racer, Racer) {
     let holds = Arc::new(std::sync::Mutex::new(Vec::new()));
     let held = holds.clone();
@@ -397,8 +393,6 @@ fn a_merged_paste_reports_no_created_location() -> Result<(), Box<dyn Error>> {
     fs::write(sources.join("folder/incoming.txt"), b"new")?;
     fs::write(destination.join("folder/stays.txt"), b"keep me")?;
 
-    // No created location: copy undo trashes recorded locations, and the
-    // merged destination held pre-existing contents.
     let created = run_paste_collecting_created(PasteRequest {
         id: OperationRequestId(81),
         destination: Location::local(&destination),

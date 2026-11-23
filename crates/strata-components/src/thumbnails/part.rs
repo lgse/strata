@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The drawn part: a thumbnail over its placeholder icon, and the C1e icon slot that draws it.
-
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -50,14 +48,7 @@ pub(crate) fn overlay_badge(el: El, badge: Option<Pixels>, (inset, slot_points):
 type BadgeAccess<S> = (fn(&S, EntryId) -> u64, fn(&S, EntryId) -> Option<Pixels>);
 type DragPredicate<S> = Rc<dyn Fn(&S) -> bool>;
 
-/// `thumb` over `icon` in a `w × h` box: the icon centred underneath, faded out through the
-/// handle's opacity while an image is held, and the image fitted (letterboxed, centred) over
-/// it. Neither changes the box, so nothing lays out again when a thumbnail lands.
-///
-/// The part is hidden from assistive technology, like an icon: the row's name says what it
-/// is. The caller keys it (C1e's [`ICON`], so a motion effect finds it).
-///
-/// Used by: C3 (tiles), [`icon_slot`].
+/// `thumb` over `icon` in a `w × h` box: the icon centred underneath.
 pub fn picture(thumb: &Thumb, icon: El, w: f32, h: f32) -> El {
     el().w(w)
         .h(h)
@@ -79,16 +70,7 @@ pub fn picture(thumb: &Thumb, icon: El, w: f32, h: f32) -> El {
         )
 }
 
-/// A C1e icon slot that draws each entry's thumbnail at `points` square from `store`, at
-/// `step` (see [`Step::for_tile`]), over the entry's icon. An entry with no thumbnail key,
-/// and every entry while thumbnails are off, draws the icon alone. [`IconSlot::dim_files`]
-/// draws a file's icon fainter than a folder's, as Strata's Columns rows do.
-///
-/// The slot's version is the store's [`ThumbnailStore::version`] and the step, so a row
-/// builds again only when the key's handles change or thumbnails are turned on or off, never
-/// when a thumbnail lands. Build it in the view, where the step is known.
-///
-/// Used by: C4, C2, the C25 gallery page, hosts.
+/// A icon slot that draws each entry's thumbnail at `points` square from `store`, at `step` (see `Step::for_tile`).
 pub fn icon_slot<S: 'static>(
     store: fn(&S) -> &ThumbnailStore,
     step: Step,
@@ -104,7 +86,7 @@ pub fn icon_slot<S: 'static>(
     }
 }
 
-/// [`icon_slot`]'s settings, made into C1e's [`Slot`] where the collection takes it.
+/// `icon_slot`'s settings, made into `Slot` where the collection takes it.
 pub struct IconSlot<S> {
     store: fn(&S) -> &ThumbnailStore,
     step: Step,
@@ -115,16 +97,13 @@ pub struct IconSlot<S> {
 }
 
 impl<S: 'static> IconSlot<S> {
-    /// Draws a file's icon at `collection.file_icon.opacity`, a folder's at full opacity: Strata's
-    /// Columns rows. A thumbnail is never dimmed, nor the icon of a cut entry (its row fades
-    /// as a whole). Strata's List rows leave it off.
+    /// Draws a file's icon at `collection.file_icon.opacity`, a folder's at full opacity: Strata's Columns rows.
     pub fn dim_files(mut self) -> Self {
         self.dim_files = true;
         self
     }
 
-    /// Overlays an optional corner badge (`Pixels`) in the bottom-right corner of the slot,
-    /// rebuilding a row's slot only when `version` changes for that entry.
+    /// Overlays an optional corner badge (`Pixels`) in the bottom-right corner of the slot.
     pub fn badge(
         mut self,
         version: fn(&S, EntryId) -> u64,
@@ -134,9 +113,7 @@ impl<S: 'static> IconSlot<S> {
         self
     }
 
-    /// While `is_dragging` returns true (a scrollbar thumb drag is actively deferring
-    /// thumbnails), transient uncached rows draw their placeholder icon without allocating new
-    /// `Pixels`/`Live` store handles.
+    /// While `is_dragging` returns true (a scrollbar thumb drag is actively deferring thumbnails).
     pub fn dragging(mut self, is_dragging: impl Fn(&S) -> bool + 'static) -> Self {
         self.dragging = Some(Rc::new(is_dragging));
         self
@@ -207,8 +184,6 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
     }
 }
 
-/// The clipboard mark icon a cut or copied row draws in place of its thumbnail or entry icon, as
-/// GTK's `ThumbnailSlot` draws `SCISSORS` and `COPY` (`src/ui/thumbnail/slot.rs`).
 pub(crate) fn mark_icon(marks: crate::collection::element::RowMarks) -> Option<IconName> {
     if marks.cut {
         Some(IconName::Cut)
@@ -219,13 +194,7 @@ pub(crate) fn mark_icon(marks: crate::collection::element::RowMarks) -> Option<I
     }
 }
 
-/// The opacity of an entry's placeholder icon: a file's at `collection.file_icon.opacity`
-/// where the view dims files, else full. A folder's never dims, nor a cut or copied entry's:
-/// GTK's marked icon draws at full opacity (`update_state_opacity` in `src/ui/thumbnail/slot.rs`),
-/// and C1e fades a cut row as a whole. GTK draws a hidden entry's icon at 0.65 over all of this,
-/// folders included; C1e's row has no hidden flag yet.
-///
-/// Used by: [`icon_slot`], C3's tiles.
+/// The opacity of an entry's placeholder icon.
 pub fn icon_opacity(rcx: &RowCx<'_>, dim_files: bool) -> f32 {
     let marked = mark_icon(rcx.state.marks).is_some();
     file_icon_opacity(rcx.look, rcx.entry.kind, marked, dim_files)
@@ -254,8 +223,6 @@ pub(crate) fn shown_thumbnail(entry: Entry<'_>) -> Option<crate::contract::Thumb
     entry.thumbnail.filter(|_| entry.glyph.is_none())
 }
 
-/// Whether `entry` wears a custom icon or emoji inside a filled folder rather than replacing
-/// its icon outright: a folder whose base icon is the folder itself (not a locked folder).
 fn wears_folder_badge(look: &Look, entry: Entry<'_>) -> bool {
     entry.kind.is_folder_like()
         && (entry.icon.is_empty()
@@ -273,10 +240,7 @@ fn drawn_emoji(emoji: &str) -> String {
     }
 }
 
-/// A filled folder coloured `folder_color` with `badge` centred in its body, matching Strata's
-/// `sized_folder_decoration_paintable` and `folder_emoji_texture` (`src/assets.rs`).
-///
-/// Used by: [`entry_glyph`], C7's tabs, C8's sidebar rows.
+/// A filled folder coloured `folder_color` with `badge` centred in its body.
 pub fn folder_badge(
     look: &Look,
     badge: EntryGlyph<'_>,
@@ -286,8 +250,6 @@ pub fn folder_badge(
     folder_badge_hover(look, badge, points, (folder_color, None))
 }
 
-/// Like [`folder_badge`], transitioning the folder fill (and a monochrome icon badge's contrasting
-/// ink) to `hover_color` while an ancestor `hover_group` is hovered.
 pub(crate) fn folder_badge_hover(
     look: &Look,
     badge: EntryGlyph<'_>,
@@ -346,15 +308,7 @@ pub(crate) fn folder_badge_hover(
         .child(mark)
 }
 
-/// `entry`'s icon or custom decoration at `points` square, keyed [`GLYPH`] and hidden from
-/// assistive technology:
-/// - a folder wearing [`Entry::glyph`] draws [`folder_badge`] in [`Entry::color`], else
-///   `look.kit.c.icon_accent`;
-/// - a file wearing [`EntryGlyph::Emoji`] draws the emoji in a `points × points` box;
-/// - any other entry draws [`EntryGlyph::Icon`] (else [`Entry::icon`], else Folder/File) in
-///   [`Entry::color`] (else `default_color`).
-///
-/// Used by: [`icon_slot`], C1e's default icon, C3's tiles, hosts (Customize preview).
+/// `entry`'s icon or custom decoration at `points` square, keyed `GLYPH` and hidden from assistive technology.
 pub fn entry_glyph(look: &Look, entry: Entry<'_>, points: f32, default_color: rune::Color) -> El {
     if let Some(badge) = entry.glyph
         && wears_folder_badge(look, entry)
@@ -400,8 +354,6 @@ pub fn entry_glyph(look: &Look, entry: Entry<'_>, points: f32, default_color: ru
         .a11y_hidden()
 }
 
-/// The clipboard mark icon, else the entry's icon or custom glyph, as C1e's default icon draws it,
-/// at `opacity`.
 fn placeholder(rcx: &RowCx<'_>, points: f32, opacity: f32) -> El {
     let look = rcx.look;
     let glyph = match mark_icon(rcx.state.marks) {

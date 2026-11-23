@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Jobs dashboard: a footer button with the jobs' count that opens their list above it
-//! (Strata's `src/ui/jobs.rs`). It slots into C19's `Footer::jobs`. Jobs arrive as rows; what
-//! the buttons do (cancel, remove, dismiss, clear) is the host's, as intents.
-
 mod text;
 
 use std::collections::BTreeSet;
@@ -30,8 +26,6 @@ pub const LIST_MAX_HEIGHT: f32 = 420.0;
 /// The tallest a job's output gets before it scrolls (`max_content_height(160)`).
 pub const OUTPUT_MAX_HEIGHT: f32 = 160.0;
 
-/// The footer button's look: C19's F1 button (`footer::BUTTON_*`), copied until C19 shares its
-/// button (a recorded follow-up).
 pub const BUTTON_RADIUS: f32 = 4.0;
 pub const BUTTON_HOVER_ALPHA: f32 = 0.15;
 pub const BUTTON_CHECKED_ALPHA: f32 = 0.22;
@@ -70,16 +64,12 @@ impl JobStatus {
     }
 }
 
-/// One job, as the host's job service reports it. Rows come newest first, as Strata lists
-/// them (a new job first).
 #[derive(Clone, Debug, PartialEq)]
 pub struct JobRow {
     pub id: JobId,
     pub name: String,
     pub icon: IconName,
     pub status: JobStatus,
-    /// When it started, on the host's clock (the clock the host's poll passes to
-    /// [`JobsState::tick`]).
     pub started_at: f64,
     /// When it ended, once finished.
     pub ended_at: Option<f64>,
@@ -98,8 +88,6 @@ pub struct JobRow {
     pub output_truncated: bool,
     /// The failure's message, shown before the output.
     pub error: Option<String>,
-    /// What the job reported it created, as the host words it ("Reported 2 items created."),
-    /// shown under the output in Details.
     pub created: Option<String>,
 }
 
@@ -138,8 +126,6 @@ pub enum JobsIntent {
     ClearFinished,
 }
 
-/// The dashboard's own state: open or not, which rows show their output, and the clock the
-/// elapsed times read. The host holds it.
 #[derive(Clone, Debug, Default)]
 pub struct JobsState {
     open: bool,
@@ -161,16 +147,12 @@ impl JobsState {
         self.open
     }
 
-    /// Opens the list: the footer button, or the host when an action launches (Strata opens
-    /// Jobs in the launching window). Progress updates never open it.
     pub fn open(&mut self, tx: &mut Tx) {
         self.open = true;
         self.stale = true;
         tx.wake_after(Duration::ZERO);
     }
 
-    /// Hides the list; no job is cancelled. A list closed with no jobs stays closed when a
-    /// job comes later.
     pub fn close(&mut self) {
         self.open = false;
         self.due = None;
@@ -187,8 +169,6 @@ impl JobsState {
         }
     }
 
-    /// When the next elapsed second starts, while the list is open with a running job: the
-    /// wake the last tick asked for, on the host's clock.
     pub fn due(&self) -> Option<f64> {
         self.due
     }
@@ -198,9 +178,6 @@ impl JobsState {
         self.now
     }
 
-    /// One frame at `now`: while the list is open with an active job, the elapsed times move
-    /// each second, and a wake is asked for the next one. True when what the list shows
-    /// changed.
     pub fn tick(&mut self, now: f64, rows: &[JobRow], tx: &mut Tx) -> bool {
         let mut changed = std::mem::take(&mut self.stale);
         if self.due.is_some_and(|d| now + 1e-6 >= d) {
@@ -229,18 +206,6 @@ impl JobsState {
 
 type Intent<S> = Rc<dyn Fn(&mut S, JobsIntent, &mut Tx)>;
 
-/// The footer button and its list.
-///
-/// ```ignore
-/// let jobs = Jobs::new("jobs", |s: &App| &s.jobs_ui, |s: &mut App| &mut s.jobs_ui, |s: &App| &s.jobs)
-///     .on_intent(|s: &mut App, intent, tx| s.job_service.handle(intent, tx))
-///     .build(s, &s.look, &mut layer);
-/// footer.jobs(jobs) // C19
-/// ```
-///
-/// Keys: `<key>` (the button), `<key>-list` (the list), `<key>-clear`, `<key>-minimize`,
-/// `<key>-row-<id>` with `-cancel`, `-details`, `-dismiss`, `-bar` and `-output` after it,
-/// and `<key>-note`.
 pub struct Jobs<S> {
     key: String,
     get: fn(&S) -> &JobsState,
@@ -272,24 +237,15 @@ impl<S: 'static> Jobs<S> {
         self
     }
 
-    /// Where focus goes when the list closes with no jobs left: the button goes with the last
-    /// job, so it can't take focus back. Strata's window falls back to the file list's cursor
-    /// row; pass its key. Without it Rune leaves nothing focused.
     pub fn return_focus(mut self, key: impl Into<String>) -> Self {
         self.fallback = Some(key.into());
         self
     }
 
-    /// The footer button, or `None` with no jobs (Strata hides it). It is the look's
-    /// `frame.control` tall, as C19's F1 button, so it sits in C19's footer
-    /// (`frame.control + 2·space.xs`) with the footer's own inset above and below. While open,
-    /// the list goes onto `layer`, above the button and aligned to its end.
     pub fn build(&self, s: &S, look: &Look, layer: &mut Vec<El>) -> Option<El> {
         let state = (self.get)(s);
         let rows = (self.rows)(s);
         let words = &state.words;
-        // While the list is open the button stays, so the list keeps its anchor: emptied by
-        // Clear finished, it reads "No background jobs." until it is closed.
         let label = indicator(rows, words).or_else(|| state.open.then(|| words.title.clone()))?;
         let k = &look.kit;
         let accent = k.c.text_accent;
@@ -332,7 +288,6 @@ impl<S: 'static> Jobs<S> {
                     .a11y_hidden(),
             );
         if open {
-            // C19's F1 button fills itself with the checked tint while its panel shows.
             button = button.fill(k.alpha(accent, BUTTON_CHECKED_ALPHA));
             layer.push(popover::anchored(
                 k,
@@ -446,8 +401,6 @@ impl<S: 'static> Jobs<S> {
             .max_w(LIST_WIDTH)
             .max_h(LIST_MAX_HEIGHT)
             .min_h(0.0)
-            // With no jobs left the button goes once the list closes: focus goes to the host's
-            // fallback instead.
             .focus_return(match (&self.fallback, rows.is_empty()) {
                 (Some(f), true) => f.clone(),
                 _ => key.clone(),
@@ -613,8 +566,6 @@ fn bezel(look: &Look, name: IconName) -> El {
         .child(icon(look.icon(name), look.icon_size.md).color(c.icon_accent))
 }
 
-/// What Details opens under a row: the output, following new lines as Strata's
-/// `follow_log_output` does, then what the job reported it created.
 fn details(r: &JobRow, key: &str, words: &JobsWords, look: &Look) -> El {
     let k = &look.kit;
     let c = &k.c;
@@ -634,8 +585,6 @@ fn details(r: &JobRow, key: &str, words: &JobsWords, look: &Look) -> El {
             .w_full()
             .max_h(OUTPUT_MAX_HEIGHT)
             .min_h(0.0)
-            // Follows the output as it arrives until scrolled up, and again once
-            // scrolled back to the end (Rune's stick_bottom, Strata's follow_log_output).
             .scroll(ScrollSpec { stick_bottom: true })
             .child(output),
     );

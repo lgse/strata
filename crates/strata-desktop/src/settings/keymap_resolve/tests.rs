@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The GTK application's preference tests hold this through GDK's key library
-//! (`src/ui/preferences/tests/keymap.rs`). These hold it through the Rune interface's,
-//! `keys::Xkb`, which they install in a process of their own.
-
 use std::path::Path;
 
 use super::resolve_keymap;

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The shortcut reference (F1): a [`DialogShell`] panel listing the
-//! active key map, with a search and category filters. See the [footer module](super) docs.
-
 mod data;
 mod keymap;
 mod keys;
@@ -22,20 +19,13 @@ use strata_kit::look::Look;
 
 use crate::dialog::DialogShell;
 
-/// The panel's width when the window has room, in points: Strata's panel is the window less
-/// 80 px, up to its results' 1200 plus the 225 px sidebar (`src/ui/shortcut_footer/reference.rs`).
 pub const PANEL_WIDTH: f32 = 1440.0;
 
-/// Below this panel width the reference lays out compact: the header stacks, the categories
-/// wrap as pills without counts, and the results take one column. Strata switches at a 1480 px
-/// window, whose panel is about 1400 wide; a Rune view knows its panel's width, not the window's.
 pub const COMPACT_BELOW: f32 = 1400.0;
 
 /// The categories' column in the wide layout (`.shortcut-reference-sidebar`'s `min-width`).
 pub const SIDEBAR_WIDTH: f32 = 225.0;
 
-/// The results' height when the window has room (Strata's `height_request(440)`, grown to
-/// its 620 cap less the header and note); a short window shrinks it.
 pub const RESULTS_HEIGHT: f32 = 560.0;
 
 /// The panel's words. [`ReferenceLabels::default`] is Strata's English.
@@ -53,8 +43,6 @@ pub struct ReferenceLabels {
     pub results: String,
     /// Shown, and announced, when nothing matches: "No matching shortcuts".
     pub no_match: String,
-    /// A number of rows, for each category's description and the announced result count:
-    /// "12 shortcuts".
     pub count: Rc<dyn Fn(usize) -> String>,
     /// The note at the bottom, hint by hint; it wraps only between hints, after a "·".
     pub note: Vec<String>,
@@ -90,10 +78,6 @@ impl Default for ReferenceLabels {
     }
 }
 
-/// Strata's note for `keys` in English, each key written by `label`: "Ctrl+B categories",
-/// "Ctrl+F search", "Ctrl+L list", "j / k / ↑ / ↓ move", "Tab cycle", "Escape close". A
-/// rebound key shows its new chord; an unbound one leaves its hint out (Strata has no keyless
-/// form yet, lgse/strata#1885).
 pub fn note(keys: &ReferenceKeys, label: impl Fn(&Chord) -> String) -> Vec<String> {
     let first =
         |chords: &[Chord], word: &str| chords.first().map(|c| format!("{} {word}", label(c)));
@@ -110,22 +94,6 @@ pub fn note(keys: &ReferenceKeys, label: impl Fn(&Chord) -> String) -> Vec<Strin
     .collect()
 }
 
-/// The shortcut reference over the [`ReferenceState`] `get` and `get_mut` reach, listing
-/// `data`'s rows:
-///
-/// ```ignore
-/// ShortcutReference::new("reference", |s: &App| &s.reference, |s: &mut App| &mut s.reference,
-///         |s: &App| &s.shortcuts)
-///     .keys(if s.tenxer { ReferenceKeys::tenxer() } else { ReferenceKeys::default() })
-///     .reduced_motion(cx.is_reduced_motion())
-///     .build(s, &s.look, &mut layer);
-/// ```
-///
-/// Keys under `key`: `<key>-dialog` (the panel), [`ShortcutReference::search_key`],
-/// [`ShortcutReference::category_key`], [`ShortcutReference::results_key`],
-/// [`ShortcutReference::row_key`], `<key>-status` (the announced count) and `<key>-note`.
-///
-/// Used by: hosts (Strata's browser windows and the portal chooser).
 pub struct ShortcutReference<S> {
     key: String,
     get: fn(&S) -> &ReferenceState,
@@ -174,7 +142,6 @@ impl<S: 'static> ShortcutReference<S> {
         self
     }
 
-    /// Shows and goes at once while true: `cx.is_reduced_motion()` (C15's rule).
     pub fn reduced_motion(mut self, on: bool) -> Self {
         self.reduced_motion = on;
         self

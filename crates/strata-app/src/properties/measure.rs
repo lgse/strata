@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Recursive folder and selection size measurement (`PropertiesMeasurement`,
-//! `directory_counts_label`, and `measurement_warning_text` in `src/ui/browser/properties.rs`).
-
 use std::{
     cell::Cell,
     rc::Rc,

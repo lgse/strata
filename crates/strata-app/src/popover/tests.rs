@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The plain popover on the offscreen host, through its first user, the Icons header's
-//! "Thumbnail size": each case is one GTK showed when driven (the module docs).
-
 use rune::{GesturePhase, Key, KeyEvent, Mods, Tx, WheelEvent};
 use serde_json::Value;
 use strata_core::model::Location;
@@ -86,9 +83,6 @@ fn click_at(host: &mut Offscreen, (x, y): (f32, f32)) {
     idle(host);
 }
 
-/// A wheel turn down at `(x, y)`, offered to the handlers there as a window host offers it:
-/// a gesture of its own, as a user's turns far apart are (headless, Rune's virtual clock would
-/// otherwise join it to the last one).
 fn wheel_down_at(host: &mut Offscreen, (x, y): (f32, f32)) {
     let runtime = host.runtime();
     runtime.wheel_event(
@@ -208,8 +202,6 @@ fn a_press_on_the_sidebar_closes_it_and_opens_nothing() {
     });
 }
 
-/// A wheel over the listing closes the popover and scrolls the listing; over the sidebar it
-/// closes the popover and scrolls nothing.
 #[test]
 fn a_wheel_closes_it_and_scrolls_the_listing_only_over_it() {
     let name = "a_wheel_closes_it_and_scrolls_the_listing_only_over_it";
@@ -243,8 +235,6 @@ fn right_click_at(host: &mut Offscreen, (x, y): (f32, f32)) {
     idle(host);
 }
 
-/// A right-click outside, on a tile or on the sidebar's Home, closes the popover and opens no
-/// menu.
 #[test]
 fn a_right_click_outside_closes_it_and_opens_no_menu() {
     let name = "a_right_click_outside_closes_it_and_opens_no_menu";
@@ -271,8 +261,6 @@ fn a_right_click_outside_closes_it_and_opens_no_menu() {
     });
 }
 
-/// Up and Down move through the popover's controls and stop at the ends; on the slider they
-/// step it.
 #[test]
 fn up_and_down_move_through_the_controls_and_step_the_slider() {
     let name = "up_and_down_move_through_the_controls_and_step_the_slider";
@@ -308,7 +296,6 @@ fn up_and_down_move_through_the_controls_and_step_the_slider() {
     });
 }
 
-/// The keyboard leaving the popover closes it, as GTK's autohide does.
 #[test]
 fn the_keyboard_leaving_it_closes_it() {
     hosted_in(
@@ -329,8 +316,6 @@ fn the_keyboard_leaving_it_closes_it() {
     );
 }
 
-/// A press on the popover's own blank padding leaves the keyboard on its control, as GTK's
-/// does, so Escape still closes it.
 #[test]
 fn a_press_on_its_blank_parts_keeps_the_keyboard() {
     let name = "a_press_on_its_blank_parts_keeps_the_keyboard";

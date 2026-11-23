@@ -1,42 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The tab strip: C7's `BrowserTabs` across the window, over the shell's tabs
-//! ([`shell::tabs`]), with the GTK window's tab commands (`TabWindow` in
-//! `src/ui/window/composition/tabs.rs`).
-//!
-//! - **One strip for the window** ([`Scope::Window`]): its drag, its reveal and the closed
-//!   tabs are the window's, as GTK's `TabStrip` and `closed_tabs` are.
-//! - **It shows with two tabs or more,** and then holds New tab and the window's Close, which
-//!   the header leaves out (`refresh_chrome`); with one tab the header holds C7's
-//!   [`NewTabButton`] so a drag onto New tab still opens a second tab.
-//! - **A tab is named after its folder** ([`tabs_of::label`]): `~` for home, `/` for the root,
-//!   else the folder's name, and "Home" with none. A tab opened at a location is named after it
-//!   until its folder opens (`await_location`).
-//! - **Opening a folder in a new tab** (`open-in-tab`, `open.rs`): a place (a sidebar row, a
-//!   crumb, a view's folder row on middle click), the folders a menu's row acts on, or
-//!   Ctrl+Enter on the cursor's folder. The tab opens at the end and is shown, as GTK's
-//!   `open_in_new_tab` adds it.
-//! - **Drops and the spring** (`drops.rs`): a file drag resting on an inactive accepting tab for
-//!   [`HOVER_DELAY`] (450 ms) selects it; dropping files transfers them into that tab's folder
-//!   and selects it; sidebar and folder-only view drags open tabs on New tab and the strip.
-//! - **The number badges** ([`badges_shown`]): 1 to 9 and then 0 on the first ten tabs while
-//!   [`TAB_NUMBERS`]'s modifiers are held alone, read from [`shell::held_modifiers`] so a
-//!   modal layer does not hide them, and cleared when a key is released or the window loses
-//!   focus.
-//! - **Showing another tab ends an open rename as Enter does,** as GTK's field commits when
-//!   the keyboard leaves it (driven on 2026-11-14). A Columns mirror waiting to open a child
-//!   column opens it when the tab is shown again, where GTK's hidden tab opens it at once:
-//!   the tab shows the same column either way (driven the same day).
-//! - **Closing** records the tab's location with its place, twenty at most, newest last; the
-//!   window's last tab closes the window, as its Close button does ([`shell::close_window`]).
-//!   A tab whose browser has an operation running is not closed, and GTK's notice says so,
-//!   "File operations are still active" (`has_background_operations`, `operations_active`).
-//! - **Keys** are read at the GTK window's first stage ([`Stage::TabStrip`](crate::commands::Stage)),
-//!   from anywhere but a modal layer: `keys.rs`.
-//! - **Tab sessions** live in [`shell::tabs::session`] over `strata_desktop::tabs_session`.
-//!
-//! Not yet: A19's drag binder, cross-volume confirmation and foreign content saving.
-
 use std::{borrow::Cow, cell::RefCell, path::Path};
 
 use rune::{Color, El, Tx};
@@ -72,7 +35,6 @@ mod drops;
 mod keys;
 pub(crate) mod open;
 
-/// The strip's state: C7's, its drop classification, and the closed tabs.
 pub(crate) struct TabStrip {
     state: BrowserTabsState,
     drops: drops::Drops,
@@ -114,17 +76,11 @@ impl Part for TabStrip {
     }
 }
 
-/// Overrides the drag-and-drop binder the strip and the header's New tab button attach their zones
-/// through (defaults to [`crate::dnd::binder`]).
 #[cfg(test)]
 pub(crate) fn set_dnd(app: &mut App, dnd: Dnd<App>) {
     app.tab_strip.drops.dnd = Some(dnd);
 }
 
-/// Tells the strip and the header's New tab button whether an in-process drag that opens tabs is
-/// running (`Some(TabOpen::AtGap)` for a sidebar row, `Some(TabOpen::AtEnd)` for a folder-only
-/// view drag, `None` when none runs), lighting New tab while it runs and clearing any open gap or
-/// hover when it ends.
 pub(crate) fn set_open_drag(app: &mut App, open: Option<TabOpen>) {
     app.tab_strip.drops.open_drag = open;
     app.tab_strip
@@ -183,7 +139,6 @@ fn cached_words(locale: String, close: String) -> TabWords {
     })
 }
 
-/// The strip's close-button accessible name in the active locale (`strip.rs` in GTK).
 fn words() -> TabWords {
     match rust_i18n::t!("Close tab") {
         Cow::Borrowed(close) => TabWords {
@@ -194,8 +149,6 @@ fn words() -> TabWords {
     }
 }
 
-/// The single-tab header's New tab button: C7's [`NewTabButton`] keyed `key` (`"header-new-tab"`)
-/// so header focus navigation and drops onto New tab both work while the strip is hidden.
 fn header_new_tab(app: &App, key: &'static str) -> El {
     let el = NewTabButton::new(
         &app.tab_strip.state,
@@ -243,9 +196,6 @@ fn build(app: &App, close: Option<El>, frame: &mut Frame<'_, App>) -> Option<El>
     Some(buttons::on_return_within("tabs-new", band.children(close)))
 }
 
-/// Whether the tab numbers' modifiers (`TAB_NUMBERS.modifiers()`) are held alone: GTK's
-/// `handle_key` and `install_keys` in `src/ui/window/composition/tabs.rs`, read before
-/// `blocked()` so a modal layer does not hide them.
 fn badges_shown(app: &App) -> bool {
     let mods = shell::held_modifiers(app);
     let mut held = Modifiers::empty();
@@ -256,7 +206,6 @@ fn badges_shown(app: &App) -> bool {
     held == TAB_NUMBERS.modifiers()
 }
 
-/// Each tab, in the strip's order, named as GTK names it, with the drops its active folder takes.
 fn named(app: &App) -> Vec<Tab<'static>> {
     let home = Location::local(launch::home_directory());
     let preferences = shell::preferences(app);
@@ -331,8 +280,6 @@ fn route(app: &mut App, intent: TabsIntent, tx: &mut Tx) -> bool {
     }
 }
 
-/// What the tab shown ends before another is shown in its place, beyond what its parts end
-/// themselves: an open rename commits, as GTK's field does when the keyboard leaves it.
 fn leaving(app: &mut App, tx: &mut Tx) {
     rename::commit(app, tx);
 }
@@ -346,8 +293,6 @@ pub(crate) fn select(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
     tabs_of::show(app, key, tx)
 }
 
-/// Opens a tab at the end at the shown tab's folder, or at the default folder with none
-/// (`TabWindow::new_tab`).
 pub(crate) fn new_tab(app: &mut App, tx: &mut Tx) {
     if drops::blocked(app) {
         return;
@@ -376,9 +321,6 @@ fn open_at(app: &mut App, location: Option<Location>, at: usize, tx: &mut Tx) ->
     tabs_of::open(app, location, at, tx)
 }
 
-/// Closes tab `key` (`close`): not while its browser has an operation running, which GTK's
-/// notice says; the window's last closes the window; any other is recorded, where it stood,
-/// for a reopen.
 pub(crate) fn close(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
     let Some(at) = tabs(app).iter().position(|tab| *tab == key) else {
         return false;
@@ -404,8 +346,6 @@ pub(crate) fn close(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
     true
 }
 
-/// Reopens the last closed tab where it stood, or at the end when fewer tabs are open
-/// (`reopen_closed_tab`). Nothing with none recorded.
 pub(crate) fn reopen(app: &mut App, tx: &mut Tx) {
     if drops::blocked(app) {
         return;

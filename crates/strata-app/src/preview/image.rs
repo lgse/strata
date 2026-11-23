@@ -14,8 +14,6 @@ use crate::App;
 /// Key of the still-image viewer inside the preview drawer.
 pub(crate) const IMAGE_KEY: &str = "preview-image";
 
-/// GPU texture ceiling (`Viewport` module docs): larger renders are downsampled for upload while
-/// keeping `size_px` and `ViewportState::set_content` at the original pixel dimensions.
 const MAX_GPU_EDGE: u32 = 8192;
 
 pub(super) struct ImageViewer {

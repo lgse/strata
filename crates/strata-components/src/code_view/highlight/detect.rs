@@ -1,20 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! Picking a grammar for a text, with no I/O.
-//!
-//! syntect's `find_syntax_for_file` opens the file to read its first line, so this follows its
-//! steps on data instead: the file name, then its extension, then the text's first line (for
-//! shebangs and the modelines grammars declare). Then come Vim and Emacs modelines, which
-//! syntect doesn't read, and last plain text.
-
 use std::path::Path;
 use std::sync::OnceLock;
 
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 
-/// The grammar set, loaded once per process on the first highlighter thread that needs it
-/// (S4: `extra_newlines`, so lines are fed with their `\n`). It is never freed. `None` when
-/// loading it panicked: every text and block is then plain.
 pub(crate) fn syntaxes() -> Option<&'static SyntaxSet> {
     static SET: OnceLock<Option<SyntaxSet>> = OnceLock::new();
     SET.get_or_init(|| std::panic::catch_unwind(two_face::syntax::extra_newlines).ok())
@@ -24,8 +14,6 @@ pub(crate) fn syntaxes() -> Option<&'static SyntaxSet> {
 /// How many lines at each end of a text Vim reads modelines from (its `modelines` default).
 const MODELINE_LINES: usize = 5;
 
-/// The grammar for a text: `explicit` (a fence token, a grammar name, or the host's own guess
-/// such as one from a MIME type), else by `file_name`, else from the text, else plain text.
 pub(crate) fn detect<'a>(
     set: &'a SyntaxSet,
     explicit: Option<&str>,
@@ -40,8 +28,6 @@ pub(crate) fn detect<'a>(
         .unwrap_or_else(|| set.find_syntax_plain_text())
 }
 
-/// A fence's language or a grammar name: an extension or token first (`rs`, `bash`), then a
-/// grammar's name in any case (`Rust`, `bourne again shell (bash)`).
 pub(crate) fn by_token<'a>(set: &'a SyntaxSet, token: &str) -> Option<&'a SyntaxReference> {
     let token = token.trim();
     if token.is_empty() {
@@ -50,8 +36,6 @@ pub(crate) fn by_token<'a>(set: &'a SyntaxSet, token: &str) -> Option<&'a Syntax
     set.find_syntax_by_token(token)
 }
 
-/// syntect's file steps: the whole file name (`Makefile`, `PKGBUILD`, `.bashrc`), then the
-/// extension.
 fn by_file_name<'a>(set: &'a SyntaxSet, name: &str) -> Option<&'a SyntaxReference> {
     let path = Path::new(name);
     let file = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -77,9 +61,6 @@ fn by_modeline<'a>(set: &'a SyntaxSet, text: &str) -> Option<&'a SyntaxReference
     by_token(set, name).or_else(|| by_token(set, name.strip_suffix("-mode")?))
 }
 
-/// The filetype a Vim modeline sets: `vim: set ft=rust:`, `vi: filetype=python`,
-/// `ex: ts=4 ft=sh`. Vim wants the marker at the start of the line or after white space.
-/// A dotted filetype (`c.doxygen`) gives its first part.
 pub(crate) fn vim_filetype(line: &str) -> Option<&str> {
     let mut rest = line;
     let options = loop {
@@ -112,8 +93,6 @@ pub(crate) fn vim_filetype(line: &str) -> Option<&str> {
         .filter(|ft| !ft.is_empty())
 }
 
-/// The mode an Emacs first-line modeline names: `-*- mode: ruby -*-`, `-*- c++ -*-`, or
-/// `-*- mode: python; coding: utf-8 -*-`.
 pub(crate) fn emacs_mode(line: &str) -> Option<&str> {
     let start = line.find("-*-")? + 3;
     let len = line[start..].find("-*-")?;

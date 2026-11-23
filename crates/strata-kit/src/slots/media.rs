@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The `media.*` slot tokens (for example `media.waveform.played`) that MediaPlayer reads.
-//!
-//! Work package: C13, `docs/rune/work/phase-2-composites/C13-media-player.md`. C13 owns this file.
-//! Slot names are API: renaming one breaks users' override files (plan K4).
-//!
-//! Every default follows the core tokens. Strata's media palette
-//! (`src/ui/preview/audio/palette.rs`, lgse/strata `upstream/main` e9a8993) derives its
-//! colours from the theme's accent and text: `accent_bright` is the accent mixed 40 % toward
-//! the text, `peak` 70 %. Here the accent is `kit.c.text_accent` and the text
-//! `kit.c.text_base`. The plain numbers are Strata's `waveform.rs`, `spectrum.rs` and
-//! `video/frame.rs` constants, which no core token says.
-
 use rune::Color;
 
 use crate::look::Look;
@@ -91,8 +79,6 @@ pub fn waveform_unplayed(look: &Look) -> Color {
         .unwrap_or_else(|| fade(look, look.kit.c.text_muted, 0.45))
 }
 
-/// The part between the playhead and the pointer: `media.waveform.hover`, else the accent at
-/// 55 %.
 pub fn waveform_hover(look: &Look) -> Color {
     look.slots
         .media
@@ -134,8 +120,6 @@ pub fn spectrum_base(look: &Look) -> Color {
         .unwrap_or_else(|| accent(look))
 }
 
-/// The colour a full-height bar reaches: `media.spectrum.bright`, else Strata's
-/// `accent_bright`.
 pub fn spectrum_bright(look: &Look) -> Color {
     look.slots
         .media
@@ -151,8 +135,6 @@ pub fn spectrum_peak(look: &Look) -> Color {
         .unwrap_or_else(|| accent(look).mix(text(look), 0.7))
 }
 
-/// The reflection under the bars at its top: `media.spectrum.reflection`, else the accent at
-/// 32 %.
 pub fn spectrum_reflection(look: &Look) -> Color {
     look.slots
         .media
@@ -160,8 +142,6 @@ pub fn spectrum_reflection(look: &Look) -> Color {
         .unwrap_or_else(|| fade(look, accent(look), 0.32))
 }
 
-/// Strata's record stays dark in light themes too: the darker of the background and the
-/// text, then the lighter.
 fn shades(look: &Look) -> (Color, Color) {
     let (bg, fg) = (look.kit.c.bg_base, text(look));
     if bg.luminance() <= fg.luminance() {
@@ -171,8 +151,6 @@ fn shades(look: &Look) -> (Color, Color) {
     }
 }
 
-/// The record's body, shown when a track has no art: `media.record.disc`, else the darker
-/// shade 6 % toward the lighter.
 pub fn record_disc(look: &Look) -> Color {
     look.slots.media.record_disc.unwrap_or_else(|| {
         let (dark, light) = shades(look);
@@ -196,8 +174,6 @@ pub fn record_label(look: &Look) -> Color {
         .unwrap_or_else(|| accent(look))
 }
 
-/// The video frame's and its stand-in's corner radius: `media.frame.radius`, else Strata's 8
-/// at the look's roundness.
 pub fn frame_radius(look: &Look) -> f32 {
     look.slots
         .media
@@ -205,14 +181,10 @@ pub fn frame_radius(look: &Look) -> f32 {
         .unwrap_or_else(|| look.round(8.0))
 }
 
-/// The plain surface that stands in for a video with no poster: `media.frame.fill`, else
-/// `layer_02`.
 pub fn frame_fill(look: &Look) -> Color {
     look.slots.media.frame_fill.unwrap_or(look.kit.c.layer_02)
 }
 
-/// The timeline's hover bubble: `media.bubble.fill`, else the background at 92 %
-/// (`.preview-video-bubble`).
 pub fn bubble_fill(look: &Look) -> Color {
     look.slots
         .media
@@ -241,8 +213,6 @@ pub fn bubble_pad(look: &Look) -> f32 {
     look.slots.media.bubble_pad.unwrap_or(3.0)
 }
 
-/// The storyboard cell's backing, shown until a cell lands: `media.bubble.cell_fill`, else
-/// muted text at 14 %.
 pub fn bubble_cell_fill(look: &Look) -> Color {
     look.slots
         .media
@@ -250,8 +220,6 @@ pub fn bubble_cell_fill(look: &Look) -> Color {
         .unwrap_or_else(|| fade(look, look.kit.c.text_muted, 0.14))
 }
 
-/// The storyboard cell's corner radius: `media.bubble.cell_radius`, else Strata's 4 at the
-/// look's roundness.
 pub fn bubble_cell_radius(look: &Look) -> f32 {
     look.slots
         .media

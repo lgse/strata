@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The waveform's levels and their grow-in (Strata's `src/ui/preview/waveform.rs`).
-
 /// Below this the loudest level counts as this, so a silent track doesn't blow up noise.
 const MIN_LOUDEST: f32 = 0.04;
 /// Bars approach their targets at this rate, per second (an exponential approach).
@@ -22,8 +20,6 @@ pub struct Levels {
 }
 
 impl Levels {
-    /// Levels from `start`, RMS from 0 to 1, into `buckets` buckets. A new bucket count
-    /// starts over.
     pub fn set(&mut self, buckets: usize, start: usize, levels: &[f32]) {
         if self.targets.len() != buckets {
             self.targets = vec![0.0; buckets];
@@ -55,8 +51,6 @@ impl Levels {
         self.shown.iter().zip(&self.targets).any(|(s, t)| s != t)
     }
 
-    /// One step of the grow-in, over `elapsed` seconds; with motion off they land at once.
-    /// True when the shown levels changed.
     pub fn step(&mut self, elapsed: f32, motion: bool) -> bool {
         if !self.moving() {
             return false;
@@ -76,8 +70,6 @@ impl Levels {
         true
     }
 
-    /// The level each of `count` bars draws, from 0 to 1 of the loudest: each bar the
-    /// loudest of its buckets (`Waveform::draw`).
     pub fn bars(&self, count: usize) -> Vec<f32> {
         let n = self.shown.len();
         if n == 0 || count == 0 {

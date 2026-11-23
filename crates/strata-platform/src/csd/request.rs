@@ -32,19 +32,11 @@ pub enum Route {
 pub enum Gap {
     /// Rune can't start a resize of a borderless Wayland window. Upstream #309; draft U6.
     RuneResize,
-    /// Rune ignores minimise for a borderless window, and Wayland offers no other path.
-    /// Upstream #310; draft U7.
     RuneMinimize,
     /// Rune has no window menu on Wayland. Upstream #313; draft U8.
     RuneWindowMenu,
-    /// The X11 window manager says it can't: it doesn't list the request in `_NET_SUPPORTED`,
-    /// or `_NET_WM_ALLOWED_ACTIONS` leaves it out for this window.
     WindowManager,
-    /// The X11 window manager doesn't say whether it has this (no `_NET_SUPPORTED`), and a
-    /// request it doesn't know means nothing to it.
     NotKnown,
-    /// This module's own X11 connection failed, so nothing reaches the window manager. Draft
-    /// U9 (not filed) would let it use winit's.
     NoConnection,
     /// The native frame does this itself.
     NativeFrame,
@@ -53,8 +45,6 @@ pub enum Gap {
 }
 
 impl Gap {
-    /// The Rune issue draft that would close this gap
-    /// (`docs/rune/decisions/S5-upstream.md`; drafts, not filed).
     pub fn rune_draft(self) -> Option<&'static str> {
         match self {
             Gap::RuneResize => Some("U6"),

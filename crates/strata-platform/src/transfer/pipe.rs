@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Pipes for moving one MIME type between processes: the reader's end of an offer and the
-//! writer's end of a source. Every pipe is `O_CLOEXEC`, every read has a size cap and an idle
-//! timeout, and a write to a reader that left reports it rather than raising `SIGPIPE` (Rust
-//! programs ignore it, and a library mustn't change the disposition).
 #![expect(unsafe_code, reason = "pipe2, fcntl and poll through libc")]
 
 use std::fs::File;
@@ -44,8 +40,6 @@ pub(crate) fn set_nonblocking(fd: BorrowedFd<'_>) -> io::Result<()> {
     Ok(())
 }
 
-/// Waits up to `timeout` (None: no limit) for any of `fds` to be ready for its events, and
-/// returns each one's `revents`. EINTR counts as nothing ready.
 pub(crate) fn poll(
     fds: &[(BorrowedFd<'_>, i16)],
     timeout: Option<Duration>,
@@ -123,8 +117,6 @@ pub(crate) enum WriteError {
     Io(io::ErrorKind),
 }
 
-/// Writes all of `data` to `fd`, waiting at most `idle` for the reader each time the pipe is
-/// full. The fd closes when this returns, which is the reader's end of data.
 pub(crate) fn write_all(fd: OwnedFd, data: &[u8], idle: Duration) -> Result<(), WriteError> {
     set_nonblocking(fd.as_fd()).map_err(|e| WriteError::Io(e.kind()))?;
     let mut file = File::from(fd);

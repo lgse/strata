@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Sandboxed audio metadata tags (`title`, `artist`, `album`, `track`, `track_total`) and
-//! embedded/folder album cover art, matching GTK's `src/ui/preview/audio/details.rs`.
-//!
-//! - Waits [`LOAD_SETTLE`] (50 ms) before spawning sandbox jobs so fast browsing skips decodes.
-//! - Probes embedded tags (`ParseOperation::AudioTags`) and embedded cover
-//!   (`ParseOperation::AudioCover`), falling back to folder art
-//!   (`cover`/`folder`/`front`/`album`/`albumart.{jpg,jpeg,png,webp}`) decoded through the
-//!   sandbox (`ParseOperation::PreviewImage`) so untrusted images are never decoded unsandboxed.
-//! - Caches completed track details in a 12-entry LRU ([`TrackKey`]) and folder art in a
-//!   12-entry LRU keyed by path and file version; content-hashes cover bytes into `Art.id` so
-//!   consecutive tracks from the same album keep the cover element mounted.
-
 use std::{
     cell::{Cell, RefCell},
     collections::hash_map::DefaultHasher,
@@ -287,8 +275,6 @@ fn probe_cover(
     (folder.flatten(), completed)
 }
 
-/// Shared completion state across the tags and cover background tasks so `DETAILS` caches only
-/// when both finished without error or cancellation.
 struct Completion {
     key: TrackKey,
     cancellation: Cancellation,

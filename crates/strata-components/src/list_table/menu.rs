@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The columns menu (Strata's `column_options.rs`): COLUMNS, a check item per column, a
-//! separator, then "Reset to default columns". It stays open while its checks change; Escape or
-//! a press outside closes it.
-
 use std::rc::Rc;
 
 use rune::{El, PointerPress, Tx};
@@ -90,8 +86,6 @@ fn closing<S: 'static>(shared: &Rc<Shared<S>>, menu: Menu) -> Menu {
     menu.on_close(move |s: &mut S| (close.table_mut)(s).menu = None)
 }
 
-/// The heading strip, wrapped by its menu: open at the pointer after a right-click, or under
-/// the strip's right end for "Customize columns…".
 pub(super) fn headings<S: 'static>(
     shared: &Rc<Shared<S>>,
     s: &S,
@@ -100,8 +94,6 @@ pub(super) fn headings<S: 'static>(
 ) -> El {
     let parts = (shared.parts)(s);
     let key = headings_menu_key(&shared.key);
-    // A context menu's trigger is where it opens, not a button that opens it, so the strip
-    // carries no expanded state.
     let menu = match parts.table.menu {
         Some(MenuAt::Headings(Some((x, y)))) => {
             context_menu(key, strip, Some(PointerPress { x, y }))

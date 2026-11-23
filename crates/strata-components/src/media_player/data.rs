@@ -18,18 +18,10 @@ pub enum MediaKind {
     Video,
     /// Audio: art (or the record), tags, the spectrum and the waveform timeline.
     Audio,
-    /// Media that is neither: the plain media bar (play, time, a seek slider, volume) under
-    /// the frame.
     Plain,
-    /// An animated picture, as a GIF: the frame and its play toggle alone, which is all
-    /// Strata's `append_media_controls` gives a GIF.
     Animation,
 }
 
-/// The file the player shows. Setting a new one ([`MediaState::set_clip`]) clears
-/// everything that belonged to the last.
-///
-/// [`MediaState::set_clip`]: super::MediaState::set_clip
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Clip {
     pub kind: MediaKind,
@@ -76,8 +68,6 @@ pub enum Details {
     Ready(VideoDetails),
 }
 
-/// A track's art, with an id the host gives each distinct picture: the same id keeps the art
-/// in place across tracks, a new one crossfades.
 #[derive(Clone, Debug)]
 pub struct Art {
     pub id: u64,

@@ -5,9 +5,6 @@ use super::*;
 /// A rename a move made beneath its target, deepest first.
 type Rename = (usize, Location, Location, RenameCause);
 
-/// Deepest first, so a renamed folder still has the name its entries' paths use. What keeps
-/// another name is reported; what is gone from that name is not. Returns the names given back
-/// beneath the original, where it has a local path.
 pub(in crate::adapters::local_operations) async fn restore_renamed(
     record: &MoveRecord,
     progress: &TransferProgressTracker,

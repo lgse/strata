@@ -1,22 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C20c's page in process: what the accessibility tree a script ends on doesn't show (the jump's
-//! highlight and its timing in a window at rest, a reveal's scroll). The scripts in
-//! `tests/scripts/c20c/` check the rest, and strata-components' own tests the matcher and the
-//! form's kept and rebuilt pages. Each test names what it covers.
-//!
-//! Coverage notes for the scripts:
-//!
-//! - No feature-map bullet covers the tabs' keyboard (arrows, Home and End, Ctrl+Page Up and
-//!   Down). `tabs-arrows`, `tabs-wrap`, `tabs-ctrl-page` and `tabs-ctrl-page-rebuilt` cite the
-//!   bullet the tabs exist for ("New action… opens an editor with General, Script, and
-//!   Behavior tabs") and check GtkNotebook's keys and its `real_switch_page` focus rule.
-//! - `error-mark` checks the switch to the invalid field's tab, and the edits on the page that
-//!   shows; the edit on the hidden page and "writes nothing" are checked here
-//!   (`a_save_with_an_invalid_field_keeps_every_edit_and_writes_nothing`).
-//! - `select-all` takes "any keyboard layout" as US and Russian: the Russian Ctrl+A is the
-//!   physical A with the base "ф", as a window sends it off macOS (`Key::Command('a')`).
-
 mod c20c {
     use rune::{ElementInfo, Env, Key, KeyEvent, Mods, Runtime, TextEdit};
     use strata_components::controls::settings_search::{IndexPage, IndexRow, SearchIndex};
@@ -46,8 +29,6 @@ mod c20c {
         }
     }
 
-    /// Steps from wake to wake, as a window at rest does, with no frames between, until no
-    /// wake is due within `limit` seconds. Returns the clock it stopped at.
     fn rest(rt: &mut Runtime<Gallery>, limit: f64) -> f64 {
         let start = rt.state.c20c.now;
         for _ in 0..200 {
@@ -110,8 +91,6 @@ mod c20c {
         rt.frame(FRAME);
     }
 
-    /// The jump's highlight shows for 1.5 s, then goes, in a window at rest that polls only at
-    /// the wakes it asked for: statically with animations off, and with its fade on.
     #[test]
     fn the_highlight_goes_after_a_second_and_a_half_at_rest() {
         for (scene, animations) in [
@@ -176,8 +155,6 @@ mod c20c {
         assert_eq!(focused(&rt).as_deref(), Some(FIELD));
     }
 
-    /// Forty rows match and the best is the last, below the fold: Enter scrolls it into view
-    /// and moves the keyboard to its switch.
     #[test]
     fn a_jump_reveals_a_row_below_the_fold() {
         let mut rt = mount_with("c20c-settings-light", |g| {
@@ -216,8 +193,6 @@ mod c20c {
         );
     }
 
-    /// Strata resets each page's scroll on every change of query (`reset_scroll`): with forty
-    /// rows still matching, the page goes back to its top.
     #[test]
     fn a_new_query_scrolls_the_page_to_its_top() {
         let mut rt = mount_with("c20c-settings-light", |g| {
@@ -287,10 +262,6 @@ mod c20c {
         );
     }
 
-    /// `integration/custom-actions`: "If a field is invalid, the editor switches to that
-    /// field's tab, keeps the edits, and writes nothing". The tree shows the switch and the
-    /// fields on the page that shows; the hidden page's switch and the write it would make are
-    /// in the state.
     #[test]
     fn a_save_with_an_invalid_field_keeps_every_edit_and_writes_nothing() {
         let mut rt = mount_with("c20c-editor-light", |g| g.c20c.name = TextEdit::new(""));

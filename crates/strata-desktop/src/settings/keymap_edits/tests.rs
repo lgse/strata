@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Holds [`KeymapOverrides`] edits and start-up conflict reporting through `keys::Xkb`
-//! in a process of their own.
-
 use std::path::Path;
 
 use super::report_keymap_conflicts;

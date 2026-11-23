@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Behavioral tests for column trailing dividers (`trailing_edge`) and active-header suppression
-//! (`active_header`).
-
 use rune::{Cx, El, Env, Runtime, Tx, col};
 use strata_kit::look::Look;
 

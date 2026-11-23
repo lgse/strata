@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery's index page: the title, then one button per page, grouped by lane, which opens
-//! it. Escape on a page comes back here.
-//!
-//! Each button is marked built or not built, from [`Page::implemented`], with a count and a
-//! legend above the lanes. The golden scenes (`gallery-index-light`, `gallery-index-dark`) turn
-//! the markers off, so the index's goldens list only what W0 declares (each page's lane, work
-//! package and name) and don't change when a work package lands its first scenes. The review
-//! scenes `gallery-index-status-light` and `-dark` show them, as the app does.
-
 use rune::{Cx, El, Key, KeyEvent, Mods, Tx, col, el, row, text};
 use rune_kit::{Button, Kit};
 
@@ -19,9 +10,6 @@ use crate::{Gallery, Scene};
 
 /// The index's state.
 pub struct Demo {
-    /// Whether the index marks each page built or not built and shows the count and legend.
-    /// True in the app and in `--snap` runs without a scene; the golden scenes turn it off so
-    /// that landing a page's first scenes doesn't change the index goldens.
     pub markers: bool,
 }
 
@@ -74,8 +62,6 @@ fn status(implemented: bool) -> &'static str {
     }
 }
 
-/// A status marker: a filled dot for built, a hollow ring for not built, so the shape says it
-/// as well as the colour.
 fn marker(kit: &Kit, implemented: bool) -> El {
     let dot = el().size(8.0, 8.0).radius(4.0).a11y_hidden();
     if implemented {
@@ -183,9 +169,6 @@ pub fn view(g: &Gallery, _cx: &mut Cx<Gallery>) -> El {
         )
 }
 
-/// Return opens the focused page. Rune gives Return on a focused button to the window's default
-/// button, as AppKit does, and only Space presses the button itself; the index has no default
-/// button, so the key reaches this hook naming the focused button.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     if key.key != Key::Enter || key.mods != Mods::default() {
         return false;

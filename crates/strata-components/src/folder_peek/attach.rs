@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The folder rows: C1e's rest hook, and the anchor in the row a peek is open from.
-
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Duration;
@@ -13,11 +11,6 @@ use super::{Shared, anchor_key};
 use crate::collection::element::{Collection, Rest, RowCx};
 use crate::contract::Rect;
 
-/// `base` with its folder rows waiting on the pointer.
-///
-/// They wait whether or not peeking is on: a rest while it is off is heard and ignored, so
-/// turning it on with the pointer parked on a folder shows nothing until the pointer arrives
-/// on a row again, as Strata's peek starts only from a motion enter.
 pub(super) fn rows<S: 'static>(sh: &Rc<Shared<S>>, base: Collection<S>) -> Collection<S> {
     let (delays, report, version, part, view) =
         (sh.clone(), sh.clone(), sh.clone(), sh.clone(), sh.clone());
@@ -51,8 +44,6 @@ pub(super) fn rows<S: 'static>(sh: &Rc<Shared<S>>, base: Collection<S>) -> Colle
             if change == Change::None {
                 return false;
             }
-            // Rune's `on_visible_rows` gives no transaction: the host hears the close with one
-            // whose scrolls and wakes nothing applies.
             if let Some(f) = &view.on_change {
                 f(s, change, &mut rune::Tx::default());
             }
@@ -71,8 +62,6 @@ pub(super) fn rows<S: 'static>(sh: &Rc<Shared<S>>, base: Collection<S>) -> Colle
                     el().key(anchor_key(rcx.scope))
                         .pin(Some(dx), Some(0.0), None, Some(0.0))
                         .w(0.0)
-                        // A row carried sideways (C4's sideways scroll) closes the peek, a frame
-                        // after; [`FolderPeek::follow_sideways`] hides the card in the frame itself.
                         .on_drawn_layout_tx(move |s: &mut S, r, tx| {
                             let change = (drawn.get_mut)(s).anchor_drawn(r[0]);
                             drawn.changed(s, change, tx);

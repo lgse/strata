@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The route preview's host (`preview::route`): the route shows once decoded, with its place
-//! among the folder's routes and its duration; the media key plays and pauses it, but not from
-//! the sidebar, the header or a text field; and the view follows the saved units.
-
 use rune::{Key, Mods, Tx};
 use strata_components::viewers::route::{RouteState, Units};
 use strata_core::model::Location;
@@ -62,8 +58,6 @@ fn route() -> PreviewContent {
     }
 }
 
-/// Where a test puts the keyboard before a media key that must not reach the route: GTK's
-/// `video_controls` skips the sidebar, the header and text fields.
 enum Reach {
     Focus(&'static str),
     /// The filter's field, opened by Ctrl+F from the listing.
@@ -93,8 +87,6 @@ impl Reach {
         }
     }
 
-    /// Back to the listing, the preview left open: Escape closes the filter, where from the
-    /// listing it would close the preview.
     fn leave(&self, host: &mut Offscreen) {
         if let Reach::Filter = self {
             press(host, Key::Escape, Mods::default());

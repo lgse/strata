@@ -9,8 +9,6 @@ enum Swap {
     AsACaseOnlyRenameParksIt,
 }
 
-/// The substituted item went aside under a hidden folder, and the failure
-/// names where.
 fn assert_stranded(
     root: &Path,
     name: &str,
@@ -205,8 +203,6 @@ fn other_mounts() -> [ProbeCase; 5] {
             Kept,
         ),
         (
-            // SMB with POSIX extensions: EISDIR from an exclusive file create is
-            // a taken name, but from mkdir it is not.
             || Quirks {
                 fail: vec![
                     (Op::Create, ".strata-probe-*", 0, Errno::ISDIR),

@@ -91,8 +91,6 @@ fn dialog_name(node: &serde_json::Value) -> Option<String> {
     children.iter().find_map(dialog_name)
 }
 
-/// `submit_location`: text the browser refuses at once is reported, and the keyboard is
-/// given back to the view first, so it is not left nowhere under the dialog.
 #[test]
 fn a_typed_location_refused_at_once_is_reported() {
     hosted(
@@ -158,9 +156,6 @@ fn click(host: &mut Offscreen, key: &str) {
     idle(host);
 }
 
-/// A press anywhere on the strip but a crumb opens the entry, as on GTK, whose strip takes any
-/// release a crumb button does not: between two crumbs, on a separator, on the current crumb
-/// and on the empty space after it. Copy path, inside the current crumb, takes its own.
 #[test]
 fn a_press_on_the_strip_but_on_a_crumb_opens_the_entry() {
     hosted(
@@ -204,8 +199,6 @@ fn a_press_on_the_strip_but_on_a_crumb_opens_the_entry() {
     );
 }
 
-/// The pointer's shape over the strip, as GTK's: a text cursor where a press opens the entry,
-/// and a pointer over the crumbs and Copy path.
 #[test]
 fn the_strip_shows_a_text_cursor_and_its_buttons_a_pointer() {
     hosted(
@@ -272,9 +265,6 @@ fn reopened(host: &mut Offscreen) -> String {
     text
 }
 
-/// #2380: GTK's entry keeps the text Enter opened until the columns change, so a location that
-/// could not be opened is the next Ctrl+L's text; Escape or another folder opened forgets it,
-/// and a location refused at once is never kept.
 #[test]
 fn a_location_that_could_not_be_opened_is_the_next_edits_text() {
     hosted(
@@ -330,8 +320,6 @@ fn a_location_that_could_not_be_opened_is_the_next_edits_text() {
     );
 }
 
-/// The hierarchy menu holds the keyboard while it is open, as a menu: the window's commands
-/// wait for it, as GTK's dispatcher leaves a menu every key (finding lgse/strata#2407).
 #[test]
 fn the_hierarchy_menu_holds_the_keyboard_while_it_is_open() {
     hosted(

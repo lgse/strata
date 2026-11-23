@@ -112,8 +112,6 @@ fn mount_look(mounting: Mounting, name: &str, look: Look) -> Runtime<Host> {
         heard: Vec::new(),
         error_from_poll: false,
     };
-    // Rune's own font: a text system built here would move the fonts the crate's other tests
-    // measure with (docs/rune/testing.md, R-K6-1).
     let mut rt = Runtime::new(host, view, (500.0, 400.0), Env::new(false, 1.0));
     rt.poll = Some(poll);
     rt.on_key = Some(on_key);
@@ -308,8 +306,6 @@ fn arrows_choose_as_they_move_and_wrap() {
     assert_eq!(seen, want);
 }
 
-/// The keyboard is on the page being hidden, and the host asks from its poll: the page
-/// changes and the keyboard still moves.
 #[test]
 fn an_error_asked_for_from_inside_the_hidden_page_still_moves_the_keyboard() {
     let mut rt = mount(Mounting::Kept, "");
@@ -324,9 +320,6 @@ fn an_error_asked_for_from_inside_the_hidden_page_still_moves_the_keyboard() {
     assert_eq!(focused(&rt).as_deref(), Some("name"));
 }
 
-/// GtkNotebook's `real_switch_page`: Ctrl+Page Up and Down with the keyboard on the page being
-/// hidden carry it into the new page (its first focusable element), else to the new page's
-/// tab; with the keyboard on a tab it stays on the tabs, on the new one; elsewhere it stays.
 #[test]
 fn ctrl_page_keys_carry_the_keyboard_out_of_the_hidden_page() {
     for mounting in [Mounting::Kept, Mounting::Rebuilt] {
@@ -367,8 +360,6 @@ fn ctrl_page_keys_carry_the_keyboard_out_of_the_hidden_page() {
     }
 }
 
-/// Strata's tabs are at least 36 px tall (`min-height`): at a large text size a tab grows to
-/// hold its label rather than clipping it.
 #[test]
 fn a_tab_grows_to_hold_a_large_label() {
     let big = Look::fallback(false).with_params(&LookParams {

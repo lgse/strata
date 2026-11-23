@@ -15,8 +15,6 @@ pub(super) enum DirKind {
     Threshold,
 }
 
-/// A directory's size parameters. GTK merges directories with equal parameters into one size
-/// class, and so does the resolver.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) struct DirParams {
     pub kind: DirKind,
@@ -40,15 +38,8 @@ pub(super) struct ThemeIndex {
     pub dirs: Vec<DirSpec>,
 }
 
-/// Parses an `index.theme`, as GTK reads one with a `GKeyFile`: `None` without an
-/// `[Icon Theme]` group or its `Directories` key. A listed directory outside the theme, or
-/// without its own group or a whole `Size`, is left out; the other keys take the spec's
-/// defaults when absent or not whole numbers (GTK reads 0 for those). A repeated group is read
-/// from its first appearance, where `GKeyFile` merges them.
 pub(super) fn parse(text: &str) -> Option<ThemeIndex> {
     let parsed = key_file(text);
-    // The first appearance of each group (`GKeyFile` would merge repeats); hicolor alone has
-    // hundreds.
     let mut groups: HashMap<&str, &[(String, String)]> = HashMap::new();
     for (name, keys) in &parsed {
         groups.entry(name.as_str()).or_insert(keys.as_slice());
@@ -73,9 +64,6 @@ pub(super) fn parse(text: &str) -> Option<ThemeIndex> {
     Some(ThemeIndex { inherits, dirs })
 }
 
-/// Whether a listed directory stays under the theme's directory. `Path::join` would replace
-/// the base with an absolute entry, and `..` climbs out; GTK concatenates the strings, so it
-/// keeps an absolute entry inside but follows `..`. Both are refused.
 fn inside_theme(path: &str) -> bool {
     use std::path::{Component, Path};
     Path::new(path)
@@ -103,8 +91,6 @@ fn dir_params(keys: &[(String, String)]) -> Option<DirParams> {
 
 type Group = (String, Vec<(String, String)>);
 
-/// Groups in file order, each with its keys in file order. Comments, blank lines and localized
-/// keys (`Name[de]`) are left out.
 fn key_file(text: &str) -> Vec<Group> {
     let mut groups: Vec<Group> = Vec::new();
     for line in text.lines().map(str::trim) {
@@ -148,9 +134,6 @@ fn int(value: &str) -> Option<i32> {
     value.trim().parse().ok()
 }
 
-/// The index GTK would use for a hicolor without an `index.theme`, derived from the directory
-/// names under `hicolor/` instead of GTK's built-in copy: `NxN` and `NxN@S` (or `@Sx`) are
-/// Threshold directories, `scalable` and `symbolic` Scalable ones with hicolor's own limits.
 pub(super) fn derived_hicolor(dirs: impl IntoIterator<Item = String>) -> ThemeIndex {
     let mut out: Vec<DirSpec> = Vec::new();
     for path in dirs {

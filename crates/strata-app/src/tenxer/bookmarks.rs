@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer letter bookmarks (`m` save, `'` jump) backed by
-//! `strata_fs::services::letter_bookmarks`, ported from `src/ui/window/keyboard/chords.rs`.
-
 use std::{io, path::PathBuf};
 
 use rune::Tx;
@@ -21,7 +18,6 @@ use crate::{
     shell,
 };
 
-/// `cancels_pending_bookmark` (`src/ui/window/keyboard/chords.rs`).
 pub(super) fn cancels_pending_bookmark(browser: &Browser, event: &BrowserEvent) -> bool {
     match event {
         BrowserEvent::NavigationStarting { .. } => true,
@@ -32,8 +28,6 @@ pub(super) fn cancels_pending_bookmark(browser: &Browser, event: &BrowserEvent) 
     }
 }
 
-/// `Stage::Entry`: cancels a pending bookmark jump on any non-modifier key (`keyboard.rs:136`)
-/// and advances `bookmark_revision` (`keyboard.rs:424`).
 pub(super) fn on_entry_key(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     if call.press.is_some_and(|press| !press.is_modifier()) {
         crate::open_with::cancel_target_lookup(app);

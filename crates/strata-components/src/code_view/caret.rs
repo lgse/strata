@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Read-only keyboard caret and Shift+arrow selection for [`super::CodeView`].
-//!
-//! Workaround for Rune packet entry 34 (`docs/rune/upstream/rune/34-read-only-caret.md`):
-//! Rune's `El::selectable` text handles only `Cmd+A` and `Cmd+C` from the keyboard. Tracking byte
-//! offsets in [`CodeState`] and driving `Tx::select_text` / `Tx::copy` gives source previews
-//! `Ctrl+Home` / `Ctrl+End`, `Home` / `End`, and `Shift+Arrow` / `Ctrl+Shift+Arrow` selection.
-
 use rune::{Key, KeyEvent, Tx};
 
 use super::state::CodeState;
@@ -26,10 +19,6 @@ pub(super) fn handles_key(ev: &KeyEvent) -> bool {
     }
 }
 
-/// Handles caret and keyboard-selection keys inside a focused [`super::CodeView`].
-///
-/// Returns `Some(handled)` when the key belongs to caret navigation or selection, or `None` when
-/// the caller should run its own fallback (such as plain `Left` leaving the preview).
 pub(super) fn on_key(st: &mut CodeState, ev: &KeyEvent, tx: &mut Tx) -> Option<bool> {
     let m = ev.mods;
     if m.alt {

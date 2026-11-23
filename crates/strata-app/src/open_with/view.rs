@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Open With chooser dialog (`src/ui/open_with/dialog.rs` and `navigation.rs`), built on
-//! C15's [`StrataDialog`].
-
 use gio::prelude::*;
 use rune::{Cursor, El, KeyEvent, ScrollSpec, TextEdit, Tx, col, icon, row, text, text_input};
 use rune_kit::Checkbox;

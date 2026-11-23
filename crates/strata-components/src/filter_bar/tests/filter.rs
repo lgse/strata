@@ -43,8 +43,6 @@ fn r<'a>(src: &'a ListSource, sel: &'a Selection) -> Results<'a> {
     }
 }
 
-// browser/search/filter/enter-target: "In Icons and List, Enter in the field with no pick
-// opens the outlined top result", and the outline needs the field's keyboard.
 #[test]
 fn enter_opens_the_top_result_outlined_while_the_field_has_the_keyboard() {
     let src = source(&["report.pdf", "reports", "repo"]);
@@ -66,8 +64,6 @@ fn enter_opens_the_top_result_outlined_while_the_field_has_the_keyboard() {
     );
 }
 
-// "A pick… removes the outline; Enter then opens the pick": the last click, the cursor (and,
-// here, the first selected result too: the modes' rules are below).
 #[test]
 fn after_a_pick_enter_opens_the_pick() {
     let src = source(&["a", "b", "c", "d"]);
@@ -97,10 +93,6 @@ fn deselecting_every_result_after_a_pick_returns_the_top_result() {
     assert_eq!(st.outlined(r(&src, &sel)), Some(id(1)));
 }
 
-// "In search results, editing the query text drops the pick and the results' selection";
-// "Editing the query and typing it back… still counts as a query edit"; "In Trash, Recent,
-// or a network share… a query edit keeps the selection but drops the pick"; "A same-query
-// update… keeps the pick".
 #[test]
 fn a_query_edit_drops_the_pick_and_a_same_query_update_keeps_it() {
     let mut st = FilterState::new();
@@ -130,8 +122,6 @@ fn a_query_edit_drops_the_pick_and_a_same_query_update_keeps_it() {
     assert!(!st.tracker.picked, "but the pick goes");
 }
 
-// "With 10xer mode on, no result is outlined and a query edit keeps the selected result." In
-// place, so Enter needs a selection (search results: the next test but one).
 #[test]
 fn tenxer_mode_outlines_nothing_and_keeps_the_selection() {
     let src = source(&["a", "b"]);
@@ -153,9 +143,6 @@ fn tenxer_mode_outlines_nothing_and_keeps_the_selection() {
     assert_eq!(st.target(r(&src, &sel)), Some(id(2)));
 }
 
-// "While the field has focus, the list keeps the top result scrolled into view as results
-// arrive. A button press, wheel scroll… stops that scrolling; the next query edit scrolls
-// back to the top result."
 #[test]
 fn the_top_result_follows_until_the_results_scroll_and_again_after_an_edit() {
     let src = source(&["a", "b"]);
@@ -173,8 +160,6 @@ fn the_top_result_follows_until_the_results_scroll_and_again_after_an_edit() {
     assert_eq!(st.take_reveal(r(&src, &sel)), Some(0));
 }
 
-// "Escape in the filter field, or clearing the query, restores the normal listing", with the
-// listing's own selection when results replaced it.
 #[test]
 fn closing_or_clearing_gives_back_the_listing_and_its_selection() {
     let before = Position {
@@ -244,8 +229,6 @@ fn tick_reports_the_field_gaining_and_losing_the_keyboard() {
     assert!(st.edit.focused);
 }
 
-// Review round 1: Strata's `EnterTarget::restart`. After the host dropped the results (a
-// scope or a search limit changed), the same text shown again is a new query: the pick goes.
 #[test]
 fn a_restart_makes_the_same_query_new() {
     let mut st = FilterState::new();
@@ -256,9 +239,6 @@ fn a_restart_makes_the_same_query_new() {
     assert!(!st.tracker.picked);
 }
 
-// Down lands on the first selected result after a pick, as Strata's search results do while
-// the field has focus (`inline_search/collection.rs`, `current_position`), not on a later
-// cursor; and on the top result while it is offered.
 #[test]
 fn down_lands_on_the_first_selected_after_a_pick_and_on_the_top_result_before() {
     let src = source(&["a", "b", "c", "d"]);
@@ -286,10 +266,6 @@ fn down_lands_on_the_first_selected_after_a_pick_and_on_the_top_result_before() 
     );
 }
 
-// Enter after a pick follows Strata per mode: while the field has focus, search results that
-// replace the listing have no focused item widget (`inline_search/collection.rs`,
-// `current_position`), so both search results and a listing narrowed in place
-// (`filter_activation_position`) open the first selected result in display order.
 #[test]
 fn after_a_pick_enter_in_search_results_opens_the_first_selected_result() {
     let src = source(&["a", "b", "c", "d"]);
@@ -330,8 +306,6 @@ fn after_a_pick_enter_in_place_opens_the_first_selected_result() {
     );
 }
 
-// In 10xer mode nothing is offered as the top result: search results open their cursor, or
-// the top result with no cursor (Strata's `current_position().unwrap_or(0)`), selected or not.
 #[test]
 fn tenxer_search_results_open_the_cursor_or_the_top_result() {
     let src = source(&["a", "b", "c"]);
@@ -353,10 +327,6 @@ fn tenxer_search_results_open_the_cursor_or_the_top_result() {
     );
 }
 
-// Review round 2: before any results show for the text (inside the host's debounce, or after
-// `restart`), nothing is offered as the top result, so Enter follows Strata's per-mode rule at
-// once: the first selected result while something is selected, falling back in search results
-// with nothing selected to the cursor or the top result.
 #[test]
 fn before_any_results_show_enter_follows_the_mode_rule() {
     let src = source(&["a", "b", "c"]);
@@ -397,9 +367,6 @@ fn before_any_results_show_enter_follows_the_mode_rule() {
     );
 }
 
-// Strata's Columns filter field (`columns/append/keys.rs`, `FilterNavigation::pressed`) picks
-// `bitset_positions.last()` over a multi-selection, and with nothing selected after `offers_top`
-// goes off (10xer mode) opens nothing on Enter while Down falls back to row 0.
 #[test]
 fn pick_last_chooses_the_last_selected_result_for_down_and_enter() {
     let src = source(&["a", "b", "c", "d"]);
@@ -456,8 +423,6 @@ fn bare_bar_view(h: &BareBarHost, _cx: &mut rune::Cx<BareBarHost>) -> rune::El {
         )
 }
 
-// Without `focus_return`, Down moves focus to the next stop while the bar stays mounted, and
-// Escape closing the bar falls back to the surviving sibling control.
 #[test]
 fn without_focus_return_down_and_escape_reach_the_following_results_stop() {
     let mut filter = FilterState::new();

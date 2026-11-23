@@ -34,8 +34,6 @@ fn one_frame_in(animations: bool) -> (rune::Color, rune::Color) {
     (shown(&rt), target)
 }
 
-/// Strata's animations switch: with animations off a theme switch lands at once; with them on
-/// the same frame is still mid-switch.
 #[test]
 fn with_animations_off_a_switch_lands_at_once() {
     let (on, target) = one_frame_in(true);

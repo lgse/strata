@@ -34,9 +34,6 @@ fn options(roots: Vec<std::path::PathBuf>, theme: &str) -> Options {
     }
 }
 
-/// A waker that counts its calls and, while shut, holds the thread that calls it. The lookup
-/// thread calls the waker after each lookup settles, so a shut gate holds it there while a test
-/// queues work behind it or drops the loader.
 #[derive(Default)]
 struct Gate {
     state: Mutex<GateState>,
@@ -106,8 +103,6 @@ fn gated(options: Options) -> (IconLoader, Arc<Gate>) {
     (loader, gate)
 }
 
-/// Holds the lookup thread: it settles a lookup of a missing icon, then waits in the waker.
-/// Lookups run in order, so every job queued before has finished, its waker call included.
 fn hold(icons: &IconLoader, gate: &Gate) {
     static HELD: AtomicUsize = AtomicUsize::new(0);
     let name = format!("held-{}", HELD.fetch_add(1, Ordering::Relaxed));
@@ -125,8 +120,6 @@ fn decode_loader() -> (IconLoader, Arc<AtomicUsize>) {
     loader(vec![fixtures().join("decode")], "Decode")
 }
 
-/// Waits until the waker has been called `n` times. The lookup calls it last, after the
-/// state `poll` reads; a found icon's decode calls it once more, in either order.
 fn woken(wakes: &AtomicUsize, n: usize) -> bool {
     let deadline = Instant::now() + WAIT;
     while wakes.load(Ordering::SeqCst) < n {
@@ -275,8 +268,6 @@ fn the_recent_icons_count_what_decoded_not_what_was_asked() {
     assert_eq!(icon.wait(WAIT), IconState::Ready);
     let png = Arc::downgrade(&icon.0);
     drop(icon);
-    // The most recent icon stays even over the limit, so a view showing it alone doesn't look
-    // it up again each run.
     assert!(png.upgrade().is_some());
     let icon = icons.load(&IconRequest::named(["good"], 8, 1.0));
     assert_eq!(icon.wait(WAIT), IconState::Ready);
@@ -457,7 +448,5 @@ fn a_request_dropped_and_pushed_out_of_the_recent_icons_before_its_turn_is_skipp
     hold(&icons, &gate);
     let looked_up = gate.wakes() - before - 1;
     gate.set_shut(false);
-    // Each lookup of a missing icon wakes once: the 3 recent icons left besides `last`, and
-    // `last`. The other 7 left the recent icons with no handle before their turn.
     assert_eq!(looked_up, 3 + 1);
 }

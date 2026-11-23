@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Save-failure and unreadable-at-startup notice dialog (`unsaved-changes-one-notice`).
-//!
-//! When Settings is open, the notice is a message over its pages (`message.rs`), with Settings'
-//! main content `.inert(true)` beneath it. When Settings is closed, the notice renders as a
-//! standalone `StrataDialog`.
-
 use rune::{El, Tx, text};
 use rune_kit::ButtonVariant;
 use strata_components::dialog::{Focus, MESSAGE_WIDTH, StrataDialog, Tone, keep_words_whole};

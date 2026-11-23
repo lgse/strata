@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Live click-activation preference updates and pointer-intent selection invariants through the
-//! in-process QA backend.
-
 use serde_json::json;
 use strata_qa::{Backend as _, Remembered};
 
@@ -76,9 +73,6 @@ fn runs(mode: &str, name: &str, steps: &[serde_json::Value]) {
     );
 }
 
-/// A folder's load leaves its cursor on the first entry and no Shift anchor, so a Shift+click
-/// there selects the clicked entry alone, as GTK's `pointer_selection` does with the shared
-/// browser's missing anchor (finding lgse/strata#2551).
 fn shift_click_after_a_load_selects_the_entry_alone(mode: &str, name: &str) {
     runs(
         mode,
@@ -93,10 +87,6 @@ fn shift_click_after_a_load_selects_the_entry_alone(mode: &str, name: &str) {
     );
 }
 
-/// A press on empty space clears the selection and leaves the Shift anchor where it was, as
-/// GTK's marquee does (`unselect_all`), so the next Shift+click ranges from it (finding
-/// lgse/strata#2551). The cursor is on `todo.txt` then: an anchor moved there, or dropped,
-/// would select `todo.txt` alone.
 fn shift_click_after_a_background_click_ranges_from_the_anchor(mode: &str, name: &str) {
     runs(
         mode,
@@ -181,10 +171,6 @@ fn second_press_drag_and_ctrl_drag_keep_selection_without_activating_folder() {
     );
 }
 
-/// As [`shift_click_after_a_load_selects_the_entry_alone`], with an entry listed between: the
-/// browser's marks come again then, and must bring the view no anchor the browser took for
-/// the first visit's cursor (finding lgse/strata#2551, met again in the binary, where the
-/// folder's metadata relists it; `pointer v3` seed `0x18`).
 #[test]
 fn a_shift_click_after_a_load_and_a_new_entry_selects_the_entry_alone() {
     staged_after(
@@ -216,10 +202,6 @@ fn a_shift_click_after_a_load_and_a_new_entry_selects_the_entry_alone() {
     );
 }
 
-/// A folder opened again comes back at its remembered position through the browser's
-/// `set_selection`, which on GTK gives the restored cursor the Shift anchor when there is none
-/// (`restore_selection`), so a Shift+click ranges from it: the first visit's no-anchor rule of
-/// finding lgse/strata#2551 does not reach a revisit (`pointer v4` seed `0x2f`, F4's round 2).
 #[test]
 fn a_shift_click_after_a_revisit_ranges_from_the_restored_cursor() {
     runs(

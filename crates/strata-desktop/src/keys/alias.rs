@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Escape, Enter, Tab and the arrows are structural commands: a press of one
-//! of their other bindings is read as the canonical key before any handler
-//! sees it, so every surface that matches the command follows it. See
-//! `docs/keyboard-shortcuts.md`.
-//!
-//! An interface says what owns typing where a press lands, as a [`Context`], and
-//! [`rewrite`] does the rest.
-
 use super::{
     Binding, Command, Key, KeyPress, Map, Match, Modifiers, bindings,
     command::{active_keymap, registry},
@@ -19,10 +11,6 @@ pub const FALLBACK: Command = bindings::ESCAPE;
 /// What owns typing where a press lands.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Context {
-    /// A focused text field or popover, or type-to-search, reads plain
-    /// printable keys as its own. In 10xer a read-only text view, such as a
-    /// text preview, types nothing; the default map keeps treating it as a
-    /// field.
     pub typing: bool,
 }
 
@@ -36,8 +24,6 @@ impl Context {
     }
 }
 
-/// Which alternates a press's context lets through. `Off` is a press that
-/// did not come through `on_press`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Aliasing {
     Off,
@@ -68,9 +54,6 @@ fn structural() -> impl Iterator<Item = (Command, Binding)> {
     registry().filter_map(|command| command.canonical().map(|canonical| (command, canonical)))
 }
 
-/// Reads `press` as the canonical key of the structural command whose
-/// alternate it matches exactly in the active map, where `context` lets that
-/// alternate through. A canonical key, with any modifiers, is never rewritten.
 pub fn rewrite(press: KeyPress, context: Context) -> KeyPress {
     let aliasing = context.aliasing();
     let press = KeyPress { aliasing, ..press };

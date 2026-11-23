@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Revision and generation tracking for provider query and menu caches, ported from
-//! `src/ui/file_providers/freshness.rs`.
-
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Default)]

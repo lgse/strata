@@ -1,23 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C13 MediaPlayer: its scenes, demo state, view and key and poll hooks. Scene
-//! names start with `c13-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-2-composites/C13-media-player.md`.
-//!
-//! The player sits beside a fake listing, on a [`FakeClock`] that plays on the page's virtual
-//! clock. Everything the host would bring is generated here and handed over by `poll` when it
-//! comes due, as a fake worker: the video frames (a pacer stand-in writing a `Pixels` in
-//! place), the waveform levels in chunks, the storyboard cells in Strata's subdivision order,
-//! the probe's details, and the spectrum's bands. Goldens and scripts see the same results
-//! every run.
-//!
-//! The page plays the host: it applies each intent (play, pause and seeks to the clock, the
-//! volume to its "preference", steps to its fake listing), and says what a host would do with
-//! the rest on its status line (`c13-status`): the hand-off, decode sizes. The window's media
-//! keys (Ctrl+Alt+Space and the rest) go through the page's `on_key` to
-//! [`MediaKeys::window_command`], as Strata's window key handler would.
-
 use std::collections::VecDeque;
 use std::time::Duration;
 
@@ -103,7 +85,6 @@ pub const ANIMATION: File = File {
     seconds: 75,
 };
 
-/// C13's demo state, held in `Gallery::c13`.
 pub struct Demo {
     pub media: MediaState,
     pub clock: FakeClock,
@@ -132,8 +113,6 @@ pub struct Demo {
     pub volume: (f32, bool),
     /// The storyboard lands whole when asked (scenes that start mid-clip).
     pub instant: bool,
-    /// Frames made ahead, which the pacer cycles through (the perf scene measures the player,
-    /// not this page's pixel loop).
     pub made: Vec<Vec<u8>>,
     pub frame_count: usize,
 }
@@ -191,8 +170,6 @@ fn level(i: usize, seed: f32) -> f32 {
     (v.clamp(0.02, 1.0)).powi(2)
 }
 
-/// A frame of the fake video at `t` seconds: a sky gradient whose hue follows the clip and a
-/// bar that crosses with time, so playback, seeks and steps show.
 pub fn frame_rgba(size: [u32; 2], t: f64, seed: u8) -> Vec<u8> {
     let [w, h] = size;
     let mut px = vec![0u8; (w * h * 4) as usize];
@@ -436,8 +413,6 @@ impl Demo {
             }
             MediaIntent::DecodeSize([w, h]) => {
                 self.status = format!("Decoding at {w} × {h}");
-                // The decoder restarts at that size, fitting the 16:9 source and never past
-                // its 1920 × 1080 (the perf scene keeps its fixed frames).
                 if self.frame_px != PERF_FRAME {
                     let s = (w as f32 / 16.0).min(h as f32 / 9.0).min(120.0);
                     self.frame_px = [(16.0 * s).round() as u32, (9.0 * s).round() as u32];
@@ -539,8 +514,6 @@ fn plain(g: &mut Gallery, dark: bool) {
     d.clock.set_position(Duration::from_secs(4));
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c13", dark)`, then fills in `g.c13`.
 pub const SCENES: &[Scene] = &[
     ("c13-video-playing-light", |g| video_playing(g, false)),
     ("c13-video-playing-dark", |g| video_playing(g, true)),
@@ -591,8 +564,6 @@ pub const REVIEW: &[Scene] = &[
     ("c13-tenxer-dark", |g| tenxer(g, true)),
     ("c13-audio-tenxer-light", |g| audio_tenxer(g, false)),
     ("c13-audio-tenxer-dark", |g| audio_tenxer(g, true)),
-    // A host's own bindings: F9 seeks to the end, and `+` is unbound so `=` alone raises the
-    // volume (Strata's `[keymap.*]` overrides).
     ("c13-rebound-light", |g| rebound(g, false)),
     ("c13-rebound-dark", |g| rebound(g, true)),
     // A paused song with the waveform landed.
@@ -775,8 +746,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     taken
 }
 
-/// The fake host: the clock, the workers, the pacer, the spectrum's bands, then the player's
-/// tick.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     let d = &mut g.c13;
     d.now = t;

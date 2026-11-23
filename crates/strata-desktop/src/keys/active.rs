@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the catalog reads of the live settings: which map is in use, the keymap with the
-//! user's overrides, and whether plain keys type into a search.
-//!
-//! The catalog reads them at each press and each label, from whoever the interface
-//! registered on its thread. Nothing registered, or a source that has gone, means the
-//! shipped defaults. The source is only read: it is never called back from.
-
 use std::{
     cell::RefCell,
     rc::{Rc, Weak},
@@ -48,8 +41,6 @@ thread_local! {
     static ACTIVE: RefCell<Option<Weak<dyn Active>>> = const { RefCell::new(None) };
 }
 
-/// Makes `source` what this thread's presses and labels resolve through, for as long as
-/// something else keeps it alive.
 pub fn set_active(source: Weak<dyn Active>) {
     ACTIVE.with(|active| active.replace(Some(source)));
 }

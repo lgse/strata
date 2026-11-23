@@ -499,8 +499,6 @@ fn compress_chord_targets_keyboard_focused_column_over_hovered_column() {
             }));
             while host.turn() {}
 
-            // Focus depth 0 (`sub` is sorted before `root.txt`), descend into `sub` at depth 1,
-            // and hold the header target on depth 0 to simulate a hovered parent column.
             host.runtime().update(|app, tx| {
                 let view = shell::view_focus(app).expect("a view").to_owned();
                 tx.focus(view, true);
@@ -531,8 +529,6 @@ fn compress_chord_targets_keyboard_focused_column_over_hovered_column() {
     );
 }
 
-/// The chrome 10xer hides rebuilds the view around the listing; the listing keeps the keyboard
-/// through the switch, as GTK's does.
 #[test]
 fn toggling_tenxer_mode_keeps_the_keyboard_in_the_listing() {
     crate::test_support::hosted_after(
@@ -567,8 +563,6 @@ fn toggling_tenxer_mode_keeps_the_keyboard_in_the_listing() {
     );
 }
 
-/// `;` lists the actions by number; its digit runs the one listed, unless the selection moved
-/// since it armed ("Selection changed") or the slot is empty (`complete_numbered_action`).
 #[test]
 fn numbered_action_chords_run_the_listed_action_on_the_armed_targets() {
     let ran = || strata_core::storage::config_directory().join("ran.txt");
@@ -619,8 +613,6 @@ fn numbered_action_chords_run_the_listed_action_on_the_armed_targets() {
     );
 }
 
-/// A folder holding `pictures` (the folders `aaa` and `bbb`, each with a file) and
-/// `readme.md`, opened with the keyboard in its listing.
 fn open_pictures(host: &mut Offscreen) -> tempfile::TempDir {
     let root = tempfile::tempdir().expect("folder");
     let pictures = root.path().join("pictures");
@@ -642,11 +634,6 @@ fn open_pictures(host: &mut Offscreen) -> tempfile::TempDir {
     root
 }
 
-/// A folder came back to with its first entry selected and the cursor past it: the browser's
-/// load picked that first entry, takes the restored selection for its own pick and keeps the
-/// load's cursor. GTK's view draws that cursor, and its rename and Delete act on it (driven on
-/// GTK): so does the view. Nothing is committed, so Columns then opens no child column for
-/// the remembered folder, as GTK's opens none (finding lgse/strata#2437).
 #[test]
 fn a_revisit_keeps_the_view_and_the_browser_on_one_cursor() {
     hosted_after(

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Chooser footer (`ChooserDetails` + `ChooserActions`) and confirmation dialogs
-//! (`src/ui/chooser/layout.rs`, `state.rs`, and `image_conversion.rs`).
-
 use rune::{El, Key, KeyEvent, LiveRegion, Mods, Tx, col, el, icon, row, text, text_input};
 use rune_kit::{
     Button, ButtonVariant, Checkbox, IconButton, IconButtonVariant, Placement, Select,
@@ -182,8 +179,6 @@ fn on_name_key(app: &mut App, ev: &KeyEvent, tx: &mut Tx) -> bool {
     }
 }
 
-/// Escape in the name field: 10xer mode leaves the field for the view, the default map
-/// cancels the request.
 fn escape_name(app: &mut App, tx: &mut Tx) {
     if !shell::preferences(app).tenxer_mode {
         accept::cancel(app, tx);

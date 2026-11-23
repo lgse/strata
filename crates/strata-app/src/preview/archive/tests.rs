@@ -354,8 +354,6 @@ fn password_prompt_claims_field_holds_tracks_wrong_passwords_and_dismisses_on_es
     );
 }
 
-/// 10xer's Shift+Tab hands the keys from the password field back to the listing and keeps
-/// the prompt open (`leave_or_close_preview`, `tenxer-password-archive-keys`).
 #[test]
 fn tenxer_shift_tab_leaves_the_password_field_for_the_listing() {
     hosted(
@@ -423,8 +421,6 @@ fn async_archive_and_prompt_focus_entry_clears_active_column_indicator() {
                 "active column shows its top bar before entering preview"
             );
 
-            // Async password prompt arrival clears the active column's indicator without waiting
-            // for any further user input.
             press_without_draining(&mut host, Key::Right);
             let entry_needs = entry.clone();
             host.runtime().update(move |app: &mut App, tx: &mut Tx| {
@@ -446,8 +442,6 @@ fn async_archive_and_prompt_focus_entry_clears_active_column_indicator() {
                 "async password prompt suppresses the active column indicator immediately"
             );
 
-            // Async ready archive tree (when armed to focus) likewise clears the active column
-            // indicator immediately.
             let entry_ready = entry.clone();
             host.runtime().update(move |app: &mut App, tx: &mut Tx| {
                 app.preview.owns_focus = false;

@@ -36,10 +36,6 @@ fn photo_thumbnail() -> Sandbox<'static> {
 
 #[test]
 fn file_size_limit_holds_a_full_resolution_decoded_frame() {
-    // gdk-pixbuf decodes through glycin, which sizes a memfd to
-    // `width * height * channels` before scaling down. RLIMIT_FSIZE covers that
-    // buffer too, and exceeding it kills the loader with SIGXFSZ rather than
-    // surfacing an error, so the limit has to clear the largest frame we expect.
     const LARGEST_SUPPORTED_PIXELS: u64 = 50_000_000;
     const RGBA_CHANNELS: u64 = 4;
 
@@ -104,8 +100,6 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
             "preview-pdf /input.pdf /output/result.png 2:640x800 software",
         ],
     );
-    // RLIMIT_NPROC counts every process owned by the host user, not just the
-    // sandbox, and can prevent legitimate media decoders from starting.
     assert_contains_none(
         &joined,
         &["--nproc", "--ro-bind /home /home", "--share-net"],

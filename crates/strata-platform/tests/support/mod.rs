@@ -1,27 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The compositor and D-Bus harness (W3): each test gets a private session of its own.
-//!
-//! [`Session::start`] brings up, under a private `XDG_RUNTIME_DIR`:
-//!
-//! 1. a watchdog, first, in a process group of its own that ignores Ctrl-C: if the test process
-//!    dies without tearing down (SIGKILL, SIGINT, a timeout), it kills the session's processes
-//!    (those started with `XDG_RUNTIME_DIR` set to the session's directory, and no other),
-//!    removes the Xwayland lock and socket a killed sway leaves, unmounts what is mounted in the
-//!    directory and removes it;
-//! 2. a session bus ([`Bus`]): a `dbus-daemon` with only the session's service directory;
-//! 3. a nested headless sway, with Xwayland (`sway.rs` lists the traps it works around);
-//! 4. an input peer ([`Session::input`]): a virtual pointer and keyboard, without which a
-//!    headless seat gives no client pointer events or keyboard focus.
-//!
-//! Processes start through [`Session::command`], with an environment built from nothing
-//! ([`Session::env`]), so none can reach the desktop's display, bus or runtime directory.
-//! Dropping the session stops everything and removes the runtime directory. Logs stay in
-//! `target/tmp/session/<test>/`.
-//!
-//! Every test that starts a session is `#[ignore]`d: `mise run test-platform` runs them, and
-//! `mise run test` never does. See docs/rune/testing.md, "Compositor and D-Bus tests".
-
 mod bus;
 mod gpu;
 mod peer;
@@ -56,7 +34,6 @@ pub enum Display {
 }
 
 pub struct Options {
-    /// Start sway. Off for tests that need only the bus (P5, P8).
     pub compositor: bool,
     /// The headless output's size in pixels.
     pub output: (u32, u32),
@@ -92,9 +69,6 @@ pub fn timeout() -> Duration {
     Duration::from_secs_f64(10.0 * scale)
 }
 
-/// An example of strata-platform, built beside the test binary
-/// (`target/<profile>/examples/<name>`). `mise run test-platform` builds them first:
-/// `cargo test` leaves examples under hashed names only.
 pub fn example(name: &str) -> PathBuf {
     let exe = std::env::current_exe().expect("test binary path");
     let path = exe
@@ -119,8 +93,6 @@ fn tail(path: &Path, n: usize) -> String {
     format!("--- {} ---\n{}", path.display(), lines[start..].join("\n"))
 }
 
-/// Appends a line to the file `STRATA_SESSION_REPORT` names, if any: how a test that runs
-/// another test binary (W3's SIGKILL checks) learns the session's directory and processes.
 pub fn report(line: &str) {
     let Some(path) = std::env::var_os("STRATA_SESSION_REPORT") else {
         return;
@@ -134,8 +106,6 @@ pub fn report(line: &str) {
     }
 }
 
-/// The desktop's display, as the shell had it: `mise run test-platform` saves it in
-/// `STRATA_OUTER_*` before clearing it.
 struct Outer {
     display: Option<String>,
     /// The desktop's Wayland socket.
@@ -187,8 +157,6 @@ impl Session {
         static N: AtomicU32 = AtomicU32::new(0);
         static NAMES: Mutex<Option<HashMap<String, u32>>> = Mutex::new(None);
         let n = N.fetch_add(1, Ordering::Relaxed);
-        // `STRATA_SESSION_NAME` names the logs of a test run in a binary of its own (W3's kill
-        // tests run several at once); otherwise the test's name does.
         let base = match (
             std::env::var("STRATA_SESSION_NAME")
                 .ok()
@@ -217,9 +185,6 @@ impl Session {
             .join(&name);
         let _ = std::fs::remove_dir_all(&logs);
         std::fs::create_dir_all(&logs).expect("session log directory");
-        // Unique even when this test process's pid is reused (its start time tells them apart),
-        // and short: sockets in it (`sway-ipc.<uid>.<pid>.sock`, about 30 bytes) must fit in a
-        // Unix socket path's 108 bytes.
         let dir = PathBuf::from(format!(
             "/tmp/strata-session-{}-{}-{n}",
             std::process::id(),
@@ -301,9 +266,6 @@ impl Session {
             .expect("this session has no compositor (Options::compositor)")
     }
 
-    /// The environment of a process in this session, built from nothing. It passes on
-    /// `STRATA_TEST_TIMEOUT_SCALE` and `LD_LIBRARY_PATH` where set; ICD paths in
-    /// `STRATA_VK_ICD` should be absolute.
     pub fn env(&self, display: Display) -> Vec<(OsString, OsString)> {
         let mut env: Vec<(OsString, OsString)> = base_env(&self.dir, Some(self.bus().address()))
             .into_iter()
@@ -361,9 +323,6 @@ impl Session {
         cmd
     }
 
-    /// Starts `cmd` (from [`Session::command`]), logging as `<name>.stdout.log` and
-    /// `<name>.stderr.log` in the session's log directory (`<name>-2` and so on for a name
-    /// already taken).
     pub fn spawn(&self, name: &str, cmd: Command) -> Proc {
         let mut unique = name.to_owned();
         let mut n = 1;
@@ -431,9 +390,6 @@ impl Session {
         }
     }
 
-    /// Waits until each of `pids` has a toplevel and no two overlap: sway has tiled them side
-    /// by side. The clients may not have drawn at their new size yet: sync each one before
-    /// sending input.
     pub fn wait_windows(&self, pids: &[u32]) -> Vec<Window> {
         let deadline = Instant::now() + timeout();
         loop {
@@ -460,13 +416,6 @@ impl Session {
         }
     }
 
-    /// Moves the input peer's pointer to `at` until `reached` holds, checking for 200 ms after
-    /// each move, and moving again a point off if it doesn't.
-    ///
-    /// For a moment after sway re-tiles, a motion can reach no surface (likely sway's saved
-    /// snapshots of windows it is resizing), and a press then goes nowhere. `reached` says how
-    /// the test knows the pointer got there: a peer's event ([`Session::point_at`]), an app's
-    /// log line.
     pub fn point_until(&self, at: (f64, f64), reached: impl Fn() -> bool) {
         let deadline = Instant::now() + timeout();
         let mut nudge = 0.0;
@@ -492,10 +441,6 @@ impl Session {
         }
     }
 
-    /// Moves the pointer to `at` until `peer` reports an enter or a motion that came after the
-    /// first move: an enter from before it doesn't count. Each check syncs with the peer first,
-    /// so it has read whatever sway sent it (Xwayland passes motion on later, so X11 peers may
-    /// take another check).
     pub fn point_at(&self, peer: &Peer, at: (f64, f64)) {
         let mark = peer.line_count();
         self.point_until(at, || {
@@ -516,8 +461,6 @@ impl Session {
         &self.dir
     }
 
-    /// Xwayland's pid and display number, once an X client has started it. wlroots forks
-    /// Xwayland twice, so it isn't sway's child: find it by its command line, `Xwayland :N`.
     pub fn xwayland(&self) -> Option<(u32, u32)> {
         let name = self.sway.as_ref()?.x_display_name()?;
         let display = name.trim_start_matches(':').parse().ok()?;
@@ -544,15 +487,6 @@ fn record(dir: &Path, pid: u32) {
     report(&format!("pid {pid}"));
 }
 
-/// The watchdog's script: wait for the test process to go, then clean up after it. `$1` is the
-/// test's pid, `$2` its start time (field 22 of `/proc/<pid>/stat`), `$3` the session
-/// directory.
-///
-/// It acts only on the session's processes: those whose environment has `XDG_RUNTIME_DIR=$3`
-/// (the desktop's is `/run/user/<uid>`), found by scanning `/proc`, never by a pid number that
-/// may have been reused. D-Bus-activated services count too. A killed sway leaves Xwayland's
-/// lock file and socket behind; the display comes from the sockets the session's processes
-/// hold, and a lock goes only if it names one of them.
 const WATCHDOG: &str = r#"
 trap '' INT TERM HUP
 t=$1; since=$2; d=$3
@@ -601,9 +535,6 @@ awk -v d="$d/" '{ m = $5; gsub(/\\040/, " ", m); gsub(/\\011/, "\t", m); gsub(/\
 rm -rf --one-file-system "$d"
 "#;
 
-/// Starts the watchdog for `dir` (see [`WATCHDOG`]), in a process group of its own so a Ctrl-C
-/// meant for the tests doesn't reach it. It runs until the test process is gone, or until the
-/// session kills it after tearing down.
 fn watchdog(dir: &Path) -> Child {
     Command::new("sh")
         .arg("-c")
@@ -623,8 +554,6 @@ fn watchdog(dir: &Path) -> Child {
         .expect("starting the session watchdog")
 }
 
-/// Field 22 of `/proc/<pid>/stat`: when the process started, which tells it from a later
-/// process that reuses its pid.
 fn start_time(pid: &str) -> Option<String> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     let (_, rest) = stat.rsplit_once(") ")?;
@@ -642,8 +571,6 @@ pub fn alive(pid: u32) -> bool {
         .unwrap_or(false)
 }
 
-/// The live processes started with `XDG_RUNTIME_DIR` set to `dir`: a session's own, D-Bus
-/// activated services and Xwayland (which wlroots forks twice) included.
 pub fn processes_of(dir: &Path) -> Vec<u32> {
     let Ok(entries) = std::fs::read_dir("/proc") else {
         return Vec::new();
@@ -663,8 +590,6 @@ fn started_with(pid: u32, dir: &Path) -> bool {
         .is_ok_and(|env| env.split(|b| *b == 0).any(|v| v == want.as_bytes()))
 }
 
-/// A mount point from `/proc/self/mountinfo`, with its octal escapes (`\040` for a space)
-/// undone.
 fn unescape_mount(point: &str) -> String {
     point
         .replace("\\040", " ")
@@ -673,8 +598,6 @@ fn unescape_mount(point: &str) -> String {
         .replace("\\134", "\\")
 }
 
-/// What every process of a session gets: a private home and runtime directory, the session
-/// bus, and settings that keep GLib from reaching outside (gvfs, dconf, the a11y bus).
 fn base_env(dir: &Path, bus: Option<&str>) -> Vec<(String, String)> {
     let home = dir.join("home");
     let at = |sub: &str| home.join(sub).display().to_string();
@@ -709,8 +632,6 @@ impl Drop for Session {
             sway.stop();
         }
         self.bus.take();
-        // Nobody waits for what wlroots forked (Xwayland) or the bus activated: wait for every
-        // process started with the session's directory to go, then kill what is left.
         let deadline = Instant::now() + timeout();
         let mut left = processes_of(&self.dir);
         while !left.is_empty() && Instant::now() < deadline {
@@ -720,8 +641,6 @@ impl Drop for Session {
         if !left.is_empty() {
             eprintln!("{}: killing what outlived the session: {left:?}", self.name);
             for pid in left {
-                // Again just before the signal: the pid may have gone to another process since
-                // the scan. (A pidfd would close the gap, but not without unsafe code.)
                 if started_with(pid, &self.dir) {
                     let _ = Command::new("kill")
                         .args(["-KILL", &pid.to_string()])

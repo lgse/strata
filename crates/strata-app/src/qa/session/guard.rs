@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What keeps the session host off a desktop. It puts a virtual keyboard and pointer on the
-//! seat of the compositor it reaches, so it runs only in a private, headless sway. [`admit`]
-//! decides before the window opens, so a refused session never touches a display:
-//!
-//! - The hard gate: every output the sway of `SWAYSOCK` lists is a headless one
-//!   (`HEADLESS-*`, as `WLR_BACKENDS=headless` names them). No desktop has only those.
-//! - An extra check: no variable the host reaches the session through points into the
-//!   desktop's runtime directory, `/run/user/<uid>`, the bus's included. The session bus it
-//!   expects is the runner's private one, or none.
-//!
-//! That `WAYLAND_DISPLAY` is that same sway is proven once the window is up, before any
-//! device is made: the session waits until that sway lists this process's window
-//! (`Session::connect`). A refusal ends the host; it never falls back.
-
 use std::path::PathBuf;
 
 use serde_json::Value;
@@ -38,8 +24,6 @@ pub(super) struct Admitted {
     pub(super) screen: (u32, u32),
 }
 
-/// Admits the session `variable` reads, or says why it is refused: through the desktop's
-/// runtime directory, or in a sway that is not headless.
 pub(super) fn admit(variable: impl Fn(&str) -> Option<String>) -> Result<Admitted, String> {
     let reached = REACHED_THROUGH.map(|name| (name, variable(name)));
     private(&reached)?;
@@ -49,8 +33,6 @@ pub(super) fn admit(variable: impl Fn(&str) -> Option<String>) -> Result<Admitte
     Ok(Admitted { sway, screen })
 }
 
-/// The size of the active output of sway's `GET_OUTPUTS` reply, when every output is
-/// headless.
 pub(super) fn headless(outputs: &Value) -> Result<(u32, u32), String> {
     let outputs = outputs.as_array().map_or(&[][..], Vec::as_slice);
     if outputs.is_empty() {
@@ -78,8 +60,6 @@ pub(super) fn headless(outputs: &Value) -> Result<(u32, u32), String> {
     Ok((pixels("width")?, pixels("height")?))
 }
 
-/// Refuses a session reached through the desktop's runtime directory. `variables` holds each
-/// of [`REACHED_THROUGH`] with its value, if it has one.
 pub(super) fn private(variables: &[(&str, Option<String>)]) -> Result<(), String> {
     for (name, value) in variables {
         if let Some(value) = value

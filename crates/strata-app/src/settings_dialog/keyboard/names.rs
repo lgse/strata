@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What each keyboard settings row is called: GTK's `NAMES`, `title`, `slot_action` and
-//! `search_names` (`src/ui/settings/keyboard.rs`), word for word.
-//!
-//! **A copy:** `src/ui` does not move, so this is kept beside GTK's by hand. A change to a row's name in `NAMES`
-//! on `main` merges clean and changes nothing here: make the same change in the merge
-//! (`docs/rune/shared-state.md`, "Merging from `main`").
-
 use strata_core::i18n::tr;
 use strata_desktop::keys::{self, Command, bindings::*};
 use strata_fs::services::ActionCatalog;
@@ -32,16 +25,12 @@ pub(super) fn slot_action(command: Command, catalog: Option<&ActionCatalog>) -> 
     Some(action.map_or_else(|| tr("No action"), |action| action.name().to_owned()))
 }
 
-/// The names the page filter matches, lowercased: the row's name in the interface language
-/// and in English, and a slot's action.
 pub(super) fn search_names(command: Command, catalog: Option<&ActionCatalog>) -> String {
     let mut names = vec![title(command), title_in(command, "en")];
     names.extend(slot_action(command, catalog));
     names.join("\n").to_lowercase()
 }
 
-/// The message key of a row's name. Commands whose reference row describes several keys at
-/// once have their own.
 pub(super) fn name(command: Command) -> &'static str {
     NAMES
         .iter()

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Extract password dialog (`show_extract_password_dialog` in `src/ui/browser/archive.rs`),
-//! built on C15's [`StrataDialog`].
-
 use rune::{El, LiveRegion, Tx, col, row, text, text_input};
 use rune_kit::{ControlSize, IconButton, IconButtonVariant};
 use strata_components::dialog::{Focus, StrataDialog, keep_words_whole};

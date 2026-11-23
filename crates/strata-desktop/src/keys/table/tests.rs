@@ -185,8 +185,6 @@ fn the_first_install_decides_and_the_catalog_then_works_without_a_library() {
             );
             let keypad = pressed(Key::KP_5, NONE, Typed::Key(Key::KP_5));
             assert_eq!(keypad.text(), Some('5'), "a keypad digit types its digit");
-            // The keypad's decimal key types a period and is not the period key: GDK does not
-            // fold it onto the main block, so Ctrl with it is not Ctrl+period.
             let decimal = pressed(Key::KP_Decimal, CTRL, Typed::Key(Key::KP_Decimal));
             assert!(!decimal.is(HIDDEN_FILES.in_map(Map::Default)));
             let period = pressed(Key::period, CTRL, Typed::Character('.'));

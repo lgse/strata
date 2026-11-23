@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What copying a selection takes, by Strata's rule (`selection_text` in
-//! `src/ui/virtual_preview/highlight.rs`): every unit between the selection's two ends copies
-//! its whole copy text (an image's `[Image: alt]`, a table's rows, a rule), and each end unit
-//! the part selected, followed by the block's newline when the selection goes on past it.
-//!
-//! Rune hands over the selected texts in tree order. Only the two end units are read from it;
-//! the units between come from the model, so images and rules, which have no selectable
-//! text, still copy. A selection that reaches more than 10,000 unbuilt rows (Rune's cap,
-//! R4) is cut short there by Rune: its far end is wrong, except for Ctrl+A, which C11 copies
-//! from the model.
-
 use std::collections::BTreeMap;
 use std::ops::Range;
 
@@ -143,8 +132,6 @@ fn table_part(out: &mut String, pieces: &[Piece<'_>]) {
     }
 }
 
-/// Rune's collection cap for a selection across unbuilt rows (R4): a report this long may be
-/// cut short.
 const RUNE_ROWS: usize = 10_000;
 const RUNE_BYTES: usize = 4 << 20;
 
@@ -163,8 +150,6 @@ pub(crate) fn has_selection_in(state: &Content, sel: &TextSelection) -> bool {
         .any(|t| locate(key, t.path()).is_some_and(|(unit, _)| unit < len))
 }
 
-/// The first and last texts a selection of the whole document holds: the first and last
-/// unit drawing selectable text, and in a table its first and last cell with text.
 fn ends(state: &Content) -> Option<((usize, Part), (usize, Part))> {
     let units = &state.doc.units;
     let part = |i: usize, last: bool| -> Option<(usize, Part)> {
@@ -183,9 +168,6 @@ fn ends(state: &Content) -> Option<((usize, Part), (usize, Part))> {
                 let p = if last { cells.last() } else { cells.next() };
                 p.map(|p| (i, p))
             }
-            // An image's alt text shows only when it failed: its state isn't the model's, so
-            // an image never counts as an end. A failed one at either end reads as "not
-            // whole", the safe direction.
             UnitKind::Media { .. } => None,
             kind => (super::state::searchable(kind) && !state.shown(i).0.is_empty())
                 .then_some((i, Part::Text)),
@@ -196,8 +178,6 @@ fn ends(state: &Content) -> Option<((usize, Part), (usize, Part))> {
     Some((first, last))
 }
 
-/// Whether `sel` reads as the whole document: every selected text whole, from the document's
-/// first text to its last, or to where Rune's collection stops (R4).
 pub(crate) fn reads_whole(state: &Content, sel: &TextSelection) -> bool {
     let key = state.key.as_str();
     let Some((doc_first, doc_last)) = ends(state) else {

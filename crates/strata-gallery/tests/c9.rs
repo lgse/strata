@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C9's page: what the drawer does in process, beside its goldens and scripts. Each test that
-//! checks a feature-map Behavior bullet names it, as a script would, where a script can't:
-//! states in the middle of a slide or a drag, and paint.
-
 mod c9 {
     use rune::{Env, Key, KeyEvent, Mods, Runtime};
     use serde_json::Value;
@@ -167,8 +163,6 @@ mod c9 {
         assert!(!rt.state.c9.drawer.is_finding());
     }
 
-    /// `preview/preview-panel/find`: The status reads "Match 1 of N", or "No matches", and is
-    /// hidden while the query is empty.
     #[test]
     fn the_find_status_reads_the_match_or_no_matches_and_hides_while_the_query_is_empty() {
         let mut rt = scene("c9-list-open-light");
@@ -285,9 +279,6 @@ mod c9 {
         );
     }
 
-    /// `preview/preview-panel/layout`: In Columns with an automatic width, widening or
-    /// narrowing the window resizes the preview or empty slot in one frame, without the
-    /// boundary jumping back and forth.
     #[test]
     fn a_window_resize_lands_the_automatic_width_in_one_frame() {
         let mut rt = scene("c9-columns-open-light");
@@ -300,8 +291,6 @@ mod c9 {
         assert_eq!(value(&rt), "499", "and it stays");
     }
 
-    /// `preview/preview-panel/layout`: At 4× display scaling the preview stays in place
-    /// without alternating between layouts.
     #[test]
     fn at_four_times_scale_the_preview_holds_its_layout() {
         let mut rt = runtime("c9-columns-open-light", 4.0);
@@ -316,8 +305,6 @@ mod c9 {
         );
     }
 
-    /// `preview/preview-panel/layout`: Reopening the preview during its slide-out, such as
-    /// Space twice quickly in List, turns the drawer back from its current position.
     #[test]
     fn closing_keeps_the_content_inert_until_the_slide_ends_and_reopening_turns_back() {
         let mut rt = scene("c9-list-open-light");
@@ -348,8 +335,6 @@ mod c9 {
         assert!(node(&rt, "preview-drawer").is_some());
     }
 
-    /// `preview/preview-panel/layout`: Closing the preview mid-slide returns keyboard focus to
-    /// the files at once; only content teardown waits for the slide.
     #[test]
     fn closing_mid_slide_returns_focus_to_the_files_at_once() {
         let mut rt = scene("c9-list-open-light");
@@ -387,9 +372,6 @@ mod c9 {
         assert!(!rt.animating, "and leaves it in place");
     }
 
-    /// `preview/preview-panel/layout`: Space, **i**, Esc, and the close button dismiss the
-    /// preview content and keep the slot; **Appearance → Preview panel** off releases it.
-    /// (`i` is a Strata key binding; the gallery's Space and Escape stand in for its keys.)
     #[test]
     fn dismissing_in_columns_keeps_the_slot_until_released() {
         let mut rt = scene("c9-columns-open-light");
@@ -438,8 +420,6 @@ mod c9 {
         assert_eq!(value(&rt), "308", "Up widens a step");
     }
 
-    /// `browser/view-modes/columns`: Hovering the edge of the column that meets the preview
-    /// also lights the preview divider line (the drawer's half: the host lights it).
     #[test]
     fn the_host_lights_the_divider_line() {
         let mut rt = scene("c9-columns-open-light");
@@ -458,10 +438,6 @@ mod c9 {
         assert_eq!(lit(&rt), Some(0.0));
     }
 
-    /// `preview/preview-panel/layout`: Hovering the grip or divider line lights the line and
-    /// tints the grip; after 400 ms, "Preview panel minimum width" appears. And: Crossing
-    /// between the divider line and the grip keeps the caption; pressing hides it in favor of
-    /// the outline.
     #[test]
     fn the_caption_follows_hover_and_gives_way_to_the_outline() {
         let mut rt = scene("c9-list-open-light");
@@ -510,9 +486,6 @@ mod c9 {
         rt.pointer_up(gx - 40.0, gy);
     }
 
-    /// `preview/preview-panel/layout`: Pointer-dragging the divider shows a dashed outline …
-    /// captioned "Preview panel minimum width", which fades on release. (The dashes and the
-    /// outline's span are paint and geometry, left to the eye.)
     #[test]
     fn the_outline_shows_while_dragging_and_fades_on_release() {
         let mut rt = scene("c9-list-open-light");

@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The media player's host (`preview::media`): a sandboxed video's frames and clock reach the
-//! player and the media key plays and pauses it; the eyebrow counts only the files whose
-//! probe found media, and the next key steps past text named as video, keeps playing and keeps
-//! the keyboard in the player;
-//! a decode that fails shows its error inside the player; and a GIF loops, its bar the play
-//! toggle alone.
-
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
@@ -138,8 +131,6 @@ fn probed(host: &mut Offscreen, names: &'static [&'static str]) {
     while host.turn() {}
 }
 
-/// Opens the preview on `name` in a folder holding `files`, and answers it as `content_type`
-/// media; the provider keeps answering what follows.
 fn open(
     host: &mut Offscreen,
     files: &[(&str, &str)],
@@ -222,7 +213,6 @@ fn next_steps_past_text_named_as_video_and_keeps_playing() {
             assert!(state(&host).is_some_and(|s| !s.clip().has_previous));
             play_pause(&mut host);
             shows(&mut host, MediaState::playing, "playing before the step");
-            // The keyboard in the player: the next one takes it (GTK's `keep_keys_in_content`).
             press(&mut host, Key::Right, Mods::default());
             let in_player = |host: &mut Offscreen| {
                 focused_key(host).is_some_and(|key| key.starts_with(MEDIA_KEY))
@@ -361,8 +351,6 @@ fn in_player(host: &mut Offscreen) -> bool {
     focused_key(host).is_some_and(|key| key.starts_with(MEDIA_KEY))
 }
 
-/// With the keyboard in the drawer, Strata's audio player takes the player's keys, Left and
-/// Right seeking, and keeps the keyboard.
 #[test]
 fn an_audio_player_keeps_left_and_right() {
     hosted(
@@ -393,8 +381,6 @@ fn an_audio_player_keeps_left_and_right() {
     );
 }
 
-/// A GIF's overlay takes none of the player's keys, as Strata's does: Left moves to its play
-/// toggle, as GTK's directional focus does, and a second Left goes back to the listing.
 #[test]
 fn a_gif_gives_left_to_its_play_toggle_then_back() {
     hosted(

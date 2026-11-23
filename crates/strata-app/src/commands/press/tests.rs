@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The press builder against the catalog, in the cases GTK's layout tests hold the GDK
-//! reader to (`src/ui/keys/tests/letters.rs`, `digits.rs`, `modifiers.rs`): each is what
-//! Rune's window host delivers for that key under that layout, with where the key is and
-//! what it types with nothing held.
-
 use rune::{Key as Logical, KeyEvent, Modifier, Mods, PhysicalKeyCode as At};
 use strata_desktop::keys::{
     Binding, Key, KeyPress, Map, Modifiers, SHORTCUT_MODIFIERS,
@@ -125,8 +120,6 @@ fn letters_follow_the_label_then_the_us_key_at_the_position() {
     }
 }
 
-/// Off macOS Rune's host has already put the US key in a non-ASCII character's place when
-/// Ctrl is held. The base says what the key types, so the press reads as GDK's does.
 #[test]
 fn a_chord_on_a_layout_without_ascii_is_the_us_key_and_says_it_fell_back() {
     let es = chord('c', CTRL, at(At::KeyC, 'с'));
@@ -139,8 +132,6 @@ fn a_chord_on_a_layout_without_ascii_is_the_us_key_and_says_it_fell_back() {
     assert!(!latin.used_fallback(), "{latin:?}");
 }
 
-/// A letter beyond ASCII is the key GDK has for it, lowered, with the Shift that typed its
-/// capital kept: what the GTK application would record for the same press.
 #[test]
 fn a_letter_beyond_ascii_is_recorded_as_gdk_records_it() {
     let cases = [
@@ -171,9 +162,6 @@ fn a_letter_beyond_ascii_is_recorded_as_gdk_records_it() {
     }
 }
 
-/// The default in force for the eighth key case (`docs/rune/parity/owner.md`, B3): where
-/// only the level typed is not ASCII, Rune has dropped the character, the base says nothing
-/// was replaced, and the press is the US key's. GTK reads Ctrl+`|` and no shortcut.
 #[test]
 fn a_chord_whose_level_alone_is_not_ascii_reads_as_the_us_key_rune_names() {
     let azerty_mu = chord('\\', CTRL_SHIFT, at(At::Backslash, '*'));
@@ -255,8 +243,6 @@ fn the_digit_row_counts_by_position_with_or_without_shift() {
     assert!(!us.is(VIEW_COLUMNS), "Ctrl+Shift+1 is not Ctrl+1: {us:?}");
 }
 
-/// AltGr is no modifier Rune reports. A character that is neither the key's base nor typed
-/// with Shift is above level 1: text, with no fallback, and a digit only if it types one.
 #[test]
 fn a_character_above_shifts_level_is_text_and_never_falls_back() {
     let brace = typed('{', NONE, at(At::Digit7, '7'));
@@ -317,9 +303,6 @@ fn a_named_key_is_itself_with_what_is_held() {
     assert_eq!(unknown.binding(), None, "no key a keymap could hold");
 }
 
-/// The QA target's presses and a headless test's have no position: the character is read as
-/// the US key that types it. A plain letter of another alphabet then has no fallback, which
-/// is Rune packet entry 97.
 #[test]
 fn a_press_with_no_origin_reads_as_the_us_key_that_types_it() {
     assert!(chord('c', CTRL, NOWHERE).is(COPY));

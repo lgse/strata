@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Shared by W2 (the semantic set) and K3 (the catalogs): every catalog keeps these.
-
 use std::collections::BTreeSet;
 
 use super::*;
@@ -56,8 +54,6 @@ fn the_placeholder_draws_each_name_with_its_own_icon() {
     assert_eq!(ids.len(), IconName::ALL.len(), "ids are unique");
 }
 
-// K3: the generated catalogs.
-
 /// Strata's three catalogs: Theme colors and both Brand flavours.
 fn k3_sets() -> [IconSet; 3] {
     [lucide::SET, catppuccin::MOCHA, catppuccin::LATTE]
@@ -67,16 +63,12 @@ fn is_catppuccin(icon: &Icon) -> bool {
     icon.name.starts_with("strata-ctp-")
 }
 
-/// Rune's own rule (`rune::text::color_icon`): a body that names a colour draws in it, as a
-/// colour image; any other takes the element's colour.
 fn names_its_colours(icon: &Icon) -> bool {
     ["fill=\"#", "stroke=\"#", "stop-color=\"#"]
         .iter()
         .any(|p| icon.body.contains(p))
 }
 
-/// Catppuccin icons that keep a colour of their own under Theme colors, as in Strata: a white
-/// clip path and a gradient stop.
 const OWN_COLOURS_UNDER_THEME: [&str; 2] = ["strata-ctp-humans", "strata-ctp-poetry-lock"];
 
 #[test]

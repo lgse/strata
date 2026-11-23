@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Parses freedesktop `mime/globs2` rules so `mime_type` can safely key simple
-//! extension lookups by extension without diverging from `gio::content_type_guess`
-//! on literal filenames, prefix globs, compound suffixes, or case-sensitive globs.
-
 use std::{
     collections::HashSet,
     env, fs,

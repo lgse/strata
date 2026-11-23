@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The watcher thread: a tokio current-thread runtime with one zbus session connection, as
-//! Rune's own `color-scheme` reader runs (`platform/portal_appearance.rs`).
-
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
@@ -32,17 +29,11 @@ const INTERFACE: &str = "org.freedesktop.portal.Settings";
 /// The watcher thread's name: 15 bytes, so `/proc` shows it whole.
 pub const THREAD_NAME: &str = "settings-portal";
 
-/// How long dropping a [`Watcher`] waits for its thread to stop before leaving it to finish
-/// alone, so a drop never holds the UI thread for long.
 const STOP_WAIT: Duration = Duration::from_millis(200);
 
-/// What the watcher reports, in order: one [`Event::Snapshot`] first, then changes and
-/// fallbacks as they happen.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Event {
-    /// The first answer: the portal's values, or the defaults once the portal or the bus is
-    /// known to be missing (a [`Event::Fallback`] then says why). Sent exactly once.
     Snapshot(DesktopSettings),
     /// One key changed, or became known: its new value, and every setting just after it.
     Changed {
@@ -57,13 +48,7 @@ pub enum Event {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Options {
-    /// How long [`Watcher::start`] waits for the first answer, so the app's first frame can use
-    /// it: 100 ms by default, as Rune waits for `color-scheme`. A later answer arrives as
-    /// changes. Zero never waits.
     pub first_answer: Duration,
-    /// How long connecting may take, and how long a read waits for the portal's answer
-    /// (activating it included) before the defaults go out with [`Fallback::NoPortal`]: 10 s by
-    /// default. The read stays out after that, and a late answer arrives as changes.
     pub timeout: Duration,
 }
 
@@ -91,8 +76,6 @@ impl Options {
     }
 }
 
-/// Reads the desktop's settings and follows their changes on a thread of its own
-/// ([`THREAD_NAME`]). Dropping it stops the thread.
 pub struct Watcher {
     latest: Arc<Mutex<DesktopSettings>>,
     stop: Option<oneshot::Sender<()>>,
@@ -102,10 +85,6 @@ pub struct Watcher {
 }
 
 impl Watcher {
-    /// Starts the watcher. `sink` hears every [`Event`] on the watcher's thread, in order;
-    /// [`follow`](super::follow) is the sink that moves them onto Rune's loop. Waits up to
-    /// [`Options::first_answer`] for the first answer, and fails only if the thread can't be
-    /// spawned.
     pub fn start(
         options: Options,
         sink: impl Fn(Event) + Send + Sync + 'static,
@@ -150,8 +129,6 @@ impl Watcher {
         })
     }
 
-    /// The latest settings: the defaults until the first answer. An app can seed its state
-    /// with it right after [`Watcher::start`].
     pub fn snapshot(&self) -> DesktopSettings {
         *self.latest.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -162,8 +139,6 @@ impl Drop for Watcher {
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
         }
-        // Join only a thread that has ended. One still busy after STOP_WAIT is detached: it
-        // stops at its next await, and dropping never hangs the app on it.
         if let Err(RecvTimeoutError::Disconnected) = self.ended.recv_timeout(STOP_WAIT)
             && let Some(thread) = self.thread.take()
         {
@@ -180,9 +155,6 @@ struct Feed {
     reported: Reported,
     /// Taken by the snapshot, which ends `start`'s wait.
     answered: Option<mpsc::SyncSender<()>>,
-    /// Per key, the receive position of the message that last set it. Messages on one
-    /// connection are ordered by it, so an older message never overwrites a newer one,
-    /// whichever order the watcher's loop happens to take them in.
     stamps: [Option<Sequence>; Key::ALL.len()],
 }
 
@@ -218,8 +190,6 @@ impl Feed {
         self.stamps[key as usize].is_none_or(|stamp| stamp < at)
     }
 
-    /// Applies a `ReadAll` reply to every key no newer change has set. Returns the unique name
-    /// it came from, or None when it isn't one (reported as [`Fallback::NoPortal`]).
     fn reply(&mut self, reply: &Message) -> Option<String> {
         let Ok(values) = reply.body().deserialize::<Reply>() else {
             self.missing(Fallback::NoPortal(
@@ -255,8 +225,6 @@ impl Feed {
         self.report(applied);
     }
 
-    /// Reports what a reply or a change did. Before the snapshot, the changes are folded into
-    /// it; after, each is its own event.
     fn report(&mut self, applied: Applied) {
         if self.answered.is_some() {
             self.snapshot();
@@ -335,14 +303,9 @@ async fn watch(options: Options, feed: &mut Feed) {
             ));
         }
     };
-    // Subscribed before the first read, so no change between the two is lost. The loop keeps
-    // draining the changes while a read is out: zbus queues a bounded number per match rule and
-    // stops reading the socket when the queue is full, and the reply waits behind them.
     let new_deadline = || Some(Box::pin(tokio::time::sleep(options.timeout)));
     let mut read = Some(read_all(&portal));
     let mut deadline = new_deadline();
-    // Changes that arrive while a read is out, before its timeout, the latest per key: they
-    // apply after the reply, and only where they are newer than it.
     let mut held: [Option<Change>; Key::ALL.len()] = Default::default();
     let release = |held: &mut [Option<Change>; Key::ALL.len()], feed: &mut Feed| {
         let mut changes: Vec<Change> = held.iter_mut().filter_map(Option::take).collect();
@@ -356,10 +319,6 @@ async fn watch(options: Options, feed: &mut Feed) {
     // A new owner seen while a read was out: read again after it, unless the reply came from it.
     let mut reread_for: Option<String> = None;
     loop {
-        // Biased, the reply first: zbus completes a reply before it hands the messages received
-        // after it to their streams, so taking it first keeps the bus's order where both are
-        // ready (a portal that answers and then leaves is lost after its answer). The stamps keep
-        // a reply from overwriting a newer change either way.
         tokio::select! {
             biased;
             reply = maybe(&mut read) => {
@@ -381,8 +340,6 @@ async fn watch(options: Options, feed: &mut Feed) {
                 }
             }
             () = maybe(&mut deadline) => {
-                // A slow portal: the defaults go out now, and the read stays out, so its reply
-                // still arrives as changes. Changes apply as they come from here on.
                 deadline = None;
                 feed.missing(Fallback::NoPortal("timed out reading the Settings portal".into()));
                 release(&mut held, feed);
@@ -421,10 +378,6 @@ async fn watch(options: Options, feed: &mut Feed) {
     }
 }
 
-/// The portal proxy, and one stream of its changes and its owner changes. All of
-/// `SettingChanged` comes through one match rule: a rule per namespace would let the merged
-/// streams reorder changes across namespaces, which the bus delivers in order. Other
-/// namespaces' changes wake the thread and are dropped by key.
 async fn subscribe(
     connection: &Connection,
 ) -> zbus::Result<(Proxy<'static>, BoxStream<'static, Input>)> {

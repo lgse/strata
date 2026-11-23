@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Unit tests for the sheet grid: sorting, what a cell shows and copies, the column
-//! arithmetic and widths, and on Rune's headless runtime (Inter, `Runtime::new`) the pointer,
-//! keys, copy, autoscroll, tabs and what assistive technology hears.
-
 mod perf;
 
 use rune::{Cursor, Cx, El, Env, Key, KeyEvent, Mods, PhysicalInput, Runtime, Tx, clipboard};
@@ -713,8 +709,6 @@ fn switching_sheets_drops_the_range_and_keeps_the_cursor() {
     assert_eq!(rt.state.grid.cursor(), Some(CellPos::new(2, 1)));
 }
 
-/// Rune takes Escape while a drag is held and ends the drag cancelled; the key reaches no
-/// handler. Strata's capture-phase key controller clears the range on it, so this does too.
 #[test]
 fn escape_during_a_range_drag_drops_the_range() {
     let mut rt = single(people(20));
@@ -742,8 +736,6 @@ fn escape_during_a_range_drag_drops_the_range() {
     assert!(!rt.state.grid.dragging());
 }
 
-/// A press on the sticky row numbers, at the start and scrolled far sideways: it picks no
-/// cell and starts no drag, so holding it scrolls nothing.
 #[test]
 fn a_press_on_a_row_number_is_on_no_cell_at_any_sideways_offset() {
     let mut rt = single(wide(40));

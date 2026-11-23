@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C25's page in process: thumbnails fill the list while it scrolls with no commit of their
-//! own, the on/off switch reaches every view at once, and a filtered list's rows draw their
-//! own entries' thumbnails.
-
 mod c25 {
     use rune::{Env, Key, KeyEvent, Mods, Runtime};
     use strata_components::contract::EntrySource;
@@ -48,8 +44,6 @@ mod c25 {
             .count()
     }
 
-    /// Commits and view runs over 240 frames of scrolling, with the worker on or paused, and
-    /// the thumbnails that landed meanwhile.
     fn scroll(work: bool) -> (u64, usize, usize) {
         let mut rt = scene("c25-filled-light", |g| {
             g.c25.status_on_idle = false;
@@ -121,8 +115,6 @@ mod c25 {
         for i in shown.filter(|&i| i < d.listing.len()) {
             let e = d.listing.entry(i);
             let key = e.thumbnail.expect("images only");
-            // The fake worker shapes each image by its key: the image held for this row's key
-            // is the one rendered for it.
             let State::Ready { width, height, .. } = d.store.state(key) else {
                 panic!("{} has no thumbnail", e.name);
             };

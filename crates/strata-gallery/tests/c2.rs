@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C2's page: what the columns view does in process, beside its goldens and scripts. Each test
-//! names the feature-map Behavior bullets it checks, where a script can't see them: scroll
-//! offsets, widths, timing, modifiers held on a pointer, and paint.
-
 mod c2 {
     use rune::{ElementInfo, Env, Key, KeyEvent, Mods, PhysicalInput, Runtime};
     use serde_json::Value;
@@ -146,16 +142,12 @@ mod c2 {
     }
 
     fn focus_strip(rt: &mut Runtime<Gallery>) {
-        // A press on the blank space after the last column focuses the strip and clears the
-        // selection; a press on a column's title focuses it and keeps it.
         let (x, y) = at(rt, &keys::title("c2-col-1"));
         click_at(rt, x, y);
     }
 
     #[test]
     fn a_click_on_a_folder_opens_it_as_the_next_column() {
-        // browser/view-modes/columns: With default click settings, a single click on a folder
-        // opens it as the next column.
         let mut rt = scene("c2-home-light");
         tap_name(&mut rt, &row("Home", "Pictures"));
         assert_eq!(path(&rt), "Home/Pictures");
@@ -209,8 +201,6 @@ mod c2 {
 
     #[test]
     fn a_click_on_a_folder_whose_column_is_open_focuses_and_reveals_that_column() {
-        // browser/view-modes/columns: Clicking a folder whose child column is already open
-        // focuses and reveals that column instead of closing it.
         let mut rt = scene("c2-three-columns-light");
         tap(&mut rt, &keys::title("c2-col-1"));
         assert_eq!(rt.state.c2.columns.active(), 0);
@@ -232,8 +222,6 @@ mod c2 {
 
     #[test]
     fn a_slow_second_click_on_an_open_folders_name_still_renames_it() {
-        // browser/view-modes/columns: A slow second click on the name of a selected, open
-        // folder still starts a rename.
         let mut rt = scene("c2-three-columns-light");
         tap_name(&mut rt, &row("Home", "Documents"));
         settle(&mut rt, 30);
@@ -243,9 +231,6 @@ mod c2 {
 
     #[test]
     fn escape_clears_the_active_column_then_closes_the_deepest() {
-        // browser/selection: In Columns, Escape clears only the active column; parent
-        // selections and open columns stay. And: Outside 10xer mode, in Columns, Escape with
-        // nothing selected in the active column closes the deepest column.
         let mut rt = scene("c2-three-columns-light");
         tap_name(&mut rt, &row("Documents", "cv.pdf"));
         // The click on a file closes the deeper column (the page's stand-in): reopen Reports.
@@ -270,8 +255,6 @@ mod c2 {
 
     #[test]
     fn a_click_on_empty_space_in_an_inactive_column_closes_deeper_and_picks_its_first_entry() {
-        // browser/view-modes/columns: Clicking empty space in an inactive column closes deeper
-        // columns, focuses and reveals that column, and selects its first visible entry.
         let mut rt = scene("c2-three-columns-light");
         let [x, y, w, h] = info(&rt, "c2-slot-1").expect("Home").visible;
         click_at(&mut rt, x + w / 2.0, y + h - 20.0);
@@ -283,8 +266,6 @@ mod c2 {
 
     #[test]
     fn a_click_on_empty_space_in_the_active_column_clears_every_column() {
-        // browser/view-modes/columns: Clicking empty space in the active column clears the
-        // selection in every column and closes deeper columns.
         let mut rt = scene("c2-three-columns-light");
         assert!(!selected(&rt, 0).is_empty());
         // Below Documents' 27 rows there is no blank space at this size: use Reports.
@@ -304,8 +285,6 @@ mod c2 {
 
     #[test]
     fn a_click_on_the_blank_strip_clears_the_selection() {
-        // browser/view-modes/columns: Clicking the blank strip right of the last column clears
-        // the selection.
         let mut rt = scene("c2-three-columns-light");
         tap(&mut rt, &keys::blank("c2"));
         for depth in 0..3 {
@@ -316,9 +295,6 @@ mod c2 {
 
     #[test]
     fn a_click_on_a_title_focuses_its_column_keeping_its_selection_and_deeper_columns() {
-        // browser/view-modes/columns: Clicking a column's title focuses that column, keeps its
-        // selection, and leaves deeper columns open. And: Clicking a column heading focuses
-        // that column without changing its selection or closing its child column.
         let mut rt = scene("c2-three-columns-light");
         tap(&mut rt, &keys::title("c2-col-1"));
         assert_eq!(rt.state.c2.columns.active(), 0);
@@ -332,9 +308,6 @@ mod c2 {
 
     #[test]
     fn a_secondary_press_on_a_header_opens_its_folder_menu_and_not_on_its_buttons() {
-        // browser/view-modes/columns: Right-clicking a column's title or empty header space
-        // opens that column's folder menu at the click; right-clicking a header button opens
-        // no folder menu.
         let mut rt = scene("c2-three-columns-light");
         let (x, y) = at(&rt, &keys::title("c2-col-3"));
         rt.secondary_down(x, y);
@@ -352,8 +325,6 @@ mod c2 {
 
     #[test]
     fn a_loading_column_shows_a_spinner_until_it_is_listed() {
-        // browser/view-modes/columns: The header spinner shows only while that column is
-        // loading and is hidden when idle.
         let mut rt = scene("c2-home-light");
         tap_name(&mut rt, &row("Home", "Slow"));
         assert!(info(&rt, &keys::spinner("c2-col-2")).is_some());
@@ -364,11 +335,6 @@ mod c2 {
 
     #[test]
     fn ctrl_a_page_and_home_act_in_the_active_column_only() {
-        // browser/selection: Ctrl+A selects every entry in the focused column, not the deepest
-        // open column. browser/scrolling: Page Up and Page Down move the focus and selection
-        // by one page in the focused listing; in Columns only the focused column moves.
-        // browser/view-modes/columns: In a column with no keyboard cursor yet, Home or Ctrl+Up
-        // lands on the first entry and End or Ctrl+Down on the last.
         let mut rt = scene("c2-three-columns-light");
         tap(&mut rt, &keys::title("c2-col-1"));
         press(&mut rt, Key::Text("a".into()), ctrl());
@@ -411,10 +377,6 @@ mod c2 {
 
     #[test]
     fn a_double_click_on_a_closed_folder_ends_as_a_single_click() {
-        // browser/view-modes/columns: Double-clicking a closed folder ends as a single click
-        // does: its column opens, focused and scrolled into view, with nothing selected in it.
-        // And: Pressing a folder does not shift the strip and shift it back before its column
-        // takes focus.
         let mut rt = scene("c2-overflow-light");
         let before = strip_offset(&rt);
         assert!(before > 0.0, "scrolled to the active column");
@@ -440,8 +402,6 @@ mod c2 {
 
     #[test]
     fn with_double_click_folders_a_double_click_opens_it_from_a_clipped_parent() {
-        // browser/view-modes/columns: The same holds when the first press scrolls the strip,
-        // with double-click folders, and from a partly clipped parent column.
         let mut rt = scene("c2-three-columns-light");
         rt.state.c2.folder_clicks = strata_components::collection::pointer::ClickCount::Two;
         // A strip 870 wide, scrolled 30 points: Home is clipped by 30.
@@ -471,8 +431,6 @@ mod c2 {
 
     #[test]
     fn a_plain_click_on_a_folder_in_a_multi_selection_collapses_it_and_opens_it() {
-        // browser/view-modes/columns: With folders opening on one click, a plain click on a
-        // folder inside a multi-selection collapses the selection to it and opens its column.
         let mut rt = scene("c2-home-light");
         tap_name(&mut rt, &row("Home", "notes.txt"));
         rt.physical_input(PhysicalInput::Modifiers(ctrl()));
@@ -490,10 +448,6 @@ mod c2 {
 
     #[test]
     fn a_file_drag_or_a_modified_click_in_a_parent_leaves_the_deeper_columns_open() {
-        // browser/view-modes/columns: A press on a file that turns into a drag leaves the
-        // deeper columns open, so the file can be dragged into the open column. And: Ctrl+click
-        // and Shift+click on a file leave the deeper columns open. (The plain click that closes
-        // them is Strata's policy, which the page stands in for.)
         let mut rt = scene("c2-three-columns-light");
         let [x, y, _, h] = info(&rt, &row("Home", "notes.txt")).expect("row").visible;
         let (x, y) = (x + 40.0, y + h / 2.0);
@@ -527,8 +481,6 @@ mod c2 {
 
     #[test]
     fn a_press_that_moves_less_than_the_threshold_starts_no_drag() {
-        // browser/view-modes/columns: Pressing a row and moving less than GTK's drag threshold
-        // starts no file drag.
         let mut rt = scene("c2-three-columns-light");
         let (x, y) = at(&rt, &row("Documents", "cv.pdf"));
         rt.pointer_move(x, y);
@@ -547,8 +499,6 @@ mod c2 {
 
     #[test]
     fn with_animations_off_a_closed_column_goes_at_once() {
-        // browser/view-modes/columns: With reduced motion or animations off, a closing column
-        // is removed at once.
         let mut rt = scene("c2-three-columns-light");
         rt.state.look.animations = false;
         settle(&mut rt, 2);
@@ -563,8 +513,6 @@ mod c2 {
 
     #[test]
     fn a_closing_column_takes_no_presses_while_it_leaves() {
-        // browser/view-modes/columns: A closing column takes no clicks, hovers, or drops while
-        // it leaves.
         let mut rt = scene("c2-three-columns-light");
         let (x, y) = at(&rt, &row("Reports", "report-q0003.pdf"));
         rt.update(|g, tx| {
@@ -584,8 +532,6 @@ mod c2 {
 
     #[test]
     fn a_rebuilt_strip_replaces_its_columns_with_no_exit() {
-        // browser/view-modes/columns: Opening another location, rebuilding the strip, or
-        // switching away from Columns replaces the columns with no exit animation.
         let mut rt = scene("c2-three-columns-light");
         rt.update(|g, tx| {
             let look = g.look.clone();
@@ -603,8 +549,6 @@ mod c2 {
 
     #[test]
     fn a_keyboard_move_reveals_a_clipped_column_and_leaves_a_shown_one() {
-        // browser/view-modes/columns: A keyboard move reveals a column clipped by up to 4 px
-        // fully and leaves an already visible column in place.
         let mut rt = scene("c2-overflow-light");
         let end = strip_offset(&rt);
         // Scroll the strip 3 points back: the active (last) column is clipped by 3 points.
@@ -629,8 +573,6 @@ mod c2 {
 
     #[test]
     fn a_column_wider_than_the_strip_stays_while_it_fills_it() {
-        // browser/view-modes/columns: A column wider than the viewport that already fills it
-        // stays in place; a partly off-screen one scrolls to its left edge.
         let mut rt = scene("c2-wide-column-light");
         tap(&mut rt, &keys::title("c2-col-2"));
         settle(&mut rt, 30);
@@ -659,9 +601,6 @@ mod c2 {
 
     #[test]
     fn back_to_an_ancestor_selects_the_folder_it_came_from_with_its_column_closed() {
-        // browser/view-modes/columns: Back, Forward, or Alt+Up to an ancestor selects the folder
-        // you came from, at any depth, with the cursor on it. And: The came-from folder's own
-        // column stays closed.
         let mut rt = scene("c2-three-columns-light");
         tap(&mut rt, &keys::title("c2-col-3"));
         press(
@@ -680,8 +619,6 @@ mod c2 {
 
     #[test]
     fn left_into_a_column_with_no_cursor_puts_it_on_the_folder_it_has_open() {
-        // browser/view-modes/columns: When Back leaves ancestor columns with no cursor, Left
-        // into an ancestor column puts the cursor on the folder that column has open.
         let mut rt = scene("c2-three-columns-light");
         rt.update(|g, _| {
             let d = &mut g.c2;
@@ -700,8 +637,6 @@ mod c2 {
 
     #[test]
     fn left_into_a_loading_column_places_the_cursor_once_it_is_listed() {
-        // browser/view-modes/columns: If that column is still loading, the cursor lands when it
-        // finishes. If the folder is gone or hidden by then, nothing is selected.
         let mut rt = scene("c2-home-light");
         tap_name(&mut rt, &row("Home", "Slow"));
         // Slow is still listing; pretend a folder of it is open in a third column.
@@ -738,11 +673,6 @@ mod c2 {
 
     #[test]
     fn a_click_on_empty_space_keeps_the_columns_scroll() {
-        // browser/view-modes/columns: Clicking empty space in a column keeps that column's
-        // vertical scroll position instead of returning to the selected row. A column with blank
-        // space below its rows can't be scrolled here, so the press reveals nothing in any
-        // column: Documents, scrolled away from its selected row, stays where it is while a
-        // click below Reports' rows takes effect.
         let mut rt = scene("c2-three-columns-light");
         rt.update(|g, tx| {
             let key = g.c2.columns.column_key(1).unwrap();
@@ -781,10 +711,6 @@ mod c2 {
 
     #[test]
     fn a_sideways_wheel_over_a_listing_scrolls_the_strip_and_a_vertical_one_the_listing() {
-        // browser/view-modes/columns: Horizontal touchpad gestures over a listing scroll the
-        // column strip. And the vertical half of: Shift+wheel over a listing scrolls the column
-        // strip horizontally; vertical wheel ticks scroll only the listing. (Rune's headless
-        // wheel doesn't turn Shift+wheel sideways: Rune draft U-C24-7.)
         let mut rt = scene("c2-overflow-light");
         let strip = strip_offset(&rt);
         let (x, y) = at(&rt, &row("level-4", "level-5"));
@@ -800,8 +726,6 @@ mod c2 {
         assert!(listing_offset(&rt, 1) != listing);
     }
 
-    /// Presses column `serial`'s edge `from` points right of its line and moves `dx` in four
-    /// steps, holding the button: the caller releases (or presses Escape first).
     fn drag_edge(rt: &mut Runtime<Gallery>, serial: u64, dx: f32, from: f32) {
         let [x, y, _, h] = info(rt, &keys::edge(&format!("c2-col-{serial}")))
             .expect("edge")
@@ -816,8 +740,6 @@ mod c2 {
         }
     }
 
-    /// Column `depth`'s drawn width (its shell keyed by its slot, the depth plus one in these
-    /// scenes).
     fn width(rt: &Runtime<Gallery>, depth: usize) -> f32 {
         let [_, _, w, _] = info(rt, &format!("c2-slot-{}", depth + 1))
             .expect("shell")
@@ -827,16 +749,11 @@ mod c2 {
 
     #[test]
     fn dragging_an_edge_resizes_only_its_column_never_below_one_standard_column() {
-        // browser/view-modes/columns: Dragging a column's right edge resizes only that column
-        // while the pointer moves, never below 300 px. And: A resize ... is saved as
-        // `browser_column_width`; new columns open at that width (the view hands the host the
-        // width; saving it is the host's). The release spreading it is C2b's (tests/c2b.rs).
         let mut rt = scene("c2-three-columns-light");
         drag_edge(&mut rt, 1, -150.0, 0.0);
         assert_eq!(width(&rt, 0), 300.0, "never below one standard column");
         let (x, y) = rt.pointer().expect("pointer");
         rt.pointer_up(x, y);
-        // Past the 400 ms in which a second press would fit the column (C2b).
         settle(&mut rt, 30);
         drag_edge(&mut rt, 1, 100.0, 0.0);
         assert_eq!(width(&rt, 0), 400.0, "it follows the pointer");
@@ -859,8 +776,6 @@ mod c2 {
 
     #[test]
     fn a_press_either_side_of_the_line_resizes_the_left_column() {
-        // browser/view-modes/columns: A press within 6 px either side of the line between two
-        // columns resizes the left column, even when partly scrolled out of view.
         for from in [-5.0, 5.0] {
             let mut rt = scene("c2-three-columns-light");
             drag_edge(&mut rt, 1, 50.0, from);
@@ -871,8 +786,6 @@ mod c2 {
 
     #[test]
     fn a_cancelled_edge_drag_puts_the_width_back() {
-        // browser/view-modes/columns: A cancelled edge drag restores the column's previous
-        // width.
         let mut rt = scene("c2-three-columns-light");
         drag_edge(&mut rt, 1, 120.0, 0.0);
         assert_eq!(width(&rt, 0), 420.0);
@@ -886,9 +799,6 @@ mod c2 {
 
     #[test]
     fn an_edge_drag_stops_at_the_area_and_the_cap_never_goes_below_a_standard_column() {
-        // browser/view-modes/columns: Autofit and edge drags stop at the visible browser area
-        // (the drag half; the area itself is the host's). And: The width cap never goes below
-        // the 300 px standard column, scaled by text size.
         let mut rt = scene("c2-three-columns-light");
         rt.state.c2.columns.set_width_cap(Some(500.0));
         drag_edge(&mut rt, 1, 400.0, 0.0);
@@ -903,9 +813,6 @@ mod c2 {
 
     #[test]
     fn a_saved_width_wider_than_the_area_opens_columns_narrowed_to_it() {
-        // browser/view-modes/columns: A saved width wider than the area, such as
-        // `browser_column_width = 1729` in a 1200 px window, opens columns narrowed to the area.
-        // The setting is unchanged.
         let mut rt = scene("c2-home-light");
         rt.state.c2.columns.set_default_width(1_729.0);
         rt.state.c2.columns.set_width_cap(Some(700.0));
@@ -921,8 +828,6 @@ mod c2 {
 
     #[test]
     fn a_rest_on_a_column_edge_shows_the_width_caption() {
-        // browser/view-modes/columns: Resting the pointer on a column edge for 400 ms shows a
-        // "Column width" caption, which follows the edge during a drag.
         let mut rt = scene("c2-three-columns-light");
         let (x, y) = at(&rt, &keys::edge("c2-col-1"));
         rt.pointer_move(x, y);
@@ -948,8 +853,6 @@ mod c2 {
 
     #[test]
     fn the_edge_of_the_column_beside_the_preview_lights_the_divider_line() {
-        // browser/view-modes/columns: Hovering the edge of the column that meets the preview
-        // also lights the preview divider line.
         let mut rt = scene("c2-preview-slot-light");
         rt.update(|g, _| {
             if let Some(d) = g.c2.drawer.as_mut() {
@@ -976,10 +879,6 @@ mod c2 {
 
     #[test]
     fn a_secondary_press_on_a_header_targets_its_column_for_the_keys() {
-        // browser/view-modes/columns: Escape on a header-opened folder menu returns arrow-key
-        // navigation to that column (the menu is C21's; the column it returns to is the view's).
-        // And: While an item or background context menu is open in a column, that column keeps
-        // the header actions even when the pointer moves over another column.
         let mut rt = scene("c2-three-columns-light");
         let (x, y) = at(&rt, &keys::title("c2-col-1"));
         rt.secondary_down(x, y);
@@ -992,7 +891,6 @@ mod c2 {
         settle(&mut rt, 2);
         assert!(info(&rt, "c2-refresh-0").is_some());
         rt.state.c2.columns.hold_target(None);
-        // The menu closed (Escape, C21's): the arrows move Home's cursor.
         let before = cursor(&rt, 0);
         focus_strip(&mut rt);
         key(&mut rt, Key::Down);
@@ -1008,10 +906,6 @@ mod c2 {
 
     #[test]
     fn a_drag_near_the_strips_edge_scrolls_the_columns_toward_it_and_stops_when_it_leaves() {
-        // operations/drag-and-drop/column-autoscroll: Holding a file drag within 44 px of the
-        // column strip's left or right edge scrolls the columns toward that edge. And:
-        // Autoscroll stops when the drag leaves the strip, drops, or ends, or the content
-        // cannot scroll further.
         let mut rt = scene("c2-overflow-light");
         let start = strip_offset(&rt);
         let strip = rt.state.c2.columns.strip_rect();
@@ -1044,8 +938,6 @@ mod c2 {
 
     #[test]
     fn a_drag_near_a_listings_bottom_scrolls_that_listing() {
-        // operations/drag-and-drop/column-autoscroll: Holding a file drag within 44 px of the
-        // top or bottom edge of the listing under the pointer scrolls that listing.
         let mut rt = scene("c2-three-columns-light");
         let v = rt.state.c2.columns.column(1).unwrap().collection.viewport();
         drag_files(&mut rt, v.x + v.w / 2.0, v.y + v.h - 5.0);
@@ -1059,10 +951,6 @@ mod c2 {
 
     #[test]
     fn the_column_under_a_held_drag_is_washed_including_one_autoscroll_revealed() {
-        // operations/drag-and-drop/column-autoscroll: The column under a held file drag shows
-        // an accent wash and ring, including a column just revealed by autoscroll. And: The
-        // highlight stays while autoscroll is at its limit and clears when the drag leaves the
-        // column.
         let mut rt = scene("c2-overflow-light");
         let strip = rt.state.c2.columns.strip_rect();
         let y = strip.y + strip.h / 2.0;
@@ -1089,8 +977,6 @@ mod c2 {
 
     #[test]
     fn a_drop_on_a_partly_shown_column_goes_there_and_the_strip_stays() {
-        // operations/drag-and-drop/column-autoscroll: Dropping onto a partially visible column
-        // moves the file there, and the strip does not scroll back to the source column.
         let mut rt = scene("c2-overflow-light");
         let start = strip_offset(&rt);
         let strip = rt.state.c2.columns.strip_rect();
@@ -1112,9 +998,6 @@ mod c2 {
 
     #[test]
     fn after_the_close_button_the_keys_still_reach_the_strip() {
-        // browser/view-modes/columns: Each column after the first has a "Close this pane" X
-        // button that closes it (and the keyboard goes on working: the strip keeps focus). And
-        // bullet 58's half the view holds: the view moves no focus, so the strip keeps it.
         let mut rt = scene("c2-three-columns-light");
         tap(&mut rt, &keys::title("c2-col-2"));
         tap(&mut rt, &keys::close("c2-col-2"));
@@ -1131,9 +1014,6 @@ mod c2 {
 
     #[test]
     fn a_late_listing_in_a_column_left_behind_places_no_cursor_and_moves_no_strip() {
-        // browser/view-modes/columns: If that column is still loading, the cursor lands when it
-        // finishes (while the column holds the keyboard; one the person has left places none,
-        // as Strata's restore gives up once focus leaves the list).
         let mut rt = scene("c2-home-light");
         rt.state.c2.width = Some(500.0);
         settle(&mut rt, 5);
@@ -1169,8 +1049,6 @@ mod c2 {
 
     #[test]
     fn a_keyboard_reveal_glides_the_strip() {
-        // browser/view-modes/columns: A keyboard move reveals a column clipped by up to 4 px
-        // fully (on the view's reveal glide, not by the row's own reveal jumping the strip).
         let mut rt = scene("c2-overflow-light");
         tap(&mut rt, &keys::title("c2-col-7"));
         let end = strip_offset(&rt);
@@ -1196,8 +1074,6 @@ mod c2 {
         );
     }
 
-    /// Column `depth`'s laid-out width and how much of it shows (its shell keyed by its slot,
-    /// the depth plus one in these scenes).
     fn shown(rt: &Runtime<Gallery>, depth: usize) -> (f32, f32) {
         assert!(
             rt.state.c2.columns.column(depth).is_some(),
@@ -1209,8 +1085,6 @@ mod c2 {
 
     #[test]
     fn a_reveal_in_the_same_handler_as_a_narrower_strip_still_shows_the_column() {
-        // browser/view-modes/columns: A keyboard move reveals a column ... fully (the reveal is
-        // worked out again when the strip's width changes right after it).
         let mut rt = scene("c2-overflow-light");
         rt.update(|g, tx| {
             let look = g.look.clone();
@@ -1230,8 +1104,6 @@ mod c2 {
 
     #[test]
     fn a_drawer_opening_in_the_same_handler_as_a_close_keeps_the_active_column_whole() {
-        // browser/view-modes/columns: A keyboard move reveals a column ... fully; here the host
-        // closes the deepest column and opens an unreserved drawer in one handler.
         let mut rt = scene("c2-overflow-light");
         rt.update(|g, _| g.c2.drawer = Some(strata_components::preview_drawer::DrawerState::new()));
         settle(&mut rt, 20);
@@ -1249,8 +1121,6 @@ mod c2 {
 
     #[test]
     fn the_blank_strip_is_no_control_assistive_technology_hears() {
-        // What assistive technology hears: the strip and its named lists, no unnamed button for
-        // the blank space after the last column (a press there clears the selection).
         let rt = scene("c2-three-columns-light");
         assert!(
             info(&rt, &keys::blank("c2")).is_some(),
@@ -1265,8 +1135,6 @@ mod c2 {
 
     #[test]
     fn each_column_is_a_group_named_by_its_folder_around_a_list_of_the_same_name() {
-        // What assistive technology hears: the column's group and its list are both named by
-        // the folder, and described in the host's words (`ColumnsLabels::pane` and `list`).
         let rt = scene("c2-three-columns-light");
         let heard = |key: &str| {
             let node = node(&rt, key).unwrap_or_else(|| panic!("no node {key}"));
@@ -1290,9 +1158,6 @@ mod c2 {
 
     #[test]
     fn a_press_in_another_column_cancels_a_pending_slow_click_rename() {
-        // browser/view-modes/columns: A slow second click on the name of a selected, open
-        // folder still starts a rename (and a press in another column before it comes cancels
-        // it, as Strata's cancel_click_rename does).
         let mut rt = scene("c2-three-columns-light");
         tap_name(&mut rt, &row("Home", "Documents"));
         tap(&mut rt, &keys::title("c2-col-3"));
@@ -1302,8 +1167,6 @@ mod c2 {
 
     #[test]
     fn right_into_a_child_column_with_no_cursor_lands_on_its_first_entry() {
-        // browser/view-modes/columns (and C1c's keyboard bullets in Columns): Right goes into the
-        // open child column, with the cursor on its first entry when it has none.
         let mut rt = scene("c2-three-columns-light");
         tap(&mut rt, &keys::title("c2-col-2"));
         assert_eq!(cursor(&rt, 2), None);
@@ -1315,8 +1178,6 @@ mod c2 {
 
     #[test]
     fn back_to_an_ancestor_scrolls_the_came_from_folder_into_view() {
-        // browser/view-modes/columns: Back, Forward, or Alt+Up to an ancestor selects the folder
-        // you came from, at any depth, with the cursor on it (scrolled into view).
         let mut rt = scene("c2-hundred-k-light");
         let folder = id("Big", "entry-050001");
         let [x, y, _, h] = info(&rt, &format!("row-{folder}")).expect("row").visible;
@@ -1356,9 +1217,6 @@ mod c2 {
 
     #[test]
     fn a_drop_clears_the_wash_even_when_the_binder_sends_no_leave() {
-        // operations/drag-and-drop/column-autoscroll: The column under a held file drag shows an
-        // accent wash (and a drop ends it). A binder such as X2's tells the view where the drag
-        // is through `drag_over` and may send no leave before the drop.
         let mut rt = scene("c2-three-columns-light");
         let v = rt.state.c2.columns.column(1).unwrap().collection.viewport();
         let at = (v.x + v.w / 2.0, v.y + 300.0);
@@ -1378,8 +1236,6 @@ mod c2 {
 
     #[test]
     fn the_wash_clears_when_the_drag_leaves_the_column_for_the_blank_strip() {
-        // operations/drag-and-drop/column-autoscroll: The highlight ... clears when the drag
-        // leaves the column.
         let mut rt = scene("c2-three-columns-light");
         let v = rt.state.c2.columns.column(1).unwrap().collection.viewport();
         drag_files(&mut rt, v.x + v.w / 2.0, v.y + 300.0);
@@ -1400,8 +1256,6 @@ mod c2 {
 
     #[test]
     fn a_closed_column_fades_as_it_narrows() {
-        // browser/view-modes/columns: A column closed with nothing replacing it narrows and fades
-        // out over 220 ms.
         let mut rt = scene("c2-three-columns-light");
         rt.update(|g, tx| {
             let look = g.look.clone();
@@ -1428,8 +1282,6 @@ mod c2 {
 
     #[test]
     fn a_middle_press_in_another_column_leaves_the_active_column() {
-        // browser/view-modes/columns: the active column changes with primary and secondary
-        // presses; a middle press (a new tab, autoscroll) leaves it.
         let mut rt = scene("c2-three-columns-light");
         assert_eq!(rt.state.c2.columns.active(), 1);
         let [x, y, _, h] = info(&rt, &row("Home", "Music")).expect("row").visible;
@@ -1443,7 +1295,6 @@ mod c2 {
 
     #[test]
     fn type_ahead_finds_an_entry_in_the_active_column_only() {
-        // C1c's type-ahead, opt-in, in the column that holds the cursor.
         let mut rt = scene("c2-three-columns-light");
         rt.state.c2.letters = strata_components::collection::keyboard::Letters::TypeAhead;
         tap(&mut rt, &keys::title("c2-col-1"));
@@ -1458,9 +1309,6 @@ mod c2 {
 
     #[test]
     fn a_sibling_fades_in_its_place_and_a_new_column_slides_in() {
-        // browser/view-modes/columns: With a folder open, opening a sibling fades the new column
-        // in where the old one stood, with no 24 px slide. Deeper columns of the old branch
-        // shrink away. (What is drawn a few frames in.)
         let mut rt = scene("c2-three-columns-light");
         let home = id_in("Home", "Pictures");
         let old_x = info(&rt, "c2-slot-2").expect("Documents' shell").rect[0];
@@ -1522,8 +1370,6 @@ mod c2 {
             .collect()
     }
 
-    /// `v` moves in one motion: once it starts, it moves every frame until it is within a
-    /// point of where it ends, never stalling (a glide restarted from rest stands still a frame).
     fn moves_without_stalls(v: &[f32]) {
         let (first, last) = (v[0], v[v.len() - 1]);
         let start = v
@@ -1539,8 +1385,6 @@ mod c2 {
         }
     }
 
-    /// The overflow scene with its deepest column active and the strip scrolled back to the
-    /// start, so that column is fully clipped.
     fn deepest_clipped() -> (Runtime<Gallery>, f32) {
         let mut rt = scene("c2-overflow-light");
         tap(&mut rt, &keys::title("c2-col-7"));
@@ -1554,8 +1398,6 @@ mod c2 {
 
     #[test]
     fn holding_down_glides_the_strip_in_one_motion() {
-        // browser/view-modes/columns: A keyboard move reveals a column clipped by up to 4 px
-        // fully (and key repeat keeps the reveal's glide going rather than restarting it).
         let (mut rt, end) = deepest_clipped();
         key_down(&mut rt, Key::Down);
         let single = offsets(&mut rt, 30);
@@ -1581,8 +1423,6 @@ mod c2 {
 
     #[test]
     fn holding_left_glides_the_strip_back_in_one_motion() {
-        // browser/view-modes/columns: A keyboard move reveals a column clipped ... fully, Left
-        // held from the deepest column back to the first.
         for period in [2, 3] {
             let mut rt = scene("c2-overflow-light");
             tap(&mut rt, &keys::title("c2-col-7"));
@@ -1606,9 +1446,6 @@ mod c2 {
         }
     }
 
-    /// Right into folder `name` of Home, opened with its first entry, on a 500 pt strip whose
-    /// second column is clipped: the strip's offsets as the new column is revealed, with Slow's
-    /// listing arriving after `delay` seconds.
     fn right_into(name: &str, delay: f64) -> (Runtime<Gallery>, Vec<f32>) {
         let mut rt = scene("c2-home-light");
         rt.state.c2.width = Some(500.0);
@@ -1641,9 +1478,6 @@ mod c2 {
 
     #[test]
     fn a_late_listing_in_the_active_column_leaves_the_strips_glide_alone() {
-        // browser/view-modes/columns: If that column is still loading, the cursor lands when it
-        // finishes (in the column, without moving the strip: the reveal's glide goes on as if
-        // the listing had not come).
         let (rt, late) = right_into("Slow", 0.05);
         assert_eq!(
             cursor(&rt, 1),
@@ -1662,8 +1496,6 @@ mod c2 {
 
     #[test]
     fn right_into_a_clipped_new_column_glides_the_strip() {
-        // browser/view-modes/columns: A keyboard move reveals a column clipped ... fully, on the
-        // reveal's glide: Right into a folder opened with the cursor on its first entry.
         let (rt, v) = right_into("Documents", 0.0);
         assert_eq!(cursor(&rt, 1), Some(id("Documents", "Reports")));
         assert!(v[0] < 60.0, "gliding, not jumping: {v:?}");
@@ -1673,8 +1505,6 @@ mod c2 {
 
     #[test]
     fn back_to_a_clipped_ancestor_glides_the_strip() {
-        // browser/view-modes/columns: Back, Forward, or Alt+Up to an ancestor selects the folder
-        // you came from ... scrolled into view (the strip glides to the ancestor's column).
         let (mut rt, _) = deepest_clipped();
         rt.update(|g, tx| {
             let look = g.look.clone();
@@ -1691,8 +1521,6 @@ mod c2 {
 
     #[test]
     fn a_wheel_during_the_reveals_recheck_wins() {
-        // browser/view-modes/columns: Horizontal touchpad gestures scroll the strip (and a reveal
-        // worked out again while the drawer opens doesn't take the strip back from them).
         let mut rt = scene("c2-overflow-light");
         rt.update(|g, _| g.c2.drawer = Some(strata_components::preview_drawer::DrawerState::new()));
         settle(&mut rt, 20);
@@ -1716,8 +1544,6 @@ mod c2 {
 
     #[test]
     fn a_wheel_in_the_same_frame_as_a_key_wins() {
-        // browser/view-modes/columns: Horizontal touchpad gestures scroll the strip, even one
-        // that lands with a key that reveals a column.
         let (mut rt, _) = deepest_clipped();
         rt.update(|_, tx| tx.scroll_to_instant(keys::strip("c2"), 600.0, 0.0));
         settle(&mut rt, 5);
@@ -1726,8 +1552,6 @@ mod c2 {
         key_down(&mut rt, Key::Down);
         rt.wheel_xy(x, y, 200.0, 0.0);
         let v = offsets(&mut rt, 40);
-        // The key's glide shares the wheel's frame (Rune applies requests after the wheel), and
-        // is stopped at the next tick: one step on from the wheel's 400 at most.
         assert!(v[0] < 500.0, "the wheel took it back from 600: {v:?}");
         assert!(
             v.iter().all(|o| (o - v[0]).abs() < 0.5),
@@ -1737,9 +1561,6 @@ mod c2 {
 
     #[test]
     fn a_reveal_follows_the_strips_width_for_half_a_second_only() {
-        // browser/view-modes/columns: A keyboard move reveals a column ... fully, worked out again
-        // while the strip's width moves within half a second of the move, and no longer: a
-        // window resized on and on after it isn't held to that column.
         let mut rt = scene("c2-overflow-light");
         tap(&mut rt, &keys::title("c2-col-7"));
         settle(&mut rt, 40);
@@ -1765,9 +1586,6 @@ mod c2 {
 
     #[test]
     fn a_column_opened_with_its_first_entry_glides_into_view() {
-        // browser/view-modes/columns: A keyboard move reveals a column clipped ... fully: here a
-        // host opens a folder in a new column with the cursor on its first entry (Return, an
-        // intent), outside the strip's keys.
         let mut rt = scene("c2-home-light");
         rt.state.c2.width = Some(500.0);
         settle(&mut rt, 5);
@@ -1801,9 +1619,6 @@ mod c2 {
 
     #[test]
     fn forward_to_a_deeper_open_column_glides_the_strip_to_it() {
-        // browser/view-modes/columns: Back, Forward, or Alt+Up to an ancestor selects the folder
-        // you came from ... (an ancestor deeper than the column holding the keys: the strip
-        // glides to it).
         let (mut rt, _) = deepest_clipped();
         tap(&mut rt, &keys::title("c2-col-1"));
         settle(&mut rt, 20);
@@ -1823,8 +1638,6 @@ mod c2 {
     }
 }
 
-/// X2's hook: `ColumnsView::drop_action` answers for each column's folder rows and background,
-/// with the column's depth, and for the blank space after the last column.
 mod c2_drop_action {
     use std::cell::RefCell;
 
@@ -1843,8 +1656,6 @@ mod c2_drop_action {
         static ASKED: RefCell<Vec<Asked>> = const { RefCell::new(Vec::new()) };
     }
 
-    /// Records each zone the binder attaches, the latest for each key and scope: rows are
-    /// memoised, so a view run that rebuilds none attaches none.
     fn view(g: &Gallery, _: &mut Cx<Gallery>) -> El {
         let dnd = Dnd::custom_keyed(
             |el, key, zone| {
@@ -1937,9 +1748,6 @@ mod c2_drop_action {
         );
     }
 
-    /// A drag the blank strip refuses still drives the column wash and autoscroll (Strata's
-    /// motion controller follows any drag): the refusal keeps the last point, and only
-    /// leaving clears it.
     #[test]
     fn a_refused_drag_over_the_blank_strip_keeps_the_column_wash() {
         use strata_components::contract::DropHover;

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C14b's page: what its viewers do in process, beside its goldens and scripts. These cover the
-//! bullets a script can't check: motion, a theme change, a press at a given point.
-
 mod c14b {
     use rune::{ElementInfo, Env, Runtime};
     use strata_components::viewers::model::CameraView;
@@ -70,8 +67,6 @@ mod c14b {
         click(rt, r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
     }
 
-    /// Presses Next, then reports whether the indicator's dot was turning 0.1 s on, and lets the
-    /// render land.
     fn next_sweeps(rt: &mut Runtime<Gallery>) -> bool {
         click_key(rt, "c14b-model-next");
         frames(rt, 5);
@@ -80,9 +75,6 @@ mod c14b {
         moving
     }
 
-    /// `preview/preview-panel/model-views`: "With animations on, the dot sweeps to the new
-    /// position in 240 ms along the shorter turn." (The shorter turn is the state's unwrapped
-    /// angle: `viewers::model::tests`.)
     #[test]
     fn the_indicator_sweeps_to_the_new_view() {
         let mut rt = scene("c14b-model-light");
@@ -94,8 +86,6 @@ mod c14b {
         );
     }
 
-    /// `preview/preview-panel/model-views`: "With Reduce motion on, system animations off, or the
-    /// preview unmapped, the dot jumps to the new position."
     #[test]
     fn the_indicator_jumps_without_motion() {
         let mut rt = scene("c14b-model-light");
@@ -111,9 +101,6 @@ mod c14b {
         assert!(!element(&rt, "c14b-model-camera-dot").moving);
     }
 
-    /// `preview/preview-panel/model-views`: "Selecting another file resets the camera view to
-    /// Front left" with the dot at Front left at once: a new file's indicator starts over, as
-    /// Strata's fresh widget does, rather than sweeping back from the last file's view.
     #[test]
     fn a_new_file_puts_the_dot_at_front_left_at_once() {
         let mut rt = scene("c14b-model-light");
@@ -134,9 +121,6 @@ mod c14b {
         );
     }
 
-    /// `preview/preview-panel/model-views`: "Changing the theme re-renders the open model preview
-    /// with the new accent and keeps the selected camera view." The render is the host's; the
-    /// view keeps the camera across the new look.
     #[test]
     fn a_theme_change_keeps_the_camera_view() {
         let mut rt = scene("c14b-model-light");
@@ -150,8 +134,6 @@ mod c14b {
         );
     }
 
-    /// `operations/archives/preview`: "A click at a row's top edge selects it and opens a
-    /// folder." Rows hit-test by index geometry, so a row's first point is the row.
     #[test]
     fn a_click_at_a_rows_top_edge_opens_its_folder() {
         let mut rt = scene("c14b-archive-light");
@@ -162,8 +144,6 @@ mod c14b {
         assert_eq!(a.listing().crumbs(), ["docs"]);
     }
 
-    /// A button whose tooltip says what its name says isn't described by it too: a screen reader
-    /// would read the name twice.
     #[test]
     fn buttons_named_by_their_tooltip_have_no_description() {
         let rt = scene("c14b-model-light");

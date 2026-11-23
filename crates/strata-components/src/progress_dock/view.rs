@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`DockView`]: the dock's region in the overlay layer, its cards and its notices, and the
-//! progress bar the dialog shares.
-
 use std::rc::Rc;
 
 use rune::{Align, El, LoopSpec, ScrollSpec, TextStyle, Tx, col, el, icon, row, text};
@@ -12,35 +9,22 @@ use strata_kit::look::Look;
 
 use super::model::{Dock, DockIntent, DockNotice, EndKind, Op, Placement};
 
-/// The card's and the notice's corner radius before roundness (`.file-operation-card`,
-/// `.overlay-notice`: 12 px, `src/style.css`).
 pub const CARD_RADIUS: f32 = 12.0;
 
-/// A card's and a check notice's minimum width (`min-width: 280px`, `src/style.css`).
 pub const CARD_MIN_WIDTH: f32 = 280.0;
 
-/// A card's widest: Strata wraps the card's info and destination at 42 characters
-/// (`wrapped_label(42)`, `src/ui/progress_dock.rs`), about 340 pt with its 16 px padding at
-/// Strata's 0.85 em meta text.
 pub const CARD_MAX_WIDTH: f32 = 340.0;
 
-/// The dock's scroll height cap (`max_content_height(320)`, `src/ui/progress_dock.rs`).
 pub const DOCK_MAX_HEIGHT: f32 = 320.0;
 
-/// The dock's distance from the window's bottom edge (`margin_bottom(48)`), clear of the
-/// footer. The host can move it with [`DockView::bottom`].
 pub const DOCK_BOTTOM: f32 = 48.0;
 
-/// A card's bar height (`.file-operation-card .modal-progress`: 4 px) and the dialog's
-/// (`.modal-progress`: 8 px).
 pub const CARD_BAR: f32 = 4.0;
 pub const DIALOG_BAR: f32 = 8.0;
 
 /// The trough's radius before roundness (`.modal-progress trough`: 5 px).
 pub const BAR_RADIUS: f32 = 5.0;
 
-/// The glow Strata draws around cards and notices (`box-shadow: 0 0 10px alpha(@strata_glow,
-/// 0.18)`), as a share of the look's standard glow: its radius and opacity scale by these.
 const GLOW_RADIUS: f32 = 10.0 / 14.0;
 const GLOW_OPACITY: f32 = 0.18 / 0.24;
 
@@ -50,19 +34,6 @@ const TROUGH_BORDER: f32 = 0.42;
 
 type Intent<S> = Rc<dyn Fn(&mut S, DockIntent, &mut Tx)>;
 
-/// The dock: running operations as cards, and brief notices, stacked in the bottom-right
-/// corner in the order they appeared. The window under it stays usable: it is no modal and
-/// draws no backdrop.
-///
-/// ```ignore
-/// DockView::new("dock", |s: &App| &s.dock, |s: &mut App| &mut s.dock)
-///     .on_intent(|s: &mut App, intent, tx| s.ops.handle(intent, tx))
-///     .build(s, &s.look, &mut layer);
-/// ```
-///
-/// Keys: `<key>` (the region), `<key>-card-<id>` with `-title`, `-bar`, `-track`, `-fill`,
-/// `-count`, `-meta`, `-percent`, `-phase`, `-cancel`, `-pin` and `-complete` after it, and
-/// `<key>-notice-<n>`.
 pub struct DockView<S> {
     key: String,
     get: fn(&S) -> &Dock,
@@ -98,8 +69,6 @@ impl<S: 'static> DockView<S> {
         self
     }
 
-    /// Pushes the dock onto `layer`, the overlays `rune_kit::root` mounts, unless it has
-    /// nothing to show.
     pub fn build(&self, s: &S, look: &Look, layer: &mut Vec<El>) {
         let dock = (self.get)(s);
         if dock.is_empty() {
@@ -335,8 +304,6 @@ impl<S: 'static> DockView<S> {
             );
         }
         card = card.child(footer).child(
-            // What the card's phase says ("Copy complete", "Cancelling transfer…"), announced
-            // when it changes; the percentages are never announced.
             el().key(format!("{key}-phase"))
                 .role("status")
                 .label(shown.title.clone())
@@ -346,8 +313,6 @@ impl<S: 'static> DockView<S> {
         let hover = self.get_mut;
         card = card.on_hover_change(move |s: &mut S, h, tx: &mut Tx| {
             hover(s).hover(id, h, tx);
-            // The view reads only what the dock shows, which the tick this asks for updates
-            // (and commits); the hover itself draws nothing.
             tx.live_only();
         });
         if let Some(fade) = &op.fade {
@@ -388,8 +353,6 @@ impl<S: 'static> DockView<S> {
     }
 }
 
-/// A progress bar: role `progressbar` with its value, over a track whose fill follows the
-/// op's live fraction.
 pub(crate) struct Bar {
     pub key: String,
     pub height: f32,
@@ -434,8 +397,6 @@ impl Bar {
         e
     }
 
-    /// The op's bar: the live fraction once the track has a size, a static one before, and a
-    /// sliding segment while it pulses.
     pub(crate) fn progress<S: 'static>(
         &self,
         look: &Look,
@@ -479,8 +440,6 @@ impl Bar {
         self.wrapper(value, description).child(track)
     }
 
-    /// A finished card's bar: the time left before it closes, shrinking by a tween while it
-    /// counts and still while it is paused.
     fn countdown<S: 'static>(
         &self,
         look: &Look,
@@ -510,9 +469,6 @@ impl Bar {
     }
 }
 
-/// A zero-size element that asks for a wake once it is laid out: a timer a handler without a
-/// `Tx` started then gets its tick in a resting window ([`Dock::cancel_untimed`]). A new
-/// `generation` mounts a new one, so the commit that mounts it lays it out.
 pub(crate) fn wake_beacon<S: 'static>(key: &str, generation: u64) -> El {
     el().key(format!("{key}-wake-{generation}"))
         .absolute(0.0, 0.0)
@@ -524,8 +480,6 @@ pub(crate) fn wake_beacon<S: 'static>(key: &str, generation: u64) -> El {
         })
 }
 
-/// The glow around a card or a notice when the look's glow is on, else the kit's overlay
-/// shadow, as C15's panel.
 fn glow(look: &Look, e: El) -> El {
     let k = &look.kit;
     if look.glow.on {
@@ -540,8 +494,6 @@ fn glow(look: &Look, e: El) -> El {
     }
 }
 
-/// A notice row: an optional check, a bold heading and text cut to three lines. No controls,
-/// and a press on it does nothing.
 fn notice(look: &Look, key: &str, n: &DockNotice) -> El {
     let k = &look.kit;
     let c = &k.c;
@@ -566,8 +518,6 @@ fn notice(look: &Look, key: &str, n: &DockNotice) -> El {
         .key(format!("{key}-text"))
         .font(k.ty.ui)
         .color(c.text_base);
-    // A wrapping text in a row without a width lays out at its narrowest, so a check notice
-    // takes the card's width; a status notice is one short line and fits its words.
     column = column.child(if notice.check {
         body.max_lines(3)
     } else {

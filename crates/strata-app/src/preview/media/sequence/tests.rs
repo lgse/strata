@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Which files a player counts: a name joins only once its probe or its bytes back it, the
-//! shown file always counts, unread files are read nearest first, and an answer holds only
-//! while the file is the one that was read.
-
 use std::path::PathBuf;
 
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};

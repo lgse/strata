@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer's `/` and `?` listing find and `n` / `N` repeat (`src/ui/browser/find.rs`).
-//!
-//! A find keeps its matches highlighted until Escape dismisses them, which the Escape ladder
-//! does before it touches the selection; `n` repeats the query after that. The rows do not
-//! draw the highlight yet (see `docs/rune/parity/findings.md`), but the ladder already reads it.
-
 use rune::Tx;
 use strata_components::{
     collection::selection::{AnchorRule, Selection},
@@ -158,8 +152,6 @@ pub(crate) fn repeat(app: &mut App, reverse: bool, tx: &mut Tx) {
     }
 }
 
-/// `dismiss_find_highlight`: drops the matches' highlight and keeps the query for `n`. Whether
-/// one was showing.
 pub(crate) fn dismiss_highlight(app: &mut App) -> bool {
     std::mem::replace(&mut app.tenxer.prompt_state.find.highlighted, false)
 }

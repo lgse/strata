@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Every button the keyboard can reach takes Return, so the next button added cannot forget
-//! it: each one comes through `buttons::on_return` or `buttons::taking_return`, sits in a
-//! group whose own keys press its items, is a component's that takes Return itself
-//! ([`IN_THEIR_COMPONENT`]), or is on [`EXCEPTIONS`].
-//!
-//! A group is told by its role alone, since an element's info does not say whether it is a
-//! `focus_group()`: a `list` that is not one passes its buttons all the same.
-
 use rune::{El, col, el, row};
 use rune_kit::{Button, Kit, Popover};
 use strata_core::model::Location;
@@ -21,31 +13,16 @@ use crate::{
     test_support::{PATIENCE, fixture, hosted_over, idle_view, send_key, view},
 };
 
-/// The roles of what a press acts on: a button, and a menu item outside a menu (a popover's
-/// actions, as GTK's `DefaultActions` are), which Rune presses on Return only inside a group.
 const PRESSED: [&str; 2] = ["button", "menuitem"];
 
 /// Roles whose own keys move among and press their items, Return included.
 const ITEM_GROUPS: [&str; 5] = ["list", "listbox", "menu", "tree", "grid"];
 
 /// Buttons left to Rune's Return for now, each with why.
-const EXCEPTIONS: [&str; 3] = [
-    // The window's own buttons (C5's `window_buttons`): GTK's likely take no focus, so whether
-    // these stop being Tab stops or take Return is the owner's (`owner.md`, A5).
-    "header-minimize",
-    "header-maximize",
-    "header-close",
-];
+const EXCEPTIONS: [&str; 3] = ["header-minimize", "header-maximize", "header-close"];
 
-/// Buttons a component draws and presses on Return itself, by key prefix: C6's ancestor crumbs
-/// (their own `on_key`) and its Copy path (`return_as_space` in its crumbs), which
-/// `super::return_presses_copy_path_and_a_crumb` presses, and C9's preview drawer controls
-/// (`drawer_button_enter` in `strata_components::preview_drawer`).
 const IN_THEIR_COMPONENT: [&str; 3] = ["location-crumb-", "location-copy", "preview-"];
 
-/// C15's dialog panel, whose own keys turn Return into Space: the `dialog` keyed `{key}-dialog`
-/// inside the layer keyed `{key}-layer` (`strata_components::dialog`'s shell). rune-kit gives
-/// the same role to a popover's content and to its own dialog, which do not.
 fn c15_dialog(elements: &[rune::ElementInfo], element: &rune::ElementInfo) -> bool {
     let key = element.key.as_deref().unwrap_or_default();
     let Some(base) = key.strip_suffix("-dialog") else {
@@ -57,8 +34,6 @@ fn c15_dialog(elements: &[rune::ElementInfo], element: &rune::ElementInfo) -> bo
     element.role == "dialog" && layer == Some(format!("{base}-layer").as_str())
 }
 
-/// Whether the group the button sits in presses it: the walk up stops at the first focusable
-/// element, as Rune's `group()` does, since a control inside an item is no item.
 fn left_to_its_group(elements: &[rune::ElementInfo], button: &rune::ElementInfo) -> bool {
     let mut at = button.parent;
     while let Some(index) = at {
@@ -74,10 +49,6 @@ fn left_to_its_group(elements: &[rune::ElementInfo], button: &rune::ElementInfo)
     false
 }
 
-/// The focusable buttons and menu items ([`PRESSED`]) of the window that neither take Return
-/// themselves nor are left to their group, nor are named in [`EXCEPTIONS`]. The window is built again first, so the keys
-/// recorded are those of the buttons drawn now, not of an earlier build under the same key
-/// (Back without a history takes `on_return`).
 fn deaf_to_return(host: &mut Offscreen) -> Vec<String> {
     TAKING_RETURN.lock().expect("the keys").clear();
     host.runtime().update(|_: &mut App, _| {});
@@ -241,8 +212,6 @@ fn made_parts() -> Vec<Entry<App>> {
     ]
 }
 
-/// A popover is a `dialog` to assistive technology but does not press its buttons, and a
-/// button inside a focusable item is no item of the list around it.
 #[test]
 fn a_popovers_button_and_a_button_inside_an_item_must_take_return_themselves() {
     let name = "guard::a_popovers_button_and_a_button_inside_an_item_must_take_return_themselves";
@@ -254,8 +223,6 @@ fn a_popovers_button_and_a_button_inside_an_item_must_take_return_themselves() {
     });
 }
 
-/// The Icons header's "Thumbnail size" popover, its two actions shown: a popover's buttons are
-/// checked like the rest.
 #[test]
 fn every_button_of_the_thumbnail_size_popover_takes_return() {
     let name = "guard::every_button_of_the_thumbnail_size_popover_takes_return";

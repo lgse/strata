@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The peer's wire protocol: one JSON object per line.
-//!
-//! Requests arrive on stdin as `{"id": 1, "cmd": "selection-read", …}` ([`Request`]). The peer
-//! answers each one with a [`Reply`] that carries the same `id`, and reports what happens
-//! meanwhile as [`Event`]s (`{"event": "dropped", …}`), all on stdout. Diagnostics go to stderr.
-//!
-//! Positions are layout points: the compositor's output layout, the same coordinates sway's
-//! IPC tree reports.
-
 use std::io;
 use std::path::PathBuf;
 
@@ -26,18 +17,11 @@ pub struct Request {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "kebab-case")]
 pub enum Command {
-    /// Wayland only: a virtual pointer over a layout `extent` (width, height in points) and a
-    /// virtual keyboard with a US keymap. A headless seat has neither, so without them no
-    /// client gets pointer events or keyboard focus. Replies once the compositor has them.
     Devices {
         pointer: bool,
         keyboard: bool,
         extent: [u32; 2],
     },
-    /// A plain toplevel (an `xdg_toplevel`, or an X window) with app id and class
-    /// `strata-test-peer`. Replies with [`Mapped`]: on Wayland once it has committed its first
-    /// buffer; on X11 once the window manager lists it in `_NET_CLIENT_LIST`, which wlroots
-    /// does when the compositor maps it.
     Map {
         title: String,
         width: u32,
@@ -58,8 +42,6 @@ pub enum Command {
         steps: u32,
         step_ms: u64,
     },
-    /// A chord such as `ctrl+shift+a` or `Return` ([`chord_keys`]): pressed in order and
-    /// released in reverse. With `pressed`, only that edge, for every key of the chord.
     Key {
         key: String,
         #[serde(default)]
@@ -69,8 +51,6 @@ pub enum Command {
     Type {
         text: String,
     },
-    /// Takes the selection with these offers. Replies once the peer sees its own offer, where
-    /// the protocol shows it (data control always; the data device only with keyboard focus).
     SelectionSet {
         selection: Selection,
         via: Via,
@@ -87,60 +67,32 @@ pub enum Command {
         via: Via,
         mime: String,
     },
-    /// X11 only: reads `mimes` in one `MULTIPLE` conversion, each pair into a property of its
-    /// own, repeats included ([`MultipleRead`]). Small data only: a pair answered by INCR
-    /// counts as refused.
     SelectionReadMultiple {
         selection: Selection,
         mimes: Vec<String>,
     },
-    /// Starts a drag from the peer's own window. Needs a press on it that is still held
-    /// ([`Event::PointerButton`]): the session's input peer presses, then drags. On X11 it
-    /// proposes the first of `actions` and lists them all in `XdndActionList`.
     DragStart {
         offers: Vec<Offer>,
         actions: Vec<Action>,
     },
-    /// How the peer's window answers drops from now on: the first of `mimes` the drag offers,
-    /// with any of `actions`, `preferred` first. No `mimes` refuses every drop.
     DropAccept {
         mimes: Vec<String>,
         actions: Vec<Action>,
         preferred: Action,
-        /// At the drop, read every one of `mimes` the drag offers, in order, each reported
-        /// as its own [`Event::Dropped`], before finishing; not just the first.
         #[serde(default)]
         read_all: bool,
-        /// A drop left on ask is settled with this action before it finishes (Wayland:
-        /// `set_actions(a, a)`; X11: `XdndFinished` with it).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         ask_answer: Option<Action>,
     },
-    /// X11 only: point the window's `XdndProxy` at a window on a second connection, so drag
-    /// messages must go to the proxy ([`Event::DropEnter`] says which way they came).
     DropProxy,
     /// Exports the peer's window for another client to parent to ([`Exported`]).
     Export,
-    /// X11 only: become the session's clipboard manager (take `CLIPBOARD_MANAGER`). An owner
-    /// that hands `CLIPBOARD` over (`SAVE_TARGETS`, naming its types in the request's
-    /// property) has them all taken in one `MULTIPLE` conversion, INCR included, asked exactly
-    /// as gsd-clipboard and xfsettingsd ask it (into the property `MULTIPLE`, each pair
-    /// `(target, target)`). As they do, the peer takes `CLIPBOARD` once the `MULTIPLE` lands,
-    /// then answers the owner when every part is in, and reports [`Event::ManagerSaved`]. With
-    /// `answer: false` it takes `CLIPBOARD_MANAGER` and never answers, so the owner's wait
-    /// runs out.
     ClipboardManager {
         answer: bool,
     },
-    /// X11 only: the root window's children whose `_NET_WM_WINDOW_TYPE` lists `ty` (an atom
-    /// name such as `_NET_WM_WINDOW_TYPE_DND`), with their size and map state
-    /// ([`TypedWindow`]).
     WindowsOfType {
         ty: String,
     },
-    /// Wayland: an `xdg_activation_v1` token for the peer's window, made with the serial of its
-    /// last keyboard enter or press ([`ActivationToken`]), for a test to hand another process
-    /// as `XDG_ACTIVATION_TOKEN` (P8). Map the window and give it focus first.
     ActivationToken,
     /// Replies once everything sent before it has reached the server and come back.
     Sync,
@@ -244,8 +196,6 @@ impl Payload {
     }
 }
 
-/// What a read or a drop received. Small UTF-8 data comes back as `text`; anything else is
-/// written to `file` in the peer's directory (`STRATA_PEER_DIR`). `fnv1a64` covers every byte.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Received {
     pub len: u64,
@@ -266,8 +216,6 @@ pub struct Mapped {
     pub xid: Option<u32>,
 }
 
-/// The reply to [`Command::SelectionReadMultiple`]: each pair's data, in the order asked, or
-/// None where the owner refused it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MultipleRead {
     pub results: Vec<Option<Received>>,
@@ -279,8 +227,6 @@ pub struct Targets {
     pub mimes: Option<Vec<String>>,
 }
 
-/// The reply to [`Command::Export`]: `wayland:<xdg-foreign v2 handle>` or `x11:<hex xid>`, as
-/// XDG portals spell a parent window.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Exported {
     pub handle: String,
@@ -351,8 +297,6 @@ pub enum Event {
     PointerButton {
         pressed: bool,
     },
-    /// The selection changed. `mimes` is what it offers, where the protocol says (Wayland);
-    /// X11 reports the change only.
     SelectionChanged {
         selection: Selection,
         via: Via,
@@ -383,8 +327,6 @@ pub enum Event {
     },
     /// Drag source: the drag ended without a drop.
     DragCancelled,
-    /// Drop target: a drag entered the peer's window. `proxied`: on X11, its messages came
-    /// through the window's `XdndProxy`.
     DropEnter {
         mimes: Vec<String>,
         #[serde(default)]
@@ -402,8 +344,6 @@ pub enum Event {
         action: Option<Action>,
         data: Received,
     },
-    /// As clipboard manager: an owner handed `CLIPBOARD` over. `saved` are the types it
-    /// gave, `refused` those its `MULTIPLE` answer refused.
     ManagerSaved {
         saved: Vec<String>,
         refused: Vec<String>,
@@ -414,8 +354,6 @@ pub enum Event {
     },
 }
 
-/// `len` bytes from an xorshift64* stream seeded with `seed`: the same on both sides of a
-/// transfer, and not compressible into a lucky match.
 pub fn pattern(len: u64, seed: u64) -> Vec<u8> {
     let mut x = seed ^ 0x9e37_79b9_7f4a_7c15;
     let mut out = Vec::with_capacity(len as usize);
@@ -440,9 +378,6 @@ pub fn fnv1a64(data: &[u8]) -> String {
     format!("{h:016x}")
 }
 
-/// The keysym names of a chord, modifiers first: `ctrl+shift+a` gives `Control_L`, `Shift_L`
-/// and `a`. The last part is any keysym name (`Return`, `F5`, `a`) or a modifier alone
-/// (`shift`, to hold it); the others are `ctrl`, `shift`, `alt` or `super`.
 pub fn chord_keys(chord: &str) -> Result<Vec<String>, String> {
     let modifier = |m: &str| match m.to_ascii_lowercase().as_str() {
         "ctrl" | "control" => Some("Control_L"),

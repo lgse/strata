@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer's keys on an open preview (`tenxer_preview`, `scroll_open_preview`,
-//! `preview_document_key`, and `preview_to_top` in `src/ui/window/keyboard/preview.rs`):
-//! - `J` and `K` scroll a document preview a line from either the listing or inside the preview;
-//! - inside a focused document preview (`CodeView`, `DocumentView`, `PdfView`, `SheetGrid`),
-//!   `Up`/`Down`/`j`/`k`, `PageUp`/`PageDown`/`Ctrl+B`/`Ctrl+F`, `Ctrl+U`/`Ctrl+D`, `Home`/`End`,
-//!   `Ctrl+Up`/`Ctrl+Down`, `G`, and `g g` scroll the preview while `Left`/`h` return focus to
-//!   the listing. A15's drawer keys (`Escape`, `i`, `/`) and `Shift+Tab` stay in the preview part.
-
 use std::time::Duration;
 
 use rune::Tx;
@@ -27,8 +19,6 @@ use crate::{
     preview::{self, DocumentScroll},
 };
 
-/// `J` and `K`, from the listing or the preview: claimed whether or not a preview shows, as
-/// GTK's are.
 pub(super) fn scroll(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Option<Outcome> {
     let lines = if press.is(SCROLL_PREVIEW_DOWN) {
         1
@@ -97,8 +87,6 @@ fn document_motion(press: &KeyPress) -> Option<DocumentScroll> {
         .map(|(_, motion)| motion)
 }
 
-/// The step after `g` in a preview: `g` goes to its top; a place's key leaves the preview for
-/// the listing and goes there, as `g` does from the listing.
 pub(super) fn complete_top(app: &mut App, press: &KeyPress, tx: &mut Tx) -> bool {
     if press.is(GO_FIRST) {
         preview::to_top(app, tx);

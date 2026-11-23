@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Icons view: Strata's `Browser` on one side, strata-components' `IconsGrid` on the
-//! other, over the one folder a [`Pane`](crate::pane::Pane) shows. What it shares with the
-//! List view is [`crate::single`]'s: the events in, the intents out, and one cursor and one
-//! selection, the pane's. A folder opens in place, as GTK's Icons view opens it
-//! (`activate_in_place`).
-
 use strata_components::{
     collection::pointer::PointerIntent,
     context_menu::AnchorEdge,
@@ -29,8 +23,6 @@ pub(crate) mod view;
 
 pub(crate) use part::tick_active;
 
-/// The grid's key: its collection's, and the element that takes the keyboard. Every element
-/// key of the view starts with it.
 pub(crate) const VIEW: &str = "icons";
 
 pub(crate) fn origin_drag(
@@ -53,13 +45,9 @@ pub(crate) struct Icons {
     autoscroll: Autoscroll,
     /// The tile size in points, from 32 to 256 (`size.rs`).
     size: f32,
-    /// The folder shown when the size was last set, so the part's poll can tell when another
-    /// folder shows and set the size that folder follows.
     sized_for: Option<Location>,
     /// The folder views' revision the size was last read at: a change there is read again.
     sized_at: u64,
-    /// The size the shown folder resolved to when last read: a change of the values applies
-    /// only when this changes.
     resolved: f32,
     /// The grid's viewer in the window's thumbnails.
     thumbs: Viewer,

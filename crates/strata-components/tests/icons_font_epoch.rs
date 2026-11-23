@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C3: a tile cuts its name again when the fonts move (a fallback font loading, the interface
-//! font changing), not only when its name or width does. Alone in its own test binary: it moves
-//! `rune::text::font_epoch` via `Tx::set_font_families` (docs/rune/testing.md, K6).
-
 use rune::{Cx, El, Env, Runtime, col};
 use strata_components::collection::element::{Collection, CollectionState};
 use strata_components::contract::{EntryId, EntryKind, ListEntry, ListSource};
@@ -68,8 +64,6 @@ fn a_tile_cuts_its_name_again_when_the_fonts_move() {
         grid: IconsGridState::new(),
         look: Look::fallback(false),
     };
-    // Use Rune's embedded fonts (Inter + IBM Plex Mono) so the test switches between two distinct
-    // faces without depending on system-installed fonts.
     let text = rune::text::TextSystem::new(&[], ("Inter", "Inter"));
     let mut rt = Runtime::with_text(host, view, (600.0, 400.0), Env::new(false, 1.0), text);
     for _ in 0..4 {
@@ -77,8 +71,6 @@ fn a_tile_cuts_its_name_again_when_the_fonts_move() {
     }
     let before = label(&rt);
     assert!(before.contains('…'), "cut in the first font: {before}");
-    // Switching the runtime's font families moves `font_epoch` and the runtime's own TextSystem
-    // (`measure::lend` in Rune 631e8a67), as changing the interface font does in a window.
     let epoch = rune::text::font_epoch();
     rt.update(|_, tx| tx.set_font_families("IBM Plex Mono", "IBM Plex Mono"));
     for _ in 0..4 {

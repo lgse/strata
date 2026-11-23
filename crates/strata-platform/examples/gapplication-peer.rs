@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A GLib `GApplication`, for the `single-instance` shim's interop tests (P8): the shim speaks
-//! GApplication's wire protocol, so a launch of either reaches whichever is the primary.
-//!
-//! `GAPP_ID` names the app id. The peer registers it with `HANDLES_COMMAND_LINE` and reports
-//! as JSON lines on stdout: `{"ev":"claim","result":"primary"}` or `"forwarded"`; as the primary
-//! `{"ev":"launch","args":[…],"cwd":…,"platform":…}` for each command line, answered with exit
-//! status 5 when an argument is `--exit5`, else 0; as a forwarder `{"ev":"exit","status":…}`.
-//! It needs GIO, so it builds with `glib-bridge`, the feature that links it.
-
 #[cfg(feature = "glib-bridge")]
 fn main() {
     peer::main();

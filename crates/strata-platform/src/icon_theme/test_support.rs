@@ -15,8 +15,6 @@ pub(super) struct Scratch(PathBuf);
 
 impl Scratch {
     pub(super) fn new(name: &str) -> Self {
-        // `CARGO_TARGET_TMPDIR` is set for integration tests only. A unit test binary sits in
-        // `<target>/<profile>/deps/`, so the profile directory is two levels up.
         let exe = std::env::current_exe().unwrap_or_else(|e| panic!("test binary: {e}"));
         let profile = exe
             .ancestors()
@@ -32,8 +30,6 @@ impl Scratch {
         &self.0
     }
 
-    /// Writes `text` to `path`, then moves the directory's modification time a second on, so
-    /// a check sees the change even where the kernel's timestamps are coarser than the test.
     pub(super) fn put(&self, path: &str, text: impl AsRef<[u8]>) {
         let path = self.0.join(path);
         let dir = path.parent().unwrap_or(&self.0);

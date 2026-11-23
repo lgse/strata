@@ -21,8 +21,6 @@ pub struct Observation {
     pub field: Option<FieldState>,
     /// The titles of the other drawn windows, such as a floating chooser.
     pub toplevels: Vec<String>,
-    /// Whether anything in the window has the keyboard: false while it is inactive, and on GTK
-    /// also just after the focused widget was unmapped.
     pub window_focused: bool,
 }
 

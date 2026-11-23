@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! `replaced`, as GTK's rows answer it: a reload replaces the rows of the column it reloads,
-//! and a change the browser splices in keeps the others (`qa::replaced`).
-//! `locations/unreadable-location-reports-error` waits for it after F5, at its line 7.
-
 use serde_json::json;
 use strata_qa::Remembered;
 

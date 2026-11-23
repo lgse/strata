@@ -1,34 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf: 100,000 entries in five columns, held to rune-kit's Table with the same five columns,
-//! measured side by side in the same run.
-//!
-//! `cargo test --profile perf -p strata-components --lib list_table::tests::perf -- --ignored --nocapture`
-//!
-//! As C1e's (`collection/element/tests/perf.rs`): a 900 pt window at scale 2, the first frame,
-//! 600 frames at 120 Hz each scrolled 48 pt by the wheel, then 30 clicks on rows; a refresh, a
-//! re-sort and a live insert. Each figure is the best of three runs. C4 adds:
-//!
-//! - 300 frames of sideways scrolling in a window narrower than the columns;
-//! - a resize: 60 moves of a heading's edge, each a commit that rebuilds the rows on screen
-//!   (Rune draft R-C4-4);
-//! - a reorder: 60 moves of a heading past the threshold that keep their drop point;
-//! - grouped: 100 groups of 1,000, built with `groups_from_runs`.
-//!
-//! The bar (plan §4 C1 and C4, work package C4: "100k rows, sharing C1e's bar"):
-//! - no view run while scrolling, either way (grouped: once per group crossed), nor for
-//!   reorder moves that keep their drop point;
-//! - scroll frames within C1e's ceilings: max(1.5 × Table's, 0.5 ms) at p50 and
-//!   max(1.5 × Table's, 1.5 ms) at p95, none over 16.7 ms; sideways frames within the same p95
-//!   ceiling, none over 16.7 ms. The run also prints whether
-//!   ListTable stays at or under Table's own p50 and p95, the target C1e met with one column
-//!   (0.59 ms against 0.88 at p95). With five columns it doesn't quite (a few percent over at
-//!   the pinned rev, with an icon per row that Table's rows don't draw), so that line is a
-//!   report, not an assertion: see the work package's report;
-//! - a click commits within 4 ms at p95 and rebuilds at most 4 rows on average;
-//! - a refresh commits within 8 ms; a resize move within 8 ms at p95;
-//! - a re-sort, a live insert and a regroup within the 60 ms guard (Rune issue #203).
-
 use std::borrow::Cow;
 use std::cell::Cell as StdCell;
 use std::rc::Rc;

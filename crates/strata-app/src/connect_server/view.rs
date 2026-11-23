@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Rendering of the Connect to server dialog (`src/ui/window/network_location.rs`).
-
 use rune::{El, LiveRegion, Tx, col, row, text, text_input};
 use rune_kit::Checkbox;
 use strata_components::dialog::{StrataDialog, keep_words_whole};

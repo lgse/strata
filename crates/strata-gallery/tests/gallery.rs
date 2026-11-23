@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The index page: its buttons open pages from the keyboard, and with markers on, assistive
-//! technology hears whether each page is built.
-
 mod gallery {
     use rune::{Env, Key, KeyEvent, Mods, Runtime};
     use serde_json::Value;
@@ -56,8 +53,6 @@ mod gallery {
         rt
     }
 
-    /// Escape goes back from every page opened from the index: at most two presses, for a
-    /// page whose first Escape dismisses something of its own.
     #[test]
     fn escape_leaves_every_page_opened_from_the_index() {
         for p in scenes::PAGES {

@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The sidebar's pin gaps as the QA backend presents them. GTK's sidebar puts an empty group
-//! named "PINNED" in each insertion gap between the pins (`append_gap` in
-//! `src/ui/window/pinned_drop.rs`), and the scenarios aim drags at them by that name and
-//! index. strata-components' C8 keeps its gaps out of the accessibility tree on purpose, so
-//! the snapshot presents each drawn gap as GTK's group, by the coordinator's ruling
-//! (`docs/rune/parity/packages/A3.md`, "Open"), from the elements C8 keys `sidebar-gap-<i>`.
-
 use rune::ElementInfo;
 use strata_core::i18n::tr;
 use strata_qa::Rect;
@@ -44,7 +37,6 @@ impl Gaps {
         Self(gaps.into_iter().map(|(_, rect)| rect).collect())
     }
 
-    /// Presents each gap under the window as GTK's group named "PINNED".
     pub(super) fn present(&self, snapshot: &mut Snapshot) {
         let name = tr("PINNED");
         for (index, bounds) in self.0.iter().enumerate() {

@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Window-scoped drag and drop (`A19`, `Scope::Window`):
-//! - Attaches `strata_platform::dnd::Dnd` on the windowed host (`host::windowed`) and drives an
-//!   in-window keyed `DropZone` router on the headless offscreen host (`host::offscreen`) as well
-//!   as for sidebar row tab-opening drags.
-//! - Tracks the active local drag's entries, folder snapshot, row fade marks (`RowMarks.dragging`),
-//!   and `tab_strip::set_open_drag` (`TabOpen::AtEnd` for folder-only view drags, `TabOpen::AtGap`
-//!   for sidebar location drags).
-//! - Shares volume-lookup caching, `Copy`/`Move`/`Ask` transfer dispatch, Trash drops, and 750 ms
-//!   spring-loaded opening across views, tabs, location crumbs, and sidebar rows.
-
 use std::{cell::Cell, collections::HashSet};
 
 use gio::prelude::*;
@@ -323,7 +313,6 @@ fn install_active_drag(app: &mut App, active: ActiveDrag, open: Option<TabOpen>)
     app.dnd.volumes.clear();
     app.dnd.out = Some(active);
     tab_strip::set_open_drag(app, open);
-    // GTK's item drag source cancels the peek as its drag begins.
     crate::peek::close(app);
 }
 

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A replay of the history, what the check found at its locations, and how replay collisions
-//! explain and resolve themselves, matching `src/ui/browser/transfer/replay.rs` and `found` in
-//! `src/ui/browser/transfer.rs`.
-
 use strata_core::model::Location;
 use strata_fs::{
     adapters::{TransferTargetCollision, probes::Presence},
@@ -70,8 +66,6 @@ pub(super) struct ReplayCollision {
 }
 
 impl ReplayCollision {
-    /// An item whose kind is unknown is taken to match, so only a proven file meeting a
-    /// folder, or a folder meeting a file, loses Replace.
     fn between(record: MoveRecord, item: &Presence, existing_folder: bool) -> Self {
         let item_folder = item.folder().unwrap_or(existing_folder);
         Self {
@@ -202,8 +196,6 @@ pub(super) fn replay_conflict_explanation(collision: &ReplayCollision, redo: boo
     }
 }
 
-/// Skip, and Apply to All beside it, only while an answer can still move something: an item
-/// already accepted, or a later conflict that Replace can resolve. Otherwise only Cancel is left.
 pub(super) fn replay_prompt_visibility(
     remaining: &[ReplayCollision],
     accepted: usize,

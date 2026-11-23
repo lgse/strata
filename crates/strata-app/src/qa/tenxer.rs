@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer mode's footer pills, flash, prompt hints and chord panel rows as the QA backend
-//! presents them. GTK's footer draws these as `gtk::Label`s (`role: "label"`), while C18 and
-//! C19 give the pills and flash `role("status")` for live regions and hide the prompt hint and
-//! chord option action text behind their parent accessible nodes. Presenting the drawn elements
-//! as labels lets shared scenarios read them without changing assistive-technology semantics.
-
 use rune::ElementInfo;
 use strata_qa::Rect;
 

@@ -164,8 +164,6 @@ impl LeftOut {
     }
 }
 
-/// Looked up again only where another filesystem is mounted at either, as a bind mount of the
-/// parent shares its rules.
 pub(super) async fn existing_folder_names(
     policy: &NamePolicy,
     parent: TargetFolder,
@@ -228,8 +226,6 @@ pub(super) fn renamed_item(
     })
 }
 
-/// Children whose names are fixed come once the folder is listed, numbered past every sibling.
-/// Where the mount takes two names for one, the whole folder is listed first.
 pub(super) struct NamedChildren<'a> {
     pub(super) children: Children<'a>,
     pub(super) names: FolderNames,

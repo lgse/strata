@@ -6,13 +6,9 @@ use super::*;
 enum Replaced {
     No,
     Yes,
-    /// Same size, written a tick after the source: how a file reusing the
-    /// copy's inode within its birth tick looks on ntfs3.
     InPlace,
     /// So within the tick of a coarse clock that stamped the source too.
     InPlaceWithinTheTick,
-    /// So within a tick of ntfs3's clock, which stays coarse after Linux
-    /// 6.13, from a source with multigrain times.
     InPlaceWithinTheTickOnNtfs3,
 }
 
@@ -38,8 +34,6 @@ impl Replaced {
     }
 }
 
-/// The destination's quirks, with `racer` after the call that publishes
-/// the copy, or before the barrier.
 fn publishing(
     replaced: Replaced,
     published: Option<Op>,

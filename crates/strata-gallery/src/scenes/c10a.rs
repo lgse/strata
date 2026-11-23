@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C10a Highlighter: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c10a-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C10a-highlighter.md`.
-//!
-//! Two uses of the shared highlighter: rune-kit `Markdown` with its code blocks coloured by
-//! syntect through [`CodeBlocks::markdown`], and a TextArea editing a script, coloured by an
-//! editable [`CodeDoc`]'s spans and re-highlighted as it is typed in.
-//!
-//! The highlighter runs on its own thread, so its colours land at times no golden can rely
-//! on. The golden scenes therefore wait for them before the first frame
-//! ([`CodeBlocks::wait_on_miss`] and [`CodeDoc::settle`], both headless-only). The review
-//! scenes don't wait: open them in a window to see the blocks draw plain, then colour in
-//! place.
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -118,7 +103,6 @@ impl Live {
     }
 }
 
-/// C10a's demo state, held in `Gallery::c10a`.
 pub struct Demo {
     pub mode: Mode,
     pub script: TextEdit,
@@ -159,8 +143,6 @@ fn scene(g: &mut Gallery, dark: bool, mode: Mode, wait: bool) {
     g.c10a = demo;
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c10a", dark)`, then fills in `g.c10a`.
 pub const SCENES: &[Scene] = &[
     ("c10a-markdown-light", |g| {
         scene(g, false, Mode::Markdown, true)
@@ -172,8 +154,6 @@ pub const SCENES: &[Scene] = &[
     ("c10a-editor-dark", |g| scene(g, true, Mode::Editor, true)),
 ];
 
-/// Scenes for review with `--scene` only, kept out of the goldens: the blocks draw plain,
-/// then colour in place as the thread answers.
 pub const REVIEW: &[Scene] = &[
     ("c10a-markdown-async-light", |g| {
         scene(g, false, Mode::Markdown, false)
@@ -263,15 +243,10 @@ pub fn view(g: &Gallery, _cx: &mut Cx<Gallery>) -> El {
         )
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Starts the highlighter on first use, hands it the window's waker and the look's theme,
-/// and takes the colours that have landed. True when state changed.
 pub fn poll(g: &mut Gallery, _t: f64, _tx: &mut Tx) -> bool {
     let d = &mut g.c10a;
     let mut changed = false;

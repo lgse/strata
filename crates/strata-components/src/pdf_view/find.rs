@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! Find over the text layers the view holds: literal, case-insensitive (C11's folding, so
-//! "éclair" finds "ÉCLAIR"), matches that don't overlap, each within one page. As layers
-//! arrive (find's text-only requests, or pages scrolled to), their matches join in page
-//! order, as Strata's find re-runs over a source that grows while it loads.
-
 use super::layer::PlainText;
 use super::model::Shared;
 
-/// What find searches for one page: its full glyph layer when rendered, or plain text extracted
-/// ahead of rendering.
 #[derive(Clone, Copy)]
 pub(crate) enum SearchSource<'a> {
     Layer(&'a Shared),
@@ -68,8 +61,6 @@ impl Find {
         self.current = (!self.hits.is_empty()).then_some(0);
     }
 
-    /// A source for `page` arrived or changed: its matches replace the page's, and the current
-    /// match stays the same match. True when the current match was none and now is the first.
     pub fn add(&mut self, page: usize, source: Option<SearchSource<'_>>) -> bool {
         if !self.active() {
             return false;

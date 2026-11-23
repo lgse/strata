@@ -16,8 +16,6 @@ use super::{
 
 /// Size of each write quantum sent to the audio backend (~10 ms).
 const QUANTUM_MS: u64 = 10;
-/// History kept for restoring unheard frames when pausing flushes the device buffer (~500 ms,
-/// covering typical Bluetooth A2DP latencies).
 const UNHEARD_TAIL_MS: u64 = 500;
 /// Maximum sub-quantum clock extrapolation ahead of the last backend latency reading.
 const MAX_EXTRAPOLATION_US: u64 = 100_000;

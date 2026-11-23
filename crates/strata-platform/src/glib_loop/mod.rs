@@ -1,57 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-//! A GLib main context dispatched on Rune's own thread, without polling.
+//! GLib main context dispatched on Rune's UI thread without polling.
 //!
-//! Rune lacks: a GLib main loop. Rune runs winit's event loop and never iterates a
-//! `GMainContext`, so sources attached to one never dispatch in a Rune app. The
-//! [`glib_bridge`](crate::glib_bridge) answers that with a context on a thread of its own,
-//! which suits `Send` work. This module is for code that must stay on the interface thread:
-//! state behind `Rc` that schedules on its thread's context and is read from handlers.
+//! Rune lacks a GLib main loop integration; a helper thread polls the context's fds/timeout and
+//! wakes the UI thread via `AppHandle::update_if` rather than `Waker` because under a covered
+//! Wayland window `Waker` does not run `poll`
+//! ([anomalyco/rune#139](https://github.com/anomalyco/rune/issues/139)).
 //!
-//! Rune issue: [#139](https://github.com/anomalyco/rune/issues/139) decides how the app is
-//! told. While a Wayland window is covered, a `Waker` call never runs `poll`, and a
-//! `Tx::wake_after` timer runs every 250 ms whatever it asked for; `AppHandle::update_if`
-//! runs on time, covered or not. `tests/session/wake.rs` measures all three.
-//!
-//! Work package: V5, `docs/rune/slice/V5-shell-and-loop.md`.
-//!
-//! # The shape
-//!
-//! This is GLib's own recipe for a foreign loop, with the wait moved off the thread. The
-//! interface thread asks the context what it waits for (`g_main_context_prepare` and
-//! `g_main_context_query`: file descriptors and a timeout). A helper thread named
-//! [`THREAD_NAME`] waits for exactly that and calls `notify`. The app then calls
-//! [`GlibLoop::pump`] on the interface thread, which dispatches what is ready and asks again.
-//!
-//! ```ignore
-//! // Before `App::run`, on the thread that owns the context:
-//! let handle = app.handle();
-//! let glib = GlibLoop::start(glib::MainContext::default(), move || {
-//!     handle.update_if(|state, tx| pump(state, tx))
-//! })?;
-//!
-//! // `pump` is also the first thing `AppSpec::poll` does.
-//! fn pump(state: &mut State, tx: &mut rune::Tx) -> bool {
-//!     state.glib.pump(Duration::from_millis(8));
-//!     // … apply what the dispatched callbacks queued; true when the view must run
-//! }
-//! ```
-//!
-//! # What the app owes it
-//!
-//! - **The calling thread owns the context** for as long as the loop lives, and every `pump`
-//!   runs there. [`GlibLoop`] is neither `Send` nor `Sync`.
-//! - **`notify` only hands over.** It runs on the helper thread. Send the pump to the
-//!   interface thread with `AppHandle::update_if`, never with the `Waker` alone.
-//! - **Pump from `poll` too.** A source attached from another thread wakes the helper, because
-//!   GLib signals a context owned elsewhere. A source the interface thread attaches itself,
-//!   in a handler, does not: the helper still waits for what the last `pump` asked. Rune runs
-//!   `poll` before a frame, and the pump there asks again, but a handler that changes nothing
-//!   drawn gets no frame until the next input. So after a handler that may have attached
-//!   one, wake the context (`glib::MainContext::wakeup`): the helper's wait holds the
-//!   context's wake-up descriptor, so it notifies, and the pump runs at once.
-//! - **Callbacks don't touch the app state.** `pump` dispatches while Rune holds the state, in
-//!   `poll` or an update. A callback queues what it has; the code after `pump` applies it.
+//! Invariant: the UI thread must own the `MainContext` for the lifetime of [`GlibLoop`], and
+//! sources attached on the UI thread itself require `MainContext::wakeup` or a `poll` pump so
+//! the waiter re-queries the context.
 
 mod waiter;
 
@@ -73,8 +31,6 @@ pub struct GlibLoop {
 }
 
 impl GlibLoop {
-    /// Starts the helper thread for `context`, which the calling thread must own. Nothing is
-    /// waited for until the first [`pump`](Self::pump).
     pub fn start(
         context: glib::MainContext,
         notify: impl Fn() + Send + 'static,
@@ -91,17 +47,10 @@ impl GlibLoop {
         })
     }
 
-    /// Dispatches the sources that are ready, for about `budget` at most, then tells the
-    /// helper what the context waits for now. Returns whether anything was dispatched.
-    ///
-    /// A pass that runs out of budget leaves sources ready; the helper then notifies again at
-    /// once, so the caller's loop runs between two passes.
     pub fn pump(&self, budget: Duration) -> bool {
         self.pump_until(budget, || false)
     }
 
-    /// Like [`Self::pump`], stopping early once `stop()` returns `true` after a dispatched
-    /// source so the caller can render an intermediate frame before remaining ready sources run.
     pub fn pump_until(&self, budget: Duration, mut stop: impl FnMut() -> bool) -> bool {
         let started = Instant::now();
         let mut dispatched = false;

@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! End-to-end tests for searching text inside PDF previews (`UI-63`): Find button visibility,
-//! `Ctrl+F` and 10xer `/` shortcuts, case-insensitive multi-page search via `RenderKind::TextOnly`
-//! without PNG decoding, live match count updates, wrapping `Enter` / `Shift+Enter` navigation,
-//! `Escape` cleanup with preserved selection for `Ctrl+C`, cancellation on file switch / close,
-//! and non-searchable locked / failed PDFs.
-
 use std::{sync::Arc, time::Duration};
 
 use rune::{Key, Mods, Tx};
@@ -233,8 +227,6 @@ fn pdf_find_searches_pages_asynchronously_steps_wraps_and_cleans_up_on_escape() 
             );
             assert_eq!(pdf_selected_text(&host), "Alpha");
 
-            // Drain background requests: unvisited offscreen pages use minimal 16x16 TextOnly
-            // requests and succeed even with empty (non-PNG) payloads.
             pages.wait_for(&mut host, next_idx);
             let after_idx = answer_pending_pages(&mut host, &pages, 5, &page_texts, next_idx);
             assert!(
@@ -302,8 +294,6 @@ fn pdf_find_searches_pages_asynchronously_steps_wraps_and_cleans_up_on_escape() 
             );
             assert_eq!(pdf_selected_text(&host), "alpha");
 
-            // Escape closes find bar, returns focus to PDF viewer, clears find hits, and preserves
-            // the current match's selection for Ctrl+C.
             press(&mut host, Key::Escape, Mods::default());
             assert!(!host.app().preview.drawer.is_finding());
             assert!(
@@ -600,8 +590,6 @@ fn pdf_find_uses_single_pass_text_index_and_upgrades_unrendered_page_on_jump() {
                 "viewport scrolls to reveal the unrendered match on page 4"
             );
 
-            // Scrolling page 4 into view triggers a normal full-width Page render (never 16x16),
-            // which upgrades the match with its real glyph layer and selects "TREASURE".
             pages.wait_for(&mut host, after_initial);
             let after_jump = answer_pending_pages(&mut host, &pages, 5, &page_texts, after_initial);
             assert!(

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the crate's tests share: the offscreen host in a process of its own, and folders to
-//! open in it.
-
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
@@ -34,14 +31,6 @@ pub(crate) const PATIENCE: Duration = Duration::from_secs(30);
 /// Where a test run in a process of its own says that it ran.
 const RAN: &str = "STRATA_TEST_RAN";
 
-/// Runs `body` as the test `test` in a process of its own, with `env` set there, and fails
-/// when no test ran there.
-///
-/// The child is this executable started for the one test whose path is `test` exactly
-/// (`strata_test_support::isolated_test`). A path that is no test's starts nothing, and the
-/// child still exits well, so without this check a test moved to another module, or renamed,
-/// passes without running (finding lgse/strata#2193). Every test of this crate that runs in a
-/// process of its own goes through here.
 pub(crate) fn in_own_process(test: &str, env: &[(&str, &OsStr)], body: impl FnOnce()) {
     let own = tempfile::tempdir().expect("a folder for the marker");
     // The parent picks the place, and the child is told it.
@@ -63,9 +52,6 @@ pub(crate) fn in_own_process(test: &str, env: &[(&str, &OsStr)], body: impl FnOn
     );
 }
 
-/// Runs the test `name` of the test module `module` on the host `host` makes, in a process of
-/// its own with `env` set there: the default GLib context, the start-up sequence and the saved
-/// settings belong to one process. `prepare` runs there first, before anything is read.
 fn hosted_on(
     (module, name, env): (&str, &str, &[(&str, &OsStr)]),
     prepare: impl FnOnce(),
@@ -94,8 +80,6 @@ pub(crate) fn hosted(module: &str, name: &str, run: impl FnOnce(Offscreen)) {
     hosted_after(module, name, || {}, run);
 }
 
-/// [`hosted`], with `env` set in the test's process: an empty `XDG_DATA_DIRS`, say, so that
-/// no application installed on the machine is a file type's default.
 pub(crate) fn hosted_with_env(
     (module, name): (&str, &str),
     env: &[(&str, &OsStr)],
@@ -104,8 +88,6 @@ pub(crate) fn hosted_with_env(
     hosted_on((module, name, env), || {}, Offscreen::new, run);
 }
 
-/// A test on a window made of the table `parts`: a test's made-up parts in the place of the
-/// registered ones.
 pub(crate) fn hosted_over(
     module: &str,
     name: &str,
@@ -126,8 +108,6 @@ pub(crate) fn hosted_over_with(
     hosted_on(target, prepare, host, run);
 }
 
-/// A view for a made-up table: `build` draws it, it answers to `name` as the saved mode and
-/// takes the keyboard at the key `name`, and whatever else is asked of it does nothing.
 pub(crate) fn idle_view<S>(
     name: &'static str,
     build: Build<S>,
@@ -168,9 +148,6 @@ pub(crate) fn idle_view<S>(
     }
 }
 
-/// Feeds the host one key with its modifiers held around it, as a keyboard sends one: the
-/// parts read the held modifiers to tell a Shift range from a move. The caller lets the
-/// window settle as its test needs.
 pub(crate) fn send_key(host: &mut Offscreen, event: KeyEvent) {
     host.modifiers(event.mods);
     host.runtime().key(event);
@@ -193,8 +170,6 @@ fn write_tree(folder: &Path, files: &[&str]) {
     }
 }
 
-/// The QA harness's canonical tree (`tests/fixtures/harness.json`), which the G2 scenarios
-/// run in: three folders, two files and a hidden file.
 pub(crate) fn fixture() -> tempfile::TempDir {
     let folder = tempfile::tempdir().expect("folder");
     std::fs::create_dir(folder.path().join("archive")).expect("folder");

@@ -1,24 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! The checkerboard drawn behind content that may be transparent.
-//!
-//! Rune has no repeating pattern fill, so the board is a `canvas` shape: one square segment
-//! per dark square over a light fill. Its squares are `look.space.md` points, in screen space,
-//! so they keep their size at every zoom, and the board is never larger than the frame, which
-//! bounds the squares (about 4,800 in a 960 × 640 frame). It is memoized on its size and
-//! colours, so a commit that doesn't change them reuses it.
-//!
-//! The colours are two Kit surface roles: `surface_raised` (the light squares and the fill) and
-//! `surface_base` (the dark squares).
-
 use rune::{Color, El, LineCap, Shape, canvas, memo};
 use strata_kit::look::Look;
 
-/// A checkerboard `size` points across, keyed `key`, for drawing behind transparent content.
-/// Its corner square is light.
-///
-/// C12 puts one behind a transparent page; the viewport puts one behind its content, the size
-/// of the content's visible part.
 pub fn checkerboard(key: impl Into<String>, size: [f32; 2], look: &Look) -> El {
     let square = look.space.md.max(1.0);
     let light = look.transparency.opaque(look.kit.c.surface_raised);

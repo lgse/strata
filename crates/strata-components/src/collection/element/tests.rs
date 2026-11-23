@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The element in a headless runtime: input routing to the default click and to installed
-//! controllers, effects and intents, what the host hears, memoized rows, virtualization,
-//! position restore and what assistive technology reads.
-
 mod describe;
 mod fixture;
 mod hooks;
@@ -76,8 +72,6 @@ struct Host {
     t: f64,
     /// Entries marked vanished (`RowMarks::vanished`).
     vanished: Vec<EntryId>,
-    /// With it, two `on_scroll` handlers and two `edge` parts, each logging its name and the
-    /// offset heard.
     followers: Option<FollowerLog>,
     /// With it, a `before_keys` hook that takes each key, or leaves each.
     host_takes_keys: Option<bool>,
@@ -422,7 +416,6 @@ fn a_press_selects_only_that_entry_and_a_press_on_empty_space_clears() {
 
 #[test]
 fn every_scroll_handler_and_edge_part_added_is_kept() {
-    // A view's own bar (C3, C4) and a host's follower both set these: neither may drop the other.
     let log = Rc::new(RefCell::new(Vec::new()));
     let mut rt = runtime(Host {
         followers: Some(log.clone()),
@@ -797,9 +790,6 @@ fn a_selection_change_rebuilds_only_the_rows_whose_state_changed() {
     );
 }
 
-/// Rune packet entry 101: Rune can leave a newly mounted list's last report of its rows in
-/// view empty while rows show, and not report again until they change. The list's next layout
-/// tells the host the rows its own viewport shows.
 #[test]
 fn a_layout_after_an_empty_report_tells_the_host_the_rows_in_view() {
     let mut rt = runtime(Host::new(50));
@@ -995,10 +985,6 @@ fn a_grid_packs_entries_into_lines_of_cells() {
     assert!(all.iter().any(|e| e.role == "grid"));
 }
 
-// The seam requests from C1b's plan (N1–N7).
-
-/// A pointer controller that records every input and key it hears, and does what `on_move`
-/// says on the first move of each gesture.
 struct Recorder {
     log: Rc<RefCell<Log>>,
     keys: Rc<Cell<usize>>,
@@ -1065,8 +1051,6 @@ fn a_press_on_the_icon_is_content_and_on_the_name_is_the_name() {
     assert!(Region::Content.on_entry() && Region::Name.on_entry() && !Region::Gutter.on_entry());
 }
 
-/// N2: the default pointer finishes a plain click with `Clicked`; a drag or a modified click
-/// doesn't.
 #[test]
 fn a_plain_click_finishes_with_a_clicked_intent_and_a_drag_does_not() {
     let mut rt = runtime(Host::new(20));
@@ -1215,10 +1199,6 @@ fn a_drag_intent_carries_the_window_point() {
     }
 }
 
-// Review round 1.
-
-/// Two panes over one folder, each with its own state in one `Vec`, reached through indices
-/// the accessors capture (as C2's columns are).
 struct Panes {
     src: FastSource,
     colls: Vec<CollectionState>,
@@ -1290,8 +1270,6 @@ fn collections_with_captured_accessors_keep_their_own_state() {
     assert_eq!(rt.state.colls[0].selection.cursor(), None);
 }
 
-/// S8: the active descendant names the row under its own collection: a second pane on the
-/// same folder that shows the cursor's row doesn't answer for the first.
 #[test]
 fn the_active_descendant_is_the_row_under_its_own_collection() {
     let mut rt = panes(3_000);
@@ -1317,9 +1295,6 @@ fn the_active_descendant_is_the_row_under_its_own_collection() {
     assert!(b.contains(r#""activeDescendant":"row-2000""#), "{b}");
 }
 
-/// A keyboard controller for the round-1 checks: F3 is taken and moves nothing, F4 moves the
-/// cursor but turns keyboard mode off, `mod+a` (a layout-aware chord) selects all, Up at the
-/// top is an edge, and its tick runs a queued command.
 #[derive(Default)]
 struct Nav {
     pointers: Rc<Cell<usize>>,
@@ -1366,8 +1341,6 @@ impl KeyController for Nav {
     }
 }
 
-/// What a test reads back from [`Nav`]: the pointer inputs it saw, its command queue and the
-/// settings it read.
 struct NavProbe {
     pointers: Rc<Cell<usize>>,
     queued: Rc<Cell<Option<usize>>>,
@@ -1398,8 +1371,6 @@ fn keyboard_mode_turns_on_only_for_a_key_that_moves_the_cursor() {
     assert!(!rt.state.coll.keyboard_mode(), "the controller said off");
 }
 
-/// C1c: an edge intent, the pointer seen by the keyboard controller, a layout-aware chord,
-/// the host's settings, and a queued command run by the host's tick.
 #[test]
 fn the_keyboard_controller_hears_pointers_chords_settings_and_ticks() {
     let (mut rt, probe) = with_nav(500);
@@ -1439,8 +1410,6 @@ fn the_keyboard_controller_hears_pointers_chords_settings_and_ticks() {
     assert!(row.visible[3] > 20.0, "and shows");
 }
 
-/// S2 and S6: a press on a header part that takes presses itself isn't the collection's, nor
-/// are its moves and release; the overlay sits over the viewport and takes no input.
 #[test]
 fn a_header_button_press_is_not_the_collections_and_the_overlay_passes_presses_through() {
     let log = Rc::new(RefCell::new(Log::default()));
@@ -1476,8 +1445,6 @@ fn a_header_button_press_is_not_the_collections_and_the_overlay_passes_presses_t
     );
 }
 
-/// A press on the header's blank space is the collection's: on empty space, at the viewport's
-/// top edge, and its moves and release follow (C4's heading strip).
 #[test]
 fn a_press_on_blank_header_space_is_on_empty_space_at_the_viewports_top() {
     let log = Rc::new(RefCell::new(Log::default()));
@@ -1508,8 +1475,6 @@ fn a_press_on_blank_header_space_is_on_empty_space_at_the_viewports_top() {
     assert_eq!(rt.state.app_keys, 0);
 }
 
-/// Only a primary press on blank header space is the collection's: the rule is for a band, and
-/// a middle press there (C24's autoscroll, an open-in-new-tab) is no press on the collection.
 #[test]
 fn a_middle_press_on_blank_header_space_is_not_the_collections() {
     let log = Rc::new(RefCell::new(Log::default()));
@@ -1537,8 +1502,6 @@ fn a_middle_press_on_blank_header_space_is_not_the_collections() {
     );
 }
 
-/// A build with no header forgets where the last one was, so a later press there isn't taken
-/// for one on its blank space.
 #[test]
 fn a_build_with_no_header_forgets_its_rect() {
     let mut host = Host::new(20);
@@ -1550,8 +1513,6 @@ fn a_build_with_no_header_forgets_its_rect() {
     assert_eq!(rt.state.coll.header.get(), crate::contract::Rect::default());
 }
 
-/// With the real pointer and marquee controllers, a drag from blank header space into the rows
-/// draws a band that selects the rows it crosses.
 #[test]
 fn a_drag_from_blank_header_space_bands_the_rows_it_crosses() {
     let mut host = Host::new(20);
@@ -1587,8 +1548,6 @@ fn drag_moves_that_change_nothing_run_no_view() {
         VIEWS.with(|v| v.set(v.get() + 1));
         view(s, cx)
     }
-    // Twice: with Rune's debug check of `live_only` (which commits one event a quarter second
-    // after a commit to compare what it builds), then without it, counting views.
     for check in [true, false] {
         let mut rt = Runtime::new(Host::new(50), counted, (W, H), Env::new(false, 1.0));
         rt.check_live_only(check);
@@ -1643,8 +1602,6 @@ fn a_sync_keeps_the_cursor_cell_where_it_shows_in_a_grid() {
         Some(target.clone())
     );
     let shown = element(&rt, &target).unwrap().visible;
-    // Remove a whole line between the top of the view and the cursor: the lines below keep
-    // their keys, and the cursor's cell holds its place while the rows above it close up.
     rt.update(|s, tx| {
         let first = s.coll.visible_range().start + 4;
         s.src.remove(first..first + 4);
@@ -1810,7 +1767,6 @@ fn entering_a_folder_ends_gestures_and_keyboard_mode() {
     rt.frame(1.0 / 60.0);
 }
 
-/// C1d G1: a glide effect scrolls on its spring.
 #[test]
 fn a_glide_effect_scrolls_the_viewport() {
     struct Glider;
@@ -1836,8 +1792,6 @@ fn a_glide_effect_scrolls_the_viewport() {
     assert_eq!(rt.state.coll.scroll_offset(), 2_000.0);
 }
 
-/// C1d G2: the marquee's own overlay draws in content coordinates, rides the scroll and takes
-/// no input. G4: the content's extent.
 #[test]
 fn the_marquees_overlay_rides_the_scroll_and_passes_presses_through() {
     let (mut rt, _log) = with_controllers(200);
@@ -1900,7 +1854,6 @@ fn the_content_extent_ends_at_the_last_entry() {
     assert_eq!(cx.content_extent(), 260.0);
 }
 
-/// C1d G3: showing a folder stops an auto-scroll glide, by instant scrolls only.
 #[test]
 fn entering_a_folder_stops_a_glide() {
     for remembered in [false, true] {
@@ -1938,10 +1891,6 @@ fn entering_a_folder_stops_a_glide() {
     }
 }
 
-// Review round 2.
-
-/// A marquee as C1d builds it: its band rides a live value, so moves change nothing the view
-/// reads; it repaints only to show and hide; each tick glides and asks for the next frame.
 struct AutoBand {
     on: bool,
     moves: Rc<Cell<usize>>,
@@ -1991,8 +1940,6 @@ fn auto_poll(s: &mut Host, _t: f64, tx: &mut rune::Tx) -> bool {
     collection(s).tick(s, tx)
 }
 
-/// B1: an open band's moves and its auto-scroll ticks run no view, while the glide still
-/// scrolls. Run with Rune's debug `live_only` check (no warnings), then without it, counting.
 #[test]
 fn a_band_that_rides_live_values_runs_no_view_while_it_moves_and_scrolls() {
     for check in [true, false] {
@@ -2053,7 +2000,6 @@ fn a_band_that_rides_live_values_runs_no_view_while_it_moves_and_scrolls() {
     }
 }
 
-/// A band that selects the entries above the pointer, as C1d's does.
 struct Selecting(bool);
 impl MarqueeController for Selecting {
     fn begin(&mut self, _: Point, _: Mods, cx: &mut Ctx<'_>) {
@@ -2113,8 +2059,6 @@ fn a_band_announces_its_count_when_it_ends() {
     assert_eq!(status(&rt), format!("{n} items selected"));
 }
 
-/// A listing change synced while a band is open doesn't announce the band's count: it waits
-/// for the band to end (C1d review S3).
 #[test]
 fn a_sync_during_an_open_band_keeps_the_status_line_quiet() {
     let log = Rc::new(RefCell::new(Log::default()));
@@ -2149,8 +2093,6 @@ fn a_sync_during_an_open_band_keeps_the_status_line_quiet() {
     assert_eq!(status(&rt), format!("{n} items selected"), "once it ends");
 }
 
-/// Controllers read whether motion is on from the look the element builds with (C1d review
-/// S2).
 #[test]
 fn controllers_read_whether_animations_are_on() {
     struct Reads(Rc<RefCell<Vec<bool>>>);
@@ -2173,8 +2115,6 @@ fn controllers_read_whether_animations_are_on() {
     assert_eq!(*seen.borrow(), [true, false]);
 }
 
-/// B2: a row height that changes through the state draws rows at it, and presses hit the
-/// entries drawn there.
 #[test]
 fn a_row_height_from_the_state_redraws_rows_and_routes_presses() {
     let mut host = Host::new(50);
@@ -2193,8 +2133,6 @@ fn a_row_height_from_the_state_redraws_rows_and_routes_presses() {
     }
 }
 
-/// B3: a tile size changed at the same width reflows the grid at once: the lines and where
-/// presses land follow it.
 #[test]
 fn a_tile_size_change_at_the_same_width_reflows() {
     let mut host = Host::new(23);
@@ -2261,10 +2199,6 @@ fn a_reflow_scrolls_the_cursor_into_view() {
     }
 }
 
-// C1e round-3 carry-overs (C1f).
-
-/// SF1: a new grid entered with a remembered position before its first layout keeps the
-/// remembered scroll: the first width isn't a reflow that reveals the cursor instead.
 #[test]
 fn a_fresh_grid_keeps_a_restored_scroll_through_its_first_layout() {
     let grid = || {
@@ -2304,8 +2238,6 @@ fn a_fresh_grid_keeps_a_restored_scroll_through_its_first_layout() {
     }
 }
 
-/// SF1: a new grid entered before its first layout with a position whose scroll was measured
-/// in another layout shows the cursor's cell, revealed once the lines are known.
 #[test]
 fn a_fresh_grid_restore_in_another_layout_reveals_the_cursor() {
     let position = {
@@ -2364,8 +2296,6 @@ fn a_keyboard_mode_effect_that_changes_nothing_commits_nothing() {
     assert_eq!(ticks, [true, false], "on, then on again");
 }
 
-/// Rows built for one builder setting are built again when it changes: the roles, and
-/// read-only (which takes the rows' drop zones away).
 #[test]
 fn switching_roles_or_read_only_rebuilds_the_rows_that_show() {
     let mut host = Host::new(20);
@@ -2398,8 +2328,6 @@ fn switching_roles_or_read_only_rebuilds_the_rows_that_show() {
     );
 }
 
-/// Each controller reads its own type from the builder's settings, the last value of a type
-/// winning.
 #[test]
 fn each_controller_reads_its_own_settings_from_the_builder() {
     #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2445,8 +2373,6 @@ fn each_controller_reads_its_own_settings_from_the_builder() {
     press(&mut rt, Key::Down);
     assert_eq!(*seen.borrow(), ["pointer Some(A(3))", "keys Some(B(2))"]);
 }
-
-// Group header lines (C1f).
 
 /// `n` entries in groups of `size`, keyed by their number and labelled "Group {g}".
 fn grouped(n: usize, size: usize) -> Host {
@@ -2633,9 +2559,6 @@ fn revealing_an_entry_keeps_it_clear_of_the_stuck_header() {
     );
 }
 
-/// The stuck header shows the top group's header, pushed up by the next group's: the push
-/// rides the scroll, and a new group's label costs one view run per group crossed (until it
-/// lands the stuck header hides, and the new group's own header line shows at the top).
 #[test]
 fn the_stuck_header_follows_the_top_group_and_the_next_pushes_it_out() {
     thread_local! {
@@ -2803,10 +2726,6 @@ fn every_press_reaches_on_press_before_the_controllers() {
     );
 }
 
-// C1f review round 1.
-
-/// B1: entering a folder with new groups, from another layout's position, reveals the cursor
-/// among the new folder's header lines: clear of the stuck header.
 #[test]
 fn a_regrouped_enter_reveals_the_cursor_clear_of_the_stuck_header() {
     let position = {
@@ -2839,8 +2758,6 @@ fn a_regrouped_enter_reveals_the_cursor_clear_of_the_stuck_header() {
     );
 }
 
-/// B1: a restore that waits for a loading listing drawn ungrouped decides whether the cursor
-/// shows by the complete listing's header lines, which push it below the view here.
 #[test]
 fn a_restore_completing_into_groups_places_the_cursor_among_their_headers() {
     let position = {
@@ -2860,8 +2777,6 @@ fn a_restore_completing_into_groups_places_the_cursor_among_their_headers() {
     });
     settle(&mut rt);
     assert!(rt.state.coll.restore_pending());
-    // Ungrouped, entry 12 would sit on line 12, inside the 400 pt view; in groups of 2 it is
-    // on line 19, below it.
     rt.update(|s, tx| {
         s.src = FastSource::new(30);
         s.coll.set_groups(groups_of(30, 2, "Pair"));
@@ -2909,8 +2824,6 @@ fn a_grid_collapsed_and_back_at_another_width_reveals_its_cursor() {
     assert!(shown[3] > 20.0, "and shows whole: {shown:?}");
 }
 
-/// In the frame after a far jump into another group, before the build that relabels the stuck
-/// header, it is hidden: a press on the top line drawn there is on that line's entry.
 #[test]
 fn a_press_while_the_stuck_header_hides_is_on_the_row_drawn_there() {
     let mut rt = runtime(grouped(1_000, 10));
@@ -2923,8 +2836,6 @@ fn a_press_while_the_stuck_header_hides_is_on_the_row_drawn_there() {
     click_at(&mut rt, vp.x + 40.0, vp.y + h / 2.0);
     assert_eq!(rt.state.coll.selection.cursor(), Some(id(503)));
 }
-
-// Keys from the host (C2's request E1).
 
 /// Two collections keyed by their host under one focus stop that routes keys to the active one.
 struct Strip {
@@ -2979,8 +2890,6 @@ fn strip(n: usize) -> Runtime<Strip> {
     rt
 }
 
-/// E1: collections keyed by their host are no focus stops: a press in one focuses the host's
-/// stop, which hands the key to the collection it picks; the stop names the cursor's row.
 #[test]
 fn a_collection_keyed_by_its_host_takes_keys_through_the_host() {
     let mut rt = strip(20);
@@ -3034,8 +2943,6 @@ fn a_collection_keyed_by_its_host_takes_keys_through_the_host() {
     assert!(!taken);
 }
 
-/// A host's own keys come before its list's: the hook hears each key first on a collection
-/// that takes its keys from a host's focus stop, and a key it takes reaches no controller.
 #[test]
 fn the_hosts_hook_hears_a_key_before_the_controllers_and_keeps_the_one_it_takes() {
     let end = KeyEvent {
@@ -3061,8 +2968,6 @@ fn the_hosts_hook_hears_a_key_before_the_controllers_and_keeps_the_one_it_takes(
     }
 }
 
-/// The same on a collection that is its own focus stop: Rune hears the key taken either way,
-/// so the window's handler does not.
 #[test]
 fn the_hosts_hook_comes_before_a_focused_collections_own_keys() {
     for (takes, cursor) in [(true, id(1)), (false, id(19))] {
@@ -3087,10 +2992,6 @@ fn the_hosts_hook_comes_before_a_focused_collections_own_keys() {
     }
 }
 
-// The drag-over hook (C2's request E2).
-
-/// Drags `at` a point on a folder row and then near the viewport's bottom edge, for 20 frames;
-/// the scroll offset after.
 fn drag_near_the_bottom(rt: &mut Runtime<Host>) -> f32 {
     let [x, y, w, h] = element(rt, "row-0").unwrap().visible;
     rt.drag_files(vec!["/tmp/a.txt".into()], Some((x + w / 2.0, y + h / 2.0)));
@@ -3106,8 +3007,6 @@ fn drag_near_the_bottom(rt: &mut Runtime<Host>) -> f32 {
     offset
 }
 
-/// E2: with `on_drag_over` the host hears an accepted drag over the rows and the background,
-/// with its window point, and its leaving; the element's own edge scroll then stays still.
 #[test]
 fn the_drag_over_hook_hears_the_drag_and_replaces_the_edge_scroll() {
     let mut host = Host::new(2_000);
@@ -3145,10 +3044,6 @@ fn the_drag_over_hook_hears_the_drag_and_replaces_the_edge_scroll() {
     assert_eq!(rt.state.coll.drop_over(), None);
 }
 
-// The held-back header press (C2's request E3).
-
-/// E3: with `header_defers_press`, a click on the header's blank space leaves the selection
-/// alone (the host still hears the press), and a drag from there bands as without it.
 #[test]
 fn a_held_back_header_press_keeps_the_selection_on_a_click_and_bands_on_a_drag() {
     let mut host = Host::new(20);
@@ -3193,15 +3088,11 @@ fn a_held_back_header_press_keeps_the_selection_on_a_click_and_bands_on_a_drag()
     assert_eq!(s.coll.selection.selected_ids(&s.src), [id(0), id(1), id(2)]);
 }
 
-// A key during a band's edge scroll (C1d's open item S-B; C2's E6).
-
 fn tick_poll(s: &mut Host, _: f64, tx: &mut rune::Tx) -> bool {
     let c = collection(s);
     c.tick(s, tx)
 }
 
-/// E6 (S-B): a key that moves the cursor while a band auto-scrolls at the viewport's edge keeps
-/// its reveal: the band's glide stops, and the stop doesn't jump the view back to where it was.
 #[test]
 fn a_key_that_moves_the_cursor_during_a_bands_edge_scroll_keeps_its_reveal() {
     let mut host = Host::new(2_000);
@@ -3252,8 +3143,6 @@ fn a_key_that_moves_the_cursor_during_a_bands_edge_scroll_keeps_its_reveal() {
     rt.frame(1.0 / 60.0);
 }
 
-// A collection inside a sideways strip (C2's E7).
-
 /// The collection 400 points into a 500-point sideways strip, so it starts clipped.
 fn view_in_strip(s: &Host, _: &mut Cx<Host>) -> El {
     col().size(W, H).child(
@@ -3292,11 +3181,6 @@ fn own_viewport_reveals_leave_a_sideways_strip_around_the_collection_where_it_is
     assert!(shown);
 }
 
-// The rest hook (C22's folder peek).
-
-/// Steps a still window only at the wakes it asks for (and for queued input), never a frame
-/// between, for at most `limit` seconds or until `done`; returns the seconds stepped. A wait
-/// that asked for no wake never ends here, as in a window at rest.
 fn wake_until(rt: &mut Runtime<Host>, limit: f64, done: impl Fn(&Host) -> bool) -> f64 {
     let mut t = 0.0;
     for _ in 0..200 {
@@ -3549,8 +3433,6 @@ fn a_row_a_scroll_carries_under_a_parked_pointer_reports_nothing() {
 fn a_held_collection_drops_the_rest_of_the_row_a_drag_from_elsewhere_ended_on() {
     let mut rt = rest_runtime(30);
     settle(&mut rt);
-    // The pointer arrives on folder row 10 (a drag from elsewhere passing over), the host's
-    // drag ends there and holds.
     let (x, y) = centre_of(&rt, "row-10");
     rt.pointer_move(x, y);
     rt.frame(1.0 / 60.0);
@@ -3632,9 +3514,6 @@ fn back_on_the_same_row_after_leaving_the_collection_is_an_arrival() {
     assert_eq!(inside, [id(10)], "an arrival");
 }
 
-/// X11 can send a leave and an enter back to back after a drop, with the pointer where it
-/// was: a re-enter that soon is no arrival, so a held row stays held. (Out of the window for
-/// longer, the same return is one.)
 #[test]
 fn a_held_row_stays_held_when_the_pointer_leaves_and_reenters_at_once() {
     let mut rt = rest_runtime(30);
@@ -3664,8 +3543,6 @@ fn a_held_row_stays_held_when_the_pointer_leaves_and_reenters_at_once() {
     );
 }
 
-/// Out of the window for longer than a back-to-back leave and enter, the pointer coming back
-/// to the very point it left is an arrival.
 #[test]
 fn back_at_the_same_point_after_leaving_the_window_is_an_arrival() {
     let mut rt = rest_runtime(30);
@@ -3698,8 +3575,6 @@ fn rest_drop_runtime() -> Runtime<Host> {
     rt
 }
 
-/// A file drag (a system drag: the collection sees no pointer moves) over `key` and dropped
-/// there, then held by the host, as X2's adapter does when the drag ends.
 fn drop_on_and_hold(rt: &mut Runtime<Host>, key: &str) -> (f32, f32) {
     let at = centre_of(rt, key);
     rt.drag_files(vec!["/tmp/a.txt".into()], Some(at));
@@ -3719,9 +3594,6 @@ fn rested(rt: &Runtime<Host>) -> Vec<EntryId> {
         .collect()
 }
 
-/// A system drag moves the pointer onto the row it drops on without the collection seeing a
-/// move: the pointer's first move there afterwards (X11's crossing after the ungrab) is no
-/// arrival, so the folder dropped on never peeks.
 #[test]
 fn the_first_move_after_a_system_drop_on_a_row_is_no_arrival() {
     let mut rt = rest_drop_runtime();
@@ -3733,8 +3605,6 @@ fn the_first_move_after_a_system_drop_on_a_row_is_no_arrival() {
     assert_eq!(rested(&rt), []);
 }
 
-/// Last seen on another row, the pointer leaves and enters again at once on the row a system
-/// drag dropped on (X11's ungrab crossing, handled after the host held): no arrival.
 #[test]
 fn a_crossing_onto_the_row_a_system_drag_dropped_on_is_no_arrival() {
     let mut rt = rest_drop_runtime();
@@ -3750,8 +3620,6 @@ fn a_crossing_onto_the_row_a_system_drag_dropped_on_is_no_arrival() {
     assert_eq!(rested(&rt), []);
 }
 
-/// A window blur during a system drag forgets the row the pointer was on: the drop on that
-/// row records it again, so a small move after the drag is no arrival either.
 #[test]
 fn a_blur_during_a_system_drag_doesnt_make_the_row_dropped_on_an_arrival() {
     let mut rt = rest_drop_runtime();

@@ -159,8 +159,6 @@ fn partition_unsorted(entries: Vec<FileEntry>, folders_first: bool) -> Vec<FileE
     dirs
 }
 
-/// Assigns each entry an integer rank matching `compare_entry_type_values`, computing MIME
-/// descriptions once per entry and sorting only the distinct type labels.
 fn precompute_type_ranks(entries: &[FileEntry]) -> Vec<u32> {
     let mut distinct: Vec<Rc<str>> = Vec::new();
     let mut lookup: HashMap<Rc<str>, usize> = HashMap::new();
@@ -196,16 +194,12 @@ fn compare_type_descriptions(left: &str, right: &str) -> Ordering {
     }
 }
 
-/// Sentinel for `NamePrefix::safe_len` indicating the prefix fast path cannot be used
-/// (non-ASCII name or NUL byte in the leading 8 bytes).
 const PREFIX_INVALID: u8 = u8::MAX;
 
 /// Compact 8-byte mapped ASCII prefix for fast-path name comparisons without chasing pointers.
 #[derive(Clone, Copy)]
 struct NamePrefix {
     prefix: u64,
-    /// Number of leading bytes guaranteed free of ASCII digits (or 8 for non-natural sort);
-    /// `PREFIX_INVALID` when the name is non-ASCII or contains a NUL byte in its first 8 bytes.
     safe_len: u8,
 }
 
@@ -242,8 +236,6 @@ impl NamePrefix {
         self.safe_len != PREFIX_INVALID
     }
 
-    /// Resolves `compare_names` directly when both prefixes are valid and differ strictly
-    /// before at least one side's first ASCII digit.
     fn fast_cmp(self, other: Self) -> Option<Ordering> {
         if !self.is_valid() || !other.is_valid() {
             return None;

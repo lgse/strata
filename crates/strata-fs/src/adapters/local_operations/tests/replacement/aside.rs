@@ -213,8 +213,6 @@ fn evicting_the_original(folder: &Path) -> Racer {
     })
 }
 
-/// A publication step that fails, after `skip` of its kind, once the original is evicted
-/// if `evicted`.
 struct Failing {
     op: Op,
     skip: usize,

@@ -8,8 +8,6 @@ const CONTENT: DensityPresets = DensityPresets {
     max: 16,
 };
 
-/// A value saved is read back as itself, a preset by its name and any other value as Custom;
-/// a value past the end saves as the end, and a preset keeps the last Custom px.
 #[test]
 fn a_density_reads_back_as_it_was_saved() {
     let mut mode = String::new();
@@ -28,8 +26,6 @@ fn a_density_reads_back_as_it_was_saved() {
     }
 }
 
-/// What a hand-edited file says: an unknown mode is Compact, a Custom value past the end is
-/// the end.
 #[test]
 fn an_unknown_mode_reads_as_compact_and_a_custom_value_is_clamped() {
     assert_eq!(stored_density_px(CONTENT, "roomy", 9), 4);

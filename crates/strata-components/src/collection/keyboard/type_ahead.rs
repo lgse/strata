@@ -25,13 +25,6 @@ impl TypeAhead {
         !self.typed.is_empty() && now - self.last <= timeout.as_secs_f64()
     }
 
-    /// Adds `c` at `now` and finds the entry to move to, from the cursor at `cursor`.
-    ///
-    /// A character after the timeout starts a new prefix. A new prefix, or the same letter
-    /// typed again ("a", "a", "a"), finds the next match after the cursor, so repeating a
-    /// letter steps through the entries that start with it. A longer prefix finds the first
-    /// match from the cursor itself, so typing on keeps the entry it already found. The search
-    /// wraps past the end. Names compare case-insensitively.
     pub(super) fn push(
         &mut self,
         c: char,
@@ -81,8 +74,6 @@ fn first_char(s: &str) -> &str {
     s.char_indices().nth(1).map_or(s, |(i, _)| &s[..i])
 }
 
-/// Whether `name`, lowercased, starts with `query`, which is lowercase already. Allocates
-/// nothing, so a search over 100,000 names stays cheap.
 fn starts_with_folded(name: &str, query: &str) -> bool {
     let mut name = name.chars().flat_map(char::to_lowercase);
     query.chars().all(|q| name.next() == Some(q))

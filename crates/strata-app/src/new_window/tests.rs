@@ -15,9 +15,6 @@ use crate::{
 
 const MODULE: &str = "new_window::tests";
 
-/// As GTK's `open_focused_in_new` sends `open-window-at`: Shift+Enter on the cursor's folder
-/// asks the process for a window on it and leaves this window where it was; the command on a
-/// place, as a crumb's or a row's middle click runs it, asks for the place.
 #[test]
 fn shift_enter_asks_for_a_window_on_the_cursors_folder() {
     hosted(
@@ -60,9 +57,6 @@ fn shift_enter_asks_for_a_window_on_the_cursors_folder() {
     );
 }
 
-/// GTK's `open-window-at` and `open-tab-at` are a browser window's actions: a chooser's window
-/// has neither, so a Ctrl or Shift middle click on one of its folders, or its menu, opens
-/// nothing. Here the floating Copy to chooser the entry menu asks for.
 #[test]
 fn a_chooser_opens_no_window_and_no_tab() {
     use strata_platform::csd::{Backend, Csd, Policy};

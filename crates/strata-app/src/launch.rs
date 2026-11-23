@@ -21,12 +21,10 @@ use crate::{
     startup,
 };
 
-const USAGE: &str = "usage: strata-rune [PATH...|--portal]";
+const USAGE: &str = "usage: strata [PATH...|--portal]";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Command {
-    /// Open a window for each path, or the saved session or default folder without one. The
-    /// running instance opens them when there is one.
     Open(Vec<OsString>),
     /// Run the XDG Desktop Portal `FileChooser` D-Bus service.
     Portal,
@@ -58,8 +56,6 @@ fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Command, Strin
     }
 }
 
-/// The location an argument names, resolved as GIO resolves one for the GTK application: a
-/// path, relative to the launch folder or absolute, or a URI.
 #[cfg(any(test, feature = "qa"))]
 pub(crate) fn location(argument: Option<&OsStr>) -> Option<Location> {
     match argument {
@@ -81,7 +77,6 @@ pub(crate) fn leave_launch_folder() {
     }
 }
 
-/// What a window opens (`docs/rune/shared-state.md`, "Tab sessions").
 pub(crate) enum Initial {
     /// A test's or QA run's folder: opens that folder in one tab and leaves `tabs.toml` alone.
     #[cfg_attr(
@@ -89,18 +84,9 @@ pub(crate) enum Initial {
         expect(dead_code, reason = "only tests and QA runs open a folder this way")
     )]
     Explicit(Location),
-    /// A plain launch (`strata-rune` with no argument): restores the saved session when
-    /// `Some`, or opens the default folder, and persists this window's tabs.
     Plain(Option<RestoredSession>),
-    /// A later launch with no argument, as GTK's `present` opens it: the saved session, read
-    /// off the interface thread once the window is up, or the default folder, and this
-    /// window's tabs persisted.
     Present,
-    /// An argument: a folder opens, a file shows selected in its folder, and `tabs.toml` is
-    /// left alone (`crate::application::open_argument`).
     Argument(Location),
-    /// A FileManager1 call's folder with its items selected, and their Properties for
-    /// `ShowItemProperties` (`crate::application::open_reveal`); `tabs.toml` is left alone.
     Reveal(strata_fs::adapters::RevealRequest),
 }
 
@@ -115,8 +101,6 @@ pub(crate) fn initial(directory: Option<&OsStr>, settings: &Saved) -> Result<Ini
     }
 }
 
-/// The window `opening` asks for, reading `tabs.toml` only for a plain launch with
-/// `restore_tabs` on: at start-up, before its window shows.
 pub(crate) fn initial_for(opening: Opening, settings: &Saved) -> Initial {
     match opening {
         Opening::Plain => {
@@ -133,9 +117,6 @@ pub(crate) fn initial_for(opening: Opening, settings: &Saved) -> Initial {
     }
 }
 
-/// Claims the app id for this launch, or hands it to the instance that holds it and returns
-/// that one's answer. The primary opens a window for each of its own arguments, as for a
-/// launch handed to it later.
 fn open(arguments: Vec<OsString>) -> Result<i32, String> {
     let launch = Launch {
         args: arguments,
@@ -155,8 +136,6 @@ fn open(arguments: Vec<OsString>) -> Result<i32, String> {
     let ui = startup::UiThread::claim()?;
     application::attach(primary);
     let mut openings = application::take().into_iter();
-    // As GTK's `present_open` skips an argument that is no location, and the application then
-    // ends with no window and status 0.
     let Some(first) = openings.next() else {
         return Ok(0);
     };
@@ -172,22 +151,14 @@ fn portal() -> Result<(), String> {
     host::portal::run(startup::UiThread::claim()?, settings)
 }
 
-/// The argument the sandbox's worker pool runs this executable with
-/// (`strata_preview::sandbox::browser`), as the GTK application's `main` reads it.
 const BROWSER_WORKER: &str = "--browser-worker";
 
-/// Whether this process is a thumbnail worker the sandbox started: the first argument, and
-/// only the first, names it, as `launch_mode` in `src/main.rs` reads it.
 fn is_browser_worker(arguments: &[OsString]) -> bool {
     arguments
         .get(1)
         .is_some_and(|argument| argument == BROWSER_WORKER)
 }
 
-/// Serves the sandbox's thumbnail requests on stdin, as the GTK application's
-/// `LaunchMode::BrowserWorker` does. The confinement is `strata-preview`'s, the same for both
-/// binaries: the pool starts this executable under bubblewrap, bound read-only at
-/// `/app/strata`, and the worker restricts itself (`sandbox::browser::worker::run`).
 fn browser_worker() -> ExitCode {
     match strata_preview::sandbox::browser::run(sandbox_helper::browser_render) {
         Ok(()) => ExitCode::SUCCESS,
@@ -198,12 +169,8 @@ fn browser_worker() -> ExitCode {
     }
 }
 
-/// The argument `strata_preview::sandbox` runs this executable with inside bubblewrap for
-/// one-shot preview rendering (office documents, PDFs, archives, media, 3D models).
 const PREVIEW_HELPER: &str = "--preview-helper";
 
-/// Whether this process is a sandboxed preview helper: the first argument, and only the first,
-/// names it, as `launch_mode` in `src/main.rs` reads it.
 fn is_preview_helper(arguments: &[OsString]) -> bool {
     arguments
         .get(1)
@@ -234,7 +201,6 @@ fn preview_helper(arguments: &[OsString]) -> ExitCode {
     }
 }
 
-/// Runs `strata-rune` with the process's arguments, the program name first.
 pub fn run(arguments: impl IntoIterator<Item = OsString>) -> ExitCode {
     let arguments: Vec<OsString> = arguments.into_iter().collect();
     // Before anything else starts: a worker sets up no logging, settings or window.
@@ -256,19 +222,19 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> ExitCode {
         Ok(Command::Portal) => match portal() {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
-                eprintln!("strata-rune: {error}");
+                eprintln!("strata: {error}");
                 ExitCode::FAILURE
             }
         },
         Ok(Command::Open(_)) => match open(arguments) {
             Ok(status) => ExitCode::from(u8::try_from(status).unwrap_or(1)),
             Err(error) => {
-                eprintln!("strata-rune: {error}");
+                eprintln!("strata: {error}");
                 ExitCode::FAILURE
             }
         },
         Err(error) => {
-            eprintln!("strata-rune: {error}\n{USAGE}");
+            eprintln!("strata: {error}\n{USAGE}");
             ExitCode::from(2)
         }
     }

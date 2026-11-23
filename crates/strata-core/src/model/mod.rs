@@ -83,8 +83,6 @@ pub fn transfer_file_name(file: &gio::File) -> Option<OsString> {
     Some(OsStr::from_bytes(bytes).to_os_string())
 }
 
-/// GIO hands out percent-encoded URIs; keep path, query and fragment encoded so names that are
-/// not valid UTF-8 parse, while userinfo is still decoded for credential detection.
 pub const GIO_URI_PARSE_FLAGS: gio::glib::UriFlags = gio::glib::UriFlags::HAS_PASSWORD
     .union(gio::glib::UriFlags::HAS_AUTH_PARAMS)
     .union(gio::glib::UriFlags::ENCODED_PATH)
@@ -110,9 +108,6 @@ pub fn diagnostic_uri(uri: &str) -> String {
         .unwrap_or_else(|_| "<invalid-uri>".into())
 }
 
-/// Decoded form when the URI is valid UTF-8, otherwise the percent-encoded form GIO produced.
-/// A path with an encoded slash also stays encoded, because decoding it would turn a name
-/// into a path separator when the displayed text is edited and submitted.
 fn parse_display_uri(uri: &str) -> Result<gio::glib::Uri, gio::glib::Error> {
     let encoded = gio::glib::Uri::parse(uri, GIO_URI_PARSE_FLAGS);
     if encoded
@@ -128,8 +123,6 @@ fn parse_display_uri(uri: &str) -> Result<gio::glib::Uri, gio::glib::Error> {
     .or(encoded)
 }
 
-/// GIO's leaf name, or one read from the URI when GIO has none: GVfs names every mount root
-/// "/", even when its mount spec covers a path segment, as an SMB share's does.
 fn uri_display_name(uri: &str, file_name: Option<OsString>) -> String {
     file_name
         .map(|name| name.to_string_lossy().into_owned())
@@ -137,8 +130,6 @@ fn uri_display_name(uri: &str, file_name: Option<OsString>) -> String {
         .unwrap_or_else(|| uri_leaf_name(uri))
 }
 
-/// The decoded last path segment, or the host at a server root. `NON_DNS` keeps a non-ASCII
-/// host as typed instead of converting it to punycode.
 fn uri_leaf_name(uri: &str) -> String {
     let flags = GIO_URI_PARSE_FLAGS.union(gio::glib::UriFlags::NON_DNS);
     let Ok(parsed) = gio::glib::Uri::parse(uri, flags) else {
@@ -199,8 +190,6 @@ fn uri_scheme_eq(uri: &str, scheme: &str) -> bool {
     gio::glib::Uri::parse_scheme(uri).is_some_and(|parsed| parsed.eq_ignore_ascii_case(scheme))
 }
 
-/// Resolves `.` and `..` as text like GIO, without consulting the filesystem;
-/// `..` stops at the root. Callers pass absolute paths.
 pub fn lexically_normalized(path: &Path) -> PathBuf {
     let mut normalized = PathBuf::new();
     for component in path.components() {

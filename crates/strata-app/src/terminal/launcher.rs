@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Terminal emulator discovery, command construction, and background child reaping, ported
-//! from `src/ui/terminal.rs`.
-
 use std::{
     ffi::{OsStr, OsString},
     io::ErrorKind,
@@ -172,8 +169,6 @@ impl Emulator {
     }
 
     pub(crate) fn directory_command(&self, path: &Path) -> Command {
-        // A single-instance Ghostty hands a plain launch to the running instance,
-        // which ignores the directory; `+new-window` forwards it from 1.3 onward.
         let action =
             (self.is_ghostty() && ghostty_has_new_window(&self.program)).then_some("+new-window");
         let mut command = self.base(action);
@@ -230,8 +225,6 @@ impl Emulator {
 }
 
 pub(crate) fn no_terminal_message() -> String {
-    // Program names are identifiers, so they keep ASCII separators that wrap between names
-    // even in languages whose list separator has no space; they start on their own line.
     let fallbacks = KNOWN_TERMINALS
         .iter()
         .skip(1)
@@ -247,8 +240,6 @@ pub(crate) fn no_terminal_message() -> String {
     .into_owned()
 }
 
-/// Starts and reaps the child off the UI thread, so a launcher neither blocks it nor lingers
-/// as defunct. Startup failures return to the UI thread through `later`.
 pub(crate) fn spawn_reaped(
     later: Later<App>,
     start: impl FnOnce() -> Result<Child, String> + Send + 'static,

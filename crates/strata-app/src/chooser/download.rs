@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Remote URL download progress, cancellation, and cached download reuse (`src/ui/chooser/state.rs`
-//! and `src/ui/chooser/download.rs`).
-
 use std::{
     path::PathBuf,
     sync::{
@@ -53,8 +50,6 @@ impl DownloadProgress {
         }
     }
 
-    /// What a batch of the download thread's reports changed: the file's name, and how far it
-    /// has come.
     pub(crate) fn advance(&mut self, name: Option<String>, progress: Option<(u64, Option<u64>)>) {
         if let Some(name) = name {
             self.name = name;
@@ -198,8 +193,6 @@ fn drain_batch(receiver: &Receiver<RemoteDownload>) -> BatchOutcome {
     }
 }
 
-/// What the download thread reported, applied while the download it belongs to is still the
-/// chooser's own: `cancelled` names it.
 fn apply_batch(
     app: &mut App,
     (cancelled, url): (&Arc<AtomicBool>, &str),

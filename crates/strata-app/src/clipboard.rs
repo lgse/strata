@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The window's clipboard (`src/ui/browser/clipboard.rs`): copied and cut files in the three
-//! Linux file-manager formats (`strata_platform::clipboard::Files`), copied paths and names,
-//! the copy and cut marks on rows across every view and tab (`Scope::Window`), and clearing or
-//! updating a cut clipboard once its items move (`complete_cut_transfer`).
-//!
-//! On the windowed host `strata_platform::clipboard::Clipboard` binds to Wayland or X11. On
-//! the headless offscreen host no native window is attached, so each `App` keeps its own
-//! in-memory fallback (`Fallback`) isolated from other tests.
-
 use std::collections::HashSet;
 
 use rune::{AppHandle, El, Tx, WindowHandle};
@@ -396,8 +387,6 @@ pub(crate) enum Yank {
     Refused,
 }
 
-/// `BrowserView::yank_targets` (`src/ui/browser/file_commands.rs`): copies (`cut = false`) or
-/// cuts (`cut = true`) 10xer's `command_targets`.
 pub(crate) fn yank_targets(app: &mut App, cut: bool) -> Yank {
     let entries = crate::tenxer::command_targets(app);
     if entries.is_empty() {
@@ -414,8 +403,6 @@ pub(crate) fn yank_targets(app: &mut App, cut: bool) -> Yank {
     }
 }
 
-/// `clipboard::unyank` (`src/ui/browser/clipboard.rs`): clears copy/cut marks and releases any
-/// file selection owned by this window.
 pub(crate) fn unyank(app: &mut App) {
     app.clipboard.clear_marks();
     if let Some(copy_id) = app.clipboard.owned {
@@ -539,8 +526,6 @@ fn copy_locations_text(app: &mut App, entries: &[FileEntry]) {
     app.clipboard.write_text(&text);
 }
 
-/// `BrowserView::copy_target_text` (`src/ui/browser/file_commands.rs`): copies `entries`'
-/// display names or shell-escaped paths to the clipboard, returning `false` when empty.
 pub(crate) fn copy_entries_text(app: &mut App, entries: &[FileEntry], names: bool) -> bool {
     if entries.is_empty() {
         return false;

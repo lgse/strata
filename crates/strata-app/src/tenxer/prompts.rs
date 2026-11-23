@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C18 `FooterPrompt` mounting, opening, intent routing, and `/` filter-descent for 10xer mode
-//! (`src/ui/window/keyboard/prompts.rs`, `src/ui/window/keyboard/footer_bindings.rs`).
-
 use std::ops::Range;
 
 use rune::Tx;
@@ -57,8 +54,6 @@ impl State {
     }
 }
 
-/// The prompt and the text an answer was asked for: an answer that comes back after either
-/// changed is dropped.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Asked {
     pub(super) kind: PromptKind,
@@ -397,8 +392,6 @@ fn on_submit(app: &mut App, args: folder::SubmitArgs, tx: &mut Tx) {
     }
 }
 
-/// The prompt went without a submit, by Escape, a blur or another prompt, with `text` as
-/// it stood.
 fn on_dismissed(app: &mut App, kind: PromptKind, (text, by): (String, By), tx: &mut Tx) {
     app.tenxer.prompt_state.completing.cancel();
     app.tenxer.prompt_state.filter_descent = None;

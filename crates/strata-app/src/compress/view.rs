@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Compress dialog's view and its stacked password-validation error dialog
-//! (`src/ui/browser/archive.rs`), built on C15's [`StrataDialog`].
-
 use rune::{El, TextEdit, Tx, col, row, text, text_input};
 use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant};
 use strata_components::dialog::{Focus, MESSAGE_WIDTH, StrataDialog, Tone};
@@ -12,7 +9,6 @@ use strata_kit::{icons::IconName, look::Look};
 use super::{Form, Notice};
 use crate::{App, shell, slots::Frame};
 
-/// The archive formats in GTK's order (`segmented_control(&["ZIP", "7Z", "TAR.GZ", "TAR"], 0)`).
 const FORMATS: [(&str, &str, ArchiveFormat); 4] = [
     ("zip", "ZIP", ArchiveFormat::Zip),
     ("7z", "7Z", ArchiveFormat::SevenZ),
@@ -49,8 +45,6 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         .primary_tx(tr("Compress"), super::submit)
         .initial_focus(Focus::First)
         .close_label(tr("Close dialog"));
-        // `Form::new` focuses the name field as the dialog opens, so tell Rune's modal stack to
-        // restore focus to the listing view on close (`remember_modal_focus`).
         if let Some(view) = shell::view_focus(app) {
             dialog = dialog.return_focus(view);
         }
@@ -293,8 +287,6 @@ fn field_frame(look: &Look, inner: El, focused: bool, invalid: bool) -> El {
     }
 }
 
-/// Builds a single-choice button in a segmented bar (`src/ui/controls.rs:segmented_control`),
-/// keeping AT-SPI role `"toggle button"` (`El::checked`) as GTK's `ToggleButton`s do.
 fn segment_button(look: &Look, key: String, label: String, active: bool) -> SegmentButton<'_> {
     SegmentButton {
         look,

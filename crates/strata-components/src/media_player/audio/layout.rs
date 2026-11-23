@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Where the audio view puts its art and spectrum (Strata's
-//! `src/ui/preview/audio/layout.rs`, `NowPlayingLayout`).
-//!
-//! A pane at least 1.12 times as wide as tall puts the art beside the rest; at 0.95 or below
-//! the art goes back on top, and between the two the layout keeps what it had. Stacked, when
-//! height runs short the spectrum hides first, then the art.
-
 /// Width over height of the artwork box: the square cover plus room for the peeking disc.
 pub const ART_ASPECT: f32 = 1.3;
 /// Strata's limits, in points.
@@ -36,8 +29,6 @@ fn round(x: f32) -> f32 {
     x.round()
 }
 
-/// The plan for a `width` × `height` pane. `fixed` is the height the tags, timeline and
-/// controls need, `gap` the space between rows, and `was_wide` the last plan's mode.
 pub fn plan(width: f32, height: f32, fixed: f32, gap: f32, was_wide: bool) -> Plan {
     if width <= 0.0 || height <= 0.0 {
         return Plan::default();

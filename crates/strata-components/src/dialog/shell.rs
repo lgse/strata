@@ -10,19 +10,6 @@ use strata_kit::look::Look;
 use super::keys::{self, Route};
 use super::{BACKDROP_BLUR, BACKDROP_KEY, ENTRANCE_SCALE, MOTION_SECONDS, PANEL_RADIUS, WIDTH};
 
-/// A modal panel over a blurred backdrop: what every dialog shares (see the module docs).
-///
-/// ```ignore
-/// DialogShell::new("palette", "Search", |s: &mut App| s.palette = false)
-///     .open(s.palette)
-///     .width(640.0)
-///     .child(palette_contents)
-///     .build(&look, &mut layer);
-/// ```
-///
-/// Keys: `<key>-layer` (the full-window layer the panel centres in, out of the accessibility
-/// tree), `<key>-dialog` (the
-/// panel: role `dialog`, named by `label`), and the shared [`BACKDROP_KEY`].
 pub struct DialogShell<S> {
     key: String,
     label: String,
@@ -47,8 +34,6 @@ pub struct DialogShell<S> {
 type DismissFn<S> = Rc<dyn Fn(&mut S, &mut Tx)>;
 
 impl<S: 'static> DialogShell<S> {
-    /// A closed shell keyed `key`, named `label` for assistive technology. `on_dismiss` runs
-    /// on Escape and on a click outside the panel; it closes the dialog without confirming.
     pub fn new(
         key: impl Into<String>,
         label: impl Into<String>,
@@ -75,8 +60,6 @@ impl<S: 'static> DialogShell<S> {
         }
     }
 
-    /// Replaces `on_dismiss` with one that gets the dismissal's `Tx`: to raise an intent or
-    /// move focus in the change that closes the dialog.
     pub fn on_dismiss_tx(mut self, on_dismiss: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.dismiss = Rc::new(on_dismiss);
         self
@@ -100,51 +83,36 @@ impl<S: 'static> DialogShell<S> {
         self
     }
 
-    /// Ignores clicks outside the panel while true: a dialog in a state that can't be
-    /// cancelled (an operation in progress), or a form with something typed in it. Escape
-    /// still calls `on_dismiss`.
     pub fn blocking(mut self, blocking: bool) -> Self {
         self.blocking = blocking;
         self
     }
 
-    /// Opened over another dialog: draws no backdrop of its own, so the one beneath keeps the
-    /// blur until the last dialog closes.
     pub fn stacked(mut self, stacked: bool) -> Self {
         self.stacked = stacked;
         self
     }
 
-    /// The panel's width in points, when the window has room: a narrower window fills its
-    /// width less a margin.
     pub fn width(mut self, width: f32) -> Self {
         self.width = width;
         self
     }
 
-    /// The panel's height in points, when the window has room: a shorter window fills its
-    /// height less the shell's margin.
     pub fn height(mut self, height: f32) -> Self {
         self.height = Some(height);
         self
     }
 
-    /// Overrides the margin kept around the panel inside the window (`look.space.lg` unless
-    /// set; Settings uses `look.space.xxl` as GTK's `DIALOG_MARGIN` does).
     pub fn margin(mut self, margin: f32) -> Self {
         self.margin = Some(margin);
         self
     }
 
-    /// Overrides the panel's background surface (`kit.c.layer_01` unless set; Settings uses
-    /// `kit.c.bg_base` as GTK's `.settings-dialog` does).
     pub fn fill(mut self, color: Color) -> Self {
         self.fill = Some(color);
         self
     }
 
-    /// Overrides the panel's corner radius (`look.round(PANEL_RADIUS)` unless set; Settings
-    /// uses `look.kit.radius.xl`).
     pub fn panel_radius(mut self, radius: f32) -> Self {
         self.panel_radius = Some(radius);
         self
@@ -156,30 +124,21 @@ impl<S: 'static> DialogShell<S> {
         self
     }
 
-    /// Opens and closes at once while true, as with animations off: pass
-    /// `cx.is_reduced_motion()`, the system's Reduce Motion as Rune sees it. Without it, Rune
-    /// already shortens the scale to a 0.15 s fade under Reduce Motion; Strata shows no fade.
     pub fn reduced_motion(mut self, reduced: bool) -> Self {
         self.reduced_motion = reduced;
         self
     }
 
-    /// On close, focus goes to the element keyed `key` (or its first focusable child) instead
-    /// of the element focused before the dialog opened.
     pub fn return_focus(mut self, key: impl Into<String>) -> Self {
         self.return_focus = Some(key.into());
         self
     }
 
-    /// The keys of the footer buttons that can take focus, in document order: Left and Right
-    /// move between them.
     pub fn footer_keys(mut self, keys: Vec<String>) -> Self {
         self.footer = keys;
         self
     }
 
-    /// Pushes the backdrop and the panel onto `layer`, the overlays `rune_kit::root` mounts,
-    /// when open.
     pub fn build(self, look: &Look, layer: &mut Vec<El>) {
         if !self.open {
             return;
@@ -198,8 +157,6 @@ impl<S: 'static> DialogShell<S> {
         layer.push(
             col()
                 .key(layer_key)
-                // A layout box: assistive technology sees the dialog, not the full-window
-                // layer around it. The key stays, for the layer's own presence motion.
                 .role("none")
                 .absolute(0.0, 0.0)
                 .w_full()
@@ -287,8 +244,6 @@ fn apply_elevation(look: &Look, panel: El) -> El {
     }
 }
 
-/// Sends `key` through the window's key routing, after this handler. Rune applies it on the
-/// next frame.
 fn send(tx: &mut Tx, key: Key, shift: bool) -> bool {
     tx.send_key(KeyEvent {
         key,
@@ -300,9 +255,6 @@ fn send(tx: &mut Tx, key: Key, shift: bool) -> bool {
     true
 }
 
-/// The panel's and the backdrop's presence motion: a 200 ms scale-and-fade (a fade for
-/// Settings), or none when the user turned animations off. Rune follows the host's Reduce
-/// Motion with a short fade; animations off means none at all, as in Strata.
 fn motion(animations: bool, fade_only: bool) -> (Transition, Transition) {
     if !animations {
         return (Transition::none(), Transition::none());

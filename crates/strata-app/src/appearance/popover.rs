@@ -1,39 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Appearance popover (slice decision 21), GTK's `build_appearance_menu` in
-//! `src/ui/window/appearance_menu.rs`: a plain popover ([`crate::popover`]) under the header's
-//! Appearance button, which is a toggle button pressed while it is open.
-//!
-//! - **VIEW:** Columns, Icons and List, `radio menu item`s checked for the view shown. A row
-//!   shows its view as the keys do ([`super::views::switch`]), closes the popover and gives the
-//!   view the keyboard (`focus_switched_view`).
-//! - **Preview panel,** a `toggle button` described with its key, drawn unpressed: it runs
-//!   `preview-panel`, which the preview drawer's package registers, and is inert until then
-//!   (the coordinator's ruling 1 in `docs/rune/parity/packages/A8.md`). It closes the popover.
-//! - **DENSITY:** the Frame and Content sliders ([`super::density`]), which save as they move;
-//!   the popover stays open.
-//! - **TEXT SIZE:** "Aa", then GTK's stepper: Decrease, the size as "N px" (it resets it,
-//!   described with its key), Increase, each running the text size's commands
-//!   ([`super::text_size`]). The popover stays open.
-//! - **Group by file type,** a `check menu item` checked while the setting is on and
-//!   sensitive only where the view shown groups (List); it saves the setting, regroups the
-//!   view shown and closes the popover. The regroup closes the filter first
-//!   ([`crate::filter::close_for_regroup`]). The keyboard stays on the Appearance button, as
-//!   GTK leaves it (driven), though the regroup rebuilds the view, which takes it otherwise.
-//! - **Customize columns…,** a `menu item` shown in List alone: it closes the popover and opens
-//!   the List table's columns menu under its headings (`customize_columns_option`, then
-//!   `open_list_columns_popover`), the menu the List header's Columns button opens.
-//! - **Show sizes in Columns view,** a `check menu item` shown in Columns alone, checked while
-//!   the setting is on (`column_sizes_option`): it saves `columns_show_sizes`, has the open
-//!   columns show their size badges and ask for their folders' counts, or stop, and closes the
-//!   popover.
-//! - **Hidden files,** a `check menu item` checked while they show, described with its key; it
-//!   toggles them in the browser and closes the popover.
-//!
-//! On open the keyboard is on the first row, as GTK's popover opens (driven, `A8.md`). The
-//! keys, Escape, a press or a wheel outside, and the keyboard leaving it are the plain
-//! popover's. The header button's icon follows the view shown (`browser_mode_icon`).
-
 use rune::{Cursor, El, TextStyle, Tx, col, el, icon, row, text};
 use strata_core::i18n::tr;
 use strata_desktop::keys::{
@@ -77,8 +43,6 @@ pub(super) struct State {
     labels: Labels,
 }
 
-/// The words, translated once: the language changes only on restart. What names a key is
-/// made at each build, since a binding can change.
 struct Labels {
     appearance: String,
     view: String,
@@ -140,8 +104,6 @@ fn close(app: &mut App) {
     app.appearance.popover.open = false;
 }
 
-/// The header button's icon for the view shown (`browser_mode_icon` in
-/// `src/ui/window/appearance_menu.rs`).
 pub(crate) fn button_icon(app: &App) -> IconName {
     let Some(view) = shell::shown_view(app) else {
         return IconName::ViewColumns;
@@ -155,8 +117,6 @@ pub(crate) fn button_icon(app: &App) -> IconName {
     }
 }
 
-/// The header button as GTK names it: "Appearance", a toggle pressed while the popover is
-/// open (`MenuShell` in `src/ui/window/appearance_menu.rs`).
 pub(crate) fn face(app: &App) -> Face {
     let state = &app.appearance.popover;
     Face {
@@ -166,7 +126,6 @@ pub(crate) fn face(app: &App) -> Face {
     }
 }
 
-/// GTK's popover hides when the keyboard leaves it. True when it closed.
 pub(super) fn follow(app: &mut App, tx: &Tx) -> bool {
     if !app.appearance.popover.open || !focus_left(tx, BUTTON, &stops(app), &[]) {
         return false;
@@ -283,8 +242,6 @@ struct Row<'a> {
     press: fn(&mut App, &mut Tx),
 }
 
-/// A row as GTK's `appearance_option` makes one: a frameless button with the row's role,
-/// accent leading icon and check mark, muted shortcut hint, and GTK's checked/hover fills.
 fn option(look: &Look, row_of: Row<'_>) -> El {
     let kit = &look.kit;
     let name = row_of.name.to_owned();
@@ -406,8 +363,6 @@ fn view_rows(app: &App) -> Vec<El> {
     ]
 }
 
-/// A view row: the view shows as the keys show it, the popover closes, and the view has the
-/// keyboard (`connect_mode_buttons`, then `focus_switched_view`).
 fn chosen_view(app: &mut App, mode: &'static str, tx: &mut Tx) {
     super::views::switch(app, mode, tx);
     close(app);
@@ -448,8 +403,6 @@ fn preview_row(app: &App) -> El {
     row.description(described)
 }
 
-/// "Aa" and GTK's bordered segmented stepper: Decrease, the size (a reset), Increase
-/// (`text_size_stepper` in `src/ui/window/appearance_menu.rs`).
 fn stepper(app: &App) -> El {
     let look = &app.look;
     let kit = &look.kit;

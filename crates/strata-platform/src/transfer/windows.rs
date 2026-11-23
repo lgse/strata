@@ -1,33 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The windows attached to the substrate, each with the [`Turn`] its app gave at attach.
-//!
-//! The Wayland reader asks the UI thread to dispatch through a window's app
-//! (`AppHandle::update_if`). A window that closes takes its app's runtime with it, and a turn
-//! posted there never runs. Rune tells P0 neither when a window closes nor whether a turn
-//! ran, and a hidden window (whose native side Rune destroys on Wayland) still runs its
-//! app's updates, so a closed native window doesn't mean a dead turn. Hence:
-//!
-//! - **Every window keeps its own turn**, and a window attached again (Rune recreated it)
-//!   replaces its entry.
-//! - **The reader posts each round to every window with no turn outstanding.** A live app
-//!   runs it soon, so its window is posted to again next round; a closed one keeps the one
-//!   turn it was given, and is skipped from then on. Dispatching more than once a round is
-//!   harmless: a dispatch with nothing queued does nothing.
-//! - **Set aside on the UI thread**, at each attach and dispatch: a window whose native side
-//!   is gone and whose turn stayed outstanding while two later rounds ran. That marks a
-//!   closed window, but not only one: Rune runs one app's updates in the order they were
-//!   posted, not one app's against another's, so a live window's app can run three rounds'
-//!   turns on its own wakes before a hidden window's app runs its first. So a window set
-//!   aside is dormant, not dropped: it gets no turns, and if its outstanding turn runs after
-//!   all, it is back ([`Windows::ran`]). A dormant window goes for good when its key attaches
-//!   again or is [`Windows::detach`]ed, and beyond [`DORMANT`] the oldest go: a closed
-//!   window that never detaches can't be told from a hidden one whose app is slow. A window
-//!   detached (its `on_close` ran) goes at once.
-//!
-//! So while any attached window lives, a turn the reader posts runs. With none attached the
-//! reader waits, its events queued, until the next attach wakes it.
-
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use rune::WindowHandle;
@@ -99,8 +71,6 @@ impl<W: Window> Windows<W> {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Adds `window` with `turn`, replacing an entry of the same key, and prunes. On the UI
-    /// thread.
     pub(crate) fn attach(&self, window: W, turn: Turn) {
         {
             let mut inner = self.lock();
@@ -145,8 +115,6 @@ impl<W: Window> Windows<W> {
             .map(|e| e.window.key().to_owned())
     }
 
-    /// Sets aside the windows that look closed: native side gone, turn outstanding for
-    /// [`ROUNDS_TO_PRUNE`] rounds. On the UI thread.
     pub(crate) fn prune(&self) {
         let mut inner = self.lock();
         let ran = inner.ran;
@@ -163,8 +131,6 @@ impl<W: Window> Windows<W> {
         inner.dormant.drain(..over);
     }
 
-    /// Posts a turn running `job()` to each window with none outstanding. Any thread; the
-    /// turns are called with no lock held. How many were posted.
     pub(crate) fn post(self: &Arc<Self>, job: impl Fn() -> Box<dyn FnOnce() + Send>) -> usize {
         let targets: Vec<(u64, u64, Turn)> = {
             let mut inner = self.lock();

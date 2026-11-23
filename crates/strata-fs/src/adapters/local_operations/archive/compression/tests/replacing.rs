@@ -250,8 +250,6 @@ fn expect_listed_at_barrier(during: &Listings, each_file: bool, row: &str) {
 fn an_archive_replaced_without_trash_is_on_disk_before_its_original_is_deleted()
 -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // The family, whether the barrier fails, and whether the archive is
-    // synced itself, as the barrier cannot reach it.
     for (fs_type, fails, each_file) in [
         ("ext4", false, false),
         ("ext4", true, false),

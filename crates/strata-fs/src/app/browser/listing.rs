@@ -124,8 +124,6 @@ impl Browser {
         }
     }
 
-    /// A monitor that went live after the listing may have missed changes in
-    /// between; a moved stamp reloads the column.
     fn check_monitor_gap(self: &Rc<Self>, gap: &MonitorGap, baseline: &DirectoryStamp) {
         let weak: Weak<Self> = Rc::downgrade(self);
         let depth = gap.depth;

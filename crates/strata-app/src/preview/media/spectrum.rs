@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Pure-Rust 2048-point Hann-windowed radix-2 FFT and log-frequency band integration
-//! (40 Hz–16 kHz, -62 dB to -6 dB), matching GTK's `src/ui/preview/audio/analysis.rs`.
-
 use std::f32::consts::PI;
 
 pub(super) const FFT_SIZE: usize = 2048;

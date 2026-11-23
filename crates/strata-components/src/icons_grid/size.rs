@@ -1,24 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The tile size: stepping it along the look's ladder from keys and Ctrl+Shift+wheel, and the
-//! request the host hears.
-//!
-//! The size itself is the host's (Strata keeps one per remembered folder and a default), read
-//! by accessor on every build. C3 works out a step from the ladder (`Look::tiles`, Strata's 32
-//! to 256 with finer steps at small sizes) and hands the host a [`SizeRequest`]; a reset is the
-//! host's to resolve.
-//!
-//! Keys come two ways, as Strata's do (`src/ui/browser_modes/thumbnail_size.rs`):
-//! - [`SizeKeys::window_command`] matches the default map's chords (Ctrl+Alt+plus, Ctrl+Alt+=,
-//!   Ctrl+Alt+minus, Ctrl+Alt+0) wherever the host routes window keys;
-//! - [`SizeKeyed`] wraps the collection's keyboard controller, so with the grid focused it also
-//!   takes the 10xer map's plain +, = and −, before the wrapped controller hears them. It
-//!   sends the command as an `Intent::Other`, which [`size_command`] reads back in the host's
-//!   `on_intent`.
-//!
-//! The 10xer map is the default map's chords plus its plain keys, so a rebind of the default
-//! chords ([`SizeKeys::bind`]) applies in 10xer too.
-
 use std::rc::Rc;
 
 use rune::{Chord, ChordKey, ChordMod, KeyEvent, KeyPlatform, Tx, WheelEvent};
@@ -31,8 +12,6 @@ use crate::collection::element::{
 mod tests;
 
 /// What to do to the size.
-///
-/// Used by: C3, hosts (their key routing).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SizeCommand {
     /// Move this many steps along the ladder: positive is larger.
@@ -42,12 +21,9 @@ pub enum SizeCommand {
 }
 
 /// What the host hears when the size should change.
-///
-/// Used by: hosts.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SizeRequest {
-    /// From `from` to `to` along the ladder. `to` equals `from` at the ladder's ends; Strata
-    /// still shows its size notice then.
+    /// From `from` to `to` along the ladder.
     Step {
         /// The size it was.
         from: f32,
@@ -59,8 +35,6 @@ pub enum SizeRequest {
 }
 
 /// Which keys step and reset the size.
-///
-/// Used by: C3, hosts (rebinding, and the 10xer switch).
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct SizeKeys {
@@ -89,9 +63,7 @@ const fn ctrl_alt(key: ChordKey) -> Chord {
 }
 
 impl SizeKeys {
-    /// Strata's keys (`THUMBNAILS_LARGER`, `_SMALLER` and `_RESET` in
-    /// `src/ui/keys/bindings/window.rs`). A chord on `+` also matches with the Shift that types
-    /// it (Rune's chord matching), so Ctrl+Alt+Shift+= on a US layout is a step larger.
+    /// Strata's keys.
     pub fn default_map() -> Self {
         Self {
             larger: vec![ctrl_alt(ChordKey::Char('+')), ctrl_alt(ChordKey::Char('='))],
@@ -112,8 +84,7 @@ impl SizeKeys {
         self
     }
 
-    /// Rebinds `command`'s default chords: `Step(n)` with `n > 0` the larger ones, `n < 0` the
-    /// smaller, `Reset` the reset.
+    /// Rebinds `command`'s default chords: `Step(n)` with `n > 0` the larger ones, `n < 0` the smaller, `Reset` the reset.
     pub fn bind(&mut self, command: SizeCommand, chords: Vec<Chord>) {
         match command {
             SizeCommand::Step(n) if n > 0 => self.larger = chords,
@@ -137,8 +108,7 @@ impl SizeKeys {
         }
     }
 
-    /// The command a window key is: the default map's chords only, as Strata's window-level
-    /// routing takes them from anywhere in an Icons pane.
+    /// The command a window key is: the default map's chords only.
     pub fn window_command(&self, event: &KeyEvent, tx: &Tx) -> Option<SizeCommand> {
         let platform = KeyPlatform::current();
         self.find(|c| c.matches_tx_on(event, tx, platform), false)
@@ -150,9 +120,7 @@ impl SizeKeys {
     }
 }
 
-/// The command an intent from [`SizeKeyed`] carries.
-///
-/// Used by: hosts (`on_intent`).
+/// The command an intent from `SizeKeyed` carries.
 pub fn size_command(intent: &Intent) -> Option<SizeCommand> {
     match intent {
         Intent::Other(any) => any.downcast_ref::<SizeCommand>().copied(),
@@ -160,12 +128,7 @@ pub fn size_command(intent: &Intent) -> Option<SizeCommand> {
     }
 }
 
-/// A keyboard controller that takes the size keys first, then hands every other key to the
-/// controller it wraps (C1c's `Keyboard`): install it in the grid's `controllers.keyboard`.
-/// It reads its keys from the collection's settings (`Collection::settings(SizeKeys)`), the
-/// default map without.
-///
-/// Used by: hosts.
+/// A keyboard controller that takes the size keys first, then hands every other key to the controller it wraps.
 pub struct SizeKeyed {
     inner: Box<dyn KeyController>,
 }
@@ -209,12 +172,7 @@ impl KeyController for SizeKeyed {
     }
 }
 
-/// Turns Ctrl+Shift+wheel into whole steps, as Strata's `WheelZoom` does: a notched wheel steps
-/// once a notch, and point-precise deltas (a trackpad) step once every [`PRECISE_STEP`] points.
-/// What's left over carries to the next delta, and resets when the direction turns, the kind
-/// of delta changes, or a wheel isn't a size wheel.
-///
-/// Used by: C3.
+/// Turns Ctrl+Shift+wheel into whole steps, as Strata's `WheelZoom` does.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct WheelSteps {
     pending: f32,
@@ -226,8 +184,7 @@ pub struct WheelSteps {
 pub const PRECISE_STEP: f32 = 10.0;
 
 impl WheelSteps {
-    /// Whether `e` is a size wheel: Ctrl and Shift held, and neither Alt nor Super. (Off
-    /// macOS Rune sets `cmd` with Ctrl, so it says nothing more.)
+    /// Whether `e` is a size wheel: Ctrl and Shift held, and neither Alt nor Super.
     pub fn claims(e: &WheelEvent) -> bool {
         let m = e.mods;
         m.ctrl && m.shift && !m.alt && !m.logo
@@ -238,8 +195,7 @@ impl WheelSteps {
         *self = Self::default();
     }
 
-    /// The steps `e` makes: positive is larger. Rune's `dy` is positive for a wheel moved
-    /// away (up), and some systems turn Shift+wheel into a sideways `dx`.
+    /// The steps `e` makes: positive is larger.
     pub fn steps(&mut self, e: &WheelEvent) -> i32 {
         let delta = if e.dy == 0.0 { e.dx } else { e.dy };
         if delta == 0.0 || !delta.is_finite() {

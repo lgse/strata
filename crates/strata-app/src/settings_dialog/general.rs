@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The General settings page (`src/ui/settings/general.rs`): language, browsing, search,
-//! sidebar, and item-opening sections.
-
 use std::rc::Rc;
 
 use rune::{Cursor, El, Tx, col, icon, row, text};

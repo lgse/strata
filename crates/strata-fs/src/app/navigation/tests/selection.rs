@@ -2,7 +2,6 @@
 
 use super::*;
 
-/// A GTK selection report: the selected rows and the focused row.
 type Report<'a> = (&'a [usize], Option<usize>, &'a str);
 
 /// Reports a selection for the root column and returns the fill it leaves.

@@ -5,9 +5,6 @@ use std::fmt;
 /// Why a route or the whole substrate is missing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Unsupported {
-    /// libwayland-client has no `wl_proxy_get_display` (it arrived in 1.23; Ubuntu 24.04
-    /// ships 1.22), so winit's display can't be reached from a Rune window. Below 1.23 is
-    /// unsupported (S3 decision 1).
     LibwaylandBelow1_23,
     /// The window is neither Wayland nor X11.
     NotLinux(String),
@@ -38,18 +35,12 @@ pub enum Error {
     WindowClosed(String),
     /// The route isn't bound: no such protocol, or not asked for at attach.
     NoRoute(&'static str),
-    /// A data-device write needs an input serial, and this client has had no key or button
-    /// event yet.
     NoSerial,
     /// The substrate was shut down.
     Shutdown,
-    /// A request the protocol forbids here, refused before it reached the server (where it
-    /// would end winit's connection).
     Refused(&'static str),
     /// The connection failed.
     Connection(String),
-    /// A call failed and the connection lives on: the compositor stopped reading for a
-    /// while, or sent an event this client couldn't parse.
     Busy(String),
 }
 

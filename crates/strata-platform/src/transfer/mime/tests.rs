@@ -10,8 +10,6 @@ fn path(bytes: &[u8]) -> &Path {
     Path::new(OsStr::from_bytes(bytes))
 }
 
-/// The table is what GLib's `g_filename_to_uri` gave for each path (Python's
-/// `GLib.filename_to_uri`, recorded in P0's handoff).
 #[test]
 fn file_uris_escape_like_glib() {
     let cases: &[(&[u8], &str)] = &[
@@ -175,9 +173,6 @@ fn pixmap_is_data_and_meta_targets_match_by_exact_name() {
     }
 }
 
-/// A type listed without parameters names its forms with parameters, as a browser offers an
-/// image's bytes (`application/octet-stream;name="…"`); one listed with parameters names only
-/// itself, and a longer type is no form of a shorter one.
 #[test]
 fn a_type_without_parameters_names_its_forms_with_parameters() {
     let cases = [

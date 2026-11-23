@@ -88,8 +88,6 @@ fn inherited_themes_are_searched_depth_first_then_hicolor() {
 
 #[test]
 fn a_first_parent_and_its_own_parents_come_before_the_second_parent() {
-    // DepthA inherits DepthB, DepthC; DepthB inherits DepthD. Both DepthD and DepthC have
-    // `deep`: depth-first finds DepthD's, breadth-first would find DepthC's.
     assert_eq!(
         one("DepthA", "deep", 48, 1).as_deref(),
         Some("system/DepthD/48x48/apps/deep.png")
@@ -216,8 +214,6 @@ fn a_full_tie_goes_to_the_later_directory_as_in_gtk() {
 
 #[test]
 fn a_larger_directory_listed_after_an_exact_match_beats_it_as_in_gtk() {
-    // GTK checks "prefer scaling down" before whether the best so far is exact, so 52 Fixed,
-    // listed after 48 Threshold, wins at 50 although 48 covers 50 exactly.
     assert_eq!(
         one("Child", "quirk", 50, 1).as_deref(),
         Some("system/Child/52x52/apps/quirk.png")
@@ -259,8 +255,6 @@ fn a_scalable_directory_is_the_fallback_and_loses_a_tie_to_a_bitmap() {
 
 #[test]
 fn a_scalable_max_size_is_compared_unscaled_as_gtk_does() {
-    // 100 at scale 2: GTK takes the scalable directory (MaxSize 128) as exact, where the spec
-    // would give the 256 bitmap.
     assert_eq!(
         one("Parent", "big", 100, 2).as_deref(),
         Some("system/Parent/scalable/apps/big.svg")
@@ -300,7 +294,6 @@ fn a_png_beats_an_svg_and_an_xpm_is_skipped() {
         one("Parent", "old", 32, 1).as_deref(),
         Some("system/Parent/64x64/apps/old.svg")
     );
-    // GTK's .symbolic.png encoding never matches a name.
     assert_eq!(one("Parent", "odd.symbolic", 32, 1), None);
     assert_eq!(one("Parent", "odd", 32, 1), None);
 }

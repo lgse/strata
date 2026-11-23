@@ -74,8 +74,6 @@ fn invalid_rename(placing: &Placing<'_>, mount: &Mount<'_>) -> Result<EntryStat,
     Ok(stat)
 }
 
-/// Once NOREPLACE is known missing, the folder rung's own rename or the
-/// caller's copy guard catches a move into itself.
 fn moves_into_itself(placing: &Placing<'_>, stat: &EntryStat, known: Option<bool>) -> bool {
     if !stat.is_directory() || known == Some(false) {
         return false;
@@ -186,13 +184,6 @@ impl Rung<'_> {
         }
     }
 
-    /// Only the source's identity at the new name proves a link; a link count can
-    /// be stale, or always 1 on sshfs. Another identity there is a racer's item,
-    /// or a mount where each link reports its own inode number (libfuse without
-    /// `use_ino`, cifs without server inode numbers). Only a probe on Strata's own
-    /// names tells them apart; on such a mount a link that matches the source's
-    /// type, mode, size and time is removed by the identity it reported, and links
-    /// are not used again.
     fn link_holds_source(&self) -> Result<bool, PlaceError> {
         let Placing { fs, from, to } = self.placing;
         let source = self.source;
@@ -419,11 +410,6 @@ impl Rung<'_> {
         })
     }
 
-    /// Decides a rename whose reply may have been lost without removing anything:
-    /// libfuse without `use_ino` keeps a name's inode number then, so a
-    /// placeholder's number at `to` can belong to the moved item. Where numbers
-    /// are stable, a placeholder still in place proves the rename never happened,
-    /// and the rungs remove it before coming here.
     fn moved_despite_lost_reply(&self, placed: Placed) -> Result<Placed, PlaceError> {
         let Placing { fs, from, to } = self.placing;
         let gone = matches!(fs.stat(from, true), Err(Errno::NOENT));

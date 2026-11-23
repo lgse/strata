@@ -20,8 +20,6 @@ const STREAMS_VARIABLE: &str = "STRATA_QA_STREAMS";
 /// What the process exits with after the session panicked; the runner tells it from a crash.
 const PANIC_EXIT: i32 = 70;
 
-/// Takes over stdout for replies before anything can log there; application output goes to
-/// stderr, or wherever `STRATA_QA_STREAMS` sends it.
 pub fn reply_stream() -> Result<File, String> {
     let protocol = rustix::io::fcntl_dupfd_cloexec(std::io::stdout(), 3)
         .map_err(|error| format!("cannot keep stdout for replies: {error}"))?;
@@ -79,11 +77,6 @@ pub fn command_lines() -> mpsc::UnboundedReceiver<String> {
     receiver
 }
 
-/// Runs the session until stdin closes, then asks the backend to quit. The first reply says
-/// whether the application became ready; every line after that gets one reply.
-///
-/// A panic would otherwise stay in the task that runs this and leave the runner waiting, so
-/// it is reported as a last reply and the process exits.
 pub async fn serve<B: Backend>(
     backend: &B,
     protocol: File,

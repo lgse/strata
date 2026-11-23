@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Which of Rune's ways to wake its loop still run while a Wayland window is covered
-//! (upstream #139), measured with `examples/wake-probe.rs`. The `glib_loop` shim reaches the
-//! loop through `AppHandle::update_if` because of what this finds.
-//!
-//! At Rune `2a44156`, with something due every 16 ms and a window that owes a frame it cannot
-//! draw under the cover: a `Waker` call never runs `poll`, a `wake_after` timer runs every
-//! 250 ms, and `update_if` runs on time. Shown, all three run on time. Only what the shim
-//! relies on is asserted; the test prints the rest, to read again when the Rune rev moves.
-
 use std::time::Duration;
 
 use crate::support::{Display, Proc, Session, example};

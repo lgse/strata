@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The previews that are a picture or a player, from the provider's answer: a still image, a
-//! model, a route, sandboxed media and a PDF page each go to their viewer.
-
 use rune::Tx;
 use strata_core::{i18n::tr, model::FileEntry};
 use strata_fs::services::{Preview, PreviewContent};

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One column as the strip draws it: its shell (width, entrance and exit), its header, its
-//! resize edge with the "Column width" caption, and the wash over it while a held file drag
-//! would drop into it.
-
 use std::{borrow::Cow, rc::Rc};
 
 use rune::{
@@ -24,16 +20,11 @@ use super::view::{HeaderCx, Shared, collection, depth_of};
 use super::width::{self, AUTOFIT_WITHIN, CAPTION_DELAY, EDGE_REACH, Resize};
 use crate::contract::Rect;
 
-/// A column's entrance and exit, a sibling's fade, and a width easing to a spread or an
-/// autofit: Strata's 220 ms `COLUMN_TRANSITION`.
 const MOTION: Spring = Spring::new(0.22, 0.0);
 
 /// How far a new column slides in from: Strata's `column-enter` keyframes.
 const SLIDE: f32 = -24.0;
 
-/// Column `depth`'s shell: its collection (with the header, bar and controllers), the line
-/// along its edge, the resize edge over that line, the caption and the drop wash. Assistive
-/// technology hears it as a group named by the column's folder.
 pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
     let p = (sh.parts)(s);
     let st = p.state;
@@ -58,9 +49,6 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
     } else {
         String::new()
     };
-    // Earlier columns paint after later ones so each column's right resize edge (which reaches
-    // `EDGE_REACH` onto the next column) paints and hit-tests above its right neighbour without
-    // calling `.raise()`, keeping Rune's window-wide `PaintKeep` active.
     let order = n.saturating_sub(depth).min(i16::MAX as usize) as i16;
     let mut shell = col()
         .key(keys::slot(&st.key, c.slot))
@@ -185,16 +173,8 @@ fn edge_line(key: &str, look: &Look) -> El {
         .inert()
 }
 
-/// The resize edge over the line on a column's right: it reaches [`EDGE_REACH`] either side,
-/// over the next column too (ordered above later columns via `paint_order`, and raised only
-/// when overlapping the window's east CSD resize band), and resizes this column.
-///
-/// Under the pointer, and while it resizes, the line turns the accent at once (Strata's
-/// `.column-resize-handle.resize-hover`): a line of its own over the column's, shown by the
-/// edge's hover group, since Rune has no hover border colour (anomalyco/rune#328). A group's
-/// own press doesn't hold its hover once the pointer leaves it, so a resize holds the line
-/// lit by its rest. The edge lights C9's divider line at once too, while the "Column width"
-/// caption waits [`CAPTION_DELAY`] on a child of the same size.
+/// Column resize edge overlay. Uses a dedicated accent line driven by the edge's hover group
+/// because Rune lacks hover border colour (`anomalyco/rune#328`).
 fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, look: &Look) -> El {
     let (drag, lit, hover) = (sh.clone(), sh.clone(), sh.clone());
     let EdgeSpec {
@@ -231,10 +211,6 @@ fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, l
         .a11y_hidden()
         .paint_order(1);
     if overlaps_window_edge {
-        // When the trailing column fills the browser area with no preview beside it, its
-        // right resize handle shares the window's east CSD resize band; raise only then so
-        // dragging the column edge inward stays reachable while keeping `PaintKeep` active
-        // everywhere else.
         handle = handle.raise();
     }
     handle = handle
@@ -250,8 +226,6 @@ fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, l
             } else if st.edge_lit == Some(depth) {
                 st.edge_lit = None;
             }
-            // Only the last column's edge lights something the view doesn't paint itself
-            // (the drawer's line, which the host reads in its poll).
             if depth + 1 != st.columns.len() {
                 tx.live_only();
             }
@@ -276,13 +250,6 @@ fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, l
     handle
 }
 
-/// A drag of a column's edge: only this column follows the pointer, between one standard
-/// column and the area's cap; the release (a click too) gives every other open column the
-/// same width, easing once, and hands the host the width; a cancelled drag puts the width
-/// back. A second press on the same edge within [`AUTOFIT_WITHIN`] of the last fits the column to
-/// its content instead (Strata's two presses, timed by the host's clock), even one that would
-/// start a fresh drag: as Strata's `repeats_press`, any press counts, so a drag begun within
-/// 400 ms of a click or another drag on that edge fits the column and resizes nothing.
 fn resize<S: 'static>(
     sh: &Rc<Shared<S>>,
     s: &mut S,
@@ -324,8 +291,6 @@ fn resize<S: 'static>(
             let st = (sh.parts_mut)(s).state;
             let cap = st.cap();
             if let Some(r) = st.resize.as_mut().filter(|r| r.depth == depth) {
-                // The width lands with the pointer: an eased width would put rows where the
-                // pointer isn't.
                 tx.instant();
                 r.live = width::dragged(r.start, d.dx, scale, cap);
             }
@@ -348,9 +313,6 @@ fn resize<S: 'static>(
     }
 }
 
-/// Fits column `depth` to the widest of its title and the rows on screen, within one standard
-/// column and the area, easing there; the host saves the width (Strata saves autofit's capped
-/// width). Only this column changes.
 fn autofit<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, scale: f32, tx: &mut Tx) {
     let w = {
         let p = (sh.parts)(s);
@@ -363,9 +325,6 @@ fn autofit<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, scale: f32, 
     sh.emit(s, ColumnsIntent::Width(w), tx);
 }
 
-/// Column `key`'s header title: out of the tree, the list being named by it already, unless
-/// the host describes it ([`ColumnSources::title_description`]), when it is a `label` named by
-/// the folder and described by the host's words, as Strata's column heading is.
 fn title_label(
     title: String,
     described: Option<String>,
@@ -387,12 +346,6 @@ fn title_label(
     }
 }
 
-/// Column `depth`'s header: its title (middle-ellipsized), a spinner while it loads, and in the
-/// targeted column the host's actions and, after the first column, the close button. The
-/// active column's header is marked (the paste destination). A secondary press on the title or
-/// blank header space opens the folder's menu; the actions keep their own. Its blank space
-/// takes a click as focusing the column (C1e's `header_defers_press`), and a drag from it
-/// bands.
 pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial: u64) -> El {
     let p = (sh.parts)(s);
     let st = p.state;
@@ -496,9 +449,6 @@ fn header_controls<S: 'static>(sh: &Rc<Shared<S>>, s: &S, cx: HeaderCx, serial: 
                     }
                 })
                 .build(&look.accent_icon_kit())
-                // Not a focus stop: a press on it focuses the strip, which keeps the
-                // keyboard when the button goes with its column. `no_focus_ring()` clears
-                // `IconButton`'s own ring so Rune does not paint it for the focused strip.
                 .focusable(false)
                 .no_focus_ring()
                 .key(keys::close(&key)),
@@ -531,8 +481,6 @@ fn with_header_menu<S: 'static>(bar: El, menu: Rc<Shared<S>>, serial: u64) -> El
     })
 }
 
-/// The header row, and the host's band under it when there is one
-/// ([`ColumnsView::header_band`](super::ColumnsView::header_band)).
 fn with_band<S: 'static>(sh: &Shared<S>, s: &S, bar: El, cx: HeaderCx) -> El {
     match sh.band.as_ref().and_then(|f| f(s, cx)) {
         Some(band) => col().w_full().child(bar).child(band),
@@ -540,10 +488,6 @@ fn with_band<S: 'static>(sh: &Shared<S>, s: &S, bar: El, cx: HeaderCx) -> El {
     }
 }
 
-/// Accessible `"Reveal <Folder> column"` target pinned over the visible slice of a partially
-/// clipped column (`src/ui/browser/columns/append/shell.rs`). Bare `el()` with no fill or handler
-/// has `vis_flags.hit() == false`, so pointer events pass through to the column underneath while
-/// assistive technology sees an enabled `button` with the visible slice's bounds.
 fn reveal_target<S>(
     sh: &Shared<S>,
     title: &str,

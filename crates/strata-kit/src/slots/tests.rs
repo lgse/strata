@@ -51,8 +51,6 @@ fn slot_token_names_are_the_slot_id_a_part_and_a_property() {
     }
 }
 
-/// A selected Icons frame deepens under the pointer, from the accent's 22 % selected fill to
-/// 30 % (Strata's), as its derivation said before it had a token of its own.
 #[test]
 fn the_selected_frames_hover_is_its_fill_deepened_by_default() {
     use super::icons::{frame_selected_fill, frame_selected_hover_fill};

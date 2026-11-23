@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery's state, pages and view, shared by the binary and the golden tests.
-//!
-//! The gallery has one page per component (and per contract or look work package that shows
-//! something). Each page lives in `scenes/<id>.rs` with its scenes, its demo state and its
-//! view; `docs/rune/testing.md` describes the layout and the goldens built from it.
-
 use rune::text::TextSystem;
 use rune::{AppSpec, Cx, El, Env, Key, KeyEvent, Runtime, Tx, Waker, col};
 use rune_kit::Kit;
@@ -19,40 +13,23 @@ pub mod scenes;
 /// The window size every scene renders at, headless and in a window.
 pub const SIZE: (f32, f32) = (960.0, 640.0);
 
-/// A named state the gallery opens in with `--scene <name>`. Each golden scene also has an
-/// accessibility and a PNG golden.
 pub type Scene = (&'static str, fn(&mut Gallery));
 
 /// A page's view.
 pub type View = fn(&Gallery, &mut Cx<Gallery>) -> El;
 
-/// A page's key hook, `AppSpec::on_key`'s shape: keys no focused element took. True consumes
-/// the key.
 pub type KeyHook = fn(&mut Gallery, &KeyEvent, &mut Tx) -> bool;
 
-/// A page's poll hook, `AppSpec::poll`'s shape: runs every frame with the clock in seconds.
-/// True when state changed.
 pub type PollHook = fn(&mut Gallery, f64, &mut Tx) -> bool;
 
-/// The gallery's state: the open page, light or dark, the look pages draw with, the app's
-/// waker, and one demo state per page.
 #[derive(Default)]
 pub struct Gallery {
     pub dark: bool,
-    /// The look every page draws with. [`Gallery::open`] rebuilds it as the fallback for
-    /// `dark`; a look page (K1, K2, K4) then changes it from its own `scenes/<id>.rs`.
     pub look: Look,
-    /// The theme picked on K1's list, which every page wears until another is picked; `None`
-    /// is rune-kit's neutral kit, the fallback. [`Gallery::open`] clears it, so a scene
-    /// starts on the fallback.
     pub theme: Option<scenes::k1::Shown>,
     /// The open page's id, or `None` for the index.
     pub page: Option<&'static str>,
-    /// Wakes the app loop from another thread, so the open page's `poll` runs: a fake worker
-    /// calls it after it hands over a result. Set by [`setup`]; a no-op in tests.
     pub waker: Option<Waker>,
-    /// The index's state. `index.markers` (default true) marks each page built or not built;
-    /// the index's golden scenes turn it off, so their goldens don't change as pages land.
     pub index: scenes::gallery::Demo,
     pub w1: scenes::w1::Demo,
     pub w2: scenes::w2::Demo,
@@ -96,8 +73,6 @@ pub struct Gallery {
 }
 
 impl Gallery {
-    /// Opens the page `page` in light or dark, on the fallback look. Every scene except the
-    /// index's calls this.
     pub fn open(&mut self, page: &'static str, dark: bool) {
         self.page = Some(page);
         self.dark = dark;
@@ -105,9 +80,6 @@ impl Gallery {
         self.theme = None;
     }
 
-    /// The picked theme's look at `params`, or the fallback's for `dark` when none is
-    /// picked: what a page that rebuilds the look (K2) starts from, and what the index goes
-    /// back to.
     pub fn theme_look(&self, params: &LookParams) -> Look {
         match self.theme {
             Some(shown) => scenes::k1::theme_of(shown).look().with_params(params),
@@ -137,9 +109,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
         .child((page.view)(g, cx))
 }
 
-/// The app: every scene, and the hooks that route keys and polls to the open page. The binary
-/// runs it, so `--snap` and `--script` runs go through the same hooks as a window. Text draws
-/// in the bundled JetBrains Mono, in both slots, as Strata's does (K6).
 pub fn spec(scenes: &'static [Scene]) -> AppSpec<Gallery> {
     AppSpec {
         scenes,
@@ -152,10 +121,6 @@ pub fn spec(scenes: &'static [Scene]) -> AppSpec<Gallery> {
     }
 }
 
-/// A headless runtime on `g`, wired as [`spec`] wires the app: the open page's `poll` runs on
-/// every `frame`, keys go through [`on_key`], the waker is a no-op, and text shapes in
-/// [`spec`]'s fonts (`Runtime::new` would shape in Rune's built-in Inter), so accessibility
-/// goldens and page tests lay out as `--snap` and `--script` do.
 pub fn runtime(g: Gallery, env: Env) -> Runtime<Gallery> {
     let text = TextSystem::new(fonts::FONTS, fonts::FAMILIES);
     let mut rt = Runtime::with_text(g, view, SIZE, env, text);
@@ -180,15 +145,12 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     route_key(scenes::open_page(g).on_key, g, key, tx)
 }
 
-/// `page_key` takes the key first. If it leaves Escape and a page is open, Escape goes back
-/// to the index. Public so tests can route through a page hook of their own.
 pub fn route_key(page_key: KeyHook, g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     if page_key(g, key, tx) {
         return true;
     }
     if key.key == Key::Escape && g.page.is_some() {
         g.page = None;
-        // A look page (K2, K4, X1) may leave its own look behind; the index wears the theme.
         g.look = g.theme_look(&LookParams::default());
         g.dark = g.look.kit.dark;
         return true;
@@ -196,8 +158,6 @@ pub fn route_key(page_key: KeyHook, g: &mut Gallery, key: &KeyEvent, tx: &mut Tx
     false
 }
 
-/// What a page's cached syntect theme was built from. A page that keeps a highlighter
-/// rebuilds its theme when this changes: a theme picked on K1, or light to dark.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SyntaxKey(SyntaxTheme, SyntaxExtra);
 

@@ -35,8 +35,6 @@ fn wait_exists(host: &mut Offscreen, path: &Path, exists: bool) {
     idle(host);
 }
 
-/// A prompt asked although the volumes were found the same (a forced ask) says what an
-/// unknown relation says, as GTK's does; only a confirmed other device says so.
 #[test]
 fn only_a_confirmed_other_device_is_described_as_one() {
     let unknown = cross_volume_drop_description(VolumeRelation::Unknown);

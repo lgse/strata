@@ -61,8 +61,6 @@ pub fn mark_first_visible_row(entries: usize) {
     }
 }
 
-/// Callers time their own slice and report it here so the harness can
-/// attribute wall time without extra global state.
 pub fn record_stage(stage: &str, elapsed_ms: u64) {
     tracing::debug!(stage, elapsed_ms, "directory stage completed");
 }

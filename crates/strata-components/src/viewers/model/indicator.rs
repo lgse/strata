@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The camera indicator between the camera buttons: a map from above, with a hollow circle for
-//! the model in the middle and a dot on the outer ring for the camera (Strata's
-//! `camera_position` and `draw_camera_position`).
-//!
-//! The dot sits in a box the size of the map, which turns about its centre (`El::rotate`) to the
-//! camera's angle on a 240 ms emphasized-decelerate tween. The state keeps the angle unwrapped,
-//! so a turn takes the shorter way. The turn lands at once when the indicator first mounts, when
-//! a new file opens (`sweep` false: the dot keeps its key, so without that it would sweep back
-//! from the last file's view), under reduced motion (Rune's own), and with the look's animations
-//! off.
-
 use std::f32::consts::TAU;
 
 use rune::{Anim, Color, CubicBezier, Curve, Easing, El, Shape, canvas, el};
@@ -27,9 +16,6 @@ const INSET: f32 = 4.0;
 /// Strata's sweep: 240 ms on `emphasized_deceleration`.
 const SWEEP: f32 = 0.24;
 
-/// The indicator, keyed `key`: an image named `label` and described by `view` (no visible
-/// caption), with the dot at `angle` (radians, clockwise from the right). A change of angle
-/// sweeps when `sweep` and the look's animations are on, and lands at once otherwise.
 pub fn indicator(
     key: String,
     label: &str,

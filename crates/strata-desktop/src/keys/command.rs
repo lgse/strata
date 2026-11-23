@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Every rebindable command, with its stable id and its default keys in each
-//! map. The catalog declares each command beside its area's other keys; a
-//! press matches a command through the active map's table.
-
 #[cfg(any(test, feature = "test-support"))]
 use std::cell::RefCell;
 use std::{
@@ -23,8 +19,6 @@ pub enum Map {
 }
 
 impl Map {
-    /// The map the settings select now, read at each press as handlers
-    /// read 10xer mode. Without a registered source it is the default.
     pub fn active() -> Self {
         let tenxer = active().is_some_and(|settings| settings.tenxer_mode());
         if tenxer { Self::Tenxer } else { Self::Default }
@@ -65,8 +59,6 @@ pub enum Kind {
     Trigger(Group),
     /// Matches only while its group's trigger is pending.
     Step(Group),
-    /// Escape, Enter, Tab or an arrow. Its first default binding is the
-    /// canonical key its other bindings are read as; see [`super::alias`].
     Structural,
 }
 
@@ -117,8 +109,6 @@ impl Command {
         registry().find(|command| command.id() == id)
     }
 
-    /// The shipped bindings in `map`, primary first; empty where the map
-    /// leaves the command unbound.
     pub fn defaults(self, map: Map) -> &'static [Binding] {
         match map {
             Map::Default => self.0.default,
@@ -156,26 +146,18 @@ impl Command {
         Matcher::new(self).ignoring(modifiers)
     }
 
-    /// Matches `map`'s bindings whichever map is active, for a stage that
-    /// claims another map's keys.
     pub const fn in_map(self, map: Map) -> Matcher {
         Matcher::new(self).in_map(map)
     }
 
-    /// A structural command's other keys as pressed, whether or not they were
-    /// read as the canonical key: **h** but not ← for `left`.
     pub const fn alternates(self) -> Matcher {
         Matcher::new(self).alternates()
     }
 
-    /// A structural command, or one of its other keys where no alias applied,
-    /// as for **h** in a popover.
     pub const fn or_alternates(self) -> Matcher {
         Matcher::new(self).or_alternates()
     }
 
-    /// The one binding at `index` in the shown map, 0 being the primary, for a
-    /// label that shows one alternate.
     pub const fn alternate(self, index: usize) -> Alternate {
         Alternate {
             command: self,
@@ -255,11 +237,6 @@ impl Matcher {
         }
     }
 
-    /// Structural commands compare the key a press reads as. The canonical
-    /// key matches while the table lists it, and Escape always does. Ignored
-    /// modifiers may also be held with an alternate, beside its own, except
-    /// with plain printable ones, which Shift or a shortcut modifier turns
-    /// into another key.
     fn matches_structural(&self, press: &KeyPress, canonical: Binding, entry: &[Binding]) -> bool {
         let others = || entry.iter().filter(move |binding| **binding != canonical);
         if self.alternates != Alternates::No
@@ -323,9 +300,6 @@ impl Alternate {
         self.command
     }
 
-    /// The binding at the alternate's position in the shipped entry. Once the
-    /// entry is overridden, the first alternate shows all of it and the others
-    /// nothing, so a row never hides a key the user added.
     pub fn bindings_in(self, map: Map) -> Vec<Binding> {
         let keymap = active_keymap();
         let entry = keymap.bindings(map, self.command);
@@ -371,8 +345,6 @@ impl Keymap {
         }
     }
 
-    /// The same tables with `map`'s entry for `command` replaced, as a saved
-    /// override replaces it.
     pub fn with(mut self, map: Map, command: Command, bindings: Vec<Binding>) -> Self {
         let table = match map {
             Map::Default => &mut self.default,
@@ -382,10 +354,6 @@ impl Keymap {
         self
     }
 
-    /// The tables with each saved entry of `map` applied: a command id and its
-    /// accelerators, primary first, repeats dropped. An empty list unbinds the
-    /// command. An entry whose id names no command, or that holds anything but
-    /// accelerators, is left out whole and passed to `rejected`.
     pub fn overridden<'a>(
         self,
         map: Map,
@@ -461,8 +429,6 @@ thread_local! {
     static TEST_KEYMAP: RefCell<Option<Rc<Keymap>>> = const { RefCell::new(None) };
 }
 
-/// The tables presses and labels resolve through: the preference manager's,
-/// with the saved overrides, or the shipped defaults while none is loaded.
 pub fn active_keymap() -> Rc<Keymap> {
     #[cfg(any(test, feature = "test-support"))]
     if let Some(keymap) = TEST_KEYMAP.with(|keymap| keymap.borrow().clone()) {
@@ -474,8 +440,6 @@ pub fn active_keymap() -> Rc<Keymap> {
     )
 }
 
-/// Resolves presses and labels through `keymap` until the guard drops,
-/// whatever the preference manager holds.
 #[cfg(any(test, feature = "test-support"))]
 pub fn use_keymap(keymap: Keymap) -> KeymapGuard {
     KeymapGuard(TEST_KEYMAP.with(|active| active.replace(Some(Rc::new(keymap)))))

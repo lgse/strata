@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Preview loading, syntax highlighter wakeups, and header identity formatting.
-//!
-//! `LocalPreviewProvider` already dispatches `PreviewEvent` callbacks on the GLib main context,
-//! so its callback queues directly into the tab's [`Later`](crate::slots::Later). C10a's
-//! [`Highlighter`] runs on its own background thread and wakes the UI thread through
-//! `glib::MainContext::default().invoke`, which fans out to weak `Later` handles so closed tabs
-//! or windows are not retained and a covered Wayland window still runs `poll`
-//! (`AppHandle::update_if`).
-
 use std::{
     cell::{Cell, RefCell},
     path::Path,
@@ -231,8 +222,6 @@ impl Loader {
     }
 }
 
-/// Effective media decoding backend (`media_preview_backend` in
-/// `src/ui/preferences/preview_settings.rs`).
 pub(super) fn effective_media_backend(saved: &Preferences) -> MediaPreviewBackend {
     if !configured_hardware_acceleration(saved, polaris_gpu_available()) {
         MediaPreviewBackend::Software
@@ -241,7 +230,6 @@ pub(super) fn effective_media_backend(saved: &Preferences) -> MediaPreviewBacken
     }
 }
 
-/// Formats `entry`'s header bar identity (`show_identity` in `src/ui/preview/loading.rs`).
 pub(super) fn identity_for(
     look: &Look,
     entry: &FileEntry,
@@ -261,8 +249,6 @@ pub(super) fn identity_for(
         .details([size, modified, kind])
 }
 
-/// The extension as written, as GTK's header shows it until a preview loads (`file_extension`
-/// in `src/ui/preview.rs`).
 fn extension_label(entry: &FileEntry) -> String {
     entry
         .location

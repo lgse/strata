@@ -22,8 +22,6 @@ use crate::{
     slots::{Listener, Part, Place, Setup, View},
 };
 
-/// Asks for the fills the rows near the viewport lack, once a poll after scrolling settles
-/// (or immediately when a scrollbar thumb drag releases).
 fn fill(app: &mut App, clock: f64, tx: &mut Tx) {
     let list = &mut app.list;
     let dragging = list.table.is_dragging();
@@ -40,8 +38,6 @@ fn fill(app: &mut App, clock: f64, tx: &mut Tx) {
     }
 }
 
-/// Has the rows drawn read their relative dates again every 30 s, as GTK's labels do. True
-/// when they do now.
 fn redate(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let filter_rows =
         app.filter.pane.shows() && app.filter.pane.hits().is_some_and(|hits| !hits.is_empty());
@@ -59,8 +55,6 @@ fn redate(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     tick.moved
 }
 
-/// Whether the saved `browser_mode` names this view: `list`, or `explorer`, which the GTK
-/// application reads as List too (`src/ui/preferences/stored.rs`).
 fn shows(mode: &str) -> bool {
     matches!(mode, "list" | "explorer")
 }
@@ -120,7 +114,6 @@ impl Part for List {
         editing: single::editing::<Self>(),
         #[cfg(feature = "qa")]
         probe: Probe {
-            // `view_name` in `src/ui/accessibility.rs`.
             name: "List",
             roles: ("list", "list-item"),
             listed: single::listed::<Self>,
@@ -141,8 +134,6 @@ impl Part for List {
         single::sync_worn::<Self>(app);
     }
 
-    /// The columns another tab reordered, hid or resized while this one was hidden, and saved
-    /// item customizations.
     fn tab_shown(app: &mut App, _: &mut Tx) {
         let saved = shell::preferences(app).clone();
         let chooser = app.browser.is_chooser_mode();

@@ -1,21 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! X11: XDND version 5 on P0's X11 actor, through its hook (one connection, one thread, and
-//! P0's selection code serving and reading `XdndSelection` with INCR).
-//!
-//! - **Target:** each Rune window's `XdndProxy` points at the actor's window, which carries
-//!   `XdndAware` and its own `XdndProxy` (as the spec asks of a proxy). Sources honouring the
-//!   proxy send their messages there, naming the Rune window. winit then hears no XDND,
-//!   which also turns off Rune's own X11 `on_drop_files`: an app using P1 takes its file
-//!   drops through P1. The property is set again on every attach (a recreated window
-//!   starts without it) and removed when the actor stops.
-//! - **Source:** winit holds the implicit grab of the press, and a second connection can't
-//!   take it (S2, Q6), so the source is grab-less: XI2 raw motion, key and release events on
-//!   the root, `QueryPointer` for the position and modifiers, and a walk down to the
-//!   `XdndAware` window under the pointer. The proposed action follows Ctrl and Shift
-//!   throughout the drag. Only the grabbing client can change the cursor, so a drag shows no
-//!   cursor feedback; the icon window follows the pointer instead.
-
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -136,8 +120,6 @@ enum Cmd {
     Cancel {
         id: u64,
     },
-    /// The UI saw the real release of drag `id`'s press (its guard did): a backstop for a
-    /// release the XI2 events missed.
     Released {
         id: u64,
     },
@@ -163,8 +145,6 @@ impl Handle {
     }
 }
 
-/// Installs XDND on the actor. The hook keeps `t` to hand drop ports to the UI; the actor
-/// drops it when it stops.
 pub(crate) fn install(
     t: &Transfer,
     x: &X11,
@@ -294,8 +274,6 @@ struct Outgoing {
     icon: Option<IconWin>,
     /// The pointer and modifiers last sent.
     last: Option<(i16, i16, u16)>,
-    /// The pointer's button mapping: raw events name physical buttons, and the drag's press
-    /// is logical button 1.
     buttons: Vec<u8>,
 }
 
@@ -567,8 +545,6 @@ impl Xdnd {
             AtomEnum::ATOM,
             &listed,
         );
-        // With ask listed, a target that asks shows each action's description, in the
-        // list's order, NUL-separated.
         if actions.has(DragAction::Ask) {
             let text = descriptions(actions);
             let _ = cx.conn().change_property8(
@@ -614,9 +590,6 @@ impl Xdnd {
             buttons,
         });
         self.motion(cx, a, CURRENT_TIME, true);
-        // The XI2 events are selected only now, and a fast flick's release may already
-        // have happened (review round 1, B1): no raw release would ever come, and the drag
-        // would drop on the next click anywhere. The pointer's own state says.
         let held = Self::pointer(cx).is_some_and(|(_, _, m)| m.contains(KeyButMask::BUTTON1));
         if !held {
             self.release(cx, a, CURRENT_TIME);
@@ -783,8 +756,6 @@ impl Xdnd {
     }
 }
 
-/// Diagnostics from the actor thread go to stderr: the UI's diagnostic hook is the UI
-/// thread's.
 fn hub_note(message: &str) {
     eprintln!("strata-platform dnd: {message}");
 }
@@ -792,8 +763,6 @@ fn hub_note(message: &str) {
 /// The largest icon side, in pixels: a bigger picture is cropped to it.
 const ICON_MAX: u32 = 1024;
 
-/// Whether physical button `detail` (what XI2 raw events name) is logical button 1 under the
-/// pointer's button mapping `map` (`GetPointerMapping`: logical number by physical index).
 fn is_primary(map: &[u8], detail: u32) -> bool {
     let logical = usize::try_from(detail)
         .ok()
@@ -819,8 +788,6 @@ fn descriptions(actions: Actions) -> Vec<u8> {
         .collect()
 }
 
-/// The icon window's size and its premultiplied BGRA pixels: cropped to [`ICON_MAX`] a side,
-/// since X window sizes are 16-bit and a wider picture would wrap.
 fn icon_pixels(image: &DragImage) -> (u16, u16, Vec<u8>) {
     let (w, h) = (image.width.min(ICON_MAX), image.height.min(ICON_MAX));
     let full = bgra_premultiplied(&image.rgba);
@@ -833,8 +800,6 @@ fn icon_pixels(image: &DragImage) -> (u16, u16, Vec<u8>) {
     (w as u16, h as u16, pixels)
 }
 
-/// An override-redirect window with a 32-bit visual showing `image`, taking no input, so the
-/// walk to the target under the pointer passes through it.
 fn icon_window(cx: &mut HookCx<'_>, a: &Atoms, image: &DragImage) -> Result<IconWin, String> {
     let err = |e: &dyn std::fmt::Display| e.to_string();
     let conn = cx.conn();
@@ -1058,10 +1023,6 @@ impl Hook for Xdnd {
                 }
             }
             Cmd::Released { id } => {
-                // Already dropped or ended when the raw release came first: nothing to do.
-                // Otherwise it drops on the last target the drag reached (or cancels), with
-                // CurrentTime: the release's own time is the X server's, which Rune's Up
-                // doesn't carry, and XDND accepts CurrentTime for XdndDrop.
                 if self
                     .outgoing
                     .as_ref()

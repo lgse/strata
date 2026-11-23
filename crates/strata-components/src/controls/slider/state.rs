@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The slider's model: its value, its range, the drag in progress and the track's laid-out
-//! width. Pure logic; the view in `view.rs` wires it to Rune.
-
 use rune::WheelEvent;
 
 use super::range::Range;
@@ -12,11 +9,7 @@ use super::range::Range;
 pub enum SliderChange {
     /// A drag moved it: apply it, but don't save yet.
     Live,
-    /// The value settled: a drag released, a key, a snap label, a wheel step or an assistive
-    /// action. Save it.
     Commit,
-    /// A drag was cancelled (Escape, or the pointer taken away): the value is back where the
-    /// drag started. Apply it again; nothing was saved.
     Cancel,
 }
 
@@ -24,8 +17,6 @@ pub enum SliderChange {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Grab {
     start: f64,
-    /// The pointer's offset from the knob's centre at the press; 0 for a press on the track,
-    /// which jumps the knob there.
     offset: f32,
 }
 
@@ -41,22 +32,13 @@ pub struct SliderState {
     wheel: f32,
 }
 
-/// Precise wheel travel per step, in points: C13's timeline rule.
 const WHEEL_PITCH: f32 = 40.0;
 
-/// Whether a stepping control (a [`super::Slider`] with a wheel amount, a NumberField) takes
-/// this wheel event. It reads the vertical delta only, as GTK's spin button does, so a
-/// sideways one (Shift+wheel on Linux, which Rune turns into `dx`; a tilt wheel) passes on.
-/// So does one with Ctrl, Alt, Cmd or Super held: Ctrl+wheel is Strata's text size and
-/// Ctrl+Shift+wheel its thumbnail size, which the window handles over any control.
 pub(crate) fn takes_wheel(w: &WheelEvent) -> bool {
     let m = w.mods;
     w.dy != 0.0 && !(m.ctrl || m.alt || m.cmd || m.logo)
 }
 
-/// Whole notches in a wheel delta `dy`: a mouse notch is one whatever its size, and precise
-/// travel adds up in `pending` until it makes [`WHEEL_PITCH`] points. A delta with no
-/// vertical part is none.
 pub(crate) fn wheel_notches(pending: &mut f32, dy: f32, precise: bool) -> f32 {
     if dy == 0.0 {
         return 0.0;
@@ -90,8 +72,6 @@ impl SliderState {
         self.range
     }
 
-    /// The value the host holds (another window changed it, a preference loaded), clamped.
-    /// A drag in progress keeps going from where it is.
     pub fn set_value(&mut self, value: f64) {
         self.value = self.range.clamp(value);
     }
@@ -101,8 +81,6 @@ impl SliderState {
         self.grab.is_some()
     }
 
-    /// Holds the knob where it is, as a press on it does: a drag in progress with no move yet,
-    /// for a gallery scene of the engaged look. Nothing ends it but a release.
     #[doc(hidden)]
     pub fn hold(&mut self) {
         self.grab = Some(Grab {
@@ -122,8 +100,6 @@ impl SliderState {
         moved
     }
 
-    /// The knob's centre for `value`, along a track `knob` wide at its ends: the knob stays
-    /// inside the track.
     pub(super) fn x_of(&self, value: f64, knob: f32) -> f32 {
         let travel = (self.width - knob).max(0.0);
         knob / 2.0 + self.range.fraction(value) as f32 * travel
@@ -135,8 +111,6 @@ impl SliderState {
         self.range.at(f64::from((x - knob / 2.0) / travel))
     }
 
-    /// The value a drag at knob centre `x` lands on: the nearest snap within `snap_within`
-    /// points, else the grid point (or the raw value, `free`).
     fn drag_value(&self, x: f32, knob: f32, snaps: &[f64], snap_within: f32, free: bool) -> f64 {
         let raw = self.value_at(x, knob);
         let near = snaps
@@ -151,8 +125,6 @@ impl SliderState {
         }
     }
 
-    /// A press at track point `x`: on the knob it grabs it where it is, on the track the knob
-    /// jumps there. Returns the change to report, if the value moved.
     pub(super) fn press(
         &mut self,
         x: f32,
@@ -188,8 +160,6 @@ impl SliderState {
             .then_some(SliderChange::Live)
     }
 
-    /// The drag ended: a commit when the value moved, a cancel (back to the start) when it
-    /// was cancelled after moving.
     pub(super) fn release(&mut self, cancelled: bool) -> Option<SliderChange> {
         let grab = self.grab.take()?;
         let moved = self.value != grab.start;
@@ -200,8 +170,6 @@ impl SliderState {
         moved.then_some(SliderChange::Commit)
     }
 
-    /// `steps` grid points up or down (arrows, pages, assistive increments). True when the
-    /// value moved.
     pub(super) fn step(&mut self, steps: i32) -> bool {
         self.move_to(self.range.stepped(self.value, steps))
     }
@@ -217,9 +185,6 @@ impl SliderState {
         self.move_to(self.range.clamp(value))
     }
 
-    /// A wheel delta `dy` (positive moves content down: the wheel rolled up, which raises the
-    /// value), `amount` a notch. Precise deltas count [`WHEEL_PITCH`] points a notch. True
-    /// when the value moved.
     pub(super) fn wheel(&mut self, dy: f32, precise: bool, amount: f64) -> bool {
         let notches = wheel_notches(&mut self.wheel, dy, precise);
         if notches == 0.0 {

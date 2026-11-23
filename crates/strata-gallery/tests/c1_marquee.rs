@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C1d's marquee on the c1 page, in process: what scripts can't do (Ctrl and Shift held through
-//! a drag) and what no golden shows (an open band's moves and auto-scroll run no view). A test
-//! stand-in for C1b's pointer intent starts the band past the drag threshold, as C1b hands it
-//! over, so these tests don't depend on C1b. Each test names the bullets it checks; the scripts
-//! in `tests/scripts/c1/marquee-*.json` check the rest, and two tests here run them through the
-//! gallery binary: one for Rune's perf warnings (debug builds), one under
-//! `RUNE_COMMIT_BUDGET_MS=8` (`--profile perf`). Those two need the page's pointer controller
-//! (C1b) to start the band.
-
 #[expect(
     dead_code,
     reason = "the marquee tests use only the gallery command and the scripts folder"
@@ -31,9 +22,6 @@ mod c1 {
 
         const FRAME: f64 = 1.0 / 60.0;
 
-        /// Stands in for C1b: a primary press starts a marquee once it travels more than 8 pt
-        /// on either axis, at the press with the modifiers held at the press. It changes no
-        /// selection itself, as C1b's Ctrl and Shift presses beside an entry don't.
         #[derive(Default)]
         struct Press {
             at: Option<(Point, Mods)>,
@@ -112,8 +100,6 @@ mod c1 {
             walk(&rt.accessibility_json(), key)
         }
 
-        /// Presses beside row `id`, starts the band, and holds it at the viewport's bottom edge
-        /// for `seconds`. Returns the pointer's window x and y.
         fn hold_at_the_bottom(rt: &mut Runtime<Gallery>, id: u64, seconds: f64) -> (f32, f32) {
             let (x, y) = beside(rt, id);
             rt.pointer_down(x, y);
@@ -141,8 +127,6 @@ mod c1 {
             run(rt, 0.1);
         }
 
-        /// Presses beside row `from` with `mods` held, lets the modifiers go, and drags to row
-        /// `to` in steps, then releases.
         fn band(rt: &mut Runtime<Gallery>, mods: Mods, from: u64, to: u64) {
             let (x, y0) = beside(rt, from);
             let (_, y1) = beside(rt, to);
@@ -162,8 +146,6 @@ mod c1 {
 
         #[test]
         fn a_ctrl_band_toggles_and_a_shift_band_adds_against_the_selection_at_press() {
-            // browser/selection/marquee: A Ctrl-marquee toggles each crossed entry relative to the selection at press.
-            // browser/selection/marquee: A Shift-marquee adds the crossed entries to the selection at press.
             let ctrl = Mods {
                 ctrl: true,
                 ..Mods::default()
@@ -192,10 +174,6 @@ mod c1 {
             assert_eq!(selected(&rt), [2, 7, 9], "Ctrl+Shift toggles (D5)");
         }
 
-        /// What C1e asks of a marquee: an open band's moves, and auto-scroll frames that cross
-        /// no new entry, run no view; showing and hiding the band, and selection changes, do.
-        /// Twice: with Rune's debug check of `live_only` (it commits once a quarter second after
-        /// a commit to compare what the view builds; no warnings), then without it, counting.
         #[test]
         fn an_open_band_runs_no_view_while_it_moves_and_scrolls_at_ten_hertz() {
             // browser/selection/marquee: Holding the pointer near a viewport edge scrolls the listing and extends the selection each frame.
@@ -211,8 +189,6 @@ mod c1 {
                 assert!(!heard(&rt, BAND), "the band is decoration, not in the tree");
                 assert_eq!(selected(&rt), [10_002]);
 
-                // Moves inside one row (the press was mid-row, rows are taller than 22 pt)
-                // cross nothing new.
                 let before = rt.stats.commits;
                 for k in 1..=10 {
                     rt.pointer_move(x - k as f32, y + 9.0 + k as f32 * 0.2);
@@ -238,7 +214,6 @@ mod c1 {
                 );
                 if !check {
                     assert_eq!(after_moves, before, "moves within a row ran the view");
-                    // D1: the band applies at most every 100 ms while the view scrolls.
                     assert!(
                         (1..=11).contains(&commits),
                         "{commits} commits in a second of auto-scroll"
@@ -253,8 +228,6 @@ mod c1 {
             }
         }
 
-        /// Runs script `name` from `tests/scripts/c1/` through the gallery binary with `env`;
-        /// its stderr.
         fn gallery_run(name: &str, env: &[(&str, &str)]) -> String {
             let script = support::scripts_dir("c1").join(format!("{name}.json"));
             let spec: serde_json::Value =
@@ -280,10 +253,6 @@ mod c1 {
             support::run(cmd).unwrap_or_else(|e| panic!("{e}"))
         }
 
-        /// D1's check: Rune's debug builds warn, on stderr, when one source commits through
-        /// most of a scroll, when an app steps its own glide with instant scrolls, and when a
-        /// resting window keeps waking. None of them may fire for a band: dragged, held at the
-        /// edge for ten seconds over 100,000 rows, brought back, or wheeled.
         #[test]
         #[cfg_attr(not(debug_assertions), ignore = "Rune's perf warnings are debug-only")]
         fn the_marquee_scripts_keep_runes_perf_warnings_silent() {
@@ -306,12 +275,6 @@ mod c1 {
             }
         }
 
-        /// The edge auto-scroll over 100,000 rows under `RUNE_COMMIT_BUDGET_MS=8`: no commit
-        /// over 8 ms once the scene is mounted. The page waits out Rune's one-line-a-second
-        /// limit after the mount (U-C1e-5), as C1e's scroll budget does.
-        ///
-        /// It times release-build commits, so it runs only in an optimized build:
-        /// `cargo test --profile perf -p strata-gallery --test c1_marquee budget`.
         #[test]
         #[cfg_attr(debug_assertions, ignore = "perf: run with --profile perf")]
         fn edge_auto_scroll_over_a_hundred_thousand_rows_stays_under_the_commit_budget() {
@@ -334,8 +297,6 @@ mod c1 {
             );
         }
 
-        /// S1 (review): the release stops the auto-scroll dead, as Strata's timer stops: the
-        /// view stays where it was, and the last row the band took stays under the pointer.
         #[test]
         fn releasing_a_band_mid_scroll_stops_the_view_where_it_is() {
             let mut rt = mount("c1-photos-light");
@@ -359,11 +320,6 @@ mod c1 {
             );
         }
 
-        /// S2 and review round 2: the page passes its look's animations switch both to Rune
-        /// (`Cx::reduced_motion`) and to the marquee, so they agree whatever the system says,
-        /// and the edge scroll keeps the curve's speed (at most 1,500 pt/s). Only the look is
-        /// flipped here, against the system preference each way: animations off with the
-        /// system's reduced motion off, and on with it on.
         #[test]
         fn the_look_alone_decides_reduced_motion_and_the_edge_scroll_keeps_its_speed() {
             for (animations, system) in [(false, false), (true, true)] {

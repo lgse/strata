@@ -96,8 +96,6 @@ impl Browser {
         true
     }
 
-    /// Publishes the renamed entry once the provider reports the rename, then
-    /// forwards every event to the operation's own callback.
     fn publish_replayed_rename(
         self: &Rc<Self>,
         request_id: OperationRequestId,

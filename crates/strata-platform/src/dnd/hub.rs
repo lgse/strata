@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The process's drag and drop, on the UI thread: P0's substrate, the app's windows, the
-//! drag this process started, and the routing of what the platform reports to the window it
-//! concerns.
-//!
-//! Everything here runs on the UI thread, inside a window's `AppHandle::update_if` (a
-//! [`Job`]). Other threads (P0's reader, the X11 actor, read workers) only post jobs.
-
 use std::any::Any;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -24,8 +17,6 @@ use super::negotiate;
 use super::session::Release;
 use super::{wayland, x11};
 
-/// Work for a window, posted from any thread and run on the UI thread in that window's
-/// update.
 pub(crate) enum Job {
     /// Route what the platform reported, then handle this window's share.
     Pump,
@@ -38,8 +29,10 @@ pub(crate) enum Job {
         bytes: Vec<u8>,
     },
     /// The picture of drag `id`, rendered.
-    Icon { id: u64, image: Option<DragImage> },
-    /// P0's turn: dispatch its queue (see [`transfer::Turn`]).
+    Icon {
+        id: u64,
+        image: Option<DragImage>,
+    },
     Run(Box<dyn FnOnce() + Send>),
 }
 
@@ -76,8 +69,6 @@ pub(crate) enum Routed {
         id: u64,
         outcome: DragOutcome,
     },
-    /// The compositor took the pointer for drag `id` (Wayland): the drag, which lists its
-    /// token, entered one of the app's windows.
     Holding {
         id: u64,
     },
@@ -121,9 +112,6 @@ struct Out {
     holding: bool,
 }
 
-/// Every window's poster, by window key: anything any thread hears wakes them all, and the
-/// first to run routes it. A window attached again (Rune recreates its native side on each
-/// Wayland show) replaces its own poster.
 #[derive(Clone, Default)]
 pub(crate) struct Posters(Arc<Mutex<Vec<(String, Poster)>>>);
 
@@ -195,8 +183,6 @@ fn with<R>(f: impl FnOnce(&mut Hub) -> R) -> Option<R> {
     HUB.with(|h| h.borrow_mut().as_mut().map(f))
 }
 
-/// A test switch for strata-platform's own tests: what the first attach behaves as if it
-/// found. Not API ([`super::Dnd::test_route`]).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TestRoute {
     /// Behave as on libwayland < 1.23: winit's display is out of reach.
@@ -205,8 +191,6 @@ pub struct TestRoute {
     pub as_if_no_data_control: bool,
 }
 
-/// Attaches `window` (its core `core`, reached through `sink`), binding the substrate on
-/// the first call. On the UI thread, from `App::on_window`.
 pub(crate) fn attach(
     window: &WindowHandle,
     sink: Rc<dyn Sink>,
@@ -218,9 +202,6 @@ pub(crate) fn attach(
     if fresh {
         let turn_poster = poster.clone();
         let turn: Turn = Arc::new(move |f| turn_poster(Job::Run(f)));
-        // Default wants: P0 binds once per process, so a clipboard (P2) attached later
-        // still finds data control. No X11 fallback: drag and drop has no use for X11
-        // selections through Xwayland, and stays unsupported where Wayland has no route.
         let wants = Wants {
             as_if_libwayland_below_1_23: test.as_if_libwayland_below_1_23,
             as_if_no_data_control: test.as_if_no_data_control,
@@ -242,7 +223,6 @@ pub(crate) fn attach(
             let wake = posters.clone();
             wayland::set_notify(conn, Arc::new(move || wake.wake_all()));
         }
-        // P1's objects go before P0's teardown, on the UI thread.
         t.before_shutdown(Box::new(|_| teardown()));
         HUB.with(|h| {
             *h.borrow_mut() = Some(Hub {
@@ -278,8 +258,6 @@ pub(crate) fn attach(
         let turn_poster = poster.clone();
         hub.posters.set(&key, poster);
         if !fresh {
-            // P0 tracks the windows a drag can enter, and its reader's turns go through any
-            // window's app that still runs.
             let turn: Turn = Arc::new(move |f| turn_poster(Job::Run(f)));
             let _ = Transfer::attach(window, turn, Wants::default());
         }
@@ -341,8 +319,6 @@ fn scale_of(hub: &Hub, key: &str) -> f64 {
         .max(0.01)
 }
 
-/// Routes everything the platform reported since the last call to the windows it concerns,
-/// and wakes the ones that got something.
 pub(crate) fn route() {
     let woken = with(|hub| {
         let mut woken: Vec<Rc<dyn Sink>> = Vec::new();
@@ -373,9 +349,6 @@ fn local_of(hub: &Hub, mimes: &[String]) -> bool {
     token.is_some() && hub.out.as_ref().and_then(|o| o.token.as_deref()) == token
 }
 
-/// The modifiers of a Wayland drag over a window: known only for this process's own drag,
-/// as they were at its start (the compositor's drag grab passes no more to anyone, on
-/// wlroots). A drag from another client has none: its action is the compositor's.
 fn local_mods(hub: &Hub, local: bool) -> Option<Mods> {
     hub.out.as_ref().filter(|o| local && !o.x11).map(|o| o.mods)
 }
@@ -470,8 +443,6 @@ fn route_wayland_source(hub: &mut Hub, to: &mut To<'_>) {
         let Some(out) = hub.out.as_mut().filter(|o| o.id == id) else {
             continue;
         };
-        // A target answering the drag (`target`, `action`) is the compositor's proof that
-        // it took the pointer, for a drag that never enters the app's windows (R2-B2).
         if matches!(
             ev,
             wayland::SrcEvent::Target(_) | wayland::SrcEvent::Action(_)
@@ -545,8 +516,6 @@ fn route_x11(hub: &mut Hub, to: &mut To<'_>) {
     }
 }
 
-/// The payload of the drag this process started, with its token, for a drop in this
-/// process that lists that token.
 pub(crate) fn local_payload(mimes: &[String]) -> Option<(String, Rc<dyn Any>)> {
     with(|hub| {
         if !local_of(hub, mimes) {
@@ -558,8 +527,6 @@ pub(crate) fn local_payload(mimes: &[String]) -> Option<(String, Rc<dyn Any>)> {
     .flatten()
 }
 
-/// Starts a drag from window `key`. The release tells the source's guard how Rune's
-/// capture of the press ends.
 pub(crate) fn start_drag(key: &str, item: DragItem, mods: Mods) -> Result<(u64, Release), Error> {
     if item.is_empty() {
         return Err(Error::Refused("a drag with nothing to carry"));
@@ -572,9 +539,6 @@ pub(crate) fn start_drag(key: &str, item: DragItem, mods: Mods) -> Result<(u64, 
     cancel_drag();
     let id = next_id();
     let actions = negotiate::source_actions(item.actions, mods);
-    // On Wayland every drag lists its token: it marks the drag as ours when it enters our
-    // windows, for its payload if it has one and as the compositor's proof that it took the
-    // pointer. On X11 it is listed only with a payload: other clients see it otherwise.
     let x11 = with(|hub| hub.transfer.x11().is_some()).unwrap_or(false);
     let token = (!x11 || item.local.is_some()).then(local::new_token);
     let spec = item.spec(token.as_deref());
@@ -613,18 +577,16 @@ pub(crate) fn start_drag(key: &str, item: DragItem, mods: Mods) -> Result<(u64, 
             holding: false,
         });
     });
-    if let Some(icon) = item.icon.clone() {
-        // The picture lands on the UI thread, which hands it to the platform: the Wayland
-        // icon surface lives there, and a failure can be reported there.
-        if let Some(posters) = with(|hub| hub.posters.clone()) {
-            let done = Box::new(move |image| {
-                if let Some(p) = posters.first() {
-                    p(Job::Icon { id, image });
-                }
-            });
-            if let Err(e) = icon::produce_later(icon, done) {
-                diagnostic(&format!("the drag icon: {e}"));
+    if let Some(icon) = item.icon.clone()
+        && let Some(posters) = with(|hub| hub.posters.clone())
+    {
+        let done = Box::new(move |image| {
+            if let Some(p) = posters.first() {
+                p(Job::Icon { id, image });
             }
+        });
+        if let Err(e) = icon::produce_later(icon, done) {
+            diagnostic(&format!("the drag icon: {e}"));
         }
     }
     Ok((id, release))
@@ -647,9 +609,6 @@ pub(crate) fn icon_ready(id: u64, image: Option<DragImage>) {
     });
 }
 
-/// X11: the guard saw the real release of the drag's press. The actor drops (or cancels)
-/// the drag if its XI2 events missed that release: they are selected only once the drag
-/// starts, which a fast flick's release can precede (review round 1, B1).
 pub(crate) fn released() {
     with(|hub| {
         if let (Some(out), Some(x)) = (hub.out.as_ref().filter(|o| o.x11), hub.transfer.x11()) {
@@ -658,8 +617,6 @@ pub(crate) fn released() {
     });
 }
 
-/// Whether Wayland drag `id` still runs after dispatching what P0 has read: not dropped,
-/// not ended. On the UI thread, in an update: nothing winit reads runs until it returns.
 pub(crate) fn still_holding(id: u64) -> bool {
     #[cfg(test)]
     if let Some(live) = tests::FAKE_LIVE.get() {
@@ -709,9 +666,6 @@ pub(crate) fn cancel_drag() {
     }
 }
 
-/// Before P0's teardown, on the UI thread: the drag this process started ends, and nothing
-/// of P1's is left on winit's display. The X11 hook undoes its window properties as the
-/// actor quits.
 fn teardown() {
     icon::stop();
     let hub = HUB.with(|h| h.borrow_mut().take());

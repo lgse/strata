@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! `ChooserFileSource`: local-only, directory-only, root-confined, and portal-filtered `FileSource`
-//! wrapper (`src/ui/chooser/source.rs`).
-
 use std::{
     cell::{Cell, RefCell},
     ops::RangeInclusive,
@@ -110,8 +107,6 @@ fn glob_class(pat: &[char], txt: &[char]) -> bool {
     }
 }
 
-/// The member of a class at the head of `pat`, a range `a-z` or one character, and how many
-/// characters of the pattern it takes. `pat` is not empty.
 fn class_member(pat: &[char]) -> (RangeInclusive<char>, usize) {
     match pat {
         [low, '-', high, ..] if *high != ']' => (*low..=*high, 3),
@@ -119,8 +114,6 @@ fn class_member(pat: &[char]) -> (RangeInclusive<char>, usize) {
     }
 }
 
-/// The class after a `[`: what follows its `]`, and whether `ch` is in it. `None` when no `]`
-/// closes it. A `]` first in the class is a member, and `!` or `^` first negates it.
 fn match_char_class(pat: &[char], ch: Option<char>) -> Option<(&[char], bool)> {
     let negated = matches!(pat.first(), Some('!' | '^'));
     let start = usize::from(negated);

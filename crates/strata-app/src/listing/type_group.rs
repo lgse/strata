@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A row's file type, as the List view groups rows by it: `entry_type`'s description in
-//! strata-fs, which GTK's grouped List orders and heads its groups by
-//! (`entry_model_value` and `type_group_header_factory` in `src/ui`). A row keeps a small key
-//! into one table of the descriptions met, not a string of its own.
-//!
-//! - **One table, on the interface thread only:** a thread-local, filled and read where the
-//!   browser's events are read and the views built, never from a worker.
-//! - **Bounded** by the descriptions there are: one for each type the desktop's MIME database
-//!   describes, plus Folder, Broken link and Other. A name is added once and never removed.
-//! - **A key's number means nothing:** it is the order types were first met. The order of
-//!   groups comes from strata-fs's `compare_type_groups`, never from the key.
-
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 use strata_core::{
@@ -36,9 +24,6 @@ thread_local! {
 }
 
 impl TypeGroup {
-    /// The type of the entry of `kind` named `name` in `folder`, as GTK's grouped List reads
-    /// it: strata-fs's `entry_type`, over the two fields it reads (its kind and its name), since
-    /// a listing keeps no `FileEntry`.
     pub(crate) fn of_row(_folder: &Location, kind: EntryKind, name: &str) -> Self {
         let description = entry_type_description_for_name(kind, name);
         Self::intern_rc(description)
@@ -58,8 +43,6 @@ impl TypeGroup {
         })
     }
 
-    /// The type's description, untranslated: what strata-fs orders groups by
-    /// (`compare_type_groups`) and the catalogs translate.
     pub(crate) fn description(self) -> Rc<str> {
         NAMES.with_borrow(|table| {
             table
@@ -93,8 +76,6 @@ impl TypeGroup {
     }
 }
 
-/// strata-fs's `entry_type` of the entry of `kind` named `name`, from the two fields
-/// `entry_type` reads (`kind` and `display_name`), avoiding a `Location::child` path join.
 pub(crate) fn entry_type_of(_folder: &Location, kind: EntryKind, name: &str) -> EntryType {
     entry_type_for_name(kind, name)
 }

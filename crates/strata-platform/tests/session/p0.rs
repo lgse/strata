@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! P0's session tests: offers in and sources out, through the peer, on Wayland and X11, plus
-//! drags into a Wayland window and the substrate's lifecycle (a hidden window, hide and show,
-//! quit and close). The app side is `examples/transfer-probe.rs`.
-//!
-//! Tests marked "shared" need winit's own display, which P0 reaches only on libwayland 1.23
-//! or later. On an older host they check that the probe reports that route Unsupported (the
-//! specified result there) and say so on stderr; nothing else of theirs ran.
-//!
-//! Work package: P0, `docs/rune/work/phase-1-leaves/P0-transfer-substrate.md`.
-
 use std::path::Path;
 
 use serde_json::{Value, json};
@@ -22,8 +12,6 @@ const UTF8: &str = "text/plain;charset=utf-8";
 const TEXT: &str = "héllo from P0 ✓";
 const PNG: &str = "image/png";
 
-/// Three types: a file list made with P0's encoder from a path that isn't UTF-8, text, and
-/// 4 MiB, so X11 runs INCR both ways and Wayland pipes fill.
 fn three() -> Vec<Offer> {
     use std::ffi::OsStr;
     use std::os::unix::ffi::OsStrExt;
@@ -61,8 +49,6 @@ fn via_name(via: Via) -> &'static str {
     }
 }
 
-/// Whether this host's libwayland-client has `wl_proxy_get_display` (1.23 or later): checked
-/// here, apart from the probe, so a probe that wrongly reports Unsupported can't pass.
 #[expect(unsafe_code, reason = "dlopen and dlsym of libwayland-client")]
 fn libwayland_has_get_display() -> bool {
     // SAFETY: a NUL-terminated name; loading libwayland-client runs no code of ours.
@@ -92,8 +78,6 @@ impl Probe {
         Probe::start_with(s, display, args, &[])
     }
 
-    /// As [`Probe::start`], with more of the session's environment (`DISPLAY` beside
-    /// `WAYLAND_DISPLAY`, say).
     fn start_with(s: &Session, display: Display, args: &[&str], also: &[Display]) -> Probe {
         let mut cmd = s.command(example("transfer-probe"), display);
         for d in also {
@@ -167,8 +151,6 @@ impl Probe {
             .count()
     }
 
-    /// Waits until the lazy writer of `mime` has run at least `n` times (its log line may
-    /// trail the read it served), then checks it ran exactly `n` times.
     fn assert_writer_runs(&self, mime: &str, n: usize, why: &str) {
         let deadline = std::time::Instant::now() + timeout();
         while self.writer_runs(mime) < n && std::time::Instant::now() < deadline {
@@ -177,8 +159,6 @@ impl Probe {
         assert_eq!(self.writer_runs(mime), n, "{mime}: {why}");
     }
 
-    /// For a test that needs winit's display: whether it is here. Below libwayland 1.23 the
-    /// probe must report it Unsupported, which is all the test then checks.
     fn shared(&self) -> bool {
         let have = libwayland_has_get_display();
         assert_eq!(self.attached["shared"], have, "{}", self.attached);
@@ -231,8 +211,6 @@ fn wait_targets(peer: &Peer, selection: Selection, via: Via, want: &[String]) ->
     }
 }
 
-/// The window offers three types; the peer lists them and reads each. Each writer runs only
-/// when the peer asks for its type, and once however often it asks.
 fn window_offers_three(
     probe: &Probe,
     peer: &Peer,
@@ -353,8 +331,6 @@ fn wayland_window_offers_three_types_over_shared_data_control() {
     assert_eq!(got.text.as_deref(), Some("primary from P0"));
 }
 
-/// Shared: a click gives the window a serial, and the data device takes the selection with
-/// it. The window hears its own selection echoed back (how a dropped write would show).
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_window_offers_three_types_through_the_data_device() {
@@ -394,10 +370,6 @@ fn wayland_window_offers_three_types_through_the_data_device() {
     });
 }
 
-/// Shared: wlroots drops a data-device write whose serial is older than the current
-/// selection's, with no error and no event (S2 Q5). The peer's data-control write takes a
-/// serial newer than the click's, so the probe's write with the click's serial is dropped:
-/// P0 reports its source cancelled and no longer owned. A write after a fresh click holds.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_data_device_write_the_compositor_drops_is_reported_cancelled() {
@@ -462,10 +434,6 @@ fn a_data_device_write_the_compositor_drops_is_reported_cancelled() {
     probe.no_errors();
 }
 
-/// libwayland < 1.23 (Ubuntu 24.04, an unsupported environment), on any host: the probe's
-/// test switch makes the lookup of `wl_proxy_get_display` find nothing. winit's display is
-/// reported Unsupported, the data device is out of reach, and data control falls back to a
-/// connection of its own, both ways.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn without_winits_display_a_wayland_window_falls_back_to_its_own_data_control() {
@@ -504,14 +472,6 @@ fn without_winits_display_a_wayland_window_falls_back_to_its_own_data_control() 
     peer_offers_three(&probe, at, Via::DataControl, Selection::Clipboard);
 }
 
-/// libwayland < 1.23 and no data control (mutter's case, Ubuntu 24.04's GNOME, an unsupported
-/// environment), simulated: no Wayland route is left, so the selections go through Xwayland.
-/// The window's X11 copy reaches an X11 peer, and a Wayland peer through the compositor's
-/// bridge, and the window reads the Wayland peer's copy back the same way. wlroots bridges the
-/// clipboard only while an Xwayland window has keyboard focus (its xwm denies both directions
-/// otherwise), so the X11 peer's window has it here. wlroots compositors have data control and
-/// never take this route; mutter's bridge, the one it is for, gets no hand test, as 24.04 is
-/// unsupported.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn without_any_wayland_route_a_wayland_window_takes_x11_selections_through_xwayland() {
@@ -562,11 +522,6 @@ fn without_any_wayland_route_a_wayland_window_takes_x11_selections_through_xwayl
             x_peer.read(Selection::Clipboard, Via::X11, &o.mime).fnv1a64,
             fnv(o)
         );
-        // Through sway's bridge only small data: wlroots writes each INCR chunk into the
-        // Wayland reader's non-blocking pipe without waiting for it to drain, and drops the
-        // transfer on EAGAIN (`xwayland/selection/incoming.c:112`, "write error to target fd
-        // …: Resource temporarily unavailable"), so a large type arrives cut short under load.
-        // That is wlroots' bug, not this route's.
         if o.data.bytes().map_or(0, |b| b.len()) >= 64 << 10 {
             continue;
         }
@@ -598,8 +553,6 @@ fn without_any_wayland_route_a_wayland_window_takes_x11_selections_through_xwayl
     probe.no_errors();
 }
 
-/// No Wayland route, and the X11 fallback finds no X server where `DISPLAY` points: the
-/// window has no route at all, which is Unsupported (not a connection error).
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn without_any_route_and_no_x_server_a_wayland_window_is_unsupported() {
@@ -717,8 +670,6 @@ fn a_wayland_window_hears_it_lost_the_clipboard() {
 
 // ---- Wayland: drags in ----
 
-/// The input peer drags three types from peer `a`'s window into the probe's; the probe
-/// accepts Copy, reads every type on the drop and finishes it.
 fn drag_into_probe(s: &Session, probe: &Probe) {
     let a = s.peer(Display::Wayland);
     a.map("p0 drag source");
@@ -788,10 +739,6 @@ fn peer_drops_three_types_on_a_wayland_window() {
     drag_into_probe(&s, &probe);
 }
 
-/// The review's sequence (round 2): the source offers [copy, ask], the probe prefers ask on
-/// enter and answers the drop with move, which the source lacks. The compositor keeps ask, so
-/// finishing would be a protocol error that ends winit's connection: the probe's finish must
-/// be refused, and the app live on to quit cleanly. Shared.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_drop_left_on_ask_refuses_finish_and_the_app_lives_on() {
@@ -860,10 +807,6 @@ fn a_drop_left_on_ask_refuses_finish_and_the_app_lives_on() {
     assert_eq!(failed, 0, "a connection failed");
 }
 
-/// Review round 3's repro: a copy drop, then set_actions(none) after it. wlroots would then
-/// have no action, its answer can't reach a dropped offer (leave came with the drop), and a
-/// finish would be a protocol error ending winit's connection. The request must be refused,
-/// the drop finish as a copy, and the app quit cleanly. Shared.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn actions_set_after_a_drop_are_refused_and_the_drop_finishes() {
@@ -969,11 +912,6 @@ fn probe_stderr_len() -> u64 {
     std::fs::metadata(log).map(|m| m.len()).unwrap_or(0)
 }
 
-/// The review's B3 (round 2): the compositor ends the Wayland connection of our own with a
-/// protocol error while events are queued on it. libwayland then dispatches nothing, and
-/// wayland-client drops the error, so a reader that only re-prepared spun a core and the app
-/// never heard. Exactly one `Failed` must arrive, the reader must exit, and the process go
-/// quiet. Fails fast on a flood, so a regression can't fill the log.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_dead_wayland_connection_is_reported_once_and_goes_quiet() {
@@ -1052,9 +990,6 @@ fn a_dead_wayland_connection_is_reported_once_and_goes_quiet() {
 
 // ---- Wayland: lifecycle ----
 
-/// S5's note on upstream #139: a covered Wayland window's `poll` and timers stop. The
-/// substrate's events reach the app through `AppHandle::update_if`, which must still run with
-/// the window on a workspace nobody sees. Shared where the host has it, else own.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_wayland_window_on_another_workspace_still_hears_the_clipboard() {
@@ -1082,9 +1017,6 @@ fn a_wayland_window_on_another_workspace_still_hears_the_clipboard() {
     probe.no_errors();
 }
 
-/// Shared: Wayland destroys a hidden window, and showing it makes a new surface. The
-/// substrate stays bound once, and routes a drag to the new surface (it keeps the
-/// `WindowHandle`, never the surface).
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_wayland_window_hidden_and_shown_keeps_one_binding() {
@@ -1114,8 +1046,6 @@ fn a_wayland_window_hidden_and_shown_keeps_one_binding() {
     drag_into_probe(&s, &probe);
 }
 
-/// Shared: the quit path tears the binding down before `run` returns, so the process exits
-/// cleanly (a late drop crashed every S2 run with SIGSEGV).
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn quitting_tears_the_wayland_binding_down_before_run_returns() {
@@ -1163,10 +1093,6 @@ fn closing_the_last_window_tears_the_wayland_binding_down() {
     );
 }
 
-/// Shared. The only attached window closes, the reader then waits on a turn posted to its
-/// app, which is gone, and a later window attaches as P1 and P2 attach a later window: no
-/// dispatch, no round trip. Its attach must release the reader, or nothing on winit's
-/// display is dispatched again (P4's review 2, should-fix B).
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_window_attached_after_the_only_attached_one_closed_hears_the_clipboard() {
@@ -1222,8 +1148,6 @@ fn a_window_attached_after_the_only_attached_one_closed_hears_the_clipboard() {
         assert!(std::time::Instant::now() < deadline, "w1 never went");
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    // The reader reads it, asks w1's app, and waits: with no live window attached, nothing
-    // dispatches it. Checked, or this test would prove nothing.
     let (at, two) = offer("two");
     std::thread::sleep(std::time::Duration::from_millis(500));
     assert!(
@@ -1329,8 +1253,6 @@ fn an_x11_window_hears_it_lost_the_clipboard() {
     probe.no_errors();
 }
 
-/// The X server ends our X11 connection (the probe's test switch): one Failed, no source
-/// held any more (`owns` false), and no more taken; the app still quits cleanly.
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_failed_x11_connection_holds_and_takes_nothing() {

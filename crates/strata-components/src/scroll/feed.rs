@@ -7,12 +7,6 @@ use std::rc::Rc;
 
 use rune::ScrollPos;
 
-/// The latest [`ScrollPos`] a viewport reported, kept where a handler without the app's state
-/// can read it. A host fills it from the viewport's `on_scroll_offset` (or the collection's
-/// `Collection::on_scroll`), and autoscroll reads where the viewport stands and how far it can
-/// go from it. Clones share one value.
-///
-/// Used by: C24, C2, C3, C4, hosts.
 #[derive(Clone, Default)]
 pub struct ScrollFeed(Rc<Cell<ScrollPos>>);
 

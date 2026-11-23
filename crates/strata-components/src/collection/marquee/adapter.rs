@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The marquee on the collection element's seam (C1e): [`Marquee`] is the
-//! [`MarqueeController`] a host installs, and C1e's [`Ctx`] is its machine's [`Surface`].
-
 use rune::{El, Live, Mods};
 use strata_kit::look::Look;
 
@@ -16,17 +13,7 @@ use crate::contract::{CollectionGeometry, EntrySource, Point, Rect};
 /// Where the band draws when there is nothing near the view to draw: off the content, no size.
 const HIDDEN: [f32; 4] = [-64.0, -64.0, 0.0, 0.0];
 
-/// Marquee selection, installed on a collection:
-/// `state.controllers.marquee = Some(Box::new(Marquee::new()))`. Its settings are the
-/// collection's [`MarqueeSettings`], if the host gives one (`Collection::settings`); a host
-/// sets at least [`MarqueeSettings::animations`] from `Look::animations`, or the edge scroll
-/// runs too fast under reduced motion.
-///
-/// The band draws in the element's marquee layer from a live rect, so a move or an auto-scroll
-/// frame that crosses no new entry runs no view: only showing and hiding the band
-/// ([`Ctx::repaint`]) and selection changes do.
-///
-/// Used by: C2, C3, C4, and hosts.
+/// Marquee selection, installed on a collection: `state.controllers.marquee = Some(Box::new(Marquee::new()))`.
 pub struct Marquee {
     machine: MarqueeMachine,
     /// The band's drawn rect, `[x, y, w, h]` in content coordinates.
@@ -53,8 +40,6 @@ impl Marquee {
             .copied()
             .unwrap_or_default();
         let r = f(&mut self.machine, &mut On { cx, settings });
-        // With nothing to draw near the view, the band goes off it: above the content's top,
-        // with no size, so a band left from before draws nowhere.
         let drawn = self.machine.drawn().map_or(HIDDEN, <[f32; 4]>::from);
         self.rect.set(drawn);
         r
@@ -130,7 +115,6 @@ impl MarqueeController for Marquee {
     }
 }
 
-/// C1e's context as the machine's surface.
 struct On<'c, 'a> {
     cx: &'c mut Ctx<'a>,
     settings: MarqueeSettings,

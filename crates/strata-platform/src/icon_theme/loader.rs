@@ -29,21 +29,10 @@ pub struct Options {
     pub search_path: SearchPath,
     /// The theme lookups start in, until [`IconLoader::set_theme`]. Default: hicolor.
     pub theme: String,
-    /// The `ImageCache` that decodes found files. Pass the app's own to share its decoder
-    /// threads; by default the loader makes one with the waker it starts with.
     pub cache: Option<Arc<ImageCache>>,
-    /// How many recent icons stay loaded once no handle holds them. Default: 128 (GTK keeps
-    /// 100).
     pub lru_entries: usize,
-    /// Only icons drawn at up to this many device pixels stay loaded that way, and together
-    /// they hold at most the decoded pixels of [`lru_entries`](Self::lru_entries) square icons
-    /// this size (the most recent one excepted). Default: 256.
     pub lru_max_px: u32,
-    /// A `load` at least this long after the last check has the thread check the themes read
-    /// so far for changes on disk. Default: 5 s, as GTK.
     pub revalidate_after: Duration,
-    /// Files larger than this fail instead of decoding. Default: 16 MiB, as Rune's
-    /// `ImageCache::app_icon`.
     pub max_file_bytes: u64,
 }
 
@@ -80,23 +69,14 @@ impl std::fmt::Debug for Options {
 pub enum IconState {
     /// The lookup hasn't run yet.
     Pending,
-    /// Found; the file is decoding. [`LoadedIcon::pixels`] can be drawn already, and shows the
-    /// icon once it lands.
     Loading,
     /// Decoded.
     Ready,
     /// No theme in the chain, no unthemed icon and no file has it: show your own fallback.
     NotFound,
-    /// Found, but the file can't be read or decoded (or is larger than
-    /// [`Options::max_file_bytes`]). The lookup doesn't go on to another file, as GTK's doesn't.
     Failed(ImageError),
 }
 
-/// Looks icons up on its own thread ([`THREAD_NAME`]) and hands them over as `rune::Pixels`.
-///
-/// Cheap to clone; every clone shares the thread, the theme and the handles. The thread stops
-/// once the last clone drops, after the lookup it is running; the lookups still queued don't
-/// run, and their handles stay [`IconState::Pending`].
 #[derive(Clone)]
 pub struct IconLoader {
     inner: Arc<Inner>,
@@ -108,16 +88,10 @@ struct Inner {
     common: Arc<Common>,
 }
 
-/// What the loader and its thread share. It holds no sender, so the thread's channel closes
-/// when the last `IconLoader` drops.
 struct Common {
     table: Mutex<Table>,
     settled: AtomicBool,
-    /// Set when the last `IconLoader` drops: the thread runs no further job. The channel alone
-    /// would have it work through the whole queue first.
     stopped: AtomicBool,
-    /// How many checks found a change on disk. A slot settled in an earlier generation is
-    /// stale: `load` looks it up again.
     generation: AtomicU64,
     /// When `load` next asks the thread to check the themes on disk.
     next_check: Mutex<Instant>,
@@ -152,8 +126,6 @@ struct Key {
 }
 
 impl IconLoader {
-    /// Starts the lookup thread. `waker` is the app's setup waker (`AppSpec::setup`): it is
-    /// called each time a lookup settles, and by the default `ImageCache` when a decode lands.
     pub fn start(waker: Waker, options: Options) -> io::Result<Self> {
         let cache = options
             .cache
@@ -186,8 +158,6 @@ impl IconLoader {
         })
     }
 
-    /// The theme later lookups start in, such as the desktop's icon theme from the app's
-    /// settings. Handles from before keep their icon; ask again for the new theme's.
     pub fn set_theme(&self, name: &str) {
         *lock(&self.inner.theme) = name.to_owned();
     }
@@ -196,13 +166,6 @@ impl IconLoader {
         lock(&self.inner.theme).clone()
     }
 
-    /// The icon for `request` in the current theme. It never blocks on the file system, so a
-    /// view can call it each time it runs: a request asked before, while a handle to it lives
-    /// or it is among the recent ones, gets the same handle back.
-    ///
-    /// After a change on disk, an icon that was [`IconState::Ready`] is looked up again while
-    /// this keeps returning its old handle, so the view never draws a fallback in between; once
-    /// the new lookup has settled (and decoded), it returns the new handle.
     pub fn load(&self, request: &IconRequest) -> LoadedIcon {
         let theme = self.theme();
         let key = Key {
@@ -240,8 +203,6 @@ impl IconLoader {
         LoadedIcon(slot)
     }
 
-    /// Whether a lookup settled, or a found icon finished decoding, since the last call. Call
-    /// it from `AppSpec::poll` and run the view again when it is true.
     pub fn poll(&self) -> bool {
         let common = &self.inner.common;
         let changed = common.settled.swap(false, Ordering::AcqRel);
@@ -262,17 +223,11 @@ impl IconLoader {
         changed || decoded
     }
 
-    /// Checks the themes on disk now, on the thread, without waiting for
-    /// [`Options::revalidate_after`]. Lookups asked after this call run after the check. When
-    /// something changed, [`poll`](Self::poll) turns true so the view asks again, and each
-    /// icon asked for after is looked up again ([`load`](Self::load) says how).
     pub fn rescan(&self) {
         *lock(&self.inner.common.next_check) = Instant::now() + self.inner.common.revalidate_after;
         let _ = self.inner.jobs.send(Job::Revalidate);
     }
 
-    /// Asks for a check when one is due. A request that hits a shared handle never reaches the
-    /// thread, so `load` itself has to ask, as GTK's lookups check every 5 s.
     fn check_due(&self) {
         let now = Instant::now();
         let mut next = lock(&self.inner.common.next_check);
@@ -346,10 +301,6 @@ impl Table {
         self.trim(common);
     }
 
-    /// Drops the oldest recent icons beyond [`Options::lru_entries`], or beyond the pixels that
-    /// many icons of [`Options::lru_max_px`] hold: a large PNG asked for at a small size
-    /// decodes at its own size, and counts as such. The most recent icon always stays, so a
-    /// view that shows one large icon doesn't have it looked up again each run.
     fn trim(&mut self, common: &Common) {
         self.lru.truncate(common.lru_entries);
         let side = u64::from(common.lru_max_px);
@@ -385,17 +336,12 @@ fn run(receive: &mpsc::Receiver<Job>, common: &Common, mut resolver: IconResolve
         let slot = match job {
             Job::Revalidate => {
                 if resolver.revalidate() {
-                    // Every settled slot is stale now. The handles stay until each is looked
-                    // up again, so a view keeps drawing its icons meanwhile.
                     common.generation.fetch_add(1, Ordering::AcqRel);
                     common.settled.store(true, Ordering::Release);
                     (common.waker)();
                 }
                 continue;
             }
-            // No handle holds it and it has left the recent icons: nothing to look up. The
-            // recent icons do hold a pending request, as a view that asks for its icons each
-            // run drops the handles at once, so a dropped handle alone doesn't skip it.
             Job::Lookup(slot) => match slot.upgrade() {
                 Some(slot) => slot,
                 None => continue,
@@ -497,8 +443,6 @@ impl Slot {
             if image.is_ready() && image.error().is_none())
     }
 
-    /// The pixels it holds once decoded: its decoded size, or until then the size it was asked
-    /// to draw at (an SVG's, and a guess for a PNG). Nothing if not found or failed.
     fn weight(&self) -> u64 {
         let asked = u64::from(self.request.pixels()).pow(2);
         match self.outcome.get() {
@@ -528,8 +472,6 @@ impl Slot {
     }
 }
 
-/// A shared handle on one lookup. Keep it while the icon shows: it, or the loader's recent
-/// icons, keep the decoded pixels alive.
 #[derive(Clone)]
 pub struct LoadedIcon(Arc<Slot>);
 
@@ -547,8 +489,6 @@ impl LoadedIcon {
         }
     }
 
-    /// The icon to draw with `El::pixels`, once found. It paints nothing while it decodes, and
-    /// Rune redraws it when it lands, without the view running again.
     pub fn pixels(&self) -> Option<&Pixels> {
         self.image().map(Image::pixels)
     }
@@ -569,8 +509,6 @@ impl LoadedIcon {
         }
     }
 
-    /// Whether the icon was found under a `-symbolic` name. It draws as its file paints it,
-    /// usually grey, not in the foreground colour GTK gave it.
     pub fn is_symbolic(&self) -> bool {
         matches!(
             self.0.outcome.get(),
@@ -587,9 +525,6 @@ impl LoadedIcon {
         &self.0.theme
     }
 
-    /// Blocks up to `timeout` for the lookup, then (if it found a file) until the file has
-    /// decoded, and returns the state. For headless fixtures and tools, like `Image::wait`;
-    /// an app uses its waker and [`IconLoader::poll`] instead.
     pub fn wait(&self, timeout: Duration) -> IconState {
         let deadline = Instant::now() + timeout;
         let mut guard = lock(&self.0.lock);

@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Context-menu custom-action rows (`MenuPlacement::Top` and the `"Actions"` submenu) and menu
-//! activation (`src/ui/browser/context_menu/actions.rs`). As on GTK
-//! (`rebuild_for_selection` / `rebuild_for_folder`), the rows are built once, from the catalog
-//! as it stands when the menu opens; a reload the opening starts shows on the next menu, and a
-//! row whose manifest changed meanwhile answers "Actions changed" when it runs.
-
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
@@ -68,7 +62,6 @@ fn content_type_for(kind: InputKind, name: &OsStr) -> Option<String> {
     if kind == InputKind::Folder {
         return Some(FOLDER_CONTENT_TYPE.to_owned());
     }
-    // Menu matching must not read file contents (`src/ui/actions.rs`).
     let guessed_name = name.to_string_lossy();
     let (guessed, _) = guess_content_type(Path::new(guessed_name.as_ref()));
     (!guessed.is_empty()).then_some(guessed)
@@ -81,8 +74,6 @@ pub(crate) fn native_paths(entries: &[FileEntry]) -> Option<Vec<PathBuf>> {
         .collect()
 }
 
-/// Builds the custom-actions [`Section`] when a context menu opens and remembers its target
-/// so a click on one of its rows acts on the captured inputs.
 pub(crate) fn begin_menu(app: &mut App, depth: usize, entry: Option<EntryId>) -> Section {
     app.custom_actions.menu_context = None;
     let Some(mut context) = build_context(app, depth, entry) else {

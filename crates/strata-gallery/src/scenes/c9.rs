@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C9 PreviewDrawer: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c9-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C9-preview-drawer.md`.
-//!
-//! The drawer beside a fake listing (List, Icons, or a Columns strip), hosting a fake document
-//! that answers find. The page's keys stand in for Strata's policy: Space toggles the preview,
-//! Escape closes it, Right moves focus from the listing into the preview and Left back, and F8
-//! focuses the divider.
-
 use rune::{Cx, El, Key, KeyEvent, Tx, col, el, row, text};
 use strata_components::preview_drawer::{
     Arrangement, ColumnsFit, DocumentView, DrawerIntent, DrawerRules, DrawerState, FindStatus,
@@ -39,7 +29,6 @@ pub enum Content {
     Placeholder,
 }
 
-/// C9's demo state, held in `Gallery::c9`.
 #[derive(Default)]
 pub struct Demo {
     pub drawer: DrawerState,
@@ -54,9 +43,6 @@ pub struct Demo {
     pub opened: usize,
 }
 
-/// A fake preview. A document in Source is searchable and wraps; Rendered, it is a
-/// table-only document: nothing to search and no wrap, as C11 reports one. An image offers
-/// neither.
 #[derive(Default)]
 pub struct FakeView {
     pub document: bool,
@@ -177,8 +163,6 @@ fn find_open(g: &mut Gallery, dark: bool) {
     g.c9.view.find("preview");
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c9", dark)`, then fills in `g.c9`.
 pub const SCENES: &[Scene] = &[
     ("c9-list-open-light", |g| {
         open(g, setup(false, Mode::List, Content::Document, true))
@@ -285,8 +269,6 @@ fn intent(g: &mut Gallery, intent: DrawerIntent, _tx: &mut Tx) {
     }
 }
 
-/// The fake listing beside the drawer. Its focus group is keyed `files`, the drawer's default
-/// return target; row 1 holds the cursor.
 fn files(d: &Demo, look: &Look) -> El {
     let k = &look.kit;
     let row_el = |i: usize, name: String| {
@@ -440,8 +422,6 @@ fn toggle(g: &mut Gallery, tx: &mut Tx) {
     }
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     let in_content = tx.focused() == Some("fake-content");
     let in_files = tx.focused().is_some_and(|f| f.starts_with("row-"));
@@ -471,9 +451,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     }
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Deliver fake async results here; a worker wakes the loop with `Gallery::waker`. True when
-/// state changed.
 pub fn poll(_g: &mut Gallery, _t: f64, _tx: &mut Tx) -> bool {
     false
 }

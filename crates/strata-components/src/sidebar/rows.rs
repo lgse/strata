@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Rows: built-in places, pins and devices in the full sidebar and the rail. Both widths share
-//! the same row shell and icon box so stepping between full and rail moves no icon; full rows
-//! render labels in primary `kit.c.text_base` at regular `kit.ty.ui_compact` weight with equal
-//! left-edge-to-icon and icon-to-text spacing, matching GTK's `.sidebar-row`.
-
 use rune::{El, Key, KeyEvent, PointerPress, Side, Tx, icon, row, text};
 use rune_kit::{Keybind, Spinner};
 use strata_kit::icons::IconName;
@@ -18,19 +13,12 @@ use super::state::SidebarState;
 use super::{ActionFn, Emit, trash_target_key};
 use crate::contract::dnd::{Dnd, DropHover};
 
-/// Width of the trailing action slot, shared by device release/lock buttons, pending-release
-/// spinners and section heading chevrons so their icon centerlines stay vertically aligned.
 pub(crate) const ACTION_SLOT: f32 = 20.0;
 
-/// Compact trailing icon size for device eject/lock buttons, pending spinners and section
-/// chevrons: 14 pt at default 13 px text, scaling with `look.icon_size` (matches GTK's 14 px
-/// `.sidebar-device-action` and `.sidebar-heading-chevron` icons).
 pub(crate) fn action_icon_size(look: &Look) -> f32 {
     ((look.icon_size.sm + look.icon_size.md) / 2.0).round()
 }
 
-/// The shared interactive row shell for both full and rail rows, starting with the leading icon
-/// slot at `slot::ROW_INSET` so a step between full and rail moves no icon.
 fn row_shell(look: &Look, icon: El, selected: bool) -> El {
     let size = slot::ICON_BOX;
     let r = row()
@@ -60,11 +48,6 @@ fn rail_row(look: &Look, icon: El, selected: bool) -> El {
     row_shell(look, icon, selected)
 }
 
-/// A full-width row: leading icon, primary-ink regular-weight label (`kit.c.text_base` in
-/// `kit.ty.ui_compact`), and an optional trailing slot (`Keybind`, device actions or busy
-/// spinner). The `space.md` icon-to-label gap matches `list.px + ROW_INSET` (`space.xs + 4`),
-/// and `full_row_trailing_pad` keeps trailing controls clear of the vertical scrollbar and the
-/// 7 pt resize grip.
 fn full_row(look: &Look, icon: El, label: &str, selected: bool, trailing: Option<El>) -> El {
     let label = text(label)
         .key("label")
@@ -133,8 +116,6 @@ pub(crate) struct Spec<'a> {
     pub lifted: bool,
 }
 
-/// Source-over of straight-alpha colours, mixed as the window blends: rune-kit's own `over`,
-/// which isn't public (U22).
 pub(crate) fn over(top: rune::Color, bottom: rune::Color) -> rune::Color {
     use rune::theme::{blends_srgb, srgb_decode, srgb_encode};
     let a = top.a + bottom.a * (1.0 - top.a);
@@ -156,9 +137,6 @@ pub(crate) fn over(top: rune::Color, bottom: rune::Color) -> rune::Color {
     }
 }
 
-/// A row's icon: a folder badge for a custom icon or emoji, else the semantic icon in the
-/// folder's saved tint (kept on the active row too, as GTK's `sidebar_rows` keeps it), else
-/// the selected icon token on the active row, else the accent icon colour.
 pub(crate) fn row_icon(look: &Look, i: &RowIcon, tint: Option<rune::Color>, selected: bool) -> El {
     let badge_fill = tint.unwrap_or(look.kit.c.icon_accent);
     match i {
@@ -187,7 +165,6 @@ pub(crate) fn row_icon(look: &Look, i: &RowIcon, tint: Option<rune::Color>, sele
     }
 }
 
-/// The Trash row's icon, keyed for C23's flight and passed through the host's hook.
 pub(crate) fn trash_icon(
     key: &str,
     look: &Look,
@@ -213,9 +190,6 @@ pub(crate) fn trash_icon(
     }
 }
 
-/// Activation shared by every row: a click (`Via::Pointer`), Return or Space through the list's
-/// focus group (`Tx::by_keys` -> `Via::Keyboard`), a middle click (`El::on_middle_press`), the
-/// 10xer keys, and the context menu.
 fn activate<S: 'static>(ctx: &Ctx<'_, S>, el: El, item: ItemId, new_tab: bool) -> El {
     let access = ctx.access;
     let press_emit = ctx.emit.clone();
@@ -230,8 +204,6 @@ fn activate<S: 'static>(ctx: &Ctx<'_, S>, el: El, item: ItemId, new_tab: bool) -
         })
         .on_press_tx(move |s: &mut S, tx: &mut Tx| {
             let dropped = access(s).dropped.take();
-            // The pointer release that ended this row's drag (U21) opens nothing; a keyboard
-            // press after an off-row drag release still opens.
             if !tx.by_keys() && dropped.as_ref() == Some(&press_item) {
                 return;
             }
@@ -301,8 +273,6 @@ fn optional_row_handlers<S: 'static>(
     el
 }
 
-/// 10xer keys on a row or heading: `j` and `k` step like Down and Up, `l` activates, and `h`,
-/// Left and Backspace hand focus back to the files.
 pub(crate) fn tenxer_key<S: 'static>(
     s: &mut S,
     ev: &KeyEvent,
@@ -330,8 +300,6 @@ pub(crate) fn tenxer_key<S: 'static>(
     }
 }
 
-/// A row as assistive technology hears it: a button, as Strata's rows are, with its label and
-/// the host's description.
 fn named(el: El, spec: &Spec<'_>) -> El {
     let el = el.role("button").label(spec.label);
     match spec.description {
@@ -340,9 +308,6 @@ fn named(el: El, spec: &Spec<'_>) -> El {
     }
 }
 
-/// The look over a built row: the accent tint on the current row, the neutral hover (none
-/// while a drag is over the sidebar), and in the rail its name as a tooltip. A row whose body
-/// takes the drag shows the hover fill and an accent outline.
 fn dress<S>(ctx: &Ctx<'_, S>, el: El, spec: &Spec<'_>) -> El {
     let look = ctx.look;
     let c = &look.kit.c;
@@ -353,8 +318,6 @@ fn dress<S>(ctx: &Ctx<'_, S>, el: El, spec: &Spec<'_>) -> El {
     );
     let mut el = named(el.key(spec.item.key(ctx.key)), spec);
     if spec.selected && spec.lifted {
-        // Lifted, the row keeps rune-kit's opaque lift fill under the tint, so the rows it
-        // passes don't show through.
         let lift = over(c.pressed, c.bg_deep);
         el = el.fill(over(slot::selected_fill(look), lift));
     } else if spec.selected {
@@ -380,8 +343,6 @@ fn dress<S>(ctx: &Ctx<'_, S>, el: El, spec: &Spec<'_>) -> El {
     el
 }
 
-/// A row's drag to a new place in its block: the block's drag, which of the sidebar's blocks
-/// it is, and the intent a move from one index to another makes.
 pub(crate) type Reordering<'a> = (
     &'a RowDrag,
     Block,
@@ -441,8 +402,6 @@ fn attach<S: 'static>(ctx: &Ctx<'_, S>, el: El, spec: &Spec<'_>) -> El {
     }
 }
 
-/// A device row: in the full sidebar its lock and release buttons, and while a release runs
-/// a spinner in the release column, disabled.
 pub(crate) fn device_row<S: 'static>(ctx: &Ctx<'_, S>, d: &Device, selected: bool) -> El {
     let look = ctx.look;
     let item = d.item();
@@ -480,17 +439,12 @@ pub(crate) fn device_row<S: 'static>(ctx: &Ctx<'_, S>, d: &Device, selected: boo
     attach(ctx, el, &spec)
 }
 
-/// The lock button, then the release button: a row with only a lock button gives it the
-/// release column. They are pointer-only, as rune-kit's row controls are: the list's arrows
-/// step rows, and the row's menu (C21) has the same actions.
 fn device_actions<S: 'static>(ctx: &Ctx<'_, S>, d: &Device) -> El {
     let look = ctx.look;
     let icon_size = action_icon_size(look);
     let mut actions = row().gap(look.space.xxs).center_y();
     let button = |key: String, glyph: IconName, label: &str, intent: SidebarIntent| {
         let emit = ctx.emit.clone();
-        // Match GTK's `.sidebar-eject, .sidebar-device-action` (14 px icon at 0.75 rest / 1.0
-        // hover opacity) centred in the shared `ACTION_SLOT` column.
         let glyph = icon(look.icon(glyph), icon_size)
             .key("icon")
             .color(look.kit.c.icon_accent)

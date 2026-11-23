@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The data ladder: one clone, then `copy_file_range` in chunks, then reads
-//! and writes, leaving out the holes of sparse local files. Progress and
-//! cancellation are checked between calls.
-
 use std::{
     cell::OnceCell,
     os::fd::BorrowedFd,
@@ -72,8 +68,6 @@ pub(super) fn kernel() -> (u32, u32, u32) {
     })
 }
 
-/// Whether the kernel has the client's fixes for stale caches after
-/// server-side copies.
 fn has_copy_fixes(network: Network) -> bool {
     let kernel = kernel();
     match network {
@@ -148,9 +142,6 @@ fn sparse(stat: &EntryStat) -> bool {
     stat.size >= 1 << 20 && stat.blocks.saturating_mul(512) < stat.size
 }
 
-/// FAT, exFAT and NTFS fill a skipped hole with zeros within one call, which
-/// reports no progress and cannot be cancelled, through exfat-fuse and
-/// ntfs-3g as in the kernel.
 fn stores_holes(target: &Mount) -> bool {
     !matches!(target.family, Family::Fat | Family::Ntfs3) && target.fuse_format.is_none()
 }

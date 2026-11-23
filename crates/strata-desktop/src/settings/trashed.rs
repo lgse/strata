@@ -33,8 +33,6 @@ impl<T> Default for TrashedValues<T> {
 }
 
 impl<T> TrashedValues<T> {
-    /// An older entry proven to be the same item belongs to one that left Trash
-    /// and came back; a reused inode number alone keeps both.
     pub fn forget_identity(&mut self, identity: ItemIdentity) {
         let keys = &mut self.keys;
         self.items.retain(|item| {
@@ -48,8 +46,6 @@ impl<T> TrashedValues<T> {
         });
     }
 
-    /// `keys` counts the values towards the limit. Callers forget `identity`
-    /// first, whether or not they keep anything for it.
     pub fn keep(&mut self, root: PathBuf, identity: ItemIdentity, values: T, keys: usize) {
         self.keys += keys;
         self.items.push_back(TrashedItem {
@@ -65,8 +61,6 @@ impl<T> TrashedValues<T> {
         }
     }
 
-    /// What was kept for the very item now back at `root`; another item
-    /// restored there gets nothing.
     pub fn take_restored(&mut self, root: &Path, identity: ItemIdentity) -> Option<T> {
         let index = self
             .items

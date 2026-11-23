@@ -1,145 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! DocumentView (C11): Strata's rendered document previews (Markdown, the HTML subset, RTF,
-//! DOCX, ODT and OTT) drawn natively from Strata's own laid-out model.
-//!
-//! Work package: C11, `docs/rune/work/phase-2-composites/C11-document-view.md`. Feature map nodes
-//! `preview/preview-panel/documents` and `.../odt`, against Strata's `src/services/document`
-//! and `src/ui/virtual_preview` at `upstream/main` 35ee677ab (the feature map's watermark,
-//! 5738aad, isn't in the local clone; K2 used the same commit). Spreadsheets, sortable and
-//! resizable tables and cell ranges are C11b.
-//!
-//! ```ignore
-//! // State: doc: DocumentState, blocks: CodeBlocks (one pool per window), drawer: DrawerState.
-//! let view = DocumentView::new(|s: &App| &s.doc, |s: &mut App| &mut s.doc)
-//!     .blocks(&s.blocks)
-//!     .on_intent(|s: &mut App, intent, tx| s.apply(intent, tx))
-//!     .build(s, &s.look, cx);
-//! PreviewDrawer::new(&s.drawer, |s: &mut App| &mut s.drawer)
-//!     .hosted(&s.doc, |s: &mut App| &mut s.doc)
-//!     .content(view)
-//!     .build(files, &s.look, cx);
-//! // poll: changed |= s.blocks.poll() | s.doc.tick(now) | s.doc.flush(tx);
-//! ```
-//!
-//! # The model and what stays in Strata
-//!
-//! Strata parses each format, lays the result out into units (splitting blocks over 32 KiB
-//! and lines over 2 KiB), applies its limits and fallbacks, decodes images and renders
-//! diagrams and equations, all in its sandbox, and converts its `DocumentLayout` into
-//! [`Document`]: one [`Unit`] per row. Images arrive as `Pixels`
-//! ([`DocumentState::set_media`]); a link click arrives back as an intent. Which form shows
-//! (Rendered or Source), the wrap preference and opening links are Strata's too.
-//!
-//! # How it draws
-//!
-//! - **Rows.** One virtual row per unit (`El::virtual_rows`), keyed `{key}-u{index}`, inside
-//!   one selection group. Rows build only in Rune's mounted window, so a large document costs
-//!   one key per unit and the rows on screen.
-//! - **Selection and copy.** Rune's selectable text across rows: drag across blocks,
-//!   double-click a word, triple-click a line (a paragraph is one line), Shift-click. Copying
-//!   follows Strata's rule: units between the ends copy their copy text, so images
-//!   and rules between them copy too. Ctrl+A is the view's own (the root takes focus from a
-//!   click on its text, and hears the key before the selection does): Rune's selection
-//!   collects at most 10,000 unbuilt rows (R4), so after Ctrl+A, Ctrl+C copies the whole
-//!   document from the model. That holds from Ctrl+A over a selection that already reads as
-//!   the whole document (Rune's select-all then changes nothing), or from the one change
-//!   select-all makes if that reads as the whole document, until the next change. "Reads as
-//!   the whole document": every selected text whole, from the document's first text to its
-//!   last, or to Rune's cap. A change that didn't come from Ctrl+A never turns it on, so where
-//!   Rune's report can't tell, Ctrl+C copies what Rune reports, cut short, not more than was
-//!   selected.
-//! - **Code.** Coloured by C10a's [`CodeBlocks`] (one pool per window, polled by the host),
-//!   only when the block is one unit, as Strata does, and only near the viewport: rows Rune
-//!   builds elsewhere (for a copy) draw plain, so a copy never floods the highlighter. Copy
-//!   code sits over the first line, which keeps room for it with `El::uncopied` figure
-//!   spaces; a press shows the check and "Code copied" for 2 s ([`DocumentState::tick`]).
-//!   Strata's language ids map to grammars in [`grammar_token`]; Vala has none and draws
-//!   plain.
-//! - **Find.** The drawer's find bar calls [`HostedPreview`](crate::preview_drawer::HostedPreview): Strata's matcher, over the text
-//!   blocks (not tables, images or rules), folded once per document, so a query scans it
-//!   without rebuilding it. The selected match becomes the selection through
-//!   [`DocumentState::flush`], which the host calls from its poll: the find calls carry no
-//!   `Tx`.
-//! - **Tables** measure their columns from content (72–640 pt) and fit them to the text column
-//!   (the viewport's width at the last layout, `Cx::layout_with`), keep per-table column resize
-//!   dividers (48 pt floor, double-click auto-fit), clickable headers with multi-key sorting
-//!   (ascending -> descending -> unsorted, Shift-click secondary keys, theme-accent sort
-//!   indicator), and a horizontal scroll viewport with C24's overlay scrollbar when wider than
-//!   the text column.
-//! - **Links** are keyed `link-{n}` within their text (a URI's slashes would read as a key
-//!   path) and open through [`DocumentIntent::OpenLink`] on a plain click: not on Shift, and
-//!   once for a double-click, timed by the host's clock against
-//!   [`DocumentState::set_double_click_interval`].
-//! - **Accessibility.** The root is a `document`; headings carry their level, list items are
-//!   `listitem`s with their nesting level, quotes `blockquote`s, code `code`, images `img`
-//!   named by their alt text, tables `table`, `row`, `columnheader` and `cell`. Rune exposes
-//!   the mounted rows only. List items have no `list` around them: each unit is its own
-//!   virtual row, and `El::virtual_rows` takes no element between the list and its rows, so
-//!   nothing can group a run of them.
-//!
-//! # Deviations
-//!
-//! - **D1** Embedded tables keep their interactive sort, column widths and horizontal scroll per
-//!   table unit inside `DocumentState` (reset on `set_document`), while standalone spreadsheets
-//!   and cell ranges stay in `SheetGrid` (C11b).
-//! - **D2** An inline equation shows its source in the mono face: `El::inline_icon` draws only
-//!   a square icon before a word and is skipped by selection, copy and `Role::Image`
-//!   accessibility (R3, `anomalyco/rune#350`). It still copies as `$source$`. (Owner item.)
-//! - **D3** No caret or keyboard selection: Shift with the arrows, Home and End, word steps
-//!   and Right collapsing a selection (R2). Ctrl+Home and Ctrl+End scroll to the ends.
-//!   (Owner item.)
-//! - **D4** A find match that spans two units selects only its part in the first (R1).
-//! - **D5** C24's overlay bar, not a scroll bar beside the content; the document-position
-//!   scroll bar is C10b's.
-//! - **D6** Spans are byte ranges: [`Unit::from_char_spans`] converts Strata's.
-//! - **D7** With wrap off, each row scrolls sideways on its own: virtual rows lay out at the
-//!   viewport's width inside a sideways viewport, so one scroll for the whole document can't
-//!   reach the widest row (probe P1, R7).
-//! - **D8** Find skips image alt text and rules, which Strata's find reads.
-//! - **D9** A double-click or a Shift-click on a link selects nothing (R6). The link opens as
-//!   Strata's does: on a plain click, once for a double-click (a second click within the
-//!   double-click time doesn't open it again), never on a Shift-click. A drag over a link
-//!   selects.
-//! - **D10** With wrap off, Copy code stays over the visible start of a first line wider
-//!   than the pane; the line's own end, where its room is, is clear once scrolled to.
-//!
-//! # Measured
-//!
-//! `tests/perf.rs`, perf profile, NVIDIA, one run: a 1 MiB document of 10,439 units
-//! (paragraphs, headings, lists, a Rust block every 25 units, a table every 40) opens in a
-//! 6.9 ms first frame; 600 wheel frames at 120 Hz run p50 0.14 ms, p95 0.70 ms, max 0.87 ms,
-//! none over `RUNE_COMMIT_BUDGET_MS=8`, with 73 view runs (code coming into reach, colours
-//! landing); find takes 3.7 ms for the first query (it builds the folded text) and 0.1 to
-//! 0.4 ms after; Ctrl+A then Ctrl+C copies the whole 1,048,673 bytes from the model in
-//! 31.7 ms, where Rune's own collection stops at 1,012,857 (R4).
-//!
-//! # Rune gaps (drafts, not filed)
-//!
-//! - **R1** (draft, not filed) `Tx::select_text` selects within one text: a range from one
-//!   text to another (a find match across two virtual rows) can't be selected from code.
-//! - **R2** (draft, not filed) Selectable text has no caret: no Shift+arrow, Shift+Home/End
-//!   or word-step extension, no Right collapsing the selection, no grapheme steps.
-//! - **R3** (dropped from the filing packet as a duplicate of anomalyco/rune#350) Read-only
-//!   rich text holds inline images only as `El::inline_icon`: square, placed before a word and
-//!   skipped by selection and copy, so it can't hold an equation image or copy its source.
-//! - **R4** (draft, not filed) Copying or reading a selection across unbuilt virtual rows
-//!   stops at 10,000 rows or 4 MiB, silently: `selection_copy` sees a cut list, and nothing
-//!   says it was cut (probe P3: 10,057 of 12,000 texts). C11 copies Ctrl+A's selection from
-//!   its model, but only once select-all's change has come, in the frame after the key: a
-//!   Ctrl+C in the same frame as the Ctrl+A copies Rune's report, cut short.
-//! - **R5** (draft, not filed) Rune's README says a virtual row scrolling out drops the
-//!   selection it holds; the runtime pins both ends instead, and keeps it.
-//! - **R6** (draft, not filed) A press on a link inside selectable text is the link's: a
-//!   double-click on it selects no word, and a Shift-click on it doesn't extend the selection
-//!   (probe P2 and review 1). The handler hears the modifiers (`Tx::mods`), so an app can at
-//!   least keep the link shut, as C11 does.
-//! - **R7** (draft, not filed) Virtual rows inside a sideways viewport (`scroll_x` around the
-//!   vertical viewport, or `scroll_xy`) lay out at the viewport's width: an unwrapped row wider
-//!   than it is cut, and the sideways viewport never scrolls, since the list reports no wider
-//!   content (probe P1: a 2,000-character row at 788 points in an 800-point viewport, the
-//!   sideways offset stuck at 0). A document can't scroll its widest line into view as one.
-
 mod copy;
 mod find;
 mod lang;
@@ -162,7 +22,6 @@ use crate::code_view::highlight::CodeBlocks;
 use crate::contract::Point as ScreenPoint;
 use crate::scroll::{BarLook, overlay};
 
-/// The case folding find runs on, shared with C10b's CodeView.
 pub(crate) use find::Folded;
 pub use find::{Match, Point};
 pub use lang::grammar_token;
@@ -185,8 +44,6 @@ const ESTIMATED_ROW: f32 = 28.0;
 pub enum DocumentIntent {
     /// A link was clicked: Strata opens `http` and `https` links externally.
     OpenLink(Arc<str>),
-    /// Plain Left with focus in the document: Strata's default key map returns focus to the
-    /// listing.
     Leave,
     /// Secondary press (or Menu key) inside the document view, in window points.
     ContextMenu(ScreenPoint),
@@ -213,8 +70,6 @@ impl<S: 'static> DocumentView<S> {
         }
     }
 
-    /// The window's code-block pool: code blocks colour through it. Without one they draw
-    /// plain.
     pub fn blocks(mut self, blocks: &CodeBlocks) -> Self {
         self.blocks = Some(blocks.clone());
         self
@@ -296,8 +151,6 @@ impl<S: 'static> DocumentView<S> {
             .h_full()
             .min_h(0.0)
             .focusable(true)
-            // The preview drawer's top accent bar marks keyboard ownership (`.preview-pane
-            // .preview-header`), so the document root draws no box ring of its own.
             .no_focus_ring()
             .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
                 key_in(s, ev, tx, get_mut, &intent)
@@ -349,8 +202,6 @@ impl<S: 'static> DocumentView<S> {
 /// Vertical line-scroll step in points for arrow-key scrolling.
 const SCROLL_STEP: f32 = 40.0;
 
-/// The document's keys, with focus in it: Ctrl+A and Ctrl+C over the whole document, plain
-/// Left back to the listing, Up/Down/PageUp/PageDown/Home/End and Ctrl+Home/Ctrl+End scrolling.
 fn key_in<S: 'static>(
     s: &mut S,
     ev: &KeyEvent,

@@ -24,10 +24,6 @@ pub(super) fn transfer_is_noop(
         || target_is_within_source(source, target) == Some(true)
 }
 
-/// Compares device/inode identities so symlink, bind-mount, and
-/// case-insensitive aliases of the source are caught. A symlink source keeps
-/// its own identity, so moving a link into the folder it targets is allowed.
-/// `None` means an ancestor could not be inspected.
 pub(super) fn target_is_within_source(source: &gio::File, target: &gio::File) -> Option<bool> {
     use std::os::unix::fs::MetadataExt;
 
@@ -57,8 +53,6 @@ pub(crate) fn transfer_source_name(source: &gio::File) -> Option<OsString> {
     crate::model::transfer_file_name(source)
 }
 
-/// Items a copy pastes into their own folder. Each is numbered as it is copied, so it takes no
-/// name in the plan and another item of its name meets the original.
 pub(super) fn duplicates(
     sources: &[gio::File],
     destination: &gio::File,
@@ -75,9 +69,6 @@ pub(super) fn duplicates(
         .collect()
 }
 
-/// Items whose names the plan gives are copied first, then duplicates, then the conflicts the
-/// prompt resolved, so an item numbered as it is copied never takes a planned name and a duplicate
-/// is copied before Replace can remove its original.
 pub(super) fn in_copy_order(mut request: PasteRequest, destination: &gio::File) -> PasteRequest {
     let sources = request
         .items
@@ -98,8 +89,6 @@ pub(super) fn in_copy_order(mut request: PasteRequest, destination: &gio::File) 
     request
 }
 
-/// A `renamable` item is numbered where an earlier item has its name, and gets the destination's
-/// rules where it is `crossing` too. A `duplicate` keeps its name.
 pub(super) fn paste_targets(
     names: &[Option<OsString>],
     rules: &NameProfile,

@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Inline rename against the adapter, in temporary folders: the editor, the browser's rename
-//! behind it, and the file on disk. Each test names the scenario under
-//! `tests/qa/scenarios/inline_renaming` whose steps it takes. After a rename the browser, the
-//! view and the folder on disk must say the same.
-
 use std::path::Path;
 
 use rune::{Key, KeyEvent, Mods};
@@ -114,8 +109,6 @@ fn assert_all_agree(host: &Offscreen, folder: &Path, after: &str) {
     assert_browser_agrees(host, after);
 }
 
-/// Opens `folder` with the cursor on `name`, as the scenarios' `select_with_keyboard`, and
-/// lets the child column it mirrors settle.
 fn open_on(host: &mut Offscreen, folder: &Path, name: &str) -> String {
     open(host, folder);
     // Arrived at by a key even where the launch put the cursor there, so the mirror follows.
@@ -183,8 +176,6 @@ fn enter_renames_the_file_and_the_cursor_stays_on_it() {
     );
 }
 
-/// `invalid-names-retain-original/columns-enter`, `rename-moves-into-path/columns-file-as-folder`
-/// and `escape-preserves-name`.
 #[test]
 fn a_refused_name_keeps_the_field_open_with_stratas_message_and_renames_nothing() {
     hosted(
@@ -379,9 +370,6 @@ fn tab_renames_the_folder_and_carries_the_editor_and_the_child_column_on() {
     );
 }
 
-/// `tab-renames-past-open-folder/columns-unmirrored`: with mirroring off the folder's column
-/// is opened by a click, which leaves it the keyboard and no cursor, and Left goes back to
-/// the folder. The open column then follows its folder's rename.
 #[test]
 fn an_open_column_follows_its_folders_rename_when_nothing_mirrors() {
     hosted_after(
@@ -433,8 +421,6 @@ fn an_open_column_follows_its_folders_rename_when_nothing_mirrors() {
     );
 }
 
-/// What `ItemRelocated` is for: the renamed entry has another id, and a range that held it
-/// keeps its anchor, so the next Shift key goes on from it.
 #[test]
 fn a_rename_inside_a_range_keeps_the_range_and_its_anchor() {
     hosted(
@@ -471,8 +457,6 @@ fn a_rename_inside_a_range_keeps_the_range_and_its_anchor() {
     );
 }
 
-/// `window-accelerators-leave-rename/columns-f5`: a key the field passes on is no shortcut
-/// while the field has the keyboard.
 #[test]
 fn the_windows_keys_wait_while_the_field_has_the_keyboard() {
     hosted(
@@ -506,13 +490,6 @@ fn the_windows_keys_wait_while_the_field_has_the_keyboard() {
     );
 }
 
-/// A name half typed survives the folder being read again under it: a change on disk that the
-/// folder's monitor reports, and then a re-list of the whole column by
-/// `Browser::refresh_operation_columns` (`refresh_preserving`, the path the background
-/// revalidation's `refresh_keeping_listing` takes too). The field keeps its text, its caret
-/// and the keyboard, and the entry it edits stays under it. GTK holds the browser's re-lists
-/// while an edit is open (`set_freshness_hold` in `src/ui/browser/view_setup.rs`), since its
-/// re-list rebinds the rows an edit leases.
 #[test]
 fn a_name_half_typed_survives_the_folder_being_read_again() {
     hosted(

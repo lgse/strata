@@ -25,8 +25,6 @@ fn main() {
     }
 }
 
-/// Reads requests from stdin on a thread of its own. Each one goes to `send`, then `wake` runs
-/// so the backend's loop notices. End of input sends a [`Command::Quit`].
 fn read_stdin(send: impl Fn(Request) + Send + 'static, wake: impl Fn() + Send + 'static) {
     std::thread::spawn(move || {
         for line in std::io::stdin().lock().lines() {

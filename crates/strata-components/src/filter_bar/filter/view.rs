@@ -13,17 +13,9 @@ use super::target::Results;
 use crate::collection::selection::Position;
 use crate::filter_bar::field::{self, Handlers, Spec};
 
-/// The bar's words, in the interface language: the host's, since they name its key map and
-/// count its items.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FilterLabels {
-    /// The field's accessible name, after the pane's filter toggle: "Filter list (Ctrl+F)" in
-    /// List, "Filter icons (Ctrl+F)" in Icons, "Filter this pane (Ctrl+F)" in Columns.
     pub field: String,
-    /// The placeholder, with the folder's item count: "Filter 12 items…". The plural is the
-    /// host's.
     pub placeholder: String,
 }
 
@@ -40,22 +32,6 @@ type ResultsFn<S> = for<'a> fn(&'a S) -> Results<'a>;
 type IntentFn<S> = Rc<dyn Fn(&mut S, FilterIntent, &mut Tx)>;
 type PreviewsFn<S> = Rc<dyn Fn(&S) -> bool>;
 
-/// Builds the filter bar over the [`FilterState`] `get` and `get_mut` reach:
-///
-/// ```ignore
-/// let bar = FilterBar::new("pane-filter", |s: &App| &s.filter, |s: &mut App| &mut s.filter)
-///     .labels(s.filter_labels())
-///     .results(|s: &App| Results { source: &s.shown, selection: &s.coll.selection })
-///     .previews(|s: &App| s.selected_result_is_a_file())
-///     .on_intent(|s: &mut App, intent, tx| s.filtered(intent, tx));
-/// // The view: the bar right before the results' focus stop, so Down's Tab lands there.
-/// col().children(bar.build(s, &s.look)).child(results)
-/// // The results' rows: Collection::marks, with
-/// //     marks.enter_target = s.filter.outlined(results(s)) == Some(id);
-/// // Each poll: s.filter.tick(), then route its intents.
-/// ```
-///
-/// Used by: hosts (Strata's panes), C2, C3, C4.
 pub struct FilterBar<S> {
     key: String,
     get: fn(&S) -> &FilterState,
@@ -110,17 +86,11 @@ impl<S: 'static> FilterBar<S> {
         self
     }
 
-    /// The results under the filter and their selection: Enter's target and Down's landing
-    /// come from them, and the listing's selection is saved from them when a query starts.
-    /// Without it Enter and Down do nothing.
     pub fn results(mut self, f: ResultsFn<S>) -> Self {
         self.results = Some(f);
         self
     }
 
-    /// Whether Space in the field previews: true when a selected result is a file (Strata's
-    /// rule). Space previews only with something selected; with only the outline showing, or
-    /// with Shift, it types a space. Without it Space always types.
     pub fn previews(mut self, f: impl Fn(&S) -> bool + 'static) -> Self {
         self.previews = Some(Rc::new(f));
         self
@@ -132,20 +102,11 @@ impl<S: 'static> FilterBar<S> {
         self
     }
 
-    /// Whether Down in the field moves the keyboard to the results after
-    /// [`FilterIntent::FocusResults`]: to [`FilterBar::focus_return`]'s element when set
-    /// (`Tx::focus_when_shown`, which takes it or its first focusable element once shown), else by
-    /// a Tab sent to the field, so the next focus stop takes it. On by default. Off, the keyboard
-    /// stays in the field, and the host may move it from the intent itself.
     pub fn tab_to_results(mut self, on: bool) -> Self {
         self.tab_to_results = on;
         self
     }
 
-    /// The results' focus stop (the listing's pane, or its cursor row): where Down sends the
-    /// keyboard, and where it goes when the bar closes with it (Escape in the field), through
-    /// the bar's `El::focus_return`, which covers every way the bar can go. Without it, Down
-    /// sends a Tab and closing falls back to the next surviving control in the bar's container.
     pub fn focus_return(mut self, key: impl Into<String>) -> Self {
         self.focus_return = Some(key.into());
         self
@@ -209,10 +170,6 @@ impl<S: 'static> FilterBar<S> {
     }
 }
 
-/// The status line a pane shows over results it has none of, or while they are still coming:
-/// "No matching files", "Searching…", or the partial-search reason, all the host's words.
-/// Centred in the space it is given (C1e's `Collection::empty`), and a polite live region, so
-/// assistive technology says each new status.
 pub fn status(look: &Look, key: impl Into<String>, words: impl Into<String>) -> El {
     let words = words.into();
     row()
@@ -262,8 +219,6 @@ fn plain(m: Mods) -> bool {
 
 /// A key in the field, before the editor sees it. True takes it.
 fn key<S: 'static>(bar: &FilterBar<S>, s: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    // Rune gives Enter and Escape to a composition first; every other key an input method is
-    // using stays the editor's.
     if (bar.get)(s).edit.is_composing() {
         return false;
     }
@@ -308,8 +263,6 @@ fn key<S: 'static>(bar: &FilterBar<S>, s: &mut S, ev: &KeyEvent, tx: &mut Tx) ->
             if let (true, Some(to)) = (bar.tab_to_results, &bar.focus_return) {
                 tx.focus_when_shown(to.clone(), true);
             } else if bar.tab_to_results {
-                // Probe P1: while the field stays mounted and no `focus_return` names the
-                // results, a Tab sent from the field moves the keyboard to the next stop.
                 tx.send_key(KeyEvent {
                     key: Key::Tab,
                     mods: Mods::default(),
@@ -331,8 +284,6 @@ fn key<S: 'static>(bar: &FilterBar<S>, s: &mut S, ev: &KeyEvent, tx: &mut Tx) ->
     }
 }
 
-/// The listing's selection, for [`FilterState::open_with`]: the position the bar's own
-/// handlers save. A host that has the results at hand passes `Selection::position` itself.
 pub fn position_of(r: Results<'_>) -> Position {
     r.selection.position(r.source)
 }

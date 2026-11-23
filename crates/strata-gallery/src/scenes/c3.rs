@@ -1,31 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C3 IconsGrid: its scenes, demo state, view and key and poll hooks. Scene
-//! names start with `c3-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-3-views/C3-icons-grid.md`.
-//!
-//! The page is a stand-in Icons pane over five fake folders: Pictures (40 entries: folders,
-//! images and videos with thumbnails, audio, documents and two long names), Short (10, a short
-//! last row), Long names, Archive (100,000) and Empty. A fake worker renders thumbnails and a
-//! fake metadata worker streams the details line in, both on the virtual clock. The header
-//! shows what the host heard: the size notice (`c3-size`), the last intent (`c3-intent`) and,
-//! once both workers are idle, how many visible tiles are filled (`c3-filled`).
-//!
-//! The page stands in for Strata's policy: it keeps one size (Remember sort and icon size per
-//! folder off), so a reset goes back to the look's default, 64; it describes each entry by its
-//! kind (Strata's `entry_kind_name`); and it sets the tooltip delay to Strata's 900 ms for the
-//! whole window, as Rune's delay is the window's (`Cx::help_look`). C24's autoscroll runs on
-//! the grid from its background (no tile, or a tile's blank space; the shield mounts last on
-//! the page), and `c3-bar` shows the grid's scroll bar.
-//!
-//! | Key | Does |
-//! | --- | --- |
-//! | Ctrl+Alt+plus, Ctrl+Alt+=, Ctrl+Alt+minus, Ctrl+Alt+0 | The size keys, from anywhere on the page |
-//! | Ctrl+T | 10xer mode on or off: plain +, = and − then step the size with the grid focused |
-//! | F5 | Refresh |
-//! | Escape | Ends a rename: C5's editor, in the tile's caption, cancels it |
-
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -232,7 +206,6 @@ struct Job {
     request: Request,
 }
 
-/// C3's demo state, held in `Gallery::c3`.
 pub struct Demo {
     pub folder: Folder,
     pub listing: ListSource,
@@ -263,11 +236,9 @@ pub struct Demo {
     pub thumbs_on: bool,
     /// The details line shows.
     pub with_details: bool,
-    /// The rename editor (C5's own), in the caption of the tile it renames.
     pub rename: RenameState,
     /// The host's marks on tiles (cut, dragging, the filter's Enter target).
     pub marks: HashMap<EntryId, RowMarks>,
-    /// The window's autoscroll (C24).
     pub auto: Autoscroll,
 }
 
@@ -317,8 +288,6 @@ impl Demo {
     }
 }
 
-/// C1b's pointer intent behind C24's autoscroll (a tile's blank space is background), C3's
-/// size keys over C1c's, and C1d's marquee.
 fn install(controllers: &mut Controllers, auto: &Autoscroll, grid: &IconsGridState) {
     controllers.pointer = Some(Box::new(
         AutoscrollPointer::new(
@@ -354,7 +323,6 @@ impl Demo {
             .unwrap_or_default()
     }
 
-    /// Opens C5's editor on `id`, the stem selected and the keyboard in it, as Strata opens it.
     pub fn begin_rename(&mut self, id: EntryId) {
         let Some(index) = self.listing.index_of(id) else {
             return;
@@ -525,7 +493,6 @@ fn picture(w: u32, h: u32, seed: u64) -> Vec<u8> {
     out
 }
 
-/// The fallback look with Strata's defaults but for what `f` sets (K2's parameters).
 fn params(
     dark: bool,
     f: impl FnOnce(&mut strata_kit::shape::LookParams),
@@ -569,8 +536,6 @@ fn selection(g: &mut Gallery, dark: bool) {
     d.coll.note_selection(&d.listing);
 }
 
-/// A tile renaming, as F2 and a slow second click rename: the selected cursor entry, with C5's
-/// editor in its caption, the stem selected and the keyboard in the field.
 fn renaming(g: &mut Gallery, dark: bool) {
     let d = open(g, dark, Folder::Pictures);
     let _ = d.coll.selection.select_only(&d.listing, 8);
@@ -700,9 +665,6 @@ pub const SCENES: &[Scene] = &[
     ("c3-bar-dark", |g| bar(g, true)),
 ];
 
-/// Scenes for review with `--scene` only, kept out of the goldens: a size between two steps
-/// (100 px), 10xer mode and a compact grid wider than the window, for the size and column
-/// scripts, and a listing with groups the grid ignores.
 pub const REVIEW: &[Scene] = &[
     ("c3-size-100-light", |g| size_100(g, false)),
     ("c3-size-100-dark", |g| size_100(g, true)),

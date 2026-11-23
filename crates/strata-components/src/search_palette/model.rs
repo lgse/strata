@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! The results model: which generation is current, what shows, what is highlighted, and the
-//! state that follows. A port of Strata's `render_results` and `restore_selection`
-//! (`src/ui/search/results.rs`), without the search, which is the host's. It knows no Rune.
-
 use super::data::{Answer, PaletteItem, PaletteQuery};
 use super::mode::PaletteMode;
 
-/// What the palette's body shows.
-///
-/// Used by: hosts (to read the state), tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Phase {
     /// An empty query in a mode that lists nothing for it: the mode's idle text.
@@ -22,8 +15,6 @@ pub enum Phase {
     NoResults(String),
     /// The host failed this query ([`super::PaletteState::fail`]).
     Error(String),
-    /// Nothing can be searched while the palette stays open
-    /// ([`super::PaletteState::unavailable`]): the field takes no text.
     Unavailable(String),
 }
 
@@ -41,19 +32,13 @@ impl Phase {
     }
 }
 
-/// How the list scrolls when an answer lands: Strata's `restore_scroll`, keyed on whether the
-/// user has moved the highlight in this query (its `navigation_started`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Follow {
     /// Nothing to do: no list was showing, or nothing moved.
     Stay,
     /// A new query: back to the top, where its highlighted first result is.
     Top,
-    /// The same query, the highlight untouched: keep the list's pixel offset, so results a
-    /// batch puts above the rows in view show. Rows keyed by place keep it with no request.
     Keep,
-    /// The same query, after the user moved the highlight: keep the highlighted row, at this
-    /// index now, in view.
     Reveal(usize),
 }
 
@@ -70,22 +55,16 @@ pub(crate) struct Model {
     /// The (trimmed) text the shown results answer.
     shown_text: Option<String>,
     highlighted: Option<usize>,
-    /// The user moved the highlight since the query last changed (Strata's
-    /// `navigation_started`).
     navigated: bool,
     partial: Option<String>,
     error: Option<String>,
     unavailable: Option<String>,
     /// A non-empty query has been asked since the palette opened: idle text says so.
     typed: bool,
-    /// The count assistive technology hears, set at a query's first results and when it is
-    /// done, not on every batch.
     announced: Option<usize>,
 }
 
 impl Model {
-    /// Forgets everything: the palette opened or closed. The generation keeps counting, so
-    /// an answer for the last open lands nowhere.
     pub fn reset(&mut self) {
         *self = Self {
             generation: self.generation.wrapping_add(1),
@@ -126,8 +105,6 @@ impl Model {
         mode.idle.is_some() && text.trim().is_empty()
     }
 
-    /// Asks for `text`. The shown results stay until its answer lands (Strata), except that an
-    /// empty query in a mode that lists nothing for it clears them at once.
     pub fn request(&mut self, text: &str, mode: &PaletteMode) -> PaletteQuery {
         self.generation = self.generation.wrapping_add(1);
         text.clone_into(&mut self.asked);
@@ -156,8 +133,6 @@ impl Model {
         self.partial = None;
     }
 
-    /// An answer landed, and how the list should scroll for it. One for another generation,
-    /// or while nothing can be searched, is dropped (`None`).
     pub fn arrive(&mut self, answer: Answer, mode: &PaletteMode) -> Option<Follow> {
         if answer.generation != self.generation || self.unavailable.is_some() {
             return None;
@@ -166,8 +141,6 @@ impl Model {
         self.done = answer.done;
         self.error = None;
         if Self::idle(&self.asked, mode) {
-            // Strata renders no results for an empty search query; the answer only ends the
-            // spinner.
             return Some(Follow::Stay);
         }
         let had_list = !self.shown.is_empty();
@@ -179,8 +152,6 @@ impl Model {
         } else if query_changed {
             Some(0)
         } else {
-            // The same query again: the highlight stays on its result by id, else at its
-            // place (clamped), else on the first.
             let by_id = self
                 .highlighted()
                 .and_then(|i| self.shown.get(i))
@@ -235,9 +206,6 @@ impl Model {
         self.unavailable = Some(message);
     }
 
-    /// Up (`-1`) or Down (`+1`): moves the highlight, stopping at the ends (Strata's
-    /// `move_selection`). With nothing highlighted it lands on the first. False when there is
-    /// nothing to move through.
     pub fn step(&mut self, delta: i32) -> bool {
         let n = self.shown.len();
         if n == 0 {

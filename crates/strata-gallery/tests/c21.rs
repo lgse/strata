@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C21's page in process: what scripts can't reach. The scripts in `tests/scripts/c21/`
-//! check the rest. Each test names the bullets it covers.
-
 mod c21 {
     use rune::{ElementInfo, Env, Key, KeyEvent, Mods, Runtime};
     use strata_gallery::{Gallery, scenes};
@@ -76,9 +73,6 @@ mod c21 {
         }
     }
 
-    // browser/context-menu: "A keyboard-opened item menu anchors to the entry, not the
-    // pointer". The cursor's entry scrolled out of view is revealed first, and the menu opens
-    // at it (where, the unit tests and the keyboard-anchor goldens show).
     #[test]
     fn the_menu_key_reveals_a_cursor_scrolled_out_of_view() {
         let mut rt = mount("c21-start-light");
@@ -112,10 +106,6 @@ mod c21 {
         );
     }
 
-    // browser/context-menu: "A menu opens with keyboard focus on its first visible action".
-    // After a right-click the first action has the keyboard but shows no highlight until a key
-    // asks for it, as NSMenu (rune-kit's model): the first Down shows it there, the next moves.
-    // Enter at once runs it.
     #[test]
     fn a_right_click_menu_has_the_keyboard_on_its_first_action() {
         let mut rt = mount("c21-nothing-light");
@@ -135,7 +125,6 @@ mod c21 {
         assert_eq!(focused(&rt).as_deref(), Some("c21-menu-item4"));
     }
 
-    /// F2 on Notes.md, then a right-click on C5's field: its field menu is open.
     fn rename_menu_open() -> Runtime<Gallery> {
         let mut rt = mount("c21-start-light");
         tab_into_the_list(&mut rt);
@@ -151,9 +140,6 @@ mod c21 {
         rt
     }
 
-    // C5's editor sends `RenameIntent::FieldMenu`; the host opens C21's field menu and calls
-    // `menu_opened`, so the field losing the keyboard to the menu doesn't end the edit, and
-    // `menu_closed` from the menu's `on_close`.
     #[test]
     fn c5s_field_menu_holds_the_edit_open_and_gives_the_keyboard_back() {
         let mut rt = rename_menu_open();
@@ -172,9 +158,6 @@ mod c21 {
         assert_eq!(status(&rt), "The rename's field menu closed");
     }
 
-    // B1 with C5: the entry deleted while its field menu is open ends the edit, and the
-    // page's poll (`FieldMenu::check`) closes the menu and tells `menu_closed`, so it can't
-    // come back over the next rename.
     #[test]
     fn an_entry_deleted_under_its_rename_field_menu_closes_the_menu() {
         use strata_components::collection::selection::{CursorGone, SyncRule};
@@ -203,8 +186,6 @@ mod c21 {
         assert!(element(&rt, "c21-field-menu-menu").is_none());
     }
 
-    // browser/context-menu: "Right-clicking an entry anywhere in a long, scrolled list shows
-    // its menu at the click." The script `scrolled-list` checks the target; this, the point.
     #[test]
     fn a_right_click_in_a_scrolled_list_opens_the_menu_at_the_click() {
         let mut rt = mount("c21-start-light");
@@ -219,9 +200,6 @@ mod c21 {
         assert_eq!((at.x, at.y), (px, py));
     }
 
-    // browser/context-menu: "In a small window, right-clicking an entry near the bottom edge
-    // opens the menu at the click." Where it draws (flipped above, slid left) is the
-    // `c21-edge` golden's.
     #[test]
     fn a_right_click_near_the_bottom_right_corner_opens_the_menu_at_the_click() {
         let mut rt = mount("c21-start-light");
@@ -237,9 +215,6 @@ mod c21 {
         );
     }
 
-    // browser/context-menu: "Screen readers get each row's label as its name and its shortcut
-    // as its description." The shortcut is the item's keyboard-shortcut property (the golden
-    // trees leave shortcuts out, as each platform spells them its way).
     #[test]
     fn a_rows_shortcut_is_its_keyboard_shortcut_property() {
         let rt = mount("c21-item-light");

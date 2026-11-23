@@ -1,28 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The context menus: which rows a target gets, in Strata's words, what a chosen row does,
-//! and the one way a view opens one ([`open`]). strata-components' C21 draws them and holds
-//! no policy.
-//!
-//! Ported from the GTK views: the rows and their order from `item_options.rs` and
-//! `folder_menu.rs` under `src/ui/browser/context_menu/`, their visibility from
-//! `ItemMenuOptions::refresh` in `item_menu.rs`, and their hints from `default_hint` in
-//! `src/ui/shortcut_reference.rs`: the catalog's keys, read through the window's keymap
-//! (`commands::Live`), so a saved keymap changes them as it changes the keys. A fix there has
-//! to be carried here until the GTK views are deleted. The port covers what this interface opens, a local folder. Left out, with
-//! what brings each back:
-//!
-//! - the Trash and Recent variants (Restore, Remove from Recent, the delete rows' other
-//!   forms), the search result's "Open file location", and an administrator location's
-//!   rules: the sidebar and the location bar, which reach those places;
-//! - "Send to…", custom actions and file-provider rows: devices, the custom-action catalog
-//!   and the providers;
-//! - the 10xer hints.
-//!
-//! A row runs the command registered under the row's id ([`crate::commands`]). A row whose
-//! command belongs to a part this interface does not have yet is shown as the GTK menu shows
-//! it at rest and does nothing: `commands::has` is false for its id.
-
 use std::rc::Rc;
 
 use rune::{El, Tx};
@@ -64,17 +41,12 @@ struct Opening {
     name: String,
     target: MenuTarget,
     model: MenuModel,
-    /// Where the custom actions go; none in a chooser's menus, as in GTK's.
     custom_slot: Option<usize>,
     provider_slot: usize,
     provider_paths: Option<Vec<std::path::PathBuf>>,
     background: bool,
 }
 
-/// Entry `id` in column `depth` of the shown view, and what a menu opened on it acts on: the
-/// selection when the entry is in it, else the entry alone (`context_entries` in
-/// `src/ui/browser/context_menu.rs`). A filter's result and the results selected come first,
-/// as GTK asks `selected_search_results` before the browser.
 pub(crate) fn context_entries(
     app: &App,
     depth: usize,
@@ -105,8 +77,6 @@ pub(crate) fn context_entries(
     Some((entry, entries))
 }
 
-/// Whether column `depth` lists a real folder where `New Folder`, `New File`, and `New Folder
-/// with Selection` apply (`can_create_in_pane` in `src/ui/browser/context_menu/item_menu.rs`).
 fn can_create_in_pane(app: &App, depth: usize, id: EntryId) -> bool {
     if crate::filter::targets::at(app, depth, id).is_some() {
         return false;
@@ -168,8 +138,6 @@ fn chooser_folder_menu(app: &App, depth: usize) -> Option<Opening> {
     })
 }
 
-/// The menu of entry `id` in column `depth` of the shown view, or of the selection it is
-/// part of.
 fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
     if app.browser.is_chooser_mode() {
         return chooser_entry_menu(app, depth, id);
@@ -208,13 +176,10 @@ fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
     })
 }
 
-/// The menu of column `depth`'s folder: a press on its empty space or its header, or the
-/// Menu key with no selected cursor.
 fn folder_menu(app: &App, depth: usize) -> Option<Opening> {
     if app.browser.is_chooser_mode() {
         return chooser_folder_menu(app, depth);
     }
-    // The name the pane has: `src/ui/browser/columns/append.rs`.
     let location = app.browser.location_at(depth)?;
     let name = location.display_name();
     let counts = app.browser.column_entry_counts(depth);
@@ -247,12 +212,6 @@ pub(crate) struct Request {
     pub(crate) anchor: Rect,
 }
 
-/// Opens the context menu of a row of the shown view, or of a column's folder. A view's
-/// handler calls it for the collection's `Intent::ContextMenu`, and for whatever else of its
-/// own opens a folder's menu.
-///
-/// A press with any button outside the field commits an open rename in the GTK view. The
-/// press that opens a menu leaves Rune's field the keyboard, so the edit is ended here.
 pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
     let Request {
         depth,
@@ -265,11 +224,6 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
     if app.browser.location_at(depth).is_some() && app.browser.active_depth() != Some(depth) {
         app.browser.set_active_column(depth);
     }
-    // `focus_context_entry` / `focus_context_column` (`src/ui/browser/context_menu/focus.rs`):
-    // give the shown view the keyboard before the menu mounts so dismissing the menu — or a
-    // dialog opened from it — restores focus to the menu's column rather than leaving it in
-    // the sidebar or header, except on a folder/background menu while `depth` shows filter
-    // results, where a focused filter field keeps focus across dismissal.
     let search_active = entry.is_none()
         && crate::filter::targets::selected_with_depth(app)
             .is_some_and(|(_, showing)| showing == depth);
@@ -306,9 +260,6 @@ fn fill_custom_slot(app: &mut App, opening: &mut Opening, depth: usize, entry: O
     }
 }
 
-/// Monotonic identity of the active preview text viewer when a preview context menu opens, so
-/// stale callbacks after an async preview switch, reload, or close never mutate a different file
-/// or arm focus on a closed drawer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TextViewerStamp {
     Code(u64),
@@ -316,9 +267,6 @@ pub(crate) enum TextViewerStamp {
     Pdf(u64),
 }
 
-/// Snapshot of a preview text selection so opening the modal context menu (which causes Rune's
-/// `prune_text_selection` to clear selections behind the modal) still copies accurately and
-/// restores the visual selection when the menu closes.
 #[derive(Clone, Debug)]
 pub(crate) enum SavedPreviewSelection {
     All,
@@ -326,8 +274,6 @@ pub(crate) enum SavedPreviewSelection {
     CodeRange(usize, usize),
 }
 
-/// Marker target for a read-only preview text viewer's context menu (`CodeView`, `DocumentView`,
-/// `PdfView`).
 #[derive(Clone, Debug)]
 struct PreviewTextTarget {
     stamp: TextViewerStamp,
@@ -372,8 +318,6 @@ pub(crate) fn open_preview_text(app: &mut App, request: PreviewTextRequest, tx: 
         request.anchor,
         model,
     );
-    // Focus the non-modal menu without `keyboard = true` so Rune keeps the underlying text
-    // selection highlighted while still letting Escape/arrows/Enter reach the menu.
     tx.focus("menu-menu", false);
 }
 
@@ -398,10 +342,6 @@ pub(crate) fn is_preview_text_menu(app: &App) -> bool {
     )
 }
 
-/// A row of the open menu was chosen. The menu has closed, and the keyboard is back in the
-/// view. The row runs the command registered under its id (`commands::run`), on the row's
-/// entry or on the column's folder: what the command does is decided once, where a key and
-/// a button ask for it too. A row no part has a command for does nothing.
 fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     let MenuIntent::Activate { target, action } = intent;
     if let MenuTarget::Other(other) = &target
@@ -436,9 +376,6 @@ fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     commands::run(app, &action, on, tx);
 }
 
-/// Matches GTK's root context-menu width floor (`style_menu_scroll` in
-/// `src/ui/browser/context_menu/actions/presentation.rs`): keeps entry and folder menus at a
-/// consistent width across targets and async lookups.
 const MENU_MIN_WIDTH: f32 = 310.0;
 
 fn min_width(look: &strata_kit::look::Look) -> f32 {
@@ -534,10 +471,7 @@ impl Menu {
 /// Which map's hints a menu shows, as the keymap in force when it opens says.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Hints {
-    /// "Type to search" takes plain keys, so a row hides a hint that is one
-    /// (`type_to_search_active` in `src/ui/preferences/input_settings.rs`).
     typing: bool,
-    /// 10xer mode's hints (`tenxer_hint` in `src/ui/shortcut_reference.rs`).
     tenxer: bool,
 }
 
@@ -576,18 +510,12 @@ enum TenxerHint {
     Hidden,
 }
 
-/// One row of a menu: its id, its label in the catalogs, its leading icon, and the catalog's
-/// keys its hint shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Row {
     pub(crate) id: &'static str,
     pub(crate) label: &'static str,
     pub(crate) icon: IconName,
-    /// What `default_hint` shows for the row, labelled from the keymap in force when the menu
-    /// opens.
     hint: Option<Shown>,
-    /// A command whose shipped keys may all type: "Type to search" then takes them, and the
-    /// hint is hidden while it is on (`typed_only` in `default_hint`).
     typed: Option<Command>,
     tenxer: TenxerHint,
 }
@@ -635,8 +563,6 @@ impl Row {
         self
     }
 
-    /// The keys the row hints with `hints`: 10xer's, or the default map's unless "Type to
-    /// search" takes them.
     fn hinted(&self, hints: Hints) -> Option<Shown> {
         if !hints.tenxer {
             let taken = hints.typing && self.typed.is_some_and(types);
@@ -649,8 +575,6 @@ impl Row {
         }
     }
 
-    /// The row's hint as the window's keymap labels it: none when it has none, when "Type to
-    /// search" takes its keys, or when nothing binds them.
     fn hint_label(&self, typing: Hints) -> Option<String> {
         let shown = self.hinted(typing)?;
         let label = keys::label(&Keys::One(shown));
@@ -733,8 +657,6 @@ pub(crate) const SHOW_HIDDEN: Row = row("hidden", "Show Hidden Files", IconName:
 pub(crate) const HIDE_HIDDEN: Row =
     row("hidden", "Hide Hidden Files", IconName::Eye).hint(key::HIDDEN_FILES.alternate(0).shown());
 
-/// Every row either menu can show, for the tests of their words and of which have a
-/// command. The two hidden-files rows share an id, as the two Properties rows do.
 #[cfg(test)]
 const ROWS: &[Row] = &[
     NEW_FOLDER,
@@ -778,8 +700,6 @@ const ROWS: &[Row] = &[
 pub(crate) struct EntryTarget<'a> {
     /// The entry under the pointer.
     pub(crate) entry: &'a FileEntry,
-    /// What the menu acts on: the selection when the entry is in it, else the entry alone
-    /// (`context_entries` in `src/ui/browser/context_menu.rs`).
     pub(crate) entries: &'a [FileEntry],
     /// Whether plain creation and grouping apply in the pane (`can_create_in_pane`).
     pub(crate) can_create: bool,
@@ -790,7 +710,6 @@ pub(crate) struct EntryTarget<'a> {
     pub(crate) typing: Hints,
 }
 
-/// `compact_native_path` in `src/ui/browser/paths.rs`: the home folder as `~`.
 fn compact_path(location: &Location) -> String {
     let Some(path) = location.native_path() else {
         return location.display_path();
@@ -805,8 +724,6 @@ fn compact_path(location: &Location) -> String {
     }
 }
 
-/// `selected_items_summary` in `src/ui/browser/context_menu.rs`: the first three names,
-/// cut at thirty characters.
 fn summary(entries: &[FileEntry]) -> String {
     const MAX_CHARS: usize = 30;
     let first: Vec<&str> = entries
@@ -840,8 +757,6 @@ fn open_in(typing: Hints) -> Item {
 }
 
 fn delete_rows(target: &EntryTarget<'_>) -> Section {
-    // `move_to_trash_is_visible` and `permanently_delete_is_visible`: shown unless GIO says
-    // the folder supports neither.
     let mut rows = Vec::new();
     if target.can_trash.unwrap_or(true) {
         rows.push(TRASH.item(target.typing));
@@ -865,7 +780,6 @@ fn single(target: &EntryTarget<'_>) -> MenuModel {
         &[
             (OPEN, true),
             (OPEN_WITH, true),
-            // `entry_supports_quick_preview` in `src/ui/preview.rs`, for a local file.
             (PREVIEW, is_file(entry)),
             (RUN, crate::run::runs(entry)),
             (
@@ -913,9 +827,6 @@ fn several(target: &EntryTarget<'_>) -> MenuModel {
         "%{items} selected",
         items = count("items", target.entries.len())
     );
-    // GTK shows Open here only once its open-with lookup finds a default application the
-    // entries share (`prepare_open_with`); this interface has no lookup yet, and shows what
-    // GTK shows when it finds none (finding lgse/strata#2358).
     let mut open = section(&[(OPEN_WITH, true)], typing);
     if target.entries.iter().any(FileEntry::is_directory) {
         open.items.push(open_in(typing));
@@ -968,8 +879,6 @@ pub(crate) struct FolderTarget {
     pub(crate) typing: Hints,
 }
 
-/// A pane's background menu: `FolderMenuOptions`. Paste follows whether the clipboard offers
-/// files and the folder accepts pasted items; Open in Terminal follows `can_open_terminal`.
 pub(crate) fn folder(target: &FolderTarget) -> MenuModel {
     let typing = target.typing;
     let hidden = if target.hidden_shown {

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One row of the code view: its gutter (the line's number, or "↳" for a later part of a
-//! split line) and its text, with the line's colours once they land and find's matches.
-
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -77,8 +74,6 @@ pub(crate) fn gutter_width(lines: usize, style: TextStyle, pad: f32) -> f32 {
     (w + 2.0 * pad).ceil()
 }
 
-/// Line `line`'s colours cut to the row's bytes `row` (relative to the line), relative to the
-/// row.
 pub(crate) fn row_spans(spans: Vec<Span>, row: Range<usize>) -> Vec<Span> {
     let (a, b) = (row.start as u32, row.end as u32);
     spans
@@ -99,8 +94,6 @@ pub(crate) fn build_row<S: 'static>(ctx: &Rc<Ctx<S>>, s: &S, i: usize) -> El {
     let p = &ctx.paint;
     let src = rows.source(i);
     let line_start = rows.line_start(r.line);
-    // Plain until the line's colours land: the same text and font with no spans, so they
-    // land without moving anything.
     let spans = st
         .doc()
         .and_then(|d| d.line_spans(r.line))

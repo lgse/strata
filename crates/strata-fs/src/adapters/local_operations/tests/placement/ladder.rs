@@ -27,8 +27,6 @@ fn fingerprint(path: &Path) -> String {
     }
 }
 
-/// A `source` file placed at `target` in a fresh folder whose mount has
-/// `quirks` installed before the file is written.
 struct DataPlaced {
     root: tempfile::TempDir,
     _scope: FsQuirks,

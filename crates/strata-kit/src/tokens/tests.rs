@@ -49,8 +49,6 @@ fn is_slot(name: &str) -> bool {
         .any(|(_, tokens)| tokens.iter().any(|t| t.name() == name))
 }
 
-/// Setting a core token may move slot tokens, which inherit from it, but never another core
-/// token. Setting a slot token moves nothing else.
 #[test]
 fn setting_one_token_moves_only_what_inherits_from_it() {
     let fresh = Look::fallback(false);

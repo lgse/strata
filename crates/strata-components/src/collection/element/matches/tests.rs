@@ -19,8 +19,6 @@ fn of(pairs: &[Pair]) -> impl Iterator<Item = Range<usize>> + '_ {
     pairs.iter().map(|&(start, end)| start..end)
 }
 
-/// Every match of a short query in a long name, as GTK highlights them all; touching ranges
-/// read back as one, and bytes past the reach are dropped.
 #[test]
 fn new_keeps_every_match_up_to_the_reach() {
     assert!(NameMatches::new(of(&[(3, 3)])).is_empty());
@@ -50,8 +48,6 @@ fn spans_paint_each_range_in_the_accent() {
     assert_eq!(painted, [(0, 2, accent, base), (5, 7, accent, base)]);
 }
 
-/// A caption cut in the middle keeps the matches in its two ends, moved onto the text shown,
-/// and drops the ones the ellipsis replaced.
 #[test]
 fn onto_a_cut_name_keeps_the_ends_matches() {
     let name = "report-draft-final.txt";

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The effects in a headless runtime: a list of keyed rows beside a target, the layer over
-//! both, and a host that removes rows at the events, as Strata will.
-
 mod perf;
 
 use std::cell::Cell;
@@ -46,8 +43,6 @@ struct Host {
     t: f64,
     /// Answer Launched with an instant commit.
     instant: bool,
-    /// Start each poll unprompted (`tx.instant()` before `Effects::tick`), as a real window's
-    /// poll commit lands at once unless a handler calls `tx.animated()`.
     unprompted: bool,
     /// Flights name the list as their rows' viewport.
     rows_in: bool,
@@ -182,8 +177,6 @@ fn apply_event(s: &mut Host, e: Event, tx: &mut rune::Tx) {
         Event::Landed(id) => (id, Owe::ShowAtLanded),
         Event::Done(id) => (id, Owe::RemoveAtDone),
     };
-    // Each event acts only on the rows its own effect is owed, so a skipped one can't
-    // be hidden by a later event clearing them.
     let rows: Vec<u64> = s
         .owed
         .iter()
@@ -251,8 +244,6 @@ fn trash(rt: &mut Runtime<Host>, rows: &[u64]) -> Option<EffectId> {
     out
 }
 
-/// Restores `rows` (listed now, as the host lists them at the restore) and flies their icons
-/// out of the target onto them, keeping them vanished until Landed.
 fn restore(rt: &mut Runtime<Host>, rows: &[u64]) -> Option<EffectId> {
     let mut out = None;
     rt.update(|s, tx| {
@@ -709,9 +700,6 @@ fn a_moved_target_still_takes_the_icons() {
 
 #[test]
 fn an_instant_flip_flies_nothing_at_the_pin() {
-    // At Rune 631e8a67 `Effects::tick` marks a launch commit animated so an unprompted poll
-    // commit still flies, while `tx.instant()` after `tick` turns the matched swap off so the
-    // icon shows at its landing place at once.
     let mut unprompted = Host::new(5);
     unprompted.unprompted = true;
     let mut rt = runtime(unprompted);

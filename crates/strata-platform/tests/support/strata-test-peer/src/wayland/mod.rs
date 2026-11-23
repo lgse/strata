@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The peer on Wayland: one connection, one event queue on the main thread.
-//!
-//! Commands arrive from the stdin thread through a channel. That thread then sends a
-//! `wl_display.sync`, whose reply wakes `blocking_dispatch`, so the loop never polls. Reads and
-//! writes of transferred data run on threads of their own, so the peer can serve its own
-//! selection while it reads it.
-
 mod data;
 mod input;
 
@@ -157,8 +150,6 @@ pub struct St {
     press_serial: Option<u32>,
     /// Every live offer's MIME types, data device and data control alike.
     offer_mimes: HashMap<ObjectId, Vec<String>>,
-    /// The current selection offer for each protocol and selection, and how many times it
-    /// changed.
     current: HashMap<(Via, Selection), OfferRef>,
     generation: HashMap<(Via, Selection), u64>,
     pending_sets: Vec<PendingSet>,
@@ -380,9 +371,6 @@ impl St {
         Ok(())
     }
 
-    /// Asks for an activation token as a launcher does: with the serial of the input that
-    /// triggered the launch, the seat and the peer's focused surface. The reply comes with
-    /// the token's `done` event.
     fn activation_token(&mut self, id: u64) -> Result<(), String> {
         let activation = self
             .activation

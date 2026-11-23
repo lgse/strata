@@ -87,8 +87,6 @@ fn menu_places_top_and_submenu_actions_before_edit_rows_and_keeps_them_while_ope
             open_entry_menu(&mut host, id);
             assert_initial_menu_sections(&host);
 
-            // A second submenu action lands while the menu is open: as on GTK, the open menu
-            // keeps the rows it opened with, and the next menu shows it.
             write_action(
                 "gamma-sub",
                 "schema_version = 1\nid = \"gamma-sub\"\nname = \"Gamma sub\"\nmenu = \"submenu\"\n[when]\n[run]\nruntime = \"command\"\nprogram = \"/bin/true\"\nargs = [\"{paths}\"]\n",
@@ -249,8 +247,6 @@ fn confirmed_action_runs_job_opens_dashboard_and_clears_finished_history() {
     );
 }
 
-/// Clear finished with nothing left closes the list and its button, as GTK hides the button,
-/// and focus goes back to the view.
 fn assert_clear_finished_closes_jobs(host: &mut Offscreen) {
     press_element(host, "jobs-clear");
     assert!(host.app().custom_actions.job_rows.is_empty());

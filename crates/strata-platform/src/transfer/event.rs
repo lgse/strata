@@ -21,8 +21,6 @@ pub enum Selection {
 /// The protocol a selection goes through.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Route {
-    /// `wl_data_device` on winit's display: heard only with keyboard focus, and a write needs
-    /// a recent input serial. Clipboard only.
     DataDevice,
     /// `ext_data_control_v1`, else `zwlr_data_control_v1`: heard and written without focus.
     DataControl,
@@ -40,8 +38,6 @@ impl SourceId {
         SourceId(NEXT.fetch_add(1, Ordering::Relaxed))
     }
 
-    /// The id logged as `n` by [`SourceId::get`]. For strata-platform's own tests, which
-    /// name sources across a process boundary.
     #[doc(hidden)]
     pub fn from_raw(n: u64) -> SourceId {
         SourceId(n)
@@ -105,11 +101,6 @@ impl SelectionOffer {
         self.0.mimes()
     }
 
-    /// Reads one type. `done` runs once: with the data, on a worker (Wayland) or the X11
-    /// thread, so hand the bytes to the app with `AppHandle::update`; or on this thread at once
-    /// when the read can't start (a type the offer doesn't list, an offer that is gone, a call
-    /// off the UI thread on winit's display). It never runs under a lock of the offer's, so it
-    /// may call the offer again. On winit's display, call this on the UI thread.
     pub fn read(
         &self,
         mime: &str,
@@ -135,8 +126,6 @@ impl fmt::Debug for SelectionOffer {
 /// What happened. Every subscriber hears every event.
 #[derive(Clone, Debug)]
 pub enum Event {
-    /// A selection changed hands. `None`: nobody holds it now. It may be this process's own
-    /// source, echoed back ([`Transfer::owns`](super::Transfer::owns) says).
     SelectionChanged {
         selection: Selection,
         route: Route,
@@ -178,9 +167,6 @@ pub enum Event {
 
 type Notify = Arc<dyn Fn() + Send + Sync>;
 
-/// The substrate's side of a subscription: the inbox weakly, so a dropped [`Subscription`]
-/// is forgotten at the next event and hears no more. A notify an emit on another thread had
-/// already taken when the subscription dropped may still run once.
 struct Subscriber {
     inbox: Weak<Mutex<VecDeque<Event>>>,
     notify: Notify,

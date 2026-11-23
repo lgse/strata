@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Preview session state transitions: Space toggle, Appearance panel toggle, 75 ms focus
-//! debounce, empty-selection placeholders, and child-column lending in Columns.
-//!
-//! Mirrors GTK's `src/ui/preview/session.rs` and `src/ui/preview/lifecycle.rs`.
-
 use std::time::Duration;
 
 use rune::Tx;
@@ -164,8 +159,6 @@ pub(super) fn show_after_focus_change(
         show(app, entry, depth, tx);
         return;
     }
-    // Keep the displayed target during the 75 ms focus debounce so split sizing does not treat
-    // rapid cursor navigation as a closed drawer.
     app.preview.loader.cancel();
     let later = app.preview.loader.later.clone();
     let slot = app.preview.focus_timer.clone();
@@ -182,14 +175,10 @@ pub(super) fn show_after_focus_change(
     app.preview.focus_timer.replace(Some(source));
 }
 
-/// Mirroring also raises focus for the child beyond the active depth. A folder a click is
-/// opening becomes the focused column, so lending to it, or to its column, would only flicker
-/// (`lend_slot_to_child` and `pointer_opens` in `src/ui/preview/lifecycle.rs`).
 pub(super) fn lend_slot_to_child(app: &mut App, depth: usize, entry: Option<&FileEntry>) {
     let active = app.browser.active_depth();
     let opening = click_opens(app, depth, entry);
     if !opening {
-        // Any other focus ends the click's hold, as GTK's ends with its navigation.
         app.preview.click_opening = None;
     }
     app.preview.child_pane = browsing_columns(app)
@@ -197,8 +186,6 @@ pub(super) fn lend_slot_to_child(app: &mut App, depth: usize, entry: Option<&Fil
         && (entry.is_some_and(FileEntry::is_directory) || active.is_some_and(|a| depth > a));
 }
 
-/// Whether the focus at `depth` on `entry` is on the folder a click is opening in its column,
-/// or in the column that folder opens.
 fn click_opens(app: &App, depth: usize, entry: Option<&FileEntry>) -> bool {
     let Some(opening) = app.preview.click_opening.as_ref() else {
         return false;
@@ -222,8 +209,6 @@ pub(super) fn click_opened(app: &mut App, depth: usize) {
     }
 }
 
-/// The view shown changed with no file previewed. A view switch lends no slot it did not
-/// (`view_mode_changed` in `src/ui/preview/layout.rs`); another tab's folder may want it lent.
 pub(super) fn show_empty_slot_after_switch(app: &mut App, tab_shown: bool, tx: &mut Tx) {
     let (_, entry) = selected_entry(app);
     let lend = browsing_columns(app) && entry.as_ref().is_some_and(FileEntry::is_directory);

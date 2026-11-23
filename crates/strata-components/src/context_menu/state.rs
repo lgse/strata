@@ -21,8 +21,6 @@ pub(super) fn menu_bar() -> Bar {
 /// What a menu is for. Which actions apply to it is the host's policy.
 #[derive(Clone)]
 pub enum MenuTarget {
-    /// An entry: the one right-clicked, or the keyboard cursor. A multi-selection's menu is
-    /// this entry's too; the host reads the selection.
     Entry(EntryId),
     /// The pane's background: a press on empty space, or the Menu key with nothing selected.
     Background,
@@ -74,8 +72,6 @@ pub enum MenuIntent {
     },
 }
 
-/// The context menu's state, held by the host and reached through an accessor. One menu is
-/// open at a time.
 #[derive(Clone, Debug, Default)]
 pub struct ContextMenuState {
     open: Option<Open>,
@@ -95,16 +91,11 @@ struct Open {
     model: MenuModel,
     /// The open submenus: the item index (as [`MenuModel::item_at`] counts) at each level.
     submenu: Vec<usize>,
-    /// The top-level width captured on the first render of this open menu so async
-    /// [`ContextMenuState::update_model`] refreshes never snap its width.
     locked_width: Cell<Option<LockedWidth>>,
-    /// One C24 scroll bar per open surface depth (0 = top-level menu, 1.. = open submenus).
     scroll_bars: RefCell<Vec<Bar>>,
 }
 
 impl Open {
-    /// Releases and drops every submenu scroll bar deeper than `keep_submenus` (depth 0 is the
-    /// top-level menu bar, so `keep_submenus + 1` entries stay).
     fn drain_bars_past(&self, keep_submenus: usize) {
         let mut bars = self.scroll_bars.borrow_mut();
         let keep = (keep_submenus + 1).min(bars.len());
@@ -120,8 +111,6 @@ impl ContextMenuState {
         Self::default()
     }
 
-    /// Opens `model` for `target` at window point `at` (where a secondary press landed, or
-    /// the keyboard anchor), closing any menu that was open.
     pub fn open(&mut self, target: MenuTarget, at: Point, model: MenuModel) {
         if let Some(prev) = self.open.take() {
             for bar in prev.scroll_bars.borrow().iter() {
@@ -138,14 +127,6 @@ impl ContextMenuState {
         });
     }
 
-    /// Replaces the open menu's model, as when a lookup finishes (Open With…). Open
-    /// submenus stay open while the new model still has a submenu at their place.
-    ///
-    /// Rows are keyed by their place in the menu (rune-kit's, counting the header, labels and
-    /// separators), and the keyboard follows the key. Replacing a row in place keeps the
-    /// keyboard on its action; adding or removing an entry above the focused row hands the
-    /// keyboard to another action, or to the first row when its key is now a separator or a
-    /// label. So reserve a row that a lookup will fill (insensitive) rather than add it then.
     pub fn update_model(&mut self, model: MenuModel) {
         if let Some(open) = &mut self.open {
             let keep = (1..=open.submenu.len())
@@ -195,8 +176,6 @@ impl ContextMenuState {
         self.open.as_ref().map_or(&[], |o| &o.submenu)
     }
 
-    /// Opens the submenu at `path`, as a pointer does, closing any other: a path that names
-    /// no submenu changes nothing. True when it changed.
     pub fn open_submenu(&mut self, path: &[usize]) -> bool {
         let Some(open) = &mut self.open else {
             return false;
@@ -215,8 +194,6 @@ impl ContextMenuState {
         true
     }
 
-    /// Closes the submenus `depth` levels in and deeper: 0 closes them all. True when one
-    /// closed.
     pub fn close_submenu(&mut self, depth: usize) -> bool {
         match &mut self.open {
             Some(open) if open.submenu.len() > depth => {
@@ -235,7 +212,6 @@ impl ContextMenuState {
             .map_or(0, |open| open.scroll_bars.borrow().len())
     }
 
-    /// The C24 scroll bar for the surface `depth` levels in, created on first render.
     pub(super) fn scroll_bar(&self, depth: usize) -> Bar {
         let Some(open) = &self.open else {
             return menu_bar();
@@ -247,8 +223,6 @@ impl ContextMenuState {
         bars[depth].clone()
     }
 
-    /// The top-level width locked when this open menu first rendered at `font_px` with floor
-    /// `min_width`, measuring and storing it once so async model updates keep a steady width.
     pub(super) fn resolve_width(
         &self,
         font_px: f32,

@@ -45,8 +45,6 @@ const ROWS: [(&str, Waiting); 6] = [
     ),
 ];
 
-/// Whether every stage completed, reloads and failure while stalled, the final names,
-/// reloads once the mount answers, and whether the folder still shows its failure.
 type Outcome = (bool, (usize, bool), Vec<String>, usize, bool);
 
 fn pump_until(done: &dyn Fn() -> bool) -> bool {
@@ -68,8 +66,6 @@ fn wait_for_the_released_stamp() {
     std::thread::sleep(Duration::from_millis(50));
 }
 
-/// A real folder whose stamp waits on `gate`, beside one whose stamp fails.
-/// Fields drop in order: the browser before the quirks, the quirks before the gate.
 struct StalledMount {
     events: Events,
     browser: Rc<Browser>,

@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C14a Pixels viewport: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c14a-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C14a-pixels-viewport.md`.
-//!
-//! A generated photo with transparent parts (zoom it with Ctrl+wheel, a pinch, `+`, `-` and `0`;
-//! pan it by drag, the wheel and the arrows), a G-code-style thumbnail that scales down but never
-//! up, and a fake video whose frames `poll` writes into its `Pixels` in place without a commit.
-//! The line above the viewport shows the last zoom report, as C12 would hear it.
-
 use rune::{Cx, El, KeyEvent, Pixels, Tx, col, el, text};
 use strata_components::viewers::viewport::{
     Interaction, Mode, Viewport, ViewportState, ZoomReport,
@@ -44,7 +34,6 @@ pub enum Start {
     Zoom { level: f32, at: [f32; 2] },
 }
 
-/// C14a's demo state, held in `Gallery::c14a`.
 #[derive(Default)]
 pub struct Demo {
     pub view: ViewportState,
@@ -100,8 +89,6 @@ fn zoomed(g: &mut Gallery, dark: bool) {
     });
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c14a", dark)`, then fills in `g.c14a`.
 pub const SCENES: &[Scene] = &[
     ("c14a-fit-light", |g| {
         open(g, false, Content::Photo, Mode::Fit)
@@ -222,17 +209,11 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
         )
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
-/// The page counts them, so a test sees which keys the viewport left.
 pub fn on_key(g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     g.c14a.passed += 1;
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Loads the photo when the page opens from the index, applies a scene's zoom once the
-/// viewport is laid out, and writes the video's next frame in place. True when state changed.
 pub fn poll(g: &mut Gallery, t: f64, _tx: &mut Tx) -> bool {
     let d = &mut g.c14a;
     match d.content {
@@ -288,8 +269,6 @@ fn mix(a: f32, b: f32, t: f32) -> u8 {
     (a + (b - a) * t).clamp(0.0, 255.0) as u8
 }
 
-/// A harbour at dusk: a sky gradient, a sun, a sea of stripes and a grid every 100 pixels (so
-/// 1:1 is easy to see), with a clear window cut through it and a half-transparent band.
 fn photo() -> Vec<u8> {
     let [w, h] = PHOTO;
     image(w, h, |x, y| {

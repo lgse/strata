@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Behavioural tests for the Compress dialog (`super`): basename normalization, format and
-//! password protection toggles, basename and password validation, backdrop dirty blocking,
-//! archive creation + post-compression selection, and safe non-overwrite on collision.
-
 use std::path::Path;
 
 use rune::{Key, KeyEvent, Mods, Tx};
@@ -149,8 +145,6 @@ fn format_and_protection_toggles_control_password_fields_and_keyboard_hold() {
                 ArchiveFormat::Zip
             );
 
-            // Enabling Password protected reveals and focuses Password, and TAR.GZ hides and
-            // resets Protection.
             click(&mut host, "compress-1-protection-password");
             assert!(
                 host.app()
@@ -294,8 +288,6 @@ fn confirming_creates_and_selects_archive_while_collision_stops_without_overwrit
             std::fs::write(&existing, "keep original").expect("seed existing archive");
             open_fixture(&mut host, folder.path());
 
-            // Collision on an existing archive opens the conflict prompt; Escape dismisses it
-            // without overwriting.
             open_compress_on_row(&mut host, &folder.path().join("readme.md"));
             select_all_and_type(&mut host, "taken.zip");
             press(&mut host, Key::Enter, Mods::default());

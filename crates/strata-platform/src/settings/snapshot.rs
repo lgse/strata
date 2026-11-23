@@ -6,18 +6,9 @@ use std::time::Duration;
 
 use super::keys::{Key, Setting};
 
-/// The desktop's settings, with each key's default until the desktop gives a value.
-///
-/// Every field holds a usable value, so an app reads them directly. [`Self::is_known`] says
-/// whether a value came from the desktop: an app with a second source for a setting (Rune's own
-/// reduced-motion read, say) uses it for the keys the desktop left unknown.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DesktopSettings {
-    /// Text size multiplier, not rounded: the app multiplies its text size by it once and
-    /// rounds the result. 1.0 by default.
     pub text_scale: f64,
-    /// Two presses closer than this pair into a double click. 400 ms by default, GNOME's and
-    /// GTK's.
     pub double_click: Duration,
     /// How far, in logical pixels, a press travels before it is a drag. 8 by default.
     pub drag_threshold: u32,
@@ -27,8 +18,6 @@ pub struct DesktopSettings {
     pub cursor_blink_time: Duration,
     /// How long a caret blinks after the last key press before it stays on. 10 s by default.
     pub cursor_blink_timeout: Duration,
-    /// GNOME's animations switch. On by default. [`Self::animations`] combines it with
-    /// [`Self::reduced_motion`].
     pub enable_animations: bool,
     /// The portal's standard reduced-motion preference. Off by default.
     pub reduced_motion: bool,
@@ -55,16 +44,10 @@ impl Default for DesktopSettings {
 }
 
 impl DesktopSettings {
-    /// Whether animations should run: GNOME's switch is on and the desktop doesn't ask for
-    /// reduced motion.
     pub fn animations(&self) -> bool {
         self.enable_animations && !self.reduced_motion
     }
 
-    /// Whether `key`'s value came from the desktop rather than its default. A key stops being
-    /// known when a later read of the portal (after it restarted, say) lacks it: it goes back
-    /// to its default. A portal that leaves the bus without a successor keeps its values, and
-    /// they stay known.
     pub fn is_known(&self, key: Key) -> bool {
         self.known & key.bit() != 0
     }
@@ -93,9 +76,6 @@ impl DesktopSettings {
         *self != before
     }
 
-    /// Takes a value from the desktop and marks its key known. Returns whether anything
-    /// changed: false for the value it already holds, and for an unusable value
-    /// ([`Setting::is_valid`]), which it leaves out.
     pub fn set(&mut self, setting: Setting) -> bool {
         if !setting.is_valid() {
             return false;

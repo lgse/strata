@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Installed integrations list, enable/disable switches, update/remove actions, and inline
-//! confirmations for Settings -> Integrations.
-
 use std::rc::Rc;
 
 use rune::{Color, Cursor, El, Pixels, Tx, col, el, icon, row, text};

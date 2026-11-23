@@ -1,15 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! Sorting, as Strata's `TableState` does it (`src/ui/table_view.rs`, lgse/strata#1946): a
-//! stable sort of a row permutation, by every sort column most recent first, ties in source
-//! order. Keys are built per column on its first sort.
-
 use std::cmp::Ordering;
 
 use rune_kit::SortDir;
 
-/// One cell's sort key: a finite number, else its text lowercased, else empty. Ascending puts
-/// numbers first, then text, then empty cells.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum SortKey {
     Number(f64),
@@ -42,9 +36,6 @@ impl SortKey {
 
 const EMPTY: SortKey = SortKey::Empty;
 
-/// One column's keys. A column with a cell in at least half the rows keeps a key per row;
-/// a sparse one (a few long rows in a ragged sheet) keeps only the rows it has, so 256
-/// columns over 25,000 mostly short rows never cost 6.4 million keys.
 #[derive(Debug)]
 pub(crate) enum ColumnKeys {
     Dense(Vec<SortKey>),
@@ -84,9 +75,6 @@ impl ColumnKeys {
     }
 }
 
-/// What a click on column `column`'s title makes of the sort `spec` (most recent first): the
-/// primary column flips; any other column becomes the primary, ascending, and the others keep
-/// their order and direction after it, as GTK's `ColumnViewSorter` does.
 pub(crate) fn clicked(spec: &[(usize, SortDir)], column: usize) -> Vec<(usize, SortDir)> {
     match spec.first() {
         Some(&(c, d)) if c == column => {
@@ -119,9 +107,6 @@ pub(crate) fn order(rows: usize, spec: &[(&ColumnKeys, SortDir)]) -> Vec<u32> {
     order
 }
 
-/// `order`, sorted by a spec that differs from the one it was sorted by only in the primary
-/// column's direction: the primary key's groups reversed, each group's own order kept, in
-/// linear time. It gives what [`order`] would.
 pub(crate) fn flipped(order: &[u32], primary: &ColumnKeys) -> Vec<u32> {
     let mut out: Vec<u32> = order.iter().rev().copied().collect();
     for group in out.chunk_by_mut(|&a, &b| primary.compare(a, b) == Ordering::Equal) {

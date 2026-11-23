@@ -20,8 +20,6 @@ fn own_process(name: &str, file: Option<&str>, run: impl FnOnce()) {
     isolated(&format!("{MODULE}::{name}"), file, run);
 }
 
-/// What a future has once the writer has settled, polled by hand: taking a write's result
-/// needs no executor and no dispatch. (`writer::settle` itself iterates GLib's context.)
 fn settled<T>(pending: impl Future<Output = T>) -> T {
     writer::settle();
     let mut pending = pin!(pending);

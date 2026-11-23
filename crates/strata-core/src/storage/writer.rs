@@ -306,8 +306,6 @@ pub fn save_produced(
     drop(shared().save(path, contents, policy, Some(failure)));
 }
 
-/// Like [`save`], with contents made on the writer thread together with a lock that
-/// stays held until the file is replaced.
 pub fn save_locked(
     path: PathBuf,
     policy: Policy,

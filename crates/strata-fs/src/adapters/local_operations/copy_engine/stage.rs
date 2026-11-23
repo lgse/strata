@@ -24,9 +24,6 @@ use crate::{
     model::hidden_names::HiddenName,
 };
 
-/// Local POSIX filesystems, which link an unnamed file atomically. The SMB
-/// client fakes `O_TMPFILE` with a visible file, and FUSE daemons that
-/// implement it are unprobed.
 pub(super) fn tmpfile_allowed(family: Family) -> bool {
     matches!(
         family,
@@ -49,9 +46,6 @@ pub(super) fn names_never_collide(family: Family) -> bool {
     )
 }
 
-/// Which of a folder's names a filesystem that compares names loosely may
-/// take for another of them. Every name is, where one cannot be folded or
-/// is shaped like a short name (`PROGRA~1`), which may alias any long name.
 pub(super) fn colliding(names: &[&OsStr]) -> Vec<bool> {
     let keys = names
         .iter()
@@ -67,8 +61,6 @@ pub(super) fn colliding(names: &[&OsStr]) -> Vec<bool> {
     keys.iter().map(|key| counts[key.as_str()] > 1).collect()
 }
 
-/// `BASE~N` of at most eight characters, then at most three of extension:
-/// the only shape FAT and Windows generate for a long name, in any case.
 fn short_name(name: &OsStr) -> bool {
     let name = name.as_encoded_bytes();
     let (base, extension) = match name.iter().position(|&byte| byte == b'.') {
@@ -93,9 +85,6 @@ pub(in crate::adapters::local_operations) fn collision_key(name: &OsStr) -> OsSt
     fold(name).map_or_else(|| name.to_os_string(), OsString::from)
 }
 
-/// The same for any two names a filesystem may take for one: compatibility
-/// forms decomposed, case folded, and without the trailing dots and spaces
-/// Windows drops. It may join names that differ, never split ones that alias.
 fn fold(name: &OsStr) -> Option<String> {
     let name = name.to_str()?.trim_end_matches(['.', ' ']);
     if name.is_ascii() {

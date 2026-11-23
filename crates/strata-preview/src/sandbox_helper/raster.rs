@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: MIT
-//! Image, camera RAW and embedded thumbnail rendering through the built-in WebP decoder,
-//! pixbuf, ImageMagick and dcraw.
 
 use std::{
     fs,

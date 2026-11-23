@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Freedesktop shared thumbnail cache (`$XDG_CACHE_HOME/thumbnails/large`).
-//!
-//! Keys are the MD5 of the file's URI; every hit re-validates the PNG's
-//! `Thumb::URI`/`Thumb::MTime` tags, so stale or foreign entries miss. Only
-//! known mtimes touch the disk, since there is nothing to validate against
-//! otherwise.
-//!
-//! Cache bytes are untrusted: opened without following symlinks,
-//! size- and dimension-bounded before allocation, and never decoded outside
-//! the sandbox loader path. Entries are normalized to the canonical `large`
-//! size class so small views cannot poison the shared bucket.
-
 #[cfg(test)]
 mod tests;
 

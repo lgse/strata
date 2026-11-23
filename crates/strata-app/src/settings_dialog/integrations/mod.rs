@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Settings -> Integrations page state, catalog/provider coordination, and actions,
-//! ported from `src/ui/settings/integrations.rs`.
-
 mod catalog;
 mod installed;
 mod probe;
@@ -44,8 +41,6 @@ pub(super) type ReloadHook = Rc<dyn Fn(&mut App)>;
 pub(super) type OpenFolderHook = Rc<dyn Fn(&mut App, PathBuf)>;
 pub(super) type CommandKey = (String, usize);
 
-/// Where the page reads the catalog, provider config root, requirement checks, and side effects;
-/// tests substitute any of these without touching the host environment.
 pub(super) struct Source {
     pub(super) catalog: CatalogLoader,
     pub(super) root: Option<PathBuf>,

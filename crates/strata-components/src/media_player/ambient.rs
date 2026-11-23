@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Ambient video glow: a low-cost 6×4 edge-colour grid sampled from presented video frames and
-//! exponentially smoothed into a persistent [`rune::Pixels`] texture that Rune's GPU Gaussian
-//! blur projects as a soft halo behind the video frame.
-//!
-//! Matches GTK's sampling and smoothing parameters (`src/ui/media/ambient.rs` and
-//! `src/ui/preview/video/ambient.rs`): `6×4` cells averaged over `2×2` taps per cell, updated
-//! at most every 100 ms with exponential smoothing factor `0.35`, snapping immediately on the
-//! first frame.
-
 use rune::Pixels;
 
 /// Horizontal resolution of the sampled ambient colour grid.
@@ -41,8 +32,6 @@ pub struct EdgeGrid {
 }
 
 impl EdgeGrid {
-    /// Samples an RGBA8 frame (`width × height`) into a 6×4 colour grid by averaging 2×2 taps
-    /// per cell. Returns `None` for empty dimensions or buffers shorter than `width * height * 4`.
     pub fn sample(pixels: &[u8], width: u32, height: u32) -> Option<Self> {
         let (width, height) = (width as usize, height as usize);
         let needed = width.checked_mul(height)?.checked_mul(4)?;
@@ -110,10 +99,6 @@ impl AmbientGlow {
         }
     }
 
-    /// Updates the smoothed grid from `grid` at host clock `now` (seconds) and uploads the
-    /// 6×4 RGBA8 texture in place. Snaps immediately on the first frame; subsequent updates
-    /// are throttled to [`UPDATE_INTERVAL`] and ease by [`SMOOTHING`]. Returns `true` when
-    /// the texture was updated.
     pub fn update(&mut self, grid: &EdgeGrid, now: f64) -> bool {
         if self.lit && self.is_throttled(now) {
             return false;

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The text size from the keyboard: each key steps or resets the saved size within the shared
-//! rule, and the look follows it at once and from the saved size at start; the keys work while
-//! a rename is open, and Ctrl+= and the Icons view's Ctrl+Alt+= each change only their own.
-
 use rune::{Key, Mods};
 use strata_kit::look::{Look, LookParams};
 
@@ -44,8 +40,6 @@ fn step(host: &mut Offscreen, key: char, size: u16) {
     assert_eq!(host.app().look.kit.ty.ui.size, drawn_at(size), "Ctrl+{key}");
 }
 
-/// The window draws at the saved size from the start; Ctrl+= and Ctrl+plus step it up one
-/// pixel and stop at 48, Ctrl+minus steps it down, and Ctrl+0 goes back to 13.
 #[test]
 fn the_text_size_keys_step_the_saved_size_and_the_look_follows() {
     hosted_with(
@@ -64,8 +58,6 @@ fn the_text_size_keys_step_the_saved_size_and_the_look_follows() {
     );
 }
 
-/// Ctrl+= is the text size and Ctrl+Alt+= the Icons view's tile size, at the same stage:
-/// each key changes its own size and leaves the other.
 #[test]
 fn ctrl_equal_and_ctrl_alt_equal_each_change_only_their_own_size() {
     hosted_with(
@@ -99,8 +91,6 @@ fn ctrl_equal_and_ctrl_alt_equal_each_change_only_their_own_size() {
     );
 }
 
-/// The keys are read ahead of the rename editor, as GTK's `zoom_shortcut` is: the size changes
-/// and the editor stays open with what was in it.
 #[test]
 fn the_text_size_keys_work_while_a_rename_is_open() {
     hosted_with(
@@ -123,8 +113,6 @@ fn the_text_size_keys_work_while_a_rename_is_open() {
     );
 }
 
-/// The keys are read ahead of the window's owners of input, as GTK's `zoom_shortcut` runs
-/// before `input_owner`: with a context menu open, Ctrl+= changes the size and the menu stays.
 #[test]
 fn the_text_size_keys_work_while_a_menu_is_open() {
     hosted_with(

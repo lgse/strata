@@ -1,194 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The virtual-row collection element with row slots (C1e): the Rune element under the list,
-//! the icons grid and each Columns column.
-//!
-//! [`Collection`] draws an [`EntrySource`] as virtual rows inside a scroll viewport, from the
-//! [`CollectionState`] the host keeps (its [`Selection`] among it). Rows host slots the host or
-//! the view fills ([`Slot`]): an icon or thumbnail (C25), a label or rename editor (C5),
-//! trailing cells (C4, [`ContentSlot`]), a drop highlight on folder rows and a drag source
-//! (W1's [`Dnd`] binder). Drags out start from the pointer controller's
-//! [`Intent::BeginDrag`], not from rows (see Decisions). Pointer, keyboard and marquee input
-//! goes through one seam
-//! ([`seam`]) to the controllers C1b, C1c and C1d install; with none, a press selects. A
-//! grouped collection (C4's file-type groups, [`CollectionState::set_groups`]) puts a header
-//! line above each group, and keeps the top group's header stuck at the top of the viewport.
-//!
-//! ```ignore
-//! struct App { listing: ListSource, coll: CollectionState, look: Look, version: u64 }
-//!
-//! Collection::new(
-//!     "files",
-//!     |s: &App| (&s.listing, &s.coll),
-//!     |s: &mut App| (&s.listing, &mut s.coll),
-//!     |s: &App| &s.look,
-//!     |s: &App| s.version,
-//! )
-//! .name("Files")
-//! .on_cursor(|s: &mut App, id, _| s.preview(id))
-//! .build(s)
-//! ```
-//!
-//! # The listing version (required)
-//!
-//! The host passes `listing_version`, a value it changes whenever the source's order or
-//! entries change while its length stays the same: a re-sort, a refresh that replaces entries,
-//! a rename that changes an id. Rune then skips re-reading every row's key on a commit, which
-//! is what keeps a 100,000-entry list's commits independent of its length. A change of length
-//! is always noticed (at a cost that grows with the list: Rune issue #203). A stale version
-//! leaves rows keyed by their old ids; the rows still draw the right entries, since handlers
-//! hit-test by index and resolve ids at the event.
-//!
-//! # Coordinates
-//!
-//! Every handler sits on the container. A pointer's content point is its window point minus
-//! the viewport's window origin plus the scroll offset ([`CollectionState::content_point`]),
-//! as `contract::geometry` defines it; [`CollectionState::content_to_window`] goes back, for
-//! popup anchors (C21).
-//!
-//! # Performance
-//!
-//! Rows are built by index (`El::virtual_rows`), only for the mounted window, and each row is
-//! a `memo` keyed by its entry id, versioned by its entry, its [`RowState`], the look and its
-//! slots' versions. Scrolling commits no view; hover is drawn by Rune; the viewport's layout
-//! and visible rows are recorded as bookkeeping. A selection change rebuilds only the rows
-//! whose state changed. The perf test (`tests/perf.rs`) holds this to rune-kit's Table.
-//!
-//! # Decisions
-//!
-//! - **Focus.** Rune 7a707454 has no focus-change notification and no focus-within styles
-//!   (Rune draft U-C1e-4; anomalyco/rune#106). The element never moves focus itself: the
-//!   position-restore bullets on focus after Back, Forward and Up, and the first-visit
-//!   refocus, are the host's, which focuses the collection by its key with `Tx::focus` or
-//!   `Tx::focus_when_shown` (anomalyco/rune#1000, #1006). A selection looks
-//!   the same whether or not the collection has focus (Strata dims it when unfocused), and the
-//!   cursor outline follows keyboard mode (the last input that moved the cursor was a key)
-//!   instead of keyboard focus.
-//! - **Collections keyed by their host are no focus stops** ([`Collection::keys_by_host`],
-//!   C2). Their container isn't focusable, has no key handler and names no active descendant;
-//!   a press in one focuses the nearest ancestor with a key handler, which routes keys to the
-//!   collection it picks ([`Collection::key`]) and names that collection's cursor row
-//!   ([`Collection::cursor_path`]). Columns is one Tab stop this way, as in Strata.
-//! - **Selection fill.** Selected rows use rune-kit's table selection colour
-//!   (`TableStyle::from_kit(kit).selected`), hover Kit's `c.hover`, the cursor outline
-//!   `c.border_focus` and a drop target or Enter target `c.text_accent`.
-//! - **Rows move at once.** Inserted and removed rows land without growth or exit motion
-//!   (`El::instant_changes`), so what is drawn always matches the index geometry presses and
-//!   the marquee hit-test against. Removal effects (C23's dissolve, a slide) are the host's.
-//! - **No drag source on rows.** Rune counts `El::drag_out` as a primary press handler
-//!   (`Handlers::has_primary`, `el/handler_set.rs` at the pinned rev), so a row with one becomes
-//!   the press target (`runtime/input/hit.rs`, `primary_target`) and the container's `on_drag`
-//!   never hears presses on it: no selection, no click intent, no drag threshold. So rows get
-//!   no `drag_out`, and the element takes no `DragSource`. A drag starts when the pointer
-//!   controller (C1b) emits [`Intent::BeginDrag`] past its threshold, with the window point;
-//!   the host binds that to the system drag (X2, through the platform shim), with the
-//!   container's phases from [`Collection::on_drag_phase`] and the zones' action from
-//!   [`Collection::drop_action`].
-//! - **Selecting from assistive technology.** Options have no press handler of their own
-//!   (all input goes to the container, above), so an assistive client's default action on an
-//!   option (AT-SPI's "click") does nothing at the pinned rev. Rune has no way to route an
-//!   option's action to its container with the target's key (Rune draft U-C1e-8). Until it
-//!   does, a screen-reader user selects with the keyboard, through the container's active
-//!   descendant (C1c).
-//! - **No cursor reveal on a pointer press.** A key or a tick that moves the cursor scrolls it
-//!   into view; a press moves it only onto what the viewport already shows.
-//! - **Reveals can be kept to the collection's own viewport**
-//!   ([`CollectionState::set_own_viewport_reveals`], C2). A reveal request scrolls a sideways
-//!   viewport around the collection too, at once (Rune draft U-C2-4), so a collection inside a
-//!   strip that glides to it on its own (C2's columns) reveals by an instant offset on its own
-//!   viewport instead, worked out from the geometry. Off by default: other hosts' reveals are
-//!   Rune's, as before.
-//! - **Sticky group headers are an overlay** ([`CollectionState::set_groups`], C1f). Rune
-//!   sticks an element only inside its own virtual row, which would put a whole group (up to
-//!   every entry) in one row, so each group's header is a virtual line of its own and the
-//!   header of the group at the top is a copy drawn over the viewport's top line (Rune draft
-//!   [U-C1f-4]). The copy is pushed out by the next header through a live value, with no view
-//!   commit; its label is built, so a scroll into another group builds the view once (none
-//!   per frame). A live label would save that build, but `live_text` anywhere in the tree
-//!   makes Rune build the view on every shift of the virtual window (Rune draft [U-C1f-6]).
-//!   The copy takes no input and is hidden from assistive technology.
-//! - **A press on a header is on empty space** (owner ruling). A press on a header line or
-//!   the stuck header is on no entry: a plain one clears the selection, a drag starts a band,
-//!   a secondary press opens the background menu. Strata's GTK headers decide nothing of their
-//!   own. A drop there goes to the folder shown.
-//! - **Deviation: header lines are the row height** (owner ruling). Rune's virtual list has one
-//!   height estimate, so a header of another height would put rows where the index geometry
-//!   doesn't. Strata's `.type-group-heading` is about 2 pt taller than a row; this one is a
-//!   row tall until Rune draft [U-C1f-1].
-//! - **Deviation: a page leaves a row for the stuck header** (owner ruling). In a grouped
-//!   collection [`GroupedRows`]'s page step is the rows that fit below the stuck header, minus
-//!   one, so W1d's row of overlap stays in view. Strata's pages, with no stuck header, count
-//!   the whole viewport.
-//! - **A primary press on the header part's blank space is on empty space** (owner ruling,
-//!   C4). It reaches the controllers as a press on no entry ([`Region::Gutter`]) at the viewport's top
-//!   edge, so a drag from it draws a band into the rows, as Strata's List heading strip does
-//!   (`browser/selection/marquee`). Parts of the header with their own press or drag
-//!   handlers (C4's headings) keep their presses, as Rune gives a press to its innermost
-//!   handler. C2 and C3 get the same rule for any header they add.
-//! - **Rest rows carry a hover handler** ([`Collection::rest`], C22, owner ruling). Rows whose
-//!   rest hook gives them delays get Rune's `hover_delays` and `on_hover_change`, the only
-//!   handler a row has besides a drop zone. It isn't a press handler, so presses still reach the
-//!   container. A collection without the hook builds the same rows as before.
-//! - **A heading per group, nothing per row** (owner ruling). A header line is a heading named
-//!   by its group; rows don't repeat their group's name, as in GTK.
-//!
-//! # Rune drafts (not filed)
-//!
-//! Issues C1f found in Rune at the pinned rev, written up for the owner to file. Each repro
-//! runs headless (`rune::Runtime`).
-//!
-//! - **U-C1f-1: exact heights for `virtual_rows`.** A virtual list has one height estimate, and
-//!   rows it hasn't laid out take it (`el/virtual_list.rs`, `height_of`), so rows of two
-//!   heights (a section header and its items) put rows where an app's index geometry doesn't.
-//!   Repro: `virtual_rows` of 1,000 rows alternating 26 and 30 pt with an estimate of 26,
-//!   `scroll_to_instant` to 20,000 pt, then compare a mounted row's drawn y with the sum of
-//!   the heights above it: they differ by the unvisited rows' 4 pt each. Ask: a height per
-//!   index (or "rows are exactly this tall") that layout takes instead of the estimate.
-//! - **U-C1f-2: a virtual row outside the set.** Every mounted row of a virtual list gets its
-//!   list index as its position in the set (`a11y/tree.rs`, `a11y_index_in_list`), so a
-//!   section header among the items reads as an item. Repro: `virtual_rows` whose rows 0 and
-//!   11 are headings and the rest options with `position_in_set`; `--tree` gives the heading
-//!   at row 11 `"position": 12`. Ask: a way for a row to take no position (and not count).
-//! - **U-C1f-3: group membership across flat virtual rows.** A section's header can't own the
-//!   items under it when both are rows of one virtual list, as `aria-owns` or AccessKit's
-//!   `member_of` would let it, so a screen reader moving through options never hears the
-//!   group it enters. Repro: as U-C1f-2; no builder relates row 12 to the heading at row 11.
-//!   Ask: an `El` builder naming the element (by key) a row belongs to.
-//! - **U-C1f-4: section headers that stick across virtual rows.** A sticky element sticks only
-//!   within its parent, and a virtual list's rows are the parents, so a header sticks only if
-//!   its whole section is one row (README, "Sticky headers"), which defeats virtualization for
-//!   a section of thousands. Repro: `virtual_rows` of 10,000 one-line rows in sections of
-//!   1,000, each section's first row holding a `.sticky_top(0.0)` header; scroll into a
-//!   section and the header scrolls away with its row. Ask: sections of a virtual list whose
-//!   header sticks while any of the section's rows show.
-//! - **U-C1f-5: `on_visible_rows` a frame late after a rekeying commit.** After a commit that
-//!   changes the rows (a grid reflowed to a new width), the handler hears the new range only
-//!   on the next frame, so for one frame the app's visible range is the old one. Repro: a
-//!   grid of 4,000 cells in lines keyed by their first cell, scrolled to line 76 at 5 a line;
-//!   narrow it to 2 a line: on the first frame the cells drawn are 380..413 and the last
-//!   report still 380..465; it updates on the second.
-//! - **U-C1f-6: `live_text` turns off the virtual-window fast path.** A commit that only
-//!   shifts a virtual window skips `view` unless a node has live text
-//!   (`runtime/commit/remount.rs`, `virtual_only`), so one `live_text` label anywhere makes
-//!   every window shift of a scroll run the view. Repro: `virtual_rows` of 1,000 rows beside a
-//!   `text("x").live_text(&label)`, scroll 120 frames of 7 pt: the view runs 7 times, and none
-//!   without the `live_text`. Ask: let live text stay with the remounted tree.
-//! - **U-C1f-7: `on_visible_rows` left at no rows.** A list mounted in the window's first
-//!   frames, with animations on and text laid out ahead of it in the tree, hears its rows
-//!   reported and then reported as none in one frame, and nothing after, though they show.
-//!   Here: at each layout, a list whose last report is empty and whose own viewport shows
-//!   entries hears the lines of that layout as Rune's report is heard
-//!   (`route::catch_up_visible`).
-//!   Rune packet entry 101, `docs/rune/upstream/rune/101-stale-visible-rows.md`; no
-//!   Rune-only repro yet.
-//!
-//! [U-C1f-1]: self#rune-drafts-not-filed
-//! [U-C1f-4]: self#rune-drafts-not-filed
-//! [U-C1f-6]: self#rune-drafts-not-filed
-//!
-//! Work packages: C1e, `docs/rune/work/phase-2-composites/C1e-collection-element.md`; C1f (group
-//! header lines, the press hook and C1e's round-3 fixes) has no document of its own.
-
 #![warn(missing_docs)]
 
 mod a11y;
@@ -198,6 +9,7 @@ mod matches;
 mod origin;
 mod route;
 mod row;
+/// Virtualized collection seam types and helpers.
 pub mod seam;
 mod state;
 
@@ -239,10 +51,6 @@ use crate::contract::{
     EntrySource, Point, Rect,
 };
 
-/// How long the pointer must stay out of a collection with the rest hook before its leave
-/// counts: longer than a leave and an enter X11 sends back to back (one batch of events,
-/// well under a 60 Hz frame even on a loaded machine), shorter than a person leaving and
-/// coming back (the rest delay itself is 500 ms).
 const REENTER: std::time::Duration = std::time::Duration::from_millis(100);
 
 type GetFn<S> = Rc<dyn Fn(&S) -> (&dyn EntrySource, &CollectionState)>;
@@ -331,25 +139,12 @@ impl<S> Config<S> {
 }
 
 /// The collection element's builder.
-///
-/// The host keeps the source and a [`CollectionState`] in its state and gives the element
-/// accessors to both, as one pair, so a handler can read the source while it changes the
-/// state. See the [module docs](self) for the required `listing_version`.
-///
-/// Used by: C2 (one per column), C3, C4, C14b (read-only), hosts.
 pub struct Collection<S> {
     cfg: Config<S>,
 }
 
 impl<S: 'static> Collection<S> {
-    /// A collection keyed `key` (its rows' keys and scroll requests start there), over the
-    /// source and state `get` and `get_mut` return, drawn with the look `look` returns.
-    /// `listing_version` changes whenever the source's order or entries change at the same
-    /// length (see the [module docs](self#the-listing-version-required)).
-    ///
-    /// The accessors are closures, so one host can build several collections over its own
-    /// collections, each capturing which one (C2's columns):
-    /// `move |s: &App| (&s.columns[i].listing, &s.columns[i].state)`.
+    /// A collection keyed `key` (its rows' keys and scroll requests start there).
     pub fn new(
         key: impl Into<Rc<str>>,
         get: impl Fn(&S) -> (&dyn EntrySource, &CollectionState) + 'static,
@@ -416,29 +211,25 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// What assistive technology reads after the collection's name: what it holds ("Files"),
-    /// in the host's words. By default, nothing.
+    /// What assistive technology reads after the collection's name: what it holds ("Files"), in the host's words.
     pub fn description(mut self, description: impl Into<String>) -> Self {
         self.cfg.description = Some(description.into());
         self
     }
 
-    /// The roles: [`Roles::LISTBOX`] (the default), [`Roles::LIST`], [`Roles::GRID_ROWS`] or
-    /// [`Roles::GRID_CELLS`].
+    /// The roles: `Roles::LISTBOX` (the default), `Roles::LIST`, `Roles::GRID_ROWS` or `Roles::GRID_CELLS`.
     pub fn roles(mut self, roles: Roles) -> Self {
         self.cfg.roles = roles;
         self
     }
 
-    /// The row height, read from the look: `row.list` by default, `row.columns` for a Columns
-    /// column, `slots::list::row_height` for ListTable. Every row draws at exactly this
-    /// height, so the geometry matches what is drawn.
+    /// The row height, read from the look: `row.list` by default, `row.columns` for a Columns column.
     pub fn row_height(mut self, row_height: impl Fn(&S, &Look) -> f32 + 'static) -> Self {
         self.cfg.row_height = Rc::new(row_height);
         self
     }
 
-    /// How entries pack into lines (C3's grid); [`OnePerLine`] by default.
+    /// How entries pack into lines; `OnePerLine` by default.
     pub fn lines(mut self, lines: impl Lines + 'static) -> Self {
         self.cfg.lines = Rc::new(lines);
         self
@@ -450,18 +241,13 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// Adds a settings value for the controllers (the double-click interval, the click mode,
-    /// the auto-scroll speed), which each reads by its type with [`Ctx::settings`]. Call it
-    /// once per type; a second value of a type replaces the first. Taken as the view builds,
-    /// so pass the current values each time.
+    /// Adds a settings value for the controllers (the double-click interval, the click mode, the auto-scroll speed).
     pub fn settings<T: Any>(mut self, value: T) -> Self {
         Rc::make_mut(&mut self.cfg.settings).insert(value);
         self
     }
 
-    /// The settings value of type `T` added so far, for a view that builds on what its host
-    /// passed (C2 turns two of [`KeySettings`](crate::collection::keyboard::KeySettings)'
-    /// rules on over the host's map).
+    /// The settings value of type `T` added so far.
     pub fn setting<T: Any>(&self) -> Option<&T> {
         self.cfg.settings.get::<T>()
     }
@@ -472,26 +258,19 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// The content types the folder rows and the background take from other apps besides
-    /// files, most wanted first (the host's content-drops policy: text, images, web
-    /// addresses). Default none. The host's drop handler tells the two apart.
+    /// The content types the folder rows and the background take from other apps besides files.
     pub fn content_types(mut self, mimes: &'static [&'static str]) -> Self {
         self.cfg.drop_content = mimes;
         self
     }
 
-    /// Read-only: no drops and no rename, as the archive preview needs (C14b). Controllers
-    /// see it as [`Ctx::read_only`].
+    /// Read-only: no drops and no rename, as the archive preview needs.
     pub fn read_only(mut self) -> Self {
         self.cfg.read_only = true;
         self
     }
 
-    /// Items draw none of the row's own chrome: no selection fill, hover, outline, corner
-    /// radius or side inset, only the host's opacity marks (cut, dragging). The content slot's
-    /// element is the item itself (keyed, named and sized by the element), and draws the
-    /// item's state from [`RowCx::state`] and [`RowCx::hover_live`], as C3's tiles light their
-    /// frame and caption, not the whole cell.
+    /// Items draw none of the row's own chrome: no selection fill, hover, outline, corner radius or side inset.
     pub fn bare_items(mut self) -> Self {
         self.cfg.bare_items = true;
         self
@@ -503,12 +282,7 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// Takes drops: on a folder-like row (`Some(id)`) or the background (`None`, the folder
-    /// shown). Folder rows draw the drop highlight while a drag hovers them.
-    ///
-    /// The zones reach the binder ([`Collection::dnd`]) by key (W1's `Dnd::drop_zone_keyed`):
-    /// the background by the collection's key, and a folder row by [`row_key`] with the
-    /// collection's key as its scope, since row keys are unique only inside one collection.
+    /// Takes drops: on a folder-like row (`Some(id)`) or the background (`None`, the folder shown).
     pub fn on_drop(
         mut self,
         f: impl Fn(&mut S, Option<EntryId>, Dropped, &mut Tx) + 'static,
@@ -517,7 +291,7 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// The icon or thumbnail part (C25). By default, the entry's catalog icon.
+    /// The icon or thumbnail part.
     pub fn icon(mut self, slot: impl Into<Slot<S>>) -> Self {
         self.cfg.icon = Some(slot.into());
         self
@@ -529,8 +303,7 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// The row's content, from its icon and label (C4's cells). By default, the icon then
-    /// the label.
+    /// The row's content, from its icon and label.
     pub fn content(mut self, slot: ContentSlot<S>) -> Self {
         self.cfg.content = Some(slot);
         self
@@ -542,8 +315,7 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// The rename editor (C5): drawn in the label's place on the row `renaming` names. A
-    /// read-only collection draws none.
+    /// The rename editor: drawn in the label's place on the row `renaming` names.
     pub fn rename(
         mut self,
         renaming: impl Fn(&S) -> Option<EntryId> + 'static,
@@ -559,57 +331,43 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// Which part of entry `index`'s row a point (in the row's own points) is on, for a row
-    /// whose content isn't the default icon and label (C3's caption, C4's cells).
+    /// Which part of entry `index`'s row a point (in the row's own points) is on.
     pub fn regions(mut self, f: impl Fn(&S, usize, Point) -> Region + 'static) -> Self {
         self.cfg.regions = Some(Rc::new(f));
         self
     }
 
-    /// Fills the viewport area below [`Collection::header`] with `color` (so a translucent
-    /// header above the viewport never double-composites over a background fill).
+    /// Fills the viewport area below `Collection::header` with `color` (so a translucent header above the viewport never double-composites over a background fill).
     pub fn viewport_fill(mut self, color: rune::Color) -> Self {
         self.cfg.viewport_fill = Some(color);
         self
     }
 
-    /// Reserves `pad` points below the vertical viewport inside the filled area below
-    /// [`Collection::header`] (e.g., for an overflowing horizontal scrollbar).
+    /// Reserves `pad` points below the vertical viewport inside the filled area below `Collection::header` (e.g.
     pub fn viewport_bottom_pad(mut self, pad: f32) -> Self {
         self.cfg.viewport_bottom_pad = pad.max(0.0);
         self
     }
 
-    /// A part above the viewport (C4's column headings). A primary press on its blank space
-    /// (where no part of it takes presses itself) is on empty space at the viewport's top edge:
-    /// a plain one clears the selection and a drag draws a band from there, as Strata's List
-    /// heading strip does. Other buttons there aren't the collection's. Its parts with press or
-    /// drag handlers keep their presses.
+    /// A part above the viewport.
     pub fn header(mut self, f: impl Fn(&S) -> Option<El> + 'static) -> Self {
         self.cfg.header = Some(Rc::new(f));
         self
     }
 
-    /// A primary press on the header part's blank space reaches the controllers only once it
-    /// travels more than `threshold` points (along either axis; pass the pointer controller's
-    /// drag threshold): a drag from there then bands as [`Collection::header`] says, and a
-    /// click there changes nothing in the collection. [`Collection::on_press`] still hears the
-    /// press. Columns (C2): a click on a column's title focuses it and keeps its selection,
-    /// while a drag from its header's blank space starts a band, as in Strata.
+    /// A primary press on the header part's blank space reaches the controllers only once it travels more than `threshold` points (along either axis; pass the pointer controller's drag threshold): a drag from there then bands as `Collection::header` says, and a click there changes nothing in the collection.
     pub fn header_defers_press(mut self, threshold: f32) -> Self {
         self.cfg.header_defer = Some(threshold);
         self
     }
 
-    /// Hears a primary click on the header's blank space that released before travelling past
-    /// [`Collection::header_defers_press`], with the `Down` input of that press.
+    /// Hears a primary click on the header's blank space that released before travelling past `Collection::header_defers_press`, with the `Down` input of that press.
     pub fn on_header_click(mut self, f: impl Fn(&mut S, &PointerInput, &mut Tx) + 'static) -> Self {
         self.cfg.on_header_click = Some(Rc::new(f));
         self
     }
 
-    /// A part drawn over the viewport, pinned to it below any header, in its coordinates
-    /// (C1d's band). It takes no input: presses go through it to the rows.
+    /// A part drawn over the viewport, pinned to it below any header, in its coordinates.
     pub fn overlay(mut self, f: impl Fn(&S) -> Option<El> + 'static) -> Self {
         self.cfg.overlay = Some(Rc::new(f));
         self
@@ -621,66 +379,36 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// A part over the viewport, below any header, in its coordinates, that takes input: C24's
-    /// scroll bar along its edge. It hangs from a zero-size anchor at the viewport's top-left
-    /// (`scroll::anchor`), so only its own parts cover the rows. Drawn above the overlay. A press on an element of
-    /// it with a press or drag handler is that element's, not the collection's (Rune gives a
-    /// press to its innermost handler); elsewhere presses reach the rows.
-    ///
-    /// Each call adds a part (a view's bar, then a host's), drawn in the order added; none
-    /// replaces another.
+    /// A part over the viewport, below any header, in its coordinates, that takes input: scroll bar along its edge.
     pub fn edge(mut self, f: impl Fn(&S) -> Option<El> + 'static) -> Self {
         self.cfg.edge.push(Rc::new(f));
         self
     }
 
-    /// Hears the viewport's scroll position on every frame it changes (Rune's
-    /// `El::on_scroll_offset`), with no view commit: C24's scroll bar and autoscroll follow it
-    /// through live values. It reads no state.
-    ///
-    /// Each call adds a handler, heard in the order added: a view that follows its own scroll
-    /// (C3's and C4's bars) never drops a host's, nor the host's the view's.
+    /// Hears the viewport's scroll position on every frame it changes (Rune's `El::on_scroll_offset`), with no view commit.
     pub fn on_scroll(mut self, f: impl Fn(ScrollPos) + 'static) -> Self {
         self.cfg.on_scroll.push(Rc::new(f));
         self
     }
 
-    /// The collection's key, the scope of its key paths ([`viewport_path`] of it is its
-    /// viewport's).
+    /// The collection's key, the scope of its key paths (`viewport_path` of it is its viewport's).
     pub fn scope(&self) -> &str {
         &self.cfg.key
     }
 
-    /// Keys reach this collection from the host, not from Rune's focus: the collection is no
-    /// focus stop (its container isn't focusable and has no key handler), and names no active
-    /// descendant. An ancestor that is the focus stop routes each key to it with
-    /// [`Collection::key`] and names the cursor's row as its own active descendant
-    /// ([`Collection::cursor_path`]). A press in it focuses that ancestor, the nearest one with
-    /// a key handler. Columns (C2) builds every column this way, so the whole strip is one Tab
-    /// stop, as in Strata, and the strip sends each key to the column that holds the cursor.
+    /// Keys reach this collection from the host, not from Rune's focus.
     pub fn keys_by_host(mut self) -> Self {
         self.cfg.keys_by_host = true;
         self
     }
 
-    /// Hears each key the collection is given before its controllers do, with the key's own
-    /// transaction: true takes the key, and no controller hears it. The collection's keys are
-    /// its controllers' otherwise, so a host whose window reads a key ahead of its list (a
-    /// shortcut, a key that dismisses something) asks here, where it has its own state, which
-    /// a [`KeyController`] does not. It is asked for a key that reaches the collection by
-    /// either road: its own key handler, or [`Collection::key`] from a host's focus stop.
+    /// Hears each key the collection is given before its controllers do, with the key's own transaction.
     pub fn before_keys(mut self, f: impl Fn(&mut S, &KeyEvent, &mut Tx) -> bool + 'static) -> Self {
         self.cfg.before_keys = Some(Rc::new(f));
         self
     }
 
-    /// Hears where a drag the collection's drop zones accept is, in window points, while it is
-    /// over them (`Some`, on reaching a zone and on every move), and when it leaves them or a
-    /// zone refuses it (`None`). Set, it replaces the element's own edge scroll during a drag
-    /// (a row's height a move near the viewport's top or bottom): the host scrolls instead.
-    /// Columns (C2) follows the drag across its whole strip with it, since Rune tells only the
-    /// innermost zone under a drag that it moved (Rune draft U-C2-1). Return true when it
-    /// changed what the view reads. Needs [`Collection::on_drop`], which makes the zones.
+    /// Hears where a drag the collection's drop zones accept is, in window points, while it is over them (`Some`.
     pub fn on_drag_over(
         mut self,
         f: impl Fn(&mut S, Option<Point>, &mut Tx) -> bool + 'static,
@@ -689,16 +417,7 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// Hears each phase of the container's drag handler before the controllers do, with the
-    /// collection's key: for a host that starts a system drag from [`Intent::BeginDrag`] (X2,
-    /// through P1's `Dnd::start_drag`, which needs the phase and the key of the element whose
-    /// `on_drag` it is, and `Dnd::owns` on every phase). True takes the phase: a taken move is
-    /// ignored, and a taken release ends the press as a cancelled one (no click, no rename),
-    /// as the system drag owns it. A taken press is ignored too.
-    ///
-    /// The container keeps its key and its place for as long as the collection is built, so
-    /// a drag started from it can rely on its source staying mounted (P1's rule), however the
-    /// rows scroll or re-key.
+    /// Hears each phase of the container's drag handler before the controllers do, with the collection's key.
     pub fn on_drag_phase(
         mut self,
         f: impl Fn(&mut S, &rune::Drag, &str, &mut Tx) -> bool + 'static,
@@ -707,12 +426,7 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// Says which action a drag over a folder row (`Some(id)`) or the background (`None`)
-    /// would take, or `None` to refuse it, for a binder that negotiates while the drag hovers
-    /// (W1's `DropZone::action`): the host's copy-or-move rule with its volume lookup, and its
-    /// guard against dropping items into their own folder. Without it, W1's rule with an
-    /// unknown volume. A drag over the stuck group header is asked about the row it covers
-    /// (its drop then goes to the background, as before). Needs [`Collection::on_drop`].
+    /// Says which action a drag over a folder row (`Some(id)`) or the background (`None`) would take.
     pub fn drop_action(
         mut self,
         f: impl Fn(&S, Option<EntryId>, &DropOffer, Mods) -> Option<DropAction> + 'static,
@@ -721,21 +435,13 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// Hears wheel and trackpad deltas over the viewport before it scrolls (Rune's
-    /// `El::on_wheel` on the viewport itself): true takes the delta. An `on_wheel` on an
-    /// ancestor of the collection never hears a wheel over its rows, since Rune offers a wheel
-    /// only up to the nearest scroll view (Rune draft U-C3-3), so a view that claims a modified
-    /// wheel (C3's Ctrl+Shift+wheel) does it here.
-    ///
-    /// It holds one handler: a later call replaces it. A component that sets its own (C3)
-    /// replaces its host's, and offers the host a hook of its own instead.
+    /// Hears wheel and trackpad deltas over the viewport before it scrolls (Rune's `El::on_wheel` on the viewport itself).
     pub fn on_wheel(mut self, f: impl Fn(&mut S, WheelEvent, &mut Tx) -> bool + 'static) -> Self {
         self.cfg.on_wheel = Some(Rc::new(f));
         self
     }
 
-    /// Rows that report the pointer resting on them, with Rune's hover delays, and a part
-    /// pinned in them: C22's folder peek. See [`Rest`].
+    /// Rows that report the pointer resting on them, with Rune's hover delays, and a part pinned in them: folder peek.
     pub fn rest(mut self, rest: Rest<S>) -> Self {
         self.cfg.rest = Some(rest);
         self
@@ -747,13 +453,7 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// Hears every press the collection takes, before its controllers, whether or not anything
-    /// changes: primary and middle presses through its drag handler, secondary ones through
-    /// its menu press, inside the viewport (a header line and the stuck header included, not
-    /// a part above it). Columns (C2) cancels a slow-click rename pending in another column
-    /// here, as Strata's `ViewState::cancel_click_rename` does.
-    ///
-    /// It holds one handler: a later call replaces it.
+    /// Hears every press the collection takes, before its controllers, whether or not anything changes.
     pub fn on_press(mut self, f: impl Fn(&mut S, &PointerInput, &mut Tx) + 'static) -> Self {
         self.cfg.on_press = Some(Rc::new(f));
         self
@@ -771,38 +471,25 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// Hears which entries the viewport shows, when that changes (C25's priority). Return
-    /// true only if the view reads what it changed: scrolling then commits.
+    /// Hears which entries the viewport shows, when that changes.
     pub fn on_visible(mut self, f: impl Fn(&mut S, Range<usize>) -> bool + 'static) -> Self {
         self.cfg.on_visible = Some(Rc::new(f));
         self
     }
 
-    /// The status line's wording for a selection change: [`default_announcement`] by
-    /// default. The line changes only when an operation changed the selection
-    /// ([`CollectionState::note_selection`]), so a listing change alone announces nothing.
+    /// The status line's wording for a selection change: `default_announcement` by default.
     pub fn announce(mut self, f: impl Fn(&S, &Announcement) -> String + 'static) -> Self {
         self.cfg.announce = Some(Rc::new(f));
         self
     }
 
-    /// Runs the controllers' timeouts and queued commands. Call it from the host's poll on
-    /// every frame while a controller asks for wake-ups ([`Effect::WakeAfter`], an
-    /// auto-scroll), with the same builder the view uses; true when state changed. A tick
-    /// with nothing to do costs a [`Ctx`] and no commit.
-    ///
-    /// A command that starts outside the collection (a menu item, a verb typed in a footer
-    /// prompt) reaches its controller this way: the controller queues it in a handle the
-    /// host shares, and the next tick runs it with a [`Ctx`] (see [`KeyController::tick`]).
+    /// Runs the controllers' timeouts and queued commands.
     pub fn tick(self, s: &mut S, tx: &mut Tx) -> bool {
         let cfg = Rc::new(self.cfg);
         route::tick(&cfg, s, tx)
     }
 
-    /// Routes a primary drag starting on an external marquee origin surface (such as the preview
-    /// drawer's blank space). When `clears_on_press` is true, a plain press clears the selection;
-    /// once the pointer travels past the drag threshold, a marquee band begins from the press
-    /// anchor into this collection.
+    /// Routes a primary drag starting on an external marquee origin surface (such as the preview drawer's blank space).
     pub fn origin_drag(
         self,
         s: &mut S,
@@ -813,29 +500,17 @@ impl<S: 'static> Collection<S> {
         origin::origin_drag(&cfg, s, (d, clears_on_press), tx);
     }
 
-    /// Handles a key as the collection's own key handler would: the host's
-    /// [`Collection::before_keys`] hears it, then the keyboard controller, through the same
-    /// routing a focused collection's keys take. For a collection built with
-    /// [`Collection::keys_by_host`], from the focus stop's `on_key`, with the key's own
-    /// transaction (so layout-aware chords still match). True when the hook or a controller
-    /// took the key; the caller then says so to Rune.
+    /// Handles a key as the collection's own key handler would.
     pub fn key(self, s: &mut S, event: &KeyEvent, tx: &mut Tx) -> bool {
         self.key_taken(s, event, tx) != KeyTaken::No
     }
 
-    /// [`Collection::key`], saying who took the key: a focus stop that does something of its
-    /// own after a controller's key (the Columns strip reveals the active column) does not do
-    /// it for a key the host took.
     pub(crate) fn key_taken(self, s: &mut S, event: &KeyEvent, tx: &mut Tx) -> KeyTaken {
         let cfg = Rc::new(self.cfg);
         route::on_key(&cfg, s, event, tx)
     }
 
-    /// The key path of the cursor's row (or cell), under this collection's key, as its
-    /// container names it its active descendant: for the focus stop of a collection built with
-    /// [`Collection::keys_by_host`]. `None` with no cursor. The path starts at the collection's
-    /// key, so the focus stop names it from above (a key path's leading keys are the nearest
-    /// keyed ancestors of the rest).
+    /// The key path of the cursor's row (or cell), under this collection's key.
     pub fn cursor_path(&self, s: &S) -> Option<String> {
         let (src, st) = (self.cfg.get)(s);
         let index = st.selection.cursor_index(src)?;
@@ -847,11 +522,7 @@ impl<S: 'static> Collection<S> {
         ))
     }
 
-    /// Works the entries per line out again from the lines' rule as it stands now: call it
-    /// from the handler that changed what the rule reads at the same width (C3's tile size),
-    /// with this builder built from the new state. When the count changed, the cursor scrolls
-    /// into view on `tx`, as a width reflow does. True when it changed. (The build works the
-    /// count out too, so it is right without this; only the reveal needs the handler's `tx`.)
+    /// Works the entries per line out again from the lines' rule as it stands now.
     pub fn reflow(self, s: &mut S, tx: &mut Tx) -> bool {
         let (src, st) = (self.cfg.get_mut)(s);
         if st.viewport.w <= 0.0 {
@@ -861,9 +532,7 @@ impl<S: 'static> Collection<S> {
         st.reflow_to(&self.cfg.key, src, per, tx)
     }
 
-    /// The geometry of `s`'s entries as the element lays them out now, in content
-    /// coordinates: for an anchor out of the element (C21's keyboard menu at the cursor,
-    /// through [`CollectionState::content_to_window`]).
+    /// The geometry of `s`'s entries as the element lays them out now, in content coordinates.
     pub fn geometry(&self, s: &S) -> Box<dyn CollectionGeometry> {
         route::geometry(&self.cfg, s)
     }
@@ -880,9 +549,6 @@ impl<S: 'static> Collection<S> {
         let (src, st) = (cfg.get)(s);
         let look = (cfg.look)(s);
         let len = src.len();
-        // Once the viewport has a width, the count follows the lines' rule as it stands now (a
-        // tile size changed at the same width included), and the state records it so sync,
-        // reveal and the visible range agree with what this builds.
         let per = if st.viewport.w > 0.0 {
             cfg.lines.per_line(st.viewport.w).max(1)
         } else {
@@ -892,8 +558,6 @@ impl<S: 'static> Collection<S> {
         let map = LineMap::new(per, Some(&st.groups), len);
         let lines = map.count(len);
         let row_height = cfg.row_height_of(s);
-        // The group whose header this build sticks at the top (see `Stuck`): the one Rune last
-        // reported at the top, else the one at the scroll offset.
         let shown = st
             .top_line
             .get()
@@ -928,8 +592,6 @@ impl<S: 'static> Collection<S> {
             .key(ROWS)
             .w_full()
             .growth(GrowthSpec::default())
-            // Rows land at once: an animated gap would draw rows where the geometry doesn't
-            // put them, and a press during it would hit the wrong entry.
             .instant_changes()
             .virtual_rows(
                 lines,
@@ -1015,10 +677,6 @@ impl<S: 'static> Collection<S> {
                 route::on_pointer_move(&move_cfg, s, p, tx)
             });
         if cfg.rest.is_some() {
-            // The pointer leaving the collection forgets the row it was on, so coming back onto
-            // that row is an arrival; but only once it has stayed out for REENTER. X11 sends a
-            // leave and an enter back to back after a drop, with the pointer still: no
-            // arrival, so a held row stays held.
             let leave_cfg = cfg.clone();
             root = root
                 .hover_delays(std::time::Duration::ZERO, REENTER)
@@ -1037,8 +695,6 @@ impl<S: 'static> Collection<S> {
         if let Some(description) = &cfg.description {
             root = root.description(description.clone());
         }
-        // A vanished row (`RowMarks::vanished`) has left the tree: point at nothing rather than
-        // at it.
         let vanished = |i: usize| {
             cfg.marks
                 .as_ref()
@@ -1048,13 +704,9 @@ impl<S: 'static> Collection<S> {
             && let Some(index) = st.selection.cursor_index(src)
             && !vanished(index)
         {
-            // A path under this collection, so a second collection showing the same folder
-            // (another pane) can't answer for it.
             root = root.active_descendant(keys::entry_path(&cfg.key, src, index, per));
         }
         if let Some(header) = cfg.header.as_ref().and_then(|f| f(s)) {
-            // Where it shows, as bookkeeping: a press on its blank space starts on empty space
-            // (`route::on_drag`).
             let header_cfg = cfg.clone();
             root = root.child(
                 col()
@@ -1069,8 +721,6 @@ impl<S: 'static> Collection<S> {
             // No header now: a press where one was is outside the collection again.
             st.header.set(Rect::default());
         }
-        // The viewport and what sits over it: the empty state and the overlay, pinned to the
-        // viewport alone, below any header.
         let mut over = col()
             .w_full()
             .grow(1.0)
@@ -1089,9 +739,6 @@ impl<S: 'static> Collection<S> {
             over = over.child(pinned(empty));
         }
         if let Some(part) = stuck_part {
-            // Over the viewport's top line, clipped to it, so the next header pushes it up and
-            // out; it takes no input (presses on it are on no entry: `route::hit`), and the
-            // header line it copies is the one assistive technology reads.
             let part = col()
                 .pin(Some(0.0), Some(0.0), Some(0.0), None)
                 .h(row_height)
@@ -1107,8 +754,6 @@ impl<S: 'static> Collection<S> {
             .as_ref()
             .and_then(|m| m.overlay(look))
         {
-            // In content coordinates: a layer at the content's origin that rides the scroll
-            // offset in the same frame.
             let content = col()
                 .pin(Some(0.0), Some(0.0), Some(0.0), None)
                 .live_offset(&st.scroll_layer)
@@ -1119,8 +764,6 @@ impl<S: 'static> Collection<S> {
             over = over.child(pinned(overlay).inert());
         }
         for edge in cfg.edge.iter().filter_map(|f| f(s)) {
-            // Hung from the viewport's top-left, not pinned over all of it: a layer the
-            // viewport's size would be what a system drag's hit test (P1's) finds over the rows.
             over = over.child(crate::scroll::anchor(0.0, 0.0, edge));
         }
         root = root.child(over);
@@ -1143,16 +786,6 @@ impl<S: 'static> Collection<S> {
     }
 }
 
-/// The stuck group header's push, which the viewport's scroll keeps up to date with no view
-/// commit: up by as much as the next group's header line has come into the top line.
-///
-/// Its label is the group the build saw at the top (`shown`). A scroll into another group
-/// builds the view again (`route::on_visible` says so), once per group crossed; until that
-/// build lands the stuck header hides, and the new group's own header line shows at the top.
-/// A live label would save that build, but a `live_text` anywhere in the tree makes Rune build
-/// the view on every shift of the virtual window instead (Rune draft [U-C1f-6]).
-///
-/// [U-C1f-6]: crate::collection::element#rune-drafts-not-filed
 struct Stuck {
     map: LineMap,
     h: f32,
@@ -1188,9 +821,6 @@ fn background_zone<S: 'static>(cfg: &Rc<Config<S>>, on_drop: row::DropFn<S>) -> 
         on_drop(s, None, dropped, tx);
     })
     .takes_content(cfg.drop_content);
-    // With the host's action, the background stops what it refuses (an item onto its own
-    // folder) as the rows do, so it hears the refused drag's moves: autoscroll and C2's column
-    // wash go on over it.
     let zone = match cfg.drop_action.clone() {
         Some(f) => {
             let reject_cfg = cfg.clone();
@@ -1223,9 +853,6 @@ fn background_zone<S: 'static>(cfg: &Rc<Config<S>>, on_drop: row::DropFn<S>) -> 
     })
 }
 
-/// Records a hover on the zone `over` (a folder row or the background): an accepted drag
-/// highlights it (the background only if no row is), a refused one doesn't and is noted as
-/// refused (with whether `offer` offers files), and leaving clears both.
 pub(super) fn note_drop_hover<S: 'static>(
     cfg: &Config<S>,
     s: &mut S,
@@ -1264,10 +891,6 @@ pub(super) fn note_drop_hover<S: 'static>(
     }
 }
 
-/// Tells the host's drag-over hook about a hover: where a drag reached a zone, accepted or
-/// refused (the hook drives autoscroll and C2's column wash, which follow any drag, as
-/// Strata's motion controller does), or that it left one. A refusal with no point known yet
-/// keeps the hook's last point; the zone's next move gives the new one.
 pub(super) fn drag_over_hover<S: 'static>(
     cfg: &Config<S>,
     s: &mut S,

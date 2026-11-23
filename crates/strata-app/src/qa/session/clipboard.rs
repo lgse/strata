@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The session host's private Wayland clipboard client (`zwlr_data_control_manager_v1`),
-//! matching GTK's second display connection in `src/qa/clipboard.rs`: `clipboard_set` owns
-//! the Wayland clipboard from a separate connection until replaced or read, and `clipboard`
-//! reads an offered MIME type (or plain text) across the compositor.
-
 use std::{
     collections::{HashMap, HashSet},
     io::{Read as _, Write as _},
@@ -34,8 +29,6 @@ use wayland_protocols_wlr::data_control::v1::client::{
     zwlr_data_control_source_v1::{self, ZwlrDataControlSourceV1},
 };
 
-/// How long `read` waits for a selection offer to appear when an asynchronous clipboard
-/// worker (`Tx::copy`) is still publishing to the compositor.
 const APPEAR_WAIT: Duration = Duration::from_secs(1);
 
 type Offers = Arc<Vec<(String, Vec<u8>)>>;

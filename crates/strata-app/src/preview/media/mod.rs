@@ -1,29 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C13 [`MediaPlayer`] host for sandboxed audio and video (`PreviewContent::SandboxedMedia`),
-//! as GTK's `render_sandboxed_media` (`src/ui/preview/media_render.rs`) and its video and
-//! audio views host them:
-//!
-//! - **The view** is by the file's type: video, audio, or the plain media bar for media that
-//!   is neither, such as an animated GIF or animated WebP, which loops.
-//! - **Playback** ([`stream`]): decoded frames come from the shared sandboxed decoder off the UI
-//!   thread and reach Rune through `Later`, while decoded PCM plays through `strata_platform::media`
-//!   (PipeWire/PulseAudio, ALSA, or a silent real-time clock fallback when headless) and drives A/V
-//!   sync. Autoplay follows Settings, a video opens at the saved start percentage, and one left
-//!   partway this session reopens where it was.
-//! - **The eyebrow** counts the folder's files of the clip's kind whose bytes back their name
-//!   ([`sequence`]), and the previous and next buttons and keys step through them.
-//! - **The badges** come from the sandboxed metadata probe ([`details`]).
-//! - **The timeline waveform & storyboard** ([`peaks`], [`storyboard`]): videos of at least 4 s
-//!   stream keyframe storyboard cells on the shared background decode slot, then hand the slot to
-//!   `audio-peaks` (which audio files start directly) so timeline bars grow in from decoded RMS
-//!   levels; animated images and silent videos skip `audio-peaks`.
-//! - **The media keys** reach the player where [`super::keys::media_keys_reach`] holds
-//!   ([`super::transport`]).
-//! - **The volume** is Settings' `preview_volume` and `preview_muted`, saved as it changes.
-//!
-//! Every element is keyed under [`MEDIA_KEY`].
-
 use std::{cell::Cell, time::Duration};
 
 use rune::{Cx, El, Pixels, Tx};
@@ -124,8 +100,6 @@ struct Opening {
     volume: f32,
     muted: bool,
     tenxer: bool,
-    /// An animated image (GIF or animated WebP): the frame and its play toggle alone
-    /// (`MediaKind::Animation`).
     animation: bool,
 }
 
@@ -214,9 +188,6 @@ pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
     Viewer::Media(Box::new(viewer))
 }
 
-/// A step from one media file to the next (GTK's `step_media`): the file it moved to plays on
-/// if the one it left was playing, and takes the keyboard if the player had it
-/// (`keep_keys_in_content`).
 pub(super) struct Stepped {
     to: Location,
     playing: bool,
@@ -543,8 +514,6 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         .fold(changed, |changed, intent| apply(app, intent, tx) | changed)
 }
 
-/// A media key's command on the shown player (GTK's `media_command`). False when it does
-/// nothing here, so the key goes on.
 pub(super) fn command(app: &mut App, command: MediaCommand, tx: &mut Tx) -> bool {
     let Viewer::Media(media) = &mut app.preview.viewer else {
         return false;
@@ -592,8 +561,6 @@ fn apply(app: &mut App, intent: MediaIntent, tx: &mut Tx) -> bool {
     true
 }
 
-/// Steps to the previous or next file of the clip's kind, which keeps playing if this one
-/// was (GTK's `step_media`).
 fn step(app: &mut App, by: i8, tx: &mut Tx) -> bool {
     let Viewer::Media(media) = &app.preview.viewer else {
         return false;
@@ -610,8 +577,6 @@ fn step(app: &mut App, by: i8, tx: &mut Tx) -> bool {
     true
 }
 
-/// GTK's `media_error_feedback`: a missing decoder asks for the plugins, anything else says
-/// the preview can't play.
 fn error_feedback(message: &str) -> MediaError {
     let normalized = message.to_ascii_lowercase();
     let plugin = [
@@ -701,8 +666,6 @@ pub(super) fn build_view(media: &MediaViewer, app: &App, cx: &mut Cx<App>) -> El
         .build(&app.look, cx)
 }
 
-/// The player's state, or, for a handler Rune queued before the viewer changed, the
-/// preview's detached one (`viewer::Detached`).
 fn media_mut(app: &mut App) -> &mut MediaState {
     let preview = &mut app.preview;
     match &mut preview.viewer {

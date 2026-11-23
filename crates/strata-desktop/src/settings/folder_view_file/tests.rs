@@ -5,8 +5,6 @@ use std::{fs, io, time::Duration};
 use super::*;
 use crate::settings::lock_saves;
 
-/// Runs `run` as the test `name` in a process of its own, with `file` as `folder-views.toml`
-/// if there is one.
 pub(in crate::settings) fn isolated(name: &str, file: Option<&str>, run: impl FnOnce()) {
     crate::test_support::in_own_process(name, || {
         if let Some(contents) = file {
@@ -108,8 +106,6 @@ fn a_save_writes_the_snapshot_and_keeps_what_another_process_saved() {
             };
             assert!(saved().same_views(&views(&ours)));
 
-            // Another process saved a folder since. This save's own change wins for its
-            // folder, the other process's folder is kept, and both come back to adopt.
             let music = folder("/home/me/Music", 64, 3);
             write_file(&format!("{ours}{music}"));
             let FolderViewsSave::Saved(Some(merged)) =

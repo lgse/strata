@@ -12,14 +12,6 @@ use super::channel::Inbox;
 use super::registry;
 use super::thread::Glib;
 
-/// What an attachment keeps alive on the GLib thread: objects to hold, signal handlers to
-/// disconnect, and any other values. Built on the GLib thread and never sent across.
-///
-/// When its [`Attachment`] or [`Signal`] drops, or the bridge shuts down, the `Keep` drops on the
-/// GLib thread: it disconnects its handlers, then releases its objects and values.
-///
-/// A `gio::FileMonitor` stops monitoring when its last reference goes, so keep the monitor
-/// itself, not only its handler.
 #[must_use = "a Keep releases what it holds when it drops"]
 #[derive(Default)]
 pub struct Keep {
@@ -65,8 +57,6 @@ impl Drop for Keep {
     }
 }
 
-/// The Rune side's handle to a [`Keep`] on the GLib thread, from [`Glib::attach`]. Dropping it
-/// releases the `Keep` there.
 #[must_use = "dropping an Attachment releases what it attached"]
 pub struct Attachment {
     id: u64,
@@ -101,8 +91,6 @@ impl Drop for Attachment {
     }
 }
 
-/// Signal arguments from the GLib thread, queued for `poll`: an [`Inbox`] and the [`Attachment`]
-/// that feeds it, from [`Glib::listen`]. Dropping it disconnects on the GLib thread.
 pub struct Signal<M> {
     _attachment: Attachment,
     inbox: Inbox<M>,

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Main Rune view for Settings -> Integrations, header card, and shared visual helpers,
-//! matching `src/ui/settings/integrations.rs` and `src/style.css`.
-
 use std::rc::Rc;
 
 use rune::{Color, Cursor, El, Icon, Pixels, SurfaceFit, Tx, col, el, icon, row, text};

@@ -101,12 +101,9 @@ enum Scroller {
 enum Row {
     /// The row is the node marked as an entry, as on Rune.
     Marked,
-    /// The row is no marked node and the toolkit lists it as an entry, as GTK's row widget.
     Listed,
 }
 
-/// A pane `home` whose entry `notes`, a row as `row` says, is under scroll panes placed as
-/// `scrollers` say, the outermost first; and those scroll panes, in the same order.
 fn scrolled_listing(fake: &mut Fake, scrollers: &[Scroller], row: Row) -> Vec<usize> {
     let frame = [0.0, 40.0, 400.0, 560.0];
     let mut panes = Vec::new();
@@ -153,8 +150,6 @@ fn scrolled_listing(fake: &mut Fake, scrollers: &[Scroller], row: Row) -> Vec<us
 fn a_panes_viewport_is_the_scroll_pane_nearest_inside_its_list_else_around_it() {
     use Row::{Listed, Marked};
     use Scroller::{AroundList, InsideEntry, InsideList};
-    // The scroll panes, outermost first, how the row is told, and which of the panes is the
-    // pane's viewport.
     let cases: [(&str, &[Scroller], Row, Option<usize>); 8] = [
         (
             "GTK's scrolled window around the list",
@@ -294,8 +289,6 @@ fn what_was_never_kept_is_a_broken_lookup_and_not_a_missing_node() {
     );
 }
 
-/// `dialog_button` looks in the dialog on top, as `app.dialog` names it: with a message drawn
-/// inside Settings, its Cancel, not Settings' own Cancel before it in the tree.
 #[test]
 fn a_dialog_button_is_the_dialog_on_top() {
     let pressed = |nests: bool| {

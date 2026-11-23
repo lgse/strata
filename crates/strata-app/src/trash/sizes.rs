@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the delete confirmation says of its items, ported from the GTK interface: their
-//! counts, how far a deletion reaches, and their sizes. Each function names the GTK function
-//! it copies; a change to one on `main` is a change to its copy here (`A7.md`, "Ported from
-//! GTK: watch merges from `main`").
-
 use std::time::Duration;
 
 use strata_core::{
@@ -16,12 +11,10 @@ use strata_fs::adapters::{
     gio_file_for_location, mount_watch, query_file_entry, trash_support,
 };
 
-/// `item_count_label` in `src/ui/browser/entry.rs`.
 pub(super) fn item_count_label(n: usize) -> String {
     count("items", n)
 }
 
-/// `entry_kind_summary` in `src/ui/browser/entry.rs`.
 pub(super) fn entry_kind_summary(entries: &[FileEntry]) -> String {
     let directories = entries
         .iter()
@@ -35,16 +28,12 @@ pub(super) fn entry_kind_summary(entries: &[FileEntry]) -> String {
     }
 }
 
-/// How far a deletion that bypasses Trash reaches (`DeletionReach` in
-/// `src/ui/browser/trash.rs`): a network or cloud provider may keep its own copy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Reach {
     Local,
     Remote,
 }
 
-/// `deletion_reach` in `src/ui/browser/trash.rs`: a mixed selection takes the stronger,
-/// local, warning.
 pub(super) fn deletion_reach(entries: &[FileEntry]) -> Reach {
     let mounts = mount_watch::latest();
     let remote = |location: &Location| match location.native_path() {
@@ -64,7 +53,6 @@ pub(super) fn deletion_reach(entries: &[FileEntry]) -> Reach {
     }
 }
 
-/// `reach_description` in `src/ui/browser/trash.rs`.
 pub(super) fn reach_description(reach: Reach, single: bool) -> String {
     tr(match (reach, single) {
         (Reach::Local, true) => {
@@ -82,8 +70,6 @@ pub(super) fn reach_description(reach: Reach, single: bool) -> String {
     })
 }
 
-/// `trash_unavailable_reason` in `src/ui/browser/trash/delete_dialog.rs`: the mount a failed
-/// trash attempt recorded, when the first item is on one.
 pub(super) fn trash_unavailable_reason(entries: &[FileEntry]) -> Option<String> {
     let first = &entries.first()?.location;
     if first.is_administrator() {
@@ -101,7 +87,6 @@ pub(super) fn trash_unavailable_reason(entries: &[FileEntry]) -> Option<String> 
     )
 }
 
-/// `delete_confirmation_file_size` in `src/ui/browser/trash/delete_dialog.rs`.
 pub(super) fn size_text(size: &MetadataValue<u64>) -> String {
     match size {
         MetadataValue::Known(size) => file_size(*size),
@@ -109,8 +94,6 @@ pub(super) fn size_text(size: &MetadataValue<u64>) -> String {
     }
 }
 
-/// `delete_entry_metadata_text` in `src/ui/browser/trash/delete_dialog.rs`: a file link's
-/// size waits for its target's.
 pub(super) fn metadata_text(entry: &FileEntry) -> String {
     if entry.kind == EntryKind::DirectorySymbolicLink {
         tr("Folder link")
@@ -123,7 +106,6 @@ pub(super) fn metadata_text(entry: &FileEntry) -> String {
     }
 }
 
-/// `permanent_delete_subtitle` in `src/ui/browser/trash/delete_dialog.rs`.
 pub(super) fn permanent_delete_subtitle(reach: Reach, summary: &DirectorySummary) -> String {
     let template = match (reach, summary.truncated()) {
         (Reach::Local, true) => "At least %{items} · at least %{size} will be permanently deleted",
@@ -139,7 +121,6 @@ pub(super) fn permanent_delete_subtitle(reach: Reach, summary: &DirectorySummary
     .into_owned()
 }
 
-/// `delete_entry_size` in `src/ui/browser/entry.rs`: a file link counts its target's size.
 async fn delete_entry_size(entry: &FileEntry) -> MetadataValue<u64> {
     if entry.kind == EntryKind::FileSymbolicLink {
         query_file_entry(entry.location.clone())
@@ -150,8 +131,6 @@ async fn delete_entry_size(entry: &FileEntry) -> MetadataValue<u64> {
     }
 }
 
-/// `aggregate_directory_summary` in `src/ui/browser/entry.rs`: every item and what each
-/// folder holds, with each file link's size as it is found (`on_link`).
 pub(super) async fn aggregate_directory_summary(
     entries: &[FileEntry],
     mut on_link: impl FnMut(usize, &MetadataValue<u64>),

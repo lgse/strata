@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! K4's page in process: what the goldens can't show. Each golden scene draws its theme with
-//! the page's file applied last, and turning the overrides off and on goes through
-//! `theme::switch`, as a reload of the file does, so the colours animate. K4 implements no
-//! input bullet, so it has no scripts (as K1's ruling Q8).
-
 mod k4 {
     use rune::{Env, Key, KeyEvent, Mods, Runtime};
     use strata_gallery::{Gallery, scenes};
@@ -88,8 +83,6 @@ mod k4 {
         }
     }
 
-    /// A reload goes through the same path as a theme switch (WP scope): mid-way the focus
-    /// glow is neither colour, and it settles on the theme's, then back on the override's.
     #[test]
     fn turning_the_overrides_off_and_on_animates_as_a_reload() {
         let mut rt = mount("k4-overrides-dark");

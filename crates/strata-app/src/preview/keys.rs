@@ -1,18 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Keyboard commands and key routing for [`super::Preview`].
-//!
-//! Mirrors GTK's `src/ui/window/keyboard/commands.rs` and `src/ui/preview/keyboard.rs`:
-//! - `preview-panel`: toggles the preview drawer and Columns' reserved slot (Appearance menu).
-//! - `preview`: Space (`i` in 10xer) toggles preview on a file, enters a folder without preview
-//!   in the listing, or closes an open preview when focus is inside the drawer (except in the
-//!   find bar's field, which types Space).
-//! - `preview-enter`: plain Right (`l` when type-to-search is off or in 10xer) on a file whose
-//!   preview is showing moves focus into the preview's content (`Stage::PreviewNavigation`).
-//! - `preview-divider`: `F8` moves focus to the preview divider (`Stage::FocusNavigation`).
-//! - `find_keys`: C9's `PreviewDrawer::find_keys` predicate, using `FIND_IN_PREVIEW` (`Ctrl+F`
-//!   in default mode, `/` in 10xer mode outside the find field).
-
 use rune::{Key, KeyEvent, Tx};
 use strata_components::contract::EntryId;
 use strata_core::model::FileEntry;
@@ -53,14 +40,11 @@ pub(super) const COMMANDS: &[Action<App>] = &[
         .keys(&[
             Keys::at(Stage::DirectCommands, &[PREVIEW.in_map(Map::Tenxer)])
                 .when(in_tenxer_preview_outside_find),
-            // The divider grip, unlike the header's buttons and the body, takes no Space of its
-            // own, so GTK's window toggles the preview closed.
             Keys::at(
                 Stage::FilterAndLocationCommands,
                 &[PREVIEW.in_map(Map::Default)],
             )
             .when(on_preview_grip),
-            // GTK's archive list takes no Space either (A13): the window closes the preview.
             Keys::at(
                 Stage::FilterAndLocationCommands,
                 &[PREVIEW.in_map(Map::Default)],
@@ -131,8 +115,6 @@ fn opens_archive_key(press: &KeyPress) -> bool {
     press.is(RIGHT) || press.is(ENTER) || press.is(SPACE)
 }
 
-/// GTK's 10xer listing claims Right, Enter and Space before this check (marking, activation,
-/// `enter_preview`), so only the default map opens an archive from here.
 fn opens_archive_in_columns(app: &App, at: &Situation) -> bool {
     at.in_view()
         && !shell::preferences(app).tenxer_mode
@@ -171,8 +153,6 @@ fn on_preview_grip(app: &App, at: &Situation) -> bool {
     app.preview.enabled && at.within("preview-grip")
 }
 
-/// The default map's Space there; 10xer's preview keeps it (`tenxer_preview` swallows what
-/// the archive list does not take).
 fn on_archive_tree(app: &App, at: &Situation) -> bool {
     app.preview.enabled
         && at.focused() == Some(archive::ARCHIVE_KEY)
@@ -193,10 +173,6 @@ fn in_listing_for_preview(_: &App, at: &Situation) -> bool {
     at.in_view()
 }
 
-/// Where the preview's media keys reach (`video_controls` in
-/// `src/ui/window/keyboard/commands.rs`, with the drawer's `has_video`): an open drawer, not
-/// set aside in a narrow window, and the keyboard in no text field, not in the sidebar and not
-/// in the header. The route's and the media player's keys read it (`super::transport`).
 pub(super) fn media_keys_reach(app: &App, at: &Situation) -> bool {
     let showing = app.preview.drawer.is_open() && !app.preview.drawer.is_suspended();
     showing && !at.text() && !at.within("sidebar") && !at.in_top_bar()
@@ -413,8 +389,6 @@ fn leave_preview(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// Key predicate passed to C9's `PreviewDrawer::find_keys`: `Ctrl+F` in the default map, or
-/// plain `/` in 10xer mode when the find field is not already focused.
 pub(super) fn find_keys_in(tenxer: bool) -> fn(&KeyEvent) -> bool {
     match tenxer {
         false => default_find_key,

@@ -11,8 +11,6 @@ const PATIENCE: Duration = Duration::from_secs(10);
 const BUDGET: Duration = Duration::from_millis(8);
 const QUIET: Duration = Duration::from_millis(200);
 
-/// A context of the test's own, owned by its thread, with its loop and the helper's
-/// notifications. Private contexts let the tests run side by side.
 struct Owned {
     glib: GlibLoop,
     context: glib::MainContext,
@@ -61,8 +59,6 @@ fn owned(run: impl FnOnce(&Owned)) {
     });
 }
 
-/// GLib tells a context owned elsewhere by writing to its wake-up descriptor, so this is also
-/// the helper waking for a descriptor.
 #[test]
 fn a_source_from_another_thread_notifies_and_the_pump_dispatches_it() {
     owned(|o| {
@@ -102,8 +98,6 @@ fn a_timeout_attached_on_the_owning_thread_is_waited_for_after_the_next_pump() {
     });
 }
 
-/// GLib does not wake a context's poll for a source its own owner attaches: a handler's
-/// source waits for the next pump, which needs a frame, until the app wakes the context.
 #[test]
 fn a_source_the_owning_thread_attaches_waits_until_the_context_is_woken() {
     owned(|o| {

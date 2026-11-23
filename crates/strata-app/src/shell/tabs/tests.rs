@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The window's tabs, in the registered window: each keeps its own browser and state, a hidden
-//! one runs nothing until it is shown and holds a bounded queue meanwhile, a setting another
-//! tab changed is followed when it is shown, and a tab shown again keeps its scroll, its
-//! focused entry, and no location edit.
-
 use std::path::Path;
 
 use rune::{Key, Mods, Tx};
@@ -64,9 +59,6 @@ fn second_tab(host: &mut Offscreen, folder: &Path) -> TabKey {
     key
 }
 
-/// A tab opened at a folder has a browser of its own; showing either tab gives the window its
-/// browser and leaves the other's where it was; closing the shown tab shows its neighbour, and
-/// the last tab stays.
 #[test]
 fn each_tab_keeps_its_own_browser_and_a_shown_tab_takes_the_window() {
     hosted(
@@ -103,9 +95,6 @@ fn each_tab_keeps_its_own_browser_and_a_shown_tab_takes_the_window() {
     );
 }
 
-/// What a hidden tab's browser does is held for it, and none of it reaches the shown tab's
-/// view. Past the bound its events are dropped, and the tab shown again is rebuilt from its
-/// browser, which ends where the events would have.
 #[test]
 fn a_hidden_tab_runs_nothing_and_holds_a_bounded_queue_until_it_is_shown() {
     hosted(
@@ -144,8 +133,6 @@ fn a_hidden_tab_runs_nothing_and_holds_a_bounded_queue_until_it_is_shown() {
     );
 }
 
-/// A setting another tab changed while this one was hidden is followed when it is shown, as
-/// GTK binds it to every tab's browser: here, hidden files.
 #[test]
 fn a_hidden_tab_follows_a_setting_another_tab_changed() {
     hosted(
@@ -190,8 +177,6 @@ fn at_the_end(host: &Offscreen) -> bool {
         && !drawn.iter().any(|name| name == "file000.txt")
 }
 
-/// A tab shown again is scrolled where it was, which is not where its cursor is, as GTK's
-/// hidden tab keeps its scroll; and its cursor is where it was.
 fn keeps_its_scroll(mode: &'static str, name: &str) {
     hosted_in(MODULE, mode, name, |mut host| {
         let names: Vec<String> = (0..300).map(|n| format!("file{n:03}.txt")).collect();
@@ -235,8 +220,6 @@ fn a_list_tab_keeps_its_scroll() {
     keeps_its_scroll("list", "a_list_tab_keeps_its_scroll");
 }
 
-/// The keyboard goes back where it was in a tab shown again, as GTK's `select` restores the
-/// focus a tab saved: here, a row of the sidebar.
 #[test]
 fn a_tab_shown_again_gives_the_keyboard_back_where_it_was() {
     hosted(
@@ -266,8 +249,6 @@ fn a_tab_shown_again_gives_the_keyboard_back_where_it_was() {
     );
 }
 
-/// A tab left while its location is edited comes back with the edit ended and the keyboard
-/// in its files, as GTK's `select` cancels the edit of the tab it leaves.
 #[test]
 fn a_location_edit_ends_when_its_tab_is_left() {
     hosted(
@@ -302,8 +283,6 @@ fn a_location_edit_ends_when_its_tab_is_left() {
     );
 }
 
-/// Each tab has a sidebar of its own, as GTK builds one for each, and a tab shown again
-/// follows what another changed in the settings while it was hidden: here, a place hidden.
 #[test]
 fn a_tabs_sidebar_follows_a_place_another_tab_hid() {
     hosted(
@@ -330,9 +309,6 @@ fn a_tabs_sidebar_follows_a_place_another_tab_hid() {
     );
 }
 
-/// When another tab switches `browser_mode` while a tab is hidden, showing that tab again
-/// runs `Part::tab_shown` on its newly shown view and gives the keyboard to that view instead
-/// of the hidden view's unmounted key.
 #[test]
 fn a_tab_shown_after_a_view_switch_focuses_and_syncs_its_new_view() {
     hosted(
@@ -385,9 +361,6 @@ fn a_tab_shown_after_a_view_switch_focuses_and_syncs_its_new_view() {
     );
 }
 
-/// A tab left with the keyboard in its sidebar gives the keyboard back to its files when
-/// another tab hid the sidebar while it was away, as GTK's `select` falls back to
-/// `focus_active` when the saved widget is unmapped.
 #[test]
 fn a_tab_left_in_the_sidebar_falls_back_to_its_files_when_the_sidebar_was_hidden() {
     hosted(

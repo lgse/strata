@@ -1,31 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One cursor and one selection, kept by two owners, for every view: a view's collection
-//! moves them as keys and the pointer ask, and the browser holds the result, as it does for
-//! the GTK views' pointer and for every key in their Icons and List modes (`SelectionSync` in
-//! `src/ui/browser/columns/append/models.rs`). Shared code, owned by the contract
-//! ([`crate::slots`], "Who owns what"): the Columns view uses it once for each column, a
-//! single-pane view ([`crate::pane`]) once.
-//!
-//! - [`hand_over`] gives the browser what the collection changed, through
-//!   `Browser::set_selection`. The browser answers with `SelectionSynced`, which nothing
-//!   applies again. [`hand_back`] gives it a remembered position the view brought back, which
-//!   is no choice.
-//! - [`adopt`] writes to the collection what the browser changed by itself: the cursor a load
-//!   places, the neighbour a deletion moves it to, a reveal.
-//! - [`placed`] tells [`adopt`]'s one exception: a cursor the collection was waiting to place
-//!   until its folder was listed is the user's.
-//! - [`kept_neighbour`] is the other: after a selectionless removal, a move out of the folder,
-//!   the browser places no cursor, and the keyboard goes to the neighbouring row, unselected,
-//!   as GTK's list view moves its focus there (finding lgse/strata#2546). The view keeps it
-//!   ([`Kept`]) without handing it over: GTK's browser holds no cursor then, and in Columns a
-//!   browser cursor on a folder would open it.
-//! - [`Moving`] carries the selection across a rename, which gives an entry another id.
-//!
-//! A collection's selection has a revision that moves with every change. The view keeps, for
-//! each collection, the revision the browser holds ([`Held`]), so neither side hears its own
-//! change back.
-
 use strata_components::{
     collection::{
         element::CollectionState,
@@ -51,8 +25,6 @@ impl Held {
     }
 }
 
-/// How a collection follows its rows after they changed. Where a cursor goes when its entry
-/// leaves is the browser's to say: the view only lets go of it.
 pub(crate) fn sync_rule(column: &Column) -> SyncRule {
     match column.load() {
         Load::Loading => SyncRule::loading(),
@@ -60,10 +32,6 @@ pub(crate) fn sync_rule(column: &Column) -> SyncRule {
     }
 }
 
-/// How a collection follows its rows when the browser's marks come with them (a view's
-/// `settle`): as [`sync_rule`], but a cursor whose entry left goes to its neighbour,
-/// unselected, which [`kept_neighbour`] keeps only when the browser places no cursor of its
-/// own; otherwise [`adopt`] writes the browser's over it.
 pub(crate) fn settle_rule(column: &Column) -> SyncRule {
     match column.load() {
         Load::Loading => SyncRule::loading(),
@@ -71,12 +39,6 @@ pub(crate) fn settle_rule(column: &Column) -> SyncRule {
     }
 }
 
-/// The marks to adopt after the rows changed when the cursor, `before` the change, left them
-/// and the browser placed no cursor and selects nothing: a selectionless removal, a move out
-/// of the folder. They are the browser's, with the neighbour [`settle_rule`]'s sync gave the
-/// cursor to as the cursor: the keyboard stays in the view, on the row beside the one that
-/// went, unselected, as GTK's list view keeps its focus (finding lgse/strata#2546). [`adopt`]
-/// then records them as the browser's, so the cursor is not handed over. `None` otherwise.
 pub(crate) fn kept_neighbour(
     before: Option<EntryId>,
     column: &Column,
@@ -96,11 +58,6 @@ fn unplaced(marks: &Marks) -> bool {
     marks.cursor.is_none() && marks.selected.is_empty()
 }
 
-/// The neighbour a view keeps the keyboard on after a selectionless removal
-/// ([`kept_neighbour`]). The browser's next marks still place no cursor and select nothing,
-/// and they would take the keyboard off the row again: while they say so, and the cursor is
-/// still that row, the view goes on keeping it. A cursor the browser marks, or one the user
-/// moves, ends it.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Kept(Option<EntryId>);
 
@@ -115,9 +72,6 @@ impl Kept {
         self.0 = marks.and_then(|marks| marks.cursor);
     }
 
-    /// The marks `collection` adopts for the browser's `marks`: the kept neighbour's while the
-    /// browser still places no cursor and selects nothing, and the cursor is still on it.
-    /// `None` when the browser's stand, which ends the keeping.
     pub(crate) fn marks(&mut self, collection: &CollectionState, marks: &Marks) -> Option<Marks> {
         let id = self.0?;
         if !unplaced(marks) || collection.selection.cursor() != Some(id) {
@@ -128,9 +82,6 @@ impl Kept {
     }
 }
 
-/// The browser's `marks`, which place no cursor and select nothing, with `id` as the cursor,
-/// unselected, and as the anchor unless the browser marks one (an undo marks the entry it
-/// brings back).
 fn neighbour(id: EntryId, marks: &Marks) -> Marks {
     Marks {
         cursor: Some(id),
@@ -139,17 +90,10 @@ fn neighbour(id: EntryId, marks: &Marks) -> Marks {
     }
 }
 
-/// Whether the sync that just ran placed a cursor the collection had none of before
-/// (`before`): one it was waiting to place until the folder was listed, as Right into a column
-/// still loading leaves it. That cursor is the user's, so the browser's marks must not
-/// replace it: [`hand_over`] gives it to the browser instead.
 pub(crate) fn placed(before: Option<EntryId>, collection: &CollectionState) -> bool {
     before.is_none() && collection.selection.cursor().is_some()
 }
 
-/// Writes the browser's cursor and selection, `marks`, to the collection of `column`, unless
-/// it shows them already, with the browser's Shift anchor, so a range the user is extending
-/// goes on from where it started. Returns the revision the browser then holds.
 pub(crate) fn adopt(column: &Column, collection: &mut CollectionState, marks: &Marks) -> Held {
     // A folder still loading may not list an entry the browser already holds.
     let loading = *column.load() == Load::Loading;
@@ -158,9 +102,6 @@ pub(crate) fn adopt(column: &Column, collection: &mut CollectionState, marks: &M
     let selected: Vec<EntryId> = marks.selected.iter().copied().filter(listed).collect();
     let provisional = marks.provisional && cursor.is_some_and(|id| selected == [id]);
     let selection = &mut collection.selection;
-    // The browser's anchor, as GTK extends a Shift range from it after a reload, or none when
-    // it has none: GTK's Shift+click then selects the entry alone (finding lgse/strata#2551),
-    // and the keyboard's Shift+arrow anchors at the cursor first on both.
     let anchor = marks.anchor.filter(listed);
     let shown = selection.cursor() == cursor
         && selection.anchor() == anchor
@@ -188,33 +129,18 @@ pub(crate) struct Shown<'a> {
     pub(crate) collection: &'a CollectionState,
 }
 
-/// What a view holds of the browser's columns, as the QA backend's invariants read it
-/// (`qa/invariants.rs`): borrowed from the view, which keeps nothing for it.
 #[cfg(feature = "qa")]
 #[derive(Default)]
 pub(crate) struct Presented<'a> {
-    /// The browser's column the view keeps the keyboard's cursor in: Columns' active column, a
-    /// single pane's shown one.
     pub(crate) active: Option<usize>,
-    /// For a view that draws a column for each of the browser's, Columns: how many it draws.
-    /// None for a view that shows one folder.
     pub(crate) strip: Option<usize>,
     /// The listing the view keeps for each of the browser's columns, root first.
     pub(crate) listings: Vec<&'a Column>,
     /// The columns shown with a cursor and a selection.
     pub(crate) shown: Vec<Shown<'a>>,
-    /// The depth of each column shown whose selection changed since the browser last took it
-    /// ([`Held`]): what the view has still to hand over.
     pub(crate) pending: Vec<usize>,
-    /// The depth of each column whose collection holds a filter's results' selection while
-    /// they show, Columns': the browser holds none of it, as GTK's does not.
     pub(crate) results: Vec<usize>,
-    /// What the tree draws in a column's place while a filter's results show there: its rows
-    /// and their collection.
     pub(crate) drawn: Vec<Drawn<'a>>,
-    /// The depth of each column whose cursor is a neighbour kept after a selectionless
-    /// removal ([`Kept`]), and that neighbour: the browser holds no cursor there, as GTK's
-    /// does not.
     pub(crate) kept: Vec<(usize, EntryId)>,
 }
 
@@ -226,17 +152,10 @@ pub(crate) struct Drawn<'a> {
     pub(crate) collection: &'a CollectionState,
 }
 
-/// Gives the browser's column what its collection changed since the browser last held it.
-/// Call it before GLib dispatches and before any call that makes the browser act on its
-/// cursor, so the browser never works from a selection older than the view's.
 pub(crate) fn hand_over(shown: &Shown<'_>, browser: &Browser, held: &mut Held) {
     give(shown, browser, held, Handed::Choice);
 }
 
-/// Gives the browser a position the view brought back itself, a folder's remembered one, as
-/// [`hand_over`] does, but as no choice: GTK's `restore_selection`
-/// (`src/ui/browser_modes/navigation.rs`) sets the browser's selection without committing it,
-/// so a cursor a load placed stays the load's (finding lgse/strata#2437).
 pub(crate) fn hand_back(shown: &Shown<'_>, browser: &Browser, held: &mut Held) {
     give(shown, browser, held, Handed::Restored);
 }
@@ -244,7 +163,6 @@ pub(crate) fn hand_back(shown: &Shown<'_>, browser: &Browser, held: &mut Held) {
 /// Whose change the browser is given.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Handed {
-    /// The user's, as a key or a click is to the GTK views: it replaces a cursor a load placed.
     Choice,
     /// A remembered position the view brought back.
     Restored,
@@ -279,11 +197,6 @@ fn give(shown: &Shown<'_>, browser: &Browser, held: &mut Held, handed: Handed) {
         browser.commit_selection();
     }
     browser.set_selection(depth, &selected, cursor);
-    // The view's anchor, or, for the user's own change, none: the browser's `set_selection`
-    // takes the cursor's for one it lacks, which a later adopt would hand back to a view that
-    // has none, as after a first visit, and a Shift+click would range from it (finding
-    // lgse/strata#2551). A position handed back keeps that default, as GTK's
-    // `restore_selection` sets it through the same `set_selection`.
     match selection.anchor().and_then(position) {
         Some(anchor) => browser.set_selection_anchor(depth, anchor),
         None if handed == Handed::Choice => browser.clear_selection_anchor(depth),
@@ -298,11 +211,6 @@ struct PendingMove {
     thumb: Option<ThumbOrigin>,
 }
 
-/// Entries one of the browser's operations gave another id (a rename gives an entry another
-/// location), each as its old id and its new one, until the listing shows the change. The
-/// change comes before the listing shows it, and a selection may only be told once its listing
-/// has changed. Also carries each renamed row's thumbnail identity so the window's thumbnail
-/// store can relocate the loaded image to the new key instead of re-rendering it.
 #[derive(Debug, Default)]
 pub(crate) struct Moving {
     pending: Vec<PendingMove>,
@@ -310,9 +218,6 @@ pub(crate) struct Moving {
 }
 
 impl Moving {
-    /// The entry `from` has the id `to` now. `lists` says whether the view lists an id. A
-    /// listing that changed first, as when the folder's monitor reported the rename before the
-    /// operation did, has let go of the old id already: nothing waits then.
     #[cfg(test)]
     pub(crate) fn moved(&mut self, from: EntryId, to: EntryId, lists: impl Fn(EntryId) -> bool) {
         if lists(from) && !lists(to) {
@@ -324,8 +229,6 @@ impl Moving {
         }
     }
 
-    /// Records `from` -> `to` from `columns`, keeping `from`'s thumbnail identity so an
-    /// arrived rename reuses its thumbnail in the window's store.
     pub(crate) fn moved_in(&mut self, from: EntryId, to: EntryId, columns: &[Column]) {
         if columns
             .iter()
@@ -342,10 +245,6 @@ impl Moving {
         }
     }
 
-    /// `column`'s rows changed, and `collection`, its selection, has not been brought in step
-    /// with them yet. What it holds by the old id of an entry that now shows under its new one
-    /// it holds by the new one: a range keeps its anchor and its members through a rename.
-    /// Returns the pairs that arrived, for what else the view holds by id.
     pub(crate) fn arrived(
         &mut self,
         column: &Column,
@@ -360,9 +259,6 @@ impl Moving {
         arrived
     }
 
-    /// Takes the pairs whose entry `column` now shows under its new id, and no longer under
-    /// its old, so each arrival is applied at most once, queueing any reusable thumbnail
-    /// relocations for [`Self::take_thumbnails`].
     pub(crate) fn arriving(&mut self, column: &Column) -> Vec<(EntryId, EntryId)> {
         let mut arrived = Vec::new();
         let thumbnails = &mut self.thumbnails;
@@ -392,8 +288,6 @@ impl Moving {
         self.pending.retain(|entry| listed(entry.from));
     }
 
-    /// Appends every [`EntryId`] referenced by pending renames (`from` and `to`) into `out`,
-    /// so id-table pruning does not evict an in-flight rename target before its row arrives.
     pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
         out.extend(self.pending.iter().flat_map(|entry| [entry.from, entry.to]));
     }

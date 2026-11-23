@@ -30,8 +30,6 @@ fn runes_roles_read_as_the_at_spi_names_the_scenarios_use() {
     }
 }
 
-/// A button that reports a pressed state is a toggle button, as GTK's sidebar toggle and its
-/// play buttons are; the state leaves every other role as it is.
 #[test]
 fn a_button_with_a_pressed_state_is_a_toggle_button() {
     for (rune, toggled, expected) in [
@@ -49,8 +47,6 @@ fn a_button_with_a_pressed_state_is_a_toggle_button() {
 #[test]
 fn only_a_named_group_is_a_grouping() {
     assert_eq!(at_spi("group", true), "grouping");
-    // Rune keeps every keyed layout box as a group. GTK reports a plain container as a
-    // panel, so a scenario's `grouping` finds the pane and not the boxes around it.
     assert_eq!(at_spi("group", false), "panel");
     assert_eq!(at_spi("a-role-rune-adds-later", true), "filler");
 }

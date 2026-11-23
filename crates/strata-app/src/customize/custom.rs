@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Custom Folder Color and Custom File Color: GTK's `show_custom_color_modal`
-//! (`customization/custom_color.rs`), stacked over the Customize dialog. C20b's picker takes
-//! the place of GTK's colour chooser: its plane, hue strip and hex field are what GTK's editor
-//! page shows, so there is no palette page to go back from.
-//!
-//! It opens on the item's colour, or GTK's `#34d399` when it has none. Apply saves the picked
-//! colour as a custom one and closes; Cancel, Escape and a click outside close it unsaved.
-//! Either way the keyboard goes back to the Customize dialog's custom colour button.
-
 use std::cell::RefCell;
 
 use rune::Tx;
@@ -21,7 +12,6 @@ use strata_core::{i18n::tr, model::FolderColorValue};
 use super::{Item, body::CUSTOM, choose_color};
 use crate::{App, slots::Frame};
 
-/// GTK's starting colour when the item has none, `#34d399`.
 const START: Srgba = Srgba::rgb(0x34, 0xd3, 0x99);
 
 const PICKER: &str = "customize-picker";
@@ -127,8 +117,6 @@ pub(super) fn build(app: &App, item: &Item, frame: &mut Frame<'_, App>) {
 }
 
 thread_local! {
-    /// The words in the language they were made for: [`PickerWords`] holds them as
-    /// `&'static str`, so each language's are made once.
     static WORDS: RefCell<Vec<(String, PickerWords)>> = const { RefCell::new(Vec::new()) };
 }
 

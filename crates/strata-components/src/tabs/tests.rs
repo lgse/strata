@@ -14,8 +14,6 @@ fn tabs(n: u64) -> Vec<Tab<'static>> {
         .collect()
 }
 
-// browser/tabs: "Ctrl+Tab and Ctrl+Page Down select the next tab; Ctrl+Shift+Tab and Ctrl+Page
-// Up select the previous one. Each wraps at either end."
 #[test]
 fn step_wraps_at_either_end() {
     let t = tabs(3);
@@ -26,8 +24,6 @@ fn step_wraps_at_either_end() {
     assert_eq!(TabsData::new(&t, None).step(1), None);
 }
 
-// browser/tabs: "Ctrl+Shift+Page Up and Ctrl+Shift+Page Down move the active tab one position";
-// "Moving stops at either end of the strip instead of wrapping."
 #[test]
 fn moving_stops_at_the_ends() {
     let t = tabs(3);
@@ -37,8 +33,6 @@ fn moving_stops_at_the_ends() {
     assert_eq!(d.moved(TabId(1), -1), None);
 }
 
-// browser/tabs: "Closing the active tab selects its right neighbour, or its left neighbour when
-// it was last."
 #[test]
 fn closing_hands_over_to_the_right_then_the_left() {
     let t = tabs(3);
@@ -76,9 +70,6 @@ fn names_past_22_characters_end_in_an_ellipsis() {
     assert_eq!(elide_end(&wide, LABEL_CHARS).chars().count(), LABEL_CHARS);
 }
 
-// browser/tabs: "A window whose active tab is at folder docs is titled docs — Strata"; "A window
-// with no folder open and no location awaited is titled Strata"; "The title shows a folder
-// name over 22 characters in full".
 #[test]
 fn the_title_carries_the_whole_name_or_the_app_alone() {
     let f = TitleFormat::default();
@@ -89,8 +80,6 @@ fn the_title_carries_the_whole_name_or_the_app_alone() {
     assert_eq!(window_title(Some(long), &f), format!("{long} — Strata"));
 }
 
-// browser/tabs: "Repeated Ctrl+Shift+T reopens closed tabs newest first, up to 20; a 21st close
-// drops the oldest entry."
 #[test]
 fn the_stack_keeps_twenty_newest_first() {
     let mut closed = ClosedTabs::new();
@@ -103,8 +92,6 @@ fn the_stack_keeps_twenty_newest_first() {
     assert_eq!(closed.reopen(), None);
 }
 
-// browser/tabs: "When fewer tabs are open than the former position, the reopened tab stays at
-// the right end."
 #[test]
 fn a_reopened_tab_goes_back_to_its_place_or_the_end() {
     let mut closed = ClosedTabs::new();
@@ -130,8 +117,6 @@ fn sprung(id: u64) -> Vec<TabsIntent> {
     }]
 }
 
-// browser/tabs: "Holding a file or browser-content drag over a tab for 450 ms selects it". The
-// same hover reported again (X2's binder does, on each motion) keeps the spring's start.
 #[test]
 fn a_repeated_hover_on_the_same_tab_keeps_its_start() {
     let t = tabs(3);
@@ -167,8 +152,6 @@ fn another_tab_restarts_the_wait_and_a_leave_ends_it() {
     assert!(tick(&mut st, 3.0, &d).is_empty(), "a leave ends the wait");
 }
 
-// browser/tabs: "A folder-only drag held over a tab does not select it" (the zone arms with no
-// delay for it), and a tab that became active, or closed, while the drag rested springs nothing.
 #[test]
 fn nothing_springs_unarmed_or_for_a_tab_now_active_or_gone() {
     let t = tabs(3);
@@ -183,8 +166,6 @@ fn nothing_springs_unarmed_or_for_a_tab_now_active_or_gone() {
     assert!(tick(&mut st, 4.0, &TabsData::new(&t[..2], Some(TabId(1)))).is_empty());
 }
 
-// browser/tabs: "Navigating the active tab, or selecting another tab, retitles the window";
-// "A background tab that navigates leaves the window title unchanged."
 #[test]
 fn the_title_is_emitted_once_per_change_of_the_active_tab() {
     let titles = |st: &mut BrowserTabsState, d: &TabsData<'_>| -> Vec<String> {
@@ -361,8 +342,6 @@ fn words_names_each_tabs_close_button() {
     assert_eq!(close_buttons, ["Fermer l’onglet", "Fermer l’onglet"]);
 }
 
-// Packet entry 108: a `Tx::element_at` callback inside `Runtime::frame` sees `tx.clock() == 0.0`
-// even when the window's clock is seconds ahead; the spring stamps its start on the next tick.
 #[test]
 fn a_zero_clock_pick_hover_waits_the_full_delay_from_next_tick() {
     let t = tabs(3);
@@ -444,8 +423,6 @@ fn variable_width_drag_reorders_narrow_and_wide_tabs_and_cancels_on_escape() {
     assert!(matches!(state.release(true, false), drag::Release::None));
     assert!(!state.take_swallowed_click());
 
-    // Cancelling a drag with Escape while the pointer is still over the tab must NOT leave a
-    // stale `swallow_click` behind to eat the next keyboard activation.
     press(&mut state);
     assert!(state.follow(-114.5, 0.0));
     assert!(matches!(state.release(true, true), drag::Release::None));
@@ -495,8 +472,6 @@ fn escape_cancelled_drag_over_tab_does_not_swallow_keyboard_activation() {
         tab1.visible[0] + 24.0,
         tab1.visible[1] + tab1.visible[3] / 2.0,
     );
-    // Start a reorder drag on tab 1, move slightly past slop while remaining inside tab 1, and
-    // cancel with Escape.
     rt.pointer_move(x, y);
     rt.pointer_down(x, y);
     rt.pointer_move(x + 10.0, y);

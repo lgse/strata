@@ -1,26 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Frame and Content densities, as GTK's Appearance menu sets them
-//! (`append_density_section` in `src/ui/window/appearance_menu.rs`, `density_slider` in
-//! `src/ui/window/density_slider.rs`):
-//!
-//! - **Saved** as a preset's name or `custom` with its px (`frame_density`,
-//!   `browser_density` and their `*_custom_px`), by the shared rule
-//!   (`strata_desktop::settings::stored_density_px` and `store_density_px`), on
-//!   [`strata_kit::density`]'s scales: Frame 0 to 12 px, Compact 0 and Airy 4; Content 0 to
-//!   16 px, Compact 4 and Airy 8 (a Custom value below Compact too, as GTK allows). The look follows them (`shell::follow_look`) at start and on
-//!   every change.
-//! - **The sliders** (C20a's [`Slider`]), named "Frame" and "Content", their value text
-//!   "Compact · 4 px", "Airy · 8 px" or "Custom · 6 px". Arrows step 1 px and Page Up and
-//!   Page Down the distance between the presets (4 px), as GTK's `set_increments`. A drag
-//!   lands on a preset near it, and the Compact and Airy toggles under their ticks set it,
-//!   pressed while the value is there. A wheel over a slider scrolls what is behind it.
-//! - **Every change is saved and shown at once,** a drag's moves included, as GTK saves each
-//!   `value_changed`; a cancelled drag saves the value it started at again.
-//! - **Return presses a focused Compact or Airy toggle,** as it presses a GTK button: C20a
-//!   draws them, so the sliders' box turns a plain Return on one into the Space that presses
-//!   it (`buttons::pressed`).
-
 use rune::{El, KeyEvent, TextStyle, Tx, col, row, text};
 use strata_components::controls::slider::{Range, Slider, SliderChange, SliderState, Snap};
 use strata_core::i18n::tr;
@@ -34,7 +13,6 @@ pub(crate) struct Density {
     scale: Scale,
     saved: fn(&Preferences) -> (&str, u8),
     to_save: fn(&mut Preferences) -> (&mut String, &mut u8),
-    /// The slider's key, and its Compact and Airy toggles' (C20a's `<key>-snap-<i>`).
     pub(super) keys: [&'static str; 3],
     label: fn(&Labels) -> &String,
     state: fn(&App) -> &SliderState,
@@ -144,7 +122,6 @@ impl Density {
         shell::follow_look(app);
     }
 
-    /// GTK's value text: the preset's name or Custom, and the px.
     fn value_text(&self, px: u8) -> String {
         if px == self.scale.compact {
             rust_i18n::t!("Compact · %{px} px", px = px)
@@ -201,7 +178,6 @@ impl Density {
     }
 }
 
-/// The two sliders, Frame then Content, as GTK's DENSITY section lays them out.
 pub(super) fn sliders(app: &App) -> El {
     let snaps: Vec<&'static str> = [&FRAME, &CONTENT]
         .iter()

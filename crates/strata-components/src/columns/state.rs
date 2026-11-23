@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`ColumnsState`]: what the host keeps for one window's column strip, and the lifecycle
-//! calls it makes as Strata opens, closes and returns to folders.
-
 use rune::{Live, Spring, Tx};
 use strata_kit::look::Look;
 
@@ -19,26 +16,18 @@ use crate::contract::{EntryId, EntrySource, Point, Rect};
 use crate::scroll::{Autoscroll, AutoscrollPointer, Bar, ScrollFeed};
 
 /// Where the keyboard cursor goes when a column opens.
-///
-/// Used by: hosts.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Focus {
-    /// The active column stays where it is: mirroring's child column (Up or Down onto a
-    /// folder), shown without moving focus.
+    /// The active column stays where it is: mirroring's child column (Up or Down onto a folder), shown without moving focus.
     #[default]
     No,
-    /// The new column becomes the active one, with nothing selected in it: a click on a folder,
-    /// a double click.
+    /// The new column becomes the active one, with nothing selected in it: a click on a folder, a double click.
     Column,
-    /// The new column becomes the active one, with the cursor on its first entry once it has
-    /// one: Right or Return on a folder (Strata's `focus_child`).
+    /// The new column becomes the active one, with the cursor on its first entry once it has one: Right or Return on a folder.
     FirstEntry,
 }
 
-/// A folder a column opens on: its listing as it stands, whether that is complete, and the
-/// position remembered for it, if any.
-///
-/// Used by: hosts.
+/// A folder a column opens on: its listing as it stands, whether that is complete, and the position remembered for it.
 #[derive(Clone, Copy)]
 pub struct Opening<'a> {
     /// The folder's listing.
@@ -83,18 +72,12 @@ pub(super) enum Pending {
     None,
     /// On the first entry ([`Focus::FirstEntry`] on a folder still loading).
     First,
-    /// On the folder the column has open (Left into a column with no cursor that is still
-    /// loading); nothing if it's gone by then.
     Open(EntryId),
 }
 
 /// One column: its collection's state, and what the strip keeps for it.
-///
-/// Used by: hosts.
 pub struct ColumnState {
-    /// The column's collection: its selection, cursor and controllers (C1a–C1d, C24's
-    /// autoscroll decorator), as [`ColumnsState::push`] installs them. A host may replace the
-    /// controllers.
+    /// The column's collection: its selection, cursor and controllers, as `ColumnsState::push` installs them.
     pub collection: CollectionState,
     /// The collection's key serial: new with each folder the column shows.
     pub(super) serial: u64,
@@ -102,15 +85,8 @@ pub struct ColumnState {
     pub(super) slot: u64,
     pub(super) feed: ScrollFeed,
     pub(super) bar: Bar,
-    /// Where the last frame drew the column's shell (`[x, y, w, h]` in window points), moving
-    /// through width springs, entrance slides and strip scrolls (`El::drawn_rect_into`).
     pub(super) drawn: Live<[f32; 4]>,
-    /// The width in base points (at the default text size): dragged, fitted, spread or
-    /// saved.
     pub(super) width: f32,
-    /// The area the column was narrowed to, in points, while its width would draw wider: a
-    /// new column under a narrower area, or a text-size change. Its own width stays, so the
-    /// earlier text size draws it again.
     pub(super) limit: Option<f32>,
     pub(super) entrance: Entrance,
     pub(super) keys: KeyHandle,
@@ -127,15 +103,12 @@ pub(super) enum HeaderPeek {
 }
 
 impl ColumnState {
-    /// The column's key handle, shared with its keyboard controller: the 10xer range, and
-    /// commands from outside the column (C1c's [`KeyHandle`]).
+    /// The column's key handle, shared with its keyboard controller: the 10xer range, and commands from outside the column.
     pub fn key_handle(&self) -> &KeyHandle {
         &self.keys
     }
 
-    /// The width it was given (dragged, fitted, spread or saved), in base points, before the
-    /// text size. It draws narrower while the area narrows it (a new column under a narrower
-    /// area, a text-size change).
+    /// The width it was given (dragged, fitted, spread or saved), in base points, before the text size.
     pub fn width(&self) -> f32 {
         self.width
     }
@@ -156,22 +129,11 @@ impl std::fmt::Debug for ColumnState {
     }
 }
 
-/// One window's column strip: its columns, which one holds the keyboard cursor, the strip's
-/// scroll position and bar, a column-edge resize and a held drag in progress.
-///
-/// The host keeps one per window (and one in the chooser) for the life of the view, beside its
-/// listings ([`ColumnSources`]), and calls the lifecycle methods as Strata's policy opens,
-/// closes and returns to folders: [`ColumnsState::push`], [`ColumnsState::swap_from`],
-/// [`ColumnsState::truncate`], [`ColumnsState::replace`] and [`ColumnsState::return_to`]. The
-/// listings and the columns change in the same handler.
-///
-/// Used by: hosts.
+/// One window's column strip: its columns, which one holds the keyboard cursor, the strip's scroll position and bar.
 pub struct ColumnsState {
     pub(super) key: String,
     pub(super) columns: Vec<ColumnState>,
     pub(super) active: usize,
-    /// The column the latest pointer or keyboard input targeted: its header shows the
-    /// actions. A held target (an open context menu) wins.
     pub(super) targeted: Option<usize>,
     pub(super) held: Option<usize>,
     serial: u64,
@@ -189,26 +151,14 @@ pub struct ColumnsState {
     pub(super) resize: Option<Resize>,
     /// The column whose edge the pointer rests on, past the caption's delay.
     pub(super) edge_hover: Option<usize>,
-    /// The column whose edge the pointer is on, at once: the last column's lights the drawer's
-    /// line.
     pub(super) edge_lit: Option<usize>,
-    /// The last press on a column edge, by column serial, on the host's clock: a second one
-    /// soon after on the same edge fits the column.
     pub(super) edge_press: Option<(u64, f64)>,
     /// The text scale the widths were last drawn at.
     scale: Option<f32>,
-    /// Open columns wider than the area are narrowed to it once the next area arrives: at the
-    /// start, and after a text-size change (from the tick it was seen in).
     narrow: Narrow,
     pub(super) autoscroll: Autoscroll,
-    /// What an accessor of a column that has gone reads (a handler or a tick that outlived
-    /// it): an empty collection.
     pub(super) spare: CollectionState,
-    /// The folder the last activation opened a column for, with its column: the second press
-    /// of that click's run leaves the new column active.
     pub(super) opened: Option<(usize, EntryId)>,
-    /// The column pressed last was the active one at the press: a click on its empty space
-    /// clears every column, rather than picking what it selects.
     pub(super) press_was_active: bool,
     bar_mode: crate::scroll::BarMode,
     /// The host's clock at the last tick.
@@ -219,11 +169,7 @@ pub struct ColumnsState {
     pub(super) recheck: Option<Recheck>,
     /// Last built clipped-column slices `(left_clipped, visible_width)` per column.
     clipped: Vec<Option<(bool, f32)>>,
-    /// Whether the horizontal strip currently overflows its viewport, so the bottom strip bar
-    /// reserves space beneath the columns.
     pub(super) strip_overflows: std::cell::Cell<bool>,
-    /// Timestamp and window point of the last peek-reveal click, so the second press of a
-    /// double-click on a clipped column is ignored (`src/ui/browser/columns/reveal.rs`).
     pub(super) peek_seq: Option<(f64, Point)>,
     /// Classification of the held header press.
     pub(super) header_peek: Option<HeaderPeek>,
@@ -255,9 +201,6 @@ impl std::fmt::Debug for ColumnsState {
     }
 }
 
-/// When open columns wider than the area narrow to it (Strata's `clamp_to_next_column_limit`):
-/// the first area, and the first after a text-size change, narrow them; a window shrinking
-/// later doesn't.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Narrow {
     Idle,
@@ -268,14 +211,10 @@ enum Narrow {
 /// The reveal's glide: about Strata's 220 ms `emphasized_deceleration`.
 pub(super) const REVEAL: Spring = Spring::new(0.22, 0.0);
 
-/// How long after a reveal a change of the strip's width works it out again, in seconds: a
-/// drawer slides open in 260 ms, a swapped sibling's width springs in 220.
 const RECHECK: f64 = 0.5;
 
 impl ColumnsState {
-    /// No columns yet. `key` is the view's key (its strip's, and the start of every column's);
-    /// `autoscroll` is the window's middle-click autoscroll (C24), which every column's pointer
-    /// decorator shares.
+    /// No columns yet.
     pub fn new(key: impl Into<String>, autoscroll: Autoscroll) -> Self {
         Self {
             key: key.into(),
@@ -340,14 +279,12 @@ impl ColumnsState {
         self.active
     }
 
-    /// The column whose header shows the actions: the one an open menu holds, else the one the
-    /// latest pointer or keyboard input targeted, else the active one.
+    /// The column whose header shows the actions.
     pub fn targeted(&self) -> usize {
         self.held.or(self.targeted).unwrap_or(self.active)
     }
 
-    /// The key of column `depth`'s collection: its rows' key paths and scroll requests start
-    /// there (`viewport_path`, `row_path`).
+    /// The key of column `depth`'s collection: its rows' key paths and scroll requests start there (`viewport_path`.
     pub fn column_key(&self, depth: usize) -> Option<String> {
         self.columns
             .get(depth)
@@ -364,15 +301,12 @@ impl ColumnsState {
         self.strip
     }
 
-    /// Whether the horizontal strip currently overflows its viewport, reserving space for the
-    /// bottom strip scrollbar beneath the columns.
+    /// Whether the horizontal strip currently overflows its viewport.
     pub fn strip_overflows(&self) -> bool {
         self.strip_overflows.get()
     }
 
-    /// When the strip's and the columns' scroll bars show: hidden at rest by default
-    /// (`BarMode::Overlay`), or whenever they overflow (a desktop that turns overlay scrolling
-    /// off).
+    /// When the strip's and the columns' scroll bars show.
     pub fn set_bar_mode(&mut self, mode: crate::scroll::BarMode) {
         self.strip_bar.set_mode(mode);
         for c in &self.columns {
@@ -381,8 +315,7 @@ impl ColumnsState {
         self.bar_mode = mode;
     }
 
-    /// The window's autoscroll, which the host drives (`Autoscroll::drive`) and whose shield it
-    /// mounts.
+    /// The window's autoscroll, which the host drives (`Autoscroll::drive`) and whose shield it mounts.
     pub fn autoscroll(&self) -> &Autoscroll {
         &self.autoscroll
     }
@@ -392,9 +325,7 @@ impl ColumnsState {
         self.drag.pointer().and(self.drag.hovered())
     }
 
-    /// Whether the pointer is on the edge of the last column (the one that meets the preview)
-    /// or resizing it: the host lights the preview divider's line then
-    /// (`DrawerState::light_line`, C9).
+    /// Whether the pointer is on the edge of the last column (the one that meets the preview) or resizing it.
     pub fn last_edge_lit(&self) -> bool {
         let last = self.columns.len().checked_sub(1);
         last.is_some() && (self.edge_lit == last || self.resize.as_ref().map(|r| r.depth) == last)
@@ -412,20 +343,12 @@ impl ColumnsState {
 
     // Settings.
 
-    /// The width new columns open at, in base points: the saved `browser_column_width` (or
-    /// `chooser_column_width`), at least one standard column.
+    /// The width new columns open at, in base points.
     pub fn set_default_width(&mut self, base: f32) {
         self.default_width = width::sane(base).unwrap_or(width::STANDARD);
     }
 
-    /// The width a column may take at most, in points: the visible browser area (the preview
-    /// split less its divider, the sidebar counted at full width). Set it whenever the area is
-    /// laid out, as Strata publishes it. A new column opens at most this wide, and an edge
-    /// drag and an autofit stop there. Never below one standard column.
-    ///
-    /// The first area, and the first after a text-size change, narrow open columns wider than
-    /// it (at the view's next tick); a window shrinking later narrows none, though an edge
-    /// drag on such a column snaps it to the area.
+    /// The width a column may take at most, in points.
     pub fn set_width_cap(&mut self, cap: Option<f32>) {
         self.cap = cap.filter(|c| c.is_finite() && *c > 0.0);
         if let (Narrow::Armed(at, _), Some(_)) = (self.narrow, self.cap) {
@@ -463,8 +386,6 @@ impl ColumnsState {
         )));
         collection.controllers.keyboard = Some(Box::new(Keyboard::new(keys.clone())));
         collection.controllers.marquee = Some(Box::new(Marquee::new()));
-        // A row's reveal moves the column's listing only; the strip glides to the column on the
-        // view's own reveal (a reveal request would jump it, Rune draft U-C2-4).
         collection.set_own_viewport_reveals(true);
         let scale = width::scale(look);
         // A saved width wider than the area opens narrowed to it; the setting stays.
@@ -489,9 +410,7 @@ impl ColumnsState {
         }
     }
 
-    /// Opens a column after the last on `open` (the folder's listing as it stands, whether it is
-    /// complete, and a remembered position). `focus` says whether it becomes the active column,
-    /// and where its cursor goes; an active column is revealed. Returns its depth.
+    /// Opens a column after the last on `open` (the folder's listing as it stands, whether it is complete.
     pub fn push(&mut self, open: Opening<'_>, focus: Focus, look: &Look, tx: &mut Tx) -> usize {
         let column = self.new_column(None, look, Entrance::Slide);
         self.columns.push(column);
@@ -500,9 +419,7 @@ impl ColumnsState {
         depth
     }
 
-    /// Opens a sibling in column `depth`'s place: that column goes at once and the new one
-    /// fades in where it stood, while the columns after it shrink away. As
-    /// [`ColumnsState::push`] otherwise.
+    /// Opens a sibling in column `depth`'s place.
     pub fn swap_from(
         &mut self,
         depth: usize,
@@ -551,7 +468,6 @@ impl ColumnsState {
     }
 
     /// Closes the columns from `len` on: they narrow and fade out, unless animations are off.
-    /// The active column moves to the last one left if it was among them, and is revealed.
     pub fn truncate(&mut self, len: usize, look: &Look, tx: &mut Tx) {
         let len = len.max(1);
         if len >= self.columns.len() {
@@ -564,15 +480,12 @@ impl ColumnsState {
         self.reveal(look, tx);
     }
 
-    /// Reveals the active column in the strip: called when the preview drawer beside it opens,
-    /// resumes, or resizes the strip's viewport.
+    /// Reveals the active column in the strip: called when the preview drawer beside it opens, resumes.
     pub fn reveal_active(&mut self, look: &Look, tx: &mut Tx) {
         self.reveal(look, tx);
         self.reveal_after_layout = true;
     }
 
-    /// Ends what belongs to the columns from `len` on: a resize of one, a menu held on one, its
-    /// autoscroll and scroll bar.
     fn drop_from(&mut self, len: usize) {
         for c in self.columns.iter().skip(len) {
             self.autoscroll
@@ -599,13 +512,7 @@ impl ColumnsState {
         }
     }
 
-    /// Replaces every column with fresh ones for `sources` (another location, a rebuilt strip,
-    /// a switch back to Columns), with no motion, and `active` holding the cursor. Each column
-    /// restores the position `position` gives it.
-    ///
-    /// It makes the whole transaction instant (`Tx::instant`), so the old columns go and the new
-    /// ones come in the same frame: anything else the host changes in that handler lands at once
-    /// too. Call it from a handler of its own when other changes should animate.
+    /// Replaces every column with fresh ones for `sources` (another location, a rebuilt strip, a switch back to Columns).
     pub fn replace(
         &mut self,
         sources: &dyn ColumnSources,
@@ -646,10 +553,7 @@ impl ColumnsState {
         }
     }
 
-    /// Back, Forward or Up to the ancestor in column `depth`: the columns after it close, it
-    /// becomes the active column, and `came_from` (the folder the strip came from, if that
-    /// column lists it) is selected with the cursor on it, scrolled into view. The came-from
-    /// folder's own column stays closed.
+    /// Back, Forward or Up to the ancestor in column `depth`.
     pub fn return_to(
         &mut self,
         depth: usize,
@@ -674,10 +578,7 @@ impl ColumnsState {
         self.reveal(look, tx);
     }
 
-    /// Brings column `depth` in step with its listing after it changed
-    /// (`CollectionState::sync`), and places a cursor the column was waiting to place: on the
-    /// first entry once there is one, or on the folder it has open once it is listed (nothing,
-    /// if that folder is gone).
+    /// Brings column `depth` in step with its listing after it changed (`CollectionState::sync`).
     pub fn sync(&mut self, depth: usize, source: &dyn EntrySource, rule: SyncRule, tx: &mut Tx) {
         let Some(column) = self.columns.get_mut(depth) else {
             return;
@@ -713,15 +614,11 @@ impl ColumnsState {
         }
     }
 
-    /// Holds column `depth`'s header actions while a menu opened from it is open, wherever the
-    /// pointer goes (`None` when it closes).
+    /// Holds column `depth`'s header actions while a menu opened from it is open.
     pub fn hold_target(&mut self, depth: Option<usize>) {
         self.held = depth.filter(|d| *d < self.columns.len());
     }
 
-    /// The active column without a reveal: only it shows the cursor. A column the keyboard
-    /// leaves drops a cursor it was waiting to place (Strata's restore gives up once focus
-    /// leaves the list, `cursor.rs` `list_keeps_focus`): a late listing there moves nothing.
     pub(super) fn set_active_quiet(&mut self, depth: usize) {
         self.active = depth;
         self.targeted = Some(depth);
@@ -755,8 +652,6 @@ impl ColumnsState {
         place(column, &key, source, 0, tx);
     }
 
-    /// Left into column `depth` with no cursor: the cursor goes on the folder it has open, or
-    /// waits for it while the column loads.
     pub(super) fn place_open(&mut self, depth: usize, sources: &dyn ColumnSources, tx: &mut Tx) {
         let key = keys::column(&self.key, self.columns[depth].serial);
         let source = sources.source(depth);
@@ -786,8 +681,6 @@ impl ColumnsState {
         self.clear_all(sources);
     }
 
-    /// Clears the selection in every column before `limit` (the cursors stay) and resets their
-    /// pending click gestures when a plain marquee starts in column `limit`.
     pub(super) fn clear_before(&mut self, limit: usize, sources: &dyn ColumnSources) {
         for (depth, c) in self.columns.iter_mut().enumerate().take(limit) {
             if let Some(ctl) = c.collection.controllers.pointer.as_mut() {
@@ -858,11 +751,6 @@ impl ColumnsState {
         }
     }
 
-    /// The widths' share of a tick: a new text scale draws every column at its own width again
-    /// (dropping what narrowed it) and arms a narrowing; an armed narrowing narrows the open
-    /// columns wider than the area once an area arrives after it, or two ticks on with the
-    /// area it has (an area that didn't move). It lands at once, as Strata's clamp does. True
-    /// when a width changed.
     pub(super) fn tick_widths(&mut self, look: &Look, tx: &mut Tx) -> bool {
         let scale = width::scale(look);
         let mut changed = false;
@@ -900,12 +788,6 @@ impl ColumnsState {
         changed | narrowed
     }
 
-    /// The reveal's share of a tick: within half a second of a reveal, while the strip's drawn
-    /// width moves (a drawer opening in the same handler, a width spring), the reveal is worked
-    /// out again, since it was worked out from the width the strip had. A scroll the view
-    /// didn't ask for (the wheel, a fling, the bar) ends that: once the strip moves other than
-    /// toward where the reveal sent it, it is the person's. (A strip clamped back by a wider
-    /// page ends it too, at its end, where a glide past its new extent would stop anyway.)
     pub(super) fn tick_reveal(&mut self, now: f64, look: &Look, tx: &mut Tx) {
         self.now = now;
         self.ticks += 1;
@@ -922,8 +804,6 @@ impl ColumnsState {
         let (moved, ahead) = (offset - r.offset, r.target - r.offset);
         let foreign = moved.abs() > 0.5 && (ahead.abs() < 0.5 || moved.signum() != ahead.signum());
         if foreign {
-            // A glide asked for in the frame the person scrolled in started from where their
-            // scroll left the strip (Rune applies requests after the wheel): stop it there.
             if r.asked.is_some_and(|t| t + 1 >= self.ticks) {
                 tx.scroll_to_instant(keys::strip(&self.key), offset, 0.0);
             }
@@ -942,14 +822,6 @@ impl ColumnsState {
         self.recheck = Some(r);
     }
 
-    /// Scrolls the strip so the active column shows, as Strata's `ColumnSpan::reveal_target`
-    /// does: a column clipped even a little comes fully into view, one that shows stays, and
-    /// one wider than the strip that fills it stays. The columns after it (a mirrored child)
-    /// come into view too where there is room, never at the active column's expense.
-    ///
-    /// It glides, and a reveal asked for while one glides (key repeat) carries on at its
-    /// speed. The rows' own reveals move only their listings
-    /// (`CollectionState::set_own_viewport_reveals`), so the strip moves on this glide alone.
     pub(super) fn reveal(&mut self, look: &Look, tx: &mut Tx) {
         if self.strip.w <= 0.0 || self.columns.is_empty() {
             self.reveal_after_layout = true;
@@ -968,8 +840,6 @@ impl ColumnsState {
         });
     }
 
-    /// The glide of [`ColumnsState::reveal`]: where it sends the strip, and whether that took a
-    /// request.
     fn glide_to_active(&mut self, look: &Look, tx: &mut Tx) -> (f32, bool) {
         let page = self.strip.w;
         let spans = self.spans(look);
@@ -997,8 +867,6 @@ impl ColumnsState {
         (target, true)
     }
 
-    /// Visible slice `(left_clipped, visible_width_floor)` when column `depth` is partially
-    /// clipped by the strip's viewport (`src/ui/browser/columns/reveal.rs`).
     pub(super) fn clipped_slice(&self, depth: usize, look: &Look) -> Option<(bool, f32)> {
         let page = self.strip.w;
         if page <= 0.0 || depth >= self.columns.len() {
@@ -1013,8 +881,6 @@ impl ColumnsState {
         partial.then_some((x < 0.0, visible.floor()))
     }
 
-    /// Updates the cached clipped-column slices; returns `true` when any column's reveal target
-    /// appeared, disappeared, or changed width.
     pub(super) fn sync_clipped(&mut self, look: &Look) -> bool {
         let next: Vec<Option<(bool, f32)>> = (0..self.columns.len())
             .map(|d| self.clipped_slice(d, look))
@@ -1027,9 +893,6 @@ impl ColumnsState {
         }
     }
 
-    /// Whether the horizontal strip currently overflows its viewport (from live column widths
-    /// against the laid-out viewport width, or while an animated column exit still holds layout
-    /// width in Rune).
     pub(super) fn strip_overflows_now(&self, look: &Look) -> bool {
         let bar = crate::scroll::BarLook::strip(look);
         let page = self.strip.w;
@@ -1045,8 +908,6 @@ impl ColumnsState {
         look.animations && bar_fresh && self.strip_bar.overflows()
     }
 
-    /// Updates the cached strip-overflow state; returns `true` only on a `false <-> true`
-    /// transition so scroll frames never trigger view rebuilds.
     pub(super) fn sync_strip_overflow(&self, look: &Look) -> bool {
         let next = self.strip_overflows_now(look);
         if next != self.strip_overflows.get() {
@@ -1077,18 +938,12 @@ impl ColumnsState {
 
     // Drags.
 
-    /// Where a file drag is over the strip (window points), accepted or refused, or that it
-    /// left the strip, was dropped or ended (`None`): what the drag autoscroll and the column
-    /// wash follow, as Strata's motion controller follows any drag. Rune's binder reaches it
-    /// through the view's drop zones; a binder that hears the drag elsewhere (X2's) calls it.
-    /// True when a frame is wanted: wake the loop (`tx.wake_after(ZERO)`).
+    /// Where a file drag is over the strip (window points), accepted or refused, or that it left the strip.
     pub fn drag_over(&mut self, at: Option<Point>) -> bool {
         self.drag.over(at)
     }
 
-    /// Ends a column-edge resize, a held drag or a scroll-bar drag, as when the strip leaves the
-    /// view mid-gesture (a view switch): Rune tells an element removed under a drag nothing
-    /// (Rune draft R-C4-2).
+    /// Ends a column-edge resize, a held drag or a scroll-bar drag.
     pub fn reset(&mut self) {
         self.resize = None;
         self.edge_hover = None;
@@ -1111,8 +966,6 @@ impl ColumnsState {
     }
 }
 
-/// The cursor on `index`, selected alone, as a person's choice: keyboard mode on, scrolled
-/// into view.
 fn place(column: &mut ColumnState, key: &str, source: &dyn EntrySource, index: usize, tx: &mut Tx) {
     column.collection.selection.select_only(source, index);
     column.collection.note_selection(source);

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The action editor's icon picker: a row of 8 common icons and a "More icons" popover with the
-//! remaining 16 bundled Lucide icons, matching `src/ui/settings/actions/icon_chooser.rs`.
-
 use rune::{Color, Cursor, El, Key, KeyEvent, Tx, col, icon, row};
 use rune_kit::{Placement, popover};
 use strata_core::i18n::tr;

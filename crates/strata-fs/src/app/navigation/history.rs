@@ -88,8 +88,6 @@ impl NavigationState {
         Some(target)
     }
 
-    /// The path from `depth` on, recorded as a navigation so Back returns to
-    /// the whole strip. None for the first column or past the last.
     pub fn go_to_column(&mut self, depth: usize) -> Option<NavigationPath> {
         if depth == 0 {
             return None;

@@ -336,9 +336,6 @@ fn video_preview_controls_sync_active_preview_media_backend() {
     );
 }
 
-/// An open choice menu is a second modal, which leaves only the menu in the tree: Settings then
-/// holds the keyboard as a popover, so the window's chain hears no key past it, as GTK's popover
-/// in the Settings layer keeps every key (the `settings` fuzz alphabet's `keyboard` invariant).
 #[test]
 fn an_open_choice_menu_holds_the_keyboard_as_a_popover() {
     hosted(
@@ -461,8 +458,6 @@ fn page_switch_resets_scroll_without_breaking_settings_search_reveal() {
                 "switching pages resets settings-page scroll to the top"
             );
 
-            // Scroll down again on Appearance (in the page margin, outside the nested theme list),
-            // then jump via Settings search to a General row.
             let pane = node_bounds(&host.tree(), "settings-page").expect("page bounds");
             host.runtime()
                 .wheel(pane[0] + pane[2] - 8.0, pane[1] + pane[3] / 2.0, -320.0);

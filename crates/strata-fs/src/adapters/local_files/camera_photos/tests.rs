@@ -3,8 +3,6 @@
 use super::*;
 
 fn isolated_camera_test(name: &str, run: impl FnOnce()) {
-    // Cancelled GIO requests can complete after their Rust futures are dropped.
-    // A mutex cannot keep those callbacks on their originating libtest thread.
     const CHILD: &str = "STRATA_ISOLATED_CAMERA_TEST";
     let name = format!("adapters::local_files::camera_photos::tests::{name}");
     if std::env::var(CHILD).as_deref() == Ok(name.as_str()) {

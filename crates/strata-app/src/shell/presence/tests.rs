@@ -27,9 +27,6 @@ fn settle(host: &mut Offscreen) {
     while host.turn() {}
 }
 
-/// As GTK's `presence_of`: the window with the keyboard is `Focused`, one without it
-/// `Visible`, one off screen `Hidden`, in every tab's browser, a hidden tab's included; and a
-/// tab opened meanwhile starts with the window's presence.
 #[test]
 fn every_tab_follows_the_window_s_focus_and_visibility() {
     hosted(
@@ -69,9 +66,6 @@ fn every_tab_follows_the_window_s_focus_and_visibility() {
     );
 }
 
-/// A refused close moves the state into a new native window (`host::windowed`, "Refused
-/// closes"), which may map without the keyboard: its browsers are `Visible` until Rune's first
-/// focus event says otherwise, not `Focused` as the closing window's were.
 #[test]
 fn a_reopened_window_has_the_keyboard_only_once_rune_gives_it() {
     use crate::startup::{self, UiThread};

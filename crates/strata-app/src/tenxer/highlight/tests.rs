@@ -99,8 +99,6 @@ fn all_drawn(host: &Offscreen, root: &Path) -> Vec<Vec<Pair>> {
     NAMES.iter().map(|name| drawn(host, root, name)).collect()
 }
 
-/// A highlighted find marks its query in every listing name, case folded; Escape takes the
-/// highlight, `n` brings it back, and leaving 10xer mode drops it.
 fn find_marks_the_listing(mode: &'static str, name: &str) {
     in_mode(mode, name, |mut host| {
         let root = on_names(&mut host);
@@ -150,8 +148,6 @@ fn icons_find_marks_the_listing() {
     find_marks_the_listing("icons", "icons_find_marks_the_listing");
 }
 
-/// `f`'s results mark what their fuzzy query matched, and a highlighted find marks its own
-/// query over them instead, then over the listing once Escape dismissed the filter.
 fn filter_marks_its_results(mode: &'static str, name: &str) {
     in_mode(mode, name, |mut host| {
         let root = on_names(&mut host);
@@ -177,7 +173,6 @@ fn filter_marks_its_results(mode: &'static str, name: &str) {
             "the find's own"
         );
 
-        // GTK's ladder (`keyboard/escape.rs`): the filter goes before the find's highlight.
         press(&mut host, Key::Escape);
         assert!(!shows(&host), "Escape dismisses the filter first");
         assert_eq!(drawn(&host, root.path(), "alpha.txt"), [(2, 4)]);
@@ -196,8 +191,6 @@ fn list_filter_marks_its_results() {
     filter_marks_its_results("list", "list_filter_marks_its_results");
 }
 
-/// GTK's `match_ranges`: case folded, each match after the last, and a character whose
-/// lowercase is longer keeps its own bytes.
 #[test]
 fn match_ranges_fold_case_and_do_not_overlap() {
     let cases: [(&str, &str, &[Pair]); 6] = [
@@ -217,8 +210,6 @@ fn match_ranges_fold_case_and_do_not_overlap() {
     }
 }
 
-/// A match across the reach of a name longer than it ends on the character boundary before
-/// the reach, never inside the character the reach cuts.
 #[test]
 fn a_match_across_the_reach_ends_on_a_character_boundary() {
     let name = format!("{}é{}", "a".repeat(511), "a".repeat(20));

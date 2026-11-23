@@ -1,30 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The player layout the model and route views share, and the parts they put in it: a details
-//! header (an eyebrow over a title), a badge row and its badges.
-//!
-//! It follows Strata's `src/ui/preview/player_layout.rs` and `components.rs` (`upstream/main`
-//! 35ee677ab): one vertically centred block, so a taller pane keeps the picture and its controls
-//! together. From the top:
-//!
-//! 1. the content, the largest box at its aspect ratio that fits the room the rows below leave
-//!    it, at most [`MAX_CONTENT_WIDTH`] wide;
-//! 2. the details header;
-//! 3. the badges, if any;
-//! 4. a timeline, if any (the route view's elevation profile);
-//! 5. the controls.
-//!
-//! The gaps are Strata's: [`Look::space`]`.xl` around the block, `.lg` under the content, `.xs`
-//! between the rows.
-//!
-//! **For C13.** This is the shared player layout (coordinator ruling): C13's audio and video
-//! views reuse [`section`] and [`Areas`] rather than building their own, as Strata's do. Its
-//! badges and details parts are here too ([`details_header`], [`badge_row`], [`badge`]).
-//!
-//! **Badges are not live regions.** rune-kit's `Badge` is a polite live region, so a triangle
-//! count that fills in would be announced; Strata's badges are plain labels. These are drawn
-//! from Kit tokens, with no live region.
-
 use rune::{El, col, row, text};
 use strata_kit::look::Look;
 
@@ -34,8 +9,6 @@ pub const MAX_CONTENT_WIDTH: f32 = 1280.0;
 /// The narrowest the rows under the content are, in points: Strata's `PANEL_MIN`.
 pub const PANEL_MIN: f32 = 200.0;
 
-/// An item's place among its siblings of the same kind, which the host counts (Strata's
-/// `ListingPosition`): which entries count, and in what order, is the host's policy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Position {
     /// From 1.
@@ -46,9 +19,6 @@ pub struct Position {
 }
 
 impl Position {
-    /// Strata's caption in English: "2 of 4 in folder", or "2 of 4 in results". The views'
-    /// labels take a host's translated caption in its place (`ModelLabels::position`,
-    /// `RouteLabels::position`).
     pub fn caption(self) -> String {
         let place = if self.results { "results" } else { "folder" };
         format!("{} of {} in {place}", self.index, self.count)
@@ -72,8 +42,6 @@ pub fn section(key: impl Into<String>, areas: Areas, look: &Look) -> El {
     section_with_inset(key, areas, 0.0, look)
 }
 
-/// Like [`section`], reserving `inset` points of extra room around `areas.content` (for example,
-/// the video player's ambient glow band).
 pub fn section_with_inset(key: impl Into<String>, areas: Areas, inset: f32, look: &Look) -> El {
     let rows_w = |e: El| e.w_full().max_w(MAX_CONTENT_WIDTH).min_w(PANEL_MIN);
     let mut lower = col()
@@ -88,9 +56,6 @@ pub fn section_with_inset(key: impl Into<String>, areas: Areas, inset: f32, look
         lower = lower.child(rows_w(timeline));
     }
     lower = lower.child(rows_w(areas.controls));
-    // The width cap is put as the height it gives at the aspect: an `aspect_fit` box with a
-    // `max_w` takes the cap for the cross room, so a box bound by the height overflows a
-    // column narrower than the cap (C13's Rune draft U-C13-4).
     let mut content = areas
         .content
         .aspect_fit(areas.aspect)
@@ -111,14 +76,10 @@ pub fn section_with_inset(key: impl Into<String>, areas: Areas, inset: f32, look
         .child(lower)
 }
 
-/// Strata's `DetailsHeader`: a muted eyebrow ("2 of 4 in folder") over the title. Without an
-/// eyebrow only the title shows.
 pub fn details_header(key: &str, eyebrow: Option<String>, title: &str, look: &Look) -> El {
     details_header_beside(key, (eyebrow, None), title, look)
 }
 
-/// [`details_header`] with `beside` at the eyebrow's end, the title under both, as Strata's
-/// `DetailsHeader::new(Some(volume))` puts a player's volume (`src/ui/preview/components.rs`).
 pub fn details_header_beside(
     key: &str,
     (eyebrow, beside): (Option<String>, Option<El>),

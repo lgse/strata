@@ -1,23 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Hosted tests for tab session persistence and restore (`docs/rune/shared-state.md`, "Tab
-//! sessions"):
-//!
-//! 1. `load_restorable()` runs at start-up before the first window shows, and restores on a plain
-//!    launch only (`restore_tabs` on, no directory argument); a later launch with no argument
-//!    restores too, as GTK's `present`, reading the file off the interface thread.
-//! 2. Only a window opened with no argument persists its tabs; explicit-target windows leave
-//!    `tabs.toml` untouched.
-//! 3. Restoring builds every saved tab before clearing `restoring`, so no partial session is
-//!    saved midway.
-//! 4. An empty location list never overwrites `tabs.toml`.
-//! 5. `remove()` replaces `save` while `restore_tabs` is off, and turning `restore_tabs` off live
-//!    removes `tabs.toml` immediately.
-//! 6. Missing restored local folders (or paths replaced by files) lose their tabs without entering
-//!    reopen history, unless no other tab remains, which opens the default folder.
-//! 7. Any stored `version` other than 1 is refused and overwritten with version 1 on the next
-//!    save.
-
 use std::path::{Path, PathBuf};
 
 use rune::Tx;
@@ -152,9 +134,6 @@ fn plain_launch_without_saved_session_opens_default_folder_and_forgets_missing_d
             let saved = saved_session().expect("plain launch saves once opened");
             assert_eq!((saved.tabs, saved.active), (vec![wanted], 0));
 
-            // Point `default_directory` at a deleted folder and open a new tab while the shown
-            // tab has no active location: `open_default_folder` clears `default_directory` and
-            // falls back to home.
             let gone = strata_core::storage::config_directory().join("deleted-default");
             let home = Location::local(launch::home_directory());
             act(&mut host, |app, tx| {
@@ -267,8 +246,6 @@ fn plain_launch_persists_tab_changes_in_strip_order() {
     );
 }
 
-/// A later launch with no argument opens as GTK's `present` does: with `restore_tabs` on, the
-/// window restores the saved session, read once it is up, and saves its own changes.
 #[test]
 fn a_later_bare_launch_restores_the_session_and_persists_its_tabs() {
     in_own_process(
@@ -374,8 +351,6 @@ fn restoring_does_not_save_midway_and_empty_tabs_never_clobber_session() {
             let ui = UiThread::claim().expect("the UI thread");
             let mut host = Offscreen::new(ui, settings);
 
-            // Seed a sentinel file on disk before enabling persistence on an unlocated window:
-            // persisting an empty tab set must write nothing over `sentinel`.
             seed_session(&sentinel, 0);
             host.runtime().update(|app, tx| {
                 app.window.tabs.persist = true;
@@ -389,9 +364,6 @@ fn restoring_does_not_save_midway_and_empty_tabs_never_clobber_session() {
             );
             assert_eq!(saved_session().map(|s| s.tabs), Some(sentinel.clone()));
 
-            // Reset to one tab and run `restore_session` synchronously without pumping GLib's
-            // worker probes yet: `open` and `show` inside `restore_session` must NOT overwrite
-            // `sentinel` while `restoring` is set.
             host.runtime().update(|app, tx| {
                 let extra = tabs(app)[1];
                 close(app, extra, tx);
@@ -436,8 +408,6 @@ fn disabled_restore_ignores_and_removes_saved_session_and_live_toggle_clears_fil
                 "disabled restore removes tabs.toml"
             );
 
-            // Enable `restore_tabs` live, open a second tab so `tabs.toml` is written, then turn
-            // `restore_tabs` off live and verify `tabs.toml` is removed immediately.
             let root = strata_core::storage::config_directory().join("disabled-root");
             let second = Location::local(root.join("kept-a"));
             act(&mut host, |app, tx| {

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Validation and submission of 10xer's `create ›` (`a`) and `rename ›` (`r` / `F2`) prompts
-//! (`src/ui/window/keyboard/prompts.rs`, `src/ui/browser/file_commands.rs`).
-
 use std::{ffi::OsStr, path::PathBuf};
 
 use rune::Tx;

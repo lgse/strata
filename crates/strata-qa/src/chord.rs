@@ -19,8 +19,6 @@ impl Modifier {
         }
     }
 
-    /// The US keys a chord holds; `altgr` is the right Alt key,
-    /// which AltGr layouts turn into AltGr.
     pub fn keysym_name(self) -> &'static str {
         match self {
             Self::Ctrl => "Control_L",

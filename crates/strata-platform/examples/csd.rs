@@ -1,31 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Client-side decorations (`csd`): a borderless Rune window, without rune-kit, that moves from
-//! its header, resizes from its edges where the platform allows, and has its own Minimise,
-//! Maximise and Close buttons.
-//!
-//! `cargo run -p strata-platform --features csd --example csd` opens it.
-//!
-//! - `--frame auto|borderless|native` picks the [`Policy`] (default `auto`: borderless).
-//! - `--title TITLE` sets the window title (default `csd`). Its app id is
-//!   `strata-csd-example`.
-//!
-//! It reports what happens as JSON lines on stdout, for the session tests and hand tests:
-//!
-//! - `{"ev":"ready","handle":"wayland"}` (or `xlib`, `xcb`), then `{"ev":"frame"}` after its
-//!   first frame;
-//! - `{"ev":"csd","notice":"attached",…}` once the window is linked, and `"notice":"report"`
-//!   each time the X11 watcher sees the window's state or capabilities change. Each line
-//!   carries `backend`, `frame`, `bands` (whether the resize bands are mounted), `window_menu`,
-//!   `state` and `capabilities`;
-//! - `{"ev":"csd-error","error":"…"}` if its X11 connection fails;
-//! - `{"ev":"outcome","request":"Minimize","result":"sent","route":"X11"}`, or `"unsupported"`
-//!   with its `gap` and `draft`, or `"failed"` with its `error`, for each request;
-//! - `{"ev":"layout","w":…,"h":…}` each time its size in points changes, and
-//!   `{"ev":"rect","key":"minimize","x":…,"y":…,"w":…,"h":…}` for each button (`minimize`,
-//!   `maximize`, `close`) each time it moves;
-//! - `{"ev":"exit-error","error":"…"}` if the app can't run.
-
 #[cfg(feature = "csd")]
 mod demo {
     use std::io::Write;

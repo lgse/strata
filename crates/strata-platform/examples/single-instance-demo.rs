@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One instance of a Rune app, with a window per launch (P8).
-//!
-//! `cargo run -p strata-platform --features single-instance --example single-instance-demo a b`
-//! opens a window listing `a b`. Run it again with `c` while that one runs: the second process
-//! hands its launch to the first and exits, and the first opens a second window, focused when
-//! the launcher gave an activation token (`XDG_ACTIVATION_TOKEN`, `DESKTOP_STARTUP_ID`). Run it
-//! with no arguments to bring the newest window forward instead. The app quits when its last
-//! window closes.
-//!
-//! It logs JSON lines on stdout for strata-platform's session tests: `claim`, `launch`,
-//! `ready` and `focus` (each with the window's `key`), and `exit-error`.
-
 #[cfg(feature = "single-instance")]
 fn main() {
     demo::main();

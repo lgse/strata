@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A search result as the window shows one: GTK's `search_result_entry`
-//! (`src/ui/browser/collection.rs`), the entry the browser's checks and a row are made from.
-
 use std::collections::HashMap;
 
 use strata_components::contract::{EntryId, EntrySource};
@@ -29,8 +26,6 @@ impl HitsUpdate {
         }
     }
 
-    /// The `(from, to)` pair to relocate before `self.hits` replaces `old`, when `!self.clear`,
-    /// `old` does not already list `to`, and `self.hits` replaced `from` with `to`.
     pub(crate) fn relocation(&self, old: &dyn EntrySource) -> Option<(EntryId, EntryId)> {
         let (from, to) = self.relocated.filter(|_| !self.clear)?;
         let replaced = old.index_of(to).is_none()
@@ -62,8 +57,6 @@ pub(super) fn entry_of(item: &SearchItem) -> FileEntry {
     }
 }
 
-/// Each result's path as the window shows a folder's (`display_path`), by its id: what a
-/// Columns result shows under its name (`show_origin`).
 pub(super) fn paths(found: &HashMap<EntryId, FileEntry>) -> HashMap<EntryId, String> {
     found
         .iter()

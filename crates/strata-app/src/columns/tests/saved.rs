@@ -20,8 +20,6 @@ fn saved_show_hidden() -> Option<bool> {
         .as_bool()
 }
 
-/// Toggles the hidden files on and off over a `settings.toml` that holds `seed`, then hands
-/// the saved file to `check`.
 fn toggle_hidden_files_over(test: &'static str, seed: &'static str, check: fn(&toml::Table, &str)) {
     hosted_after(
         MODULE,
@@ -55,8 +53,6 @@ fn toggle_hidden_files_over(test: &'static str, seed: &'static str, check: fn(&t
     );
 }
 
-/// `hidden_files/hidden-files-persist-across-restart`: Ctrl+. saves `show_hidden`, and the
-/// rest of a file that reads without repair stays as another Strata process left it.
 #[test]
 fn the_hidden_files_choice_is_saved_and_nothing_else_is_rewritten() {
     toggle_hidden_files_over(
@@ -69,8 +65,6 @@ fn the_hidden_files_choice_is_saved_and_nothing_else_is_rewritten() {
     );
 }
 
-/// A file without `mode` or `theme` does not read whole and is salvaged entry by entry. As
-/// in the GTK application, what loading filled in is saved with the first change.
 #[test]
 fn a_salvaged_file_is_saved_with_what_loading_filled_in() {
     toggle_hidden_files_over(
@@ -84,8 +78,6 @@ fn a_salvaged_file_is_saved_with_what_loading_filled_in() {
     );
 }
 
-/// A file that was there and could not be read is the user's to repair: nothing replaces it.
-/// The first change says so in a dialog, which hides the listing from the tree until it closes.
 #[test]
 fn an_unreadable_settings_file_is_never_saved_over() {
     const BROKEN: &str = "show_hidden = [unclosed\n";
@@ -118,10 +110,6 @@ fn an_unreadable_settings_file_is_never_saved_over() {
     );
 }
 
-/// A key is written until its save is known to have succeeded, and then left alone: what
-/// another Strata process saves there afterwards stays through this one's next save. The
-/// save's result reaches the bookkeeping through the window's queue, and a part's change
-/// goes through `shell::saved`.
 #[test]
 fn a_saved_key_is_left_to_another_process_once_its_save_has_succeeded() {
     hosted_after(
@@ -168,9 +156,6 @@ fn saved_column_width() -> Option<i64> {
         .as_integer()
 }
 
-/// `view_switching/column-autofit-stays-inside`: the width a resize or an autofit ends at is
-/// saved in whole base points, never narrower than a standard column, as GTK's
-/// `remember_column_width` saves it.
 #[test]
 fn a_resized_columns_width_is_saved_whole_and_never_below_a_standard_column() {
     hosted_after(
@@ -204,9 +189,6 @@ fn root_column(host: &crate::host::offscreen::Offscreen, root: &str) -> [f32; 4]
     [at(0), at(1), at(2), at(3)]
 }
 
-/// `view_switching/column-autofit-stays-inside`, beside a railed sidebar: an autofit stops at
-/// the area GTK gives the columns, which counts the sidebar at its full width, so the width
-/// saved still fits once the sidebar expands (`publish_column_width_limit`).
 #[test]
 fn an_autofit_beside_a_railed_sidebar_stops_where_the_full_sidebar_would_leave_room() {
     hosted_after(

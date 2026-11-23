@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Mirroring: the child column that follows the keyboard cursor. Moving onto a folder shows
-//! its contents as the next column without moving focus; moving onto a file closes that
-//! column. Neither `Browser` nor the Columns component does this: it is view policy.
-//!
-//! Ported from the GTK views, `src/ui/browser/events/selection.rs` (`mirror_focused_folder`,
-//! `child_mirror_blocked`, `apply_child_mirror`, `mirror_entry`). A fix there has to be
-//! carried here until the GTK views are deleted. An open rename editor holds the mirror back,
-//! as there, and Tab in it mirrors at once (`mirror_rename_target`). Left out, with what
-//! brings each back: a new entry being named, a 10xer visual range, a filtered column and the
-//! automatic preview of a file are interface the slice leaves out.
-
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -22,20 +11,13 @@ use strata_fs::app::Browser;
 use super::Columns;
 use crate::slots::ShownView;
 
-/// How long the cursor rests before its folder opens: `FOCUS_PREVIEW_DELAY` in
-/// `src/ui/preview.rs`. Holding an arrow key so opens nothing on the way.
 pub(crate) const WAIT: Duration = Duration::from_millis(75);
 
-/// What lets the child column follow the cursor, as it stands now: the wait reads it again
-/// when it is over (`child_mirror_blocked` in the GTK view).
 #[derive(Clone)]
 struct Gate {
     /// The saved "Mirror the selection in Columns view" choice.
     enabled: Rc<Cell<bool>>,
-    /// The saved "Single-click previews" choice (`mirror_entry` in GTK).
     single_click_previews: Rc<Cell<bool>>,
-    /// Whether the last input that moved the cursor was a key. The GTK views start that way
-    /// too (`NavigationInput::default`).
     keyboard: Rc<Cell<bool>>,
     /// An inline rename is open: the child column stays as it is under an edit.
     editing: Rc<Cell<bool>>,
@@ -44,8 +26,6 @@ struct Gate {
 }
 
 impl Gate {
-    /// Only the keyboard mirrors, unless a deletion moved the cursor, never under an edit, and
-    /// never once another view shows, which the wait asks again when it is over.
     fn open(&self, by_removal: bool) -> bool {
         let moved_by = by_removal || self.keyboard.get();
         self.enabled.get() && moved_by && !self.editing.get() && self.shown.is::<Columns>()
@@ -88,10 +68,6 @@ impl Mirror {
         self.gate.keyboard.set(keyboard);
     }
 
-    /// The pointer is at `at`. Only a move from one place to another ends keyboard
-    /// navigation (`InputOwnership::pointer_motion` in `src/ui/input_ownership.rs`): the
-    /// toolkit reports a parked pointer whenever what is under it changes, as a key's own
-    /// redraw does, and the first report only says where it is parked.
     pub(crate) fn note_pointer(&self, at: (f32, f32)) {
         let moved = self
             .pointer
@@ -106,8 +82,6 @@ impl Mirror {
         self.gate.editing.set(editing);
     }
 
-    /// The child column follows `position` of column `depth` now, whatever moved the cursor
-    /// there, and no earlier wait opens another: Tab took a rename on to that entry.
     pub(crate) fn now(&self, browser: &Rc<Browser>, depth: usize, position: usize) {
         if let Some(earlier) = self.waiting.borrow_mut().take() {
             earlier.remove();
@@ -117,9 +91,6 @@ impl Mirror {
         }
     }
 
-    /// The cursor came to rest on `position` in column `depth`. After [`WAIT`], if it is
-    /// still there, the child column follows it. Only the keyboard mirrors, unless a
-    /// deletion moved the cursor (`by_removal`).
     pub(crate) fn follow(
         &self,
         browser: &Rc<Browser>,
@@ -136,8 +107,6 @@ impl Mirror {
         let browser = Rc::downgrade(browser);
         let gate = self.gate.clone();
         let waiting = self.waiting.clone();
-        // On GLib's clock, as the GTK views wait: the browser needs no frame to open a
-        // column, and its events reach the interface through the queue like any other.
         let source = glib::timeout_add_local_once(WAIT, move || {
             waiting.borrow_mut().take();
             if let Some(browser) = browser.upgrade().filter(|_| gate.open(by_removal)) {
@@ -151,9 +120,6 @@ impl Mirror {
     }
 }
 
-/// Opens the folder under the cursor as the next column, or closes that column for a file.
-/// Nothing happens once the cursor has moved on, or while the browser is still checking a
-/// folder it was asked to open, which takes the focus itself.
 fn mirror(browser: &Rc<Browser>, depth: usize, position: usize) {
     if browser.pending_navigation_generation().is_some() {
         return;

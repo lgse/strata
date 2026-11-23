@@ -30,8 +30,6 @@ fn rename_stage_to_target() -> RemoteFileStageCommit {
     })
 }
 
-/// Another program writes the target just before the commit, which then
-/// fails as the name is taken.
 fn race_the_commit_at(name: &'static str) -> RemoteFileStageCommit {
     Rc::new(move |stage, target, _| {
         Box::pin(async move {

@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The elevation profile, drawn with `canvas` shapes from the samples' heights, and the markers
-//! that ride both pictures.
-//!
-//! **Deviation from Strata** (coordinator ruling): Strata's helper draws the profile into an
-//! 800 × 70 PNG in the theme's accent, and the drawer stretches it to the pane
-//! (`ContentFit::Fill`). Here the same line is drawn from the samples, in the same 800 × 70
-//! space stretched to the element (a `Shape::view_box`, whose strokes stay in points), from Kit
-//! tokens, so a theme switch recolours it without a new render and it stays sharp at any width.
-//! The helper's profile PNG is left unused; the sandbox protocol is unchanged.
-
 use rune::{El, Shape, canvas, el};
 use strata_kit::look::Look;
 
@@ -26,8 +16,6 @@ const THIN: f32 = 0.6;
 const MARKER: f32 = 4.5;
 const RING: f32 = 2.0;
 
-/// The profile's polylines in profile pixels: one per run of connected samples with heights,
-/// thinned as the helper thins them, so a 250,000-point route draws a few thousand points.
 pub(super) fn profile_lines(data: &RouteData) -> Vec<Vec<[f32; 2]>> {
     let width = f64::from(data.profile_px[0]);
     let mut lines = Vec::new();

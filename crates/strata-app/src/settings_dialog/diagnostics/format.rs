@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Localization and plain-text report formatting for Settings -> Diagnostics,
-//! matching `src/ui/settings/diagnostics.rs`.
-
 use std::collections::HashMap;
 
 use strata_core::i18n::{integer, list, tr};

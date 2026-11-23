@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The width toggle: `toggle-sidebar`, which the header's button and the catalog's `SIDEBAR`
-//! (Ctrl+B, Ctrl+N in 10xer mode) run, steps the sidebar full, rail, hidden and full again,
-//! and saves each step (`bind_sidebar_modes` in `src/ui/window/composition/layout.rs`). The
-//! header names the button as GTK's `SidebarToggle::describe` does
-//! (`src/ui/sidebar_toggle.rs`): its name stays "Toggle sidebar (Ctrl+B)" at every step, and
-//! its tooltip and description name the step the next press takes.
-
 use rune::Tx;
 use strata_components::sidebar::Step;
 use strata_desktop::{
@@ -22,8 +15,6 @@ use crate::{
     shell::{self, Face},
 };
 
-/// GTK's dispatcher reads `SIDEBAR` at its `sidebar_commands` stage, wherever the press lands
-/// (`src/ui/window/keyboard/commands.rs`).
 pub(super) const TOGGLE: Action<App> = Action::new("toggle-sidebar", stepped)
     .command(SIDEBAR)
     .keys(&[Keys::at(
@@ -31,11 +22,6 @@ pub(super) const TOGGLE: Action<App> = Action::new("toggle-sidebar", stepped)
         &[SIDEBAR.ignoring(Modifiers::empty())],
     )]);
 
-/// One press of the toggle, from what shows: GTK's `SidebarMode::next`.
-///
-/// Hiding the sidebar while one of its rows has the keyboard gives the keyboard to the shown
-/// view, where GTK's keys go on reaching the view's selection (finding lgse/strata#2406):
-/// otherwise the key of an element no longer drawn keeps it, and every key goes nowhere.
 fn stepped(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     if app.chooser.is_confined() {
         return Outcome::Ran;
@@ -58,8 +44,6 @@ fn stepped(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// What GTK saves for each step: showing the sidebar asks for the full one, so a later rail
-/// starts from it.
 fn save(settings: &mut Preferences, step: Step) {
     match step {
         Step::Full => {
@@ -80,8 +64,6 @@ fn shown(app: &App) -> Step {
     saved_step(saved.sidebar_expanded, saved.sidebar_compact)
 }
 
-/// The header's toggle as GTK names it, with the keys as bound now. It is pressed while the
-/// sidebar shows, as GTK's toggle button is active.
 pub(crate) fn toggle_face(app: &App) -> Face {
     let keys = Shown::One(SIDEBAR.shown());
     let shown = shown(app);

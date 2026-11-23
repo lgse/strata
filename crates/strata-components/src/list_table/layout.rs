@@ -1,32 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-//! The column layout and widths: plain values the host keeps, shares and saves.
-//!
-//! [`ColumnLayout`] (order and visibility) is one value for every window and the chooser
-//! (Strata's `list_column_order` and `list_hidden_columns`). [`ColumnWidths`] has one value
-//! per scope (`browser_list_columns`, `chooser_list_columns`). The table reads both by
-//! accessor and hands the host a new value when the person changes one; saving, sharing
-//! between windows and processes, and merging are the host's.
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::column::ColumnId;
 
-/// Which columns show, in which order: every column is in `order`, and those in `hidden`
-/// don't show.
-///
-/// Used by: C4, hosts.
+/// Which columns show, in which order: every column is in `order`, and those in `hidden` don't show.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ColumnLayout {
     order: Vec<ColumnId>,
     hidden: BTreeSet<ColumnId>,
 }
 
-/// Why the layout changed: the host saves each the same way, except that a reset removes its
-/// saved keys (Strata's "Reset to default columns" removes `list_column_order` and
-/// `list_hidden_columns`).
-///
-/// Used by: C4, hosts.
+/// Why the layout changed: the host saves each the same way, except that a reset removes its saved keys.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LayoutWhy {
     /// A heading dragged to another place.
@@ -38,8 +23,6 @@ pub enum LayoutWhy {
 }
 
 /// A new layout the person made, for the host to keep, save and share.
-///
-/// Used by: C4, hosts.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LayoutChange {
     /// The layout to keep.
@@ -48,10 +31,7 @@ pub struct LayoutChange {
     pub why: LayoutWhy,
 }
 
-/// Where a dragged heading drops: before `target`, or after it (only ever the last shown
-/// column).
-///
-/// Used by: C4.
+/// Where a dragged heading drops: before `target`, or after it (only ever the last shown column).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DropSite {
     /// The heading the line marks.
@@ -72,9 +52,7 @@ impl ColumnLayout {
         layout
     }
 
-    /// A saved layout made whole, as Strata loads one: ids `defaults` doesn't name are
-    /// dropped, a repeated id keeps its first place, missing columns are appended in default
-    /// order, and `primary` (Name) is never hidden.
+    /// A saved layout made whole, as Strata loads one.
     pub fn normalize<'a>(
         defaults: &[ColumnId],
         primary: Option<&ColumnId>,
@@ -127,8 +105,7 @@ impl ColumnLayout {
         next
     }
 
-    /// The same layout with `id` moved to `site`, or `None` when that changes nothing (`id` or
-    /// the target isn't in the order, or `id` would land where it is).
+    /// The same layout with `id` moved to `site`.
     pub fn moved(&self, id: &ColumnId, site: &DropSite) -> Option<Self> {
         if *id == site.target {
             return None;
@@ -145,10 +122,7 @@ impl ColumnLayout {
     }
 }
 
-/// The widths the person gave columns by hand, in base points (at Strata's default text
-/// size). A column with none takes its default width, and the fill column fills.
-///
-/// Used by: C4, hosts.
+/// The widths the person gave columns by hand, in base points.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ColumnWidths {
     widths: BTreeMap<ColumnId, f32>,

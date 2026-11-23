@@ -38,8 +38,6 @@ fn a_sync_for_a_write_never_armed_says_nothing() {
 
 #[test]
 fn with_two_writes_in_flight_one_echo_answers_only_the_first() {
-    // The compositor handles each write, then its sync, in order: the first write's echo
-    // arrives before its sync's answer, and says nothing about the second write.
     let mut e = Echoes::default();
     e.arm(1);
     e.arm(2);

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The order of a listing grouped by file type. The view's sorter and the
-//! automatic cursor share it, so a load's cursor lands on the first row shown.
-
 use std::{cmp::Ordering, rc::Rc};
 
 use crate::{
@@ -12,8 +9,6 @@ use crate::{
 
 use super::{ColumnState, NavigationState, compare_display_names};
 
-/// Orders two type-group labels as a grouped listing shows them. An empty label
-/// belongs to no group.
 pub fn compare_type_groups(left: &str, right: &str, preferences: ViewPreferences) -> Ordering {
     if preferences.sort_key != SortKey::Type {
         return compare_ranked_groups(left, right);
@@ -54,10 +49,6 @@ fn compare_ranked_groups(left: &str, right: &str) -> Ordering {
 }
 
 impl ColumnState {
-    /// The view groups this listing by file type. Recent keeps its own order. GTK
-    /// 4.22 cannot safely section interleaved camera batches, and device order must
-    /// not reshuffle once complete, so a camera folder groups only a complete
-    /// snapshot that is not in device order.
     pub(super) fn shows_type_groups(&self) -> bool {
         let unsettled_camera = self.location.is_camera_photo_root()
             && (self.load_state == super::LoadState::Loading
@@ -65,8 +56,6 @@ impl ColumnState {
         self.type_grouping && !self.location.is_recent_root() && !unsettled_camera
     }
 
-    /// The first row the view shows: the first visible entry, or in a grouped
-    /// listing the first entry of the first group. Groups keep listing order.
     pub(super) fn first_displayed_entry(&self) -> Option<usize> {
         // A type sort already lists the entries in group order.
         if !self.shows_type_groups() || self.preferences.sort_key == SortKey::Type {
@@ -84,8 +73,6 @@ impl ColumnState {
             .position(|entry| entry.is_directory() && self.shows(entry))
     }
 
-    /// The last row the view shows: the last visible entry, or in a grouped listing
-    /// the last entry of the last group.
     pub(super) fn last_displayed_entry(&self) -> Option<usize> {
         if !self.shows_type_groups() || self.preferences.sort_key == SortKey::Type {
             return self.last_visible();
@@ -102,9 +89,6 @@ impl ColumnState {
         self.extreme_in_file_groups(Ordering::Greater)
     }
 
-    /// Finds the first row of the minimum group (`target == Ordering::Less`) or the last row
-    /// of the maximum group (`target == Ordering::Greater`), skipping repeated string
-    /// comparisons when a row shares an already-seen interned type description.
     fn extreme_in_file_groups(&self, target: Ordering) -> Option<usize> {
         let mut tracker = GroupExtreme::new(target, self.preferences);
         for (position, entry) in self.entries.iter().enumerate() {
@@ -181,8 +165,6 @@ fn push_bounded(rejected: &mut Vec<Rc<str>>, desc: Rc<str>) {
 }
 
 impl NavigationState {
-    /// Whether the presentation groups listings by file type. Each column applies
-    /// it as `ColumnState::shows_type_groups` decides.
     pub fn set_type_grouping(&mut self, grouped: bool) {
         self.type_grouping = grouped;
         for column in &mut self.columns {

@@ -1,18 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Random operations, re-sorts, deletes, inserts, renames, streamed reloads and restores,
-//! checked step by step against a plain model of the same rules: membership at every index,
-//! the count, the cursor, the anchor, the fill and every reported change. After every step
-//! over a complete listing, the cursor and the anchor name listed entries or nothing.
-//!
-//! The model is written the slow and obvious way, from the rules rather than the code: sets
-//! of ids, and the two neighbour rules as walks over the listings (the next survivor in the
-//! old listing for a delete, the entry at the old index for a reload).
-//!
-//! Deterministic: each seed replays the same run. A failure names its seed and the steps that
-//! led to it. `STRATA_PROPTEST_SEEDS` overrides the seeds: a count (`5000`) or a range
-//! (`1000..2000`).
-
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write as _;
@@ -119,8 +106,6 @@ impl Model {
         }
     }
 
-    /// The selection an open gesture makes of its base and what it covers, with the flipped
-    /// entries flipped.
     fn apply_gesture(&mut self) {
         let (base, covered) = (&self.base, &self.covered);
         let ranged: BTreeSet<EntryId> = match self.gesture {
@@ -522,8 +507,6 @@ impl Run {
         self.log.borrow_mut().push(what);
     }
 
-    /// Applies `op` to both, then checks they agree and that the reported change is the
-    /// model's.
     fn op(
         &mut self,
         what: String,
@@ -808,8 +791,6 @@ impl Run {
         });
     }
 
-    /// A delete: the host tells the selection, removes the entries, then syncs, sometimes
-    /// through a loading sync first.
     fn delete(&mut self, gone: BTreeSet<EntryId>) {
         let through_loading = self.rng.chance(25);
         self.note(format!(
@@ -838,10 +819,6 @@ impl Run {
         self.sync(Listing::Complete);
     }
 
-    /// A delete the host prepares but that never lands, then a reload that drops entries,
-    /// maybe the cursor's: the reload rule applies. A host that abandons a removal of the
-    /// cursor's entry syncs before anything else, as `before_removal` asks; one that spares
-    /// the cursor records nothing, so it may go straight into the reload.
     fn unfinished_delete(&mut self) {
         let mut gone = self.model.sel.clone();
         let takes_cursor = self.rng.chance(50);
@@ -939,8 +916,6 @@ impl Run {
         self.sync(Listing::Complete);
     }
 
-    /// A streamed reload: the listing empties, comes back in batches (with operations in
-    /// between), and ends without some of its entries.
     fn reload(&mut self) {
         let mut full = self.s.entries().to_vec();
         full.retain(|_| !self.rng.chance(20));

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Return on a focused button presses it, as on GTK: the pane header's Parent folder, and an
-//! unreadable folder's Retry. `guard` checks that every other button takes it too.
-
 use std::{collections::BTreeSet, os::unix::fs::PermissionsExt, sync::Mutex};
 
 use rune::{Key, KeyEvent, Mods};
@@ -111,8 +108,6 @@ fn return_presses_an_unreadable_folders_retry() {
     });
 }
 
-/// C6's own buttons take Return in the component (`guard`'s `IN_THEIR_COMPONENT`): Copy path
-/// shows that it copied, and the parent's crumb opens the parent.
 #[test]
 fn return_presses_copy_path_and_a_crumb() {
     let name = "return_presses_copy_path_and_a_crumb";

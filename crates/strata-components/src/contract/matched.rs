@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Matched text: a label that draws the characters a query matched in a Kit accent.
-//!
-//! It takes the matched ranges as data. Callers match however they like: on the host (the
-//! search palette's results, completions), with [`fuzzy`], or by converting a matcher's
-//! character positions with [`char_ranges`].
-
 use std::ops::Range;
 
 use rune::{Color, El, Span, TextStyle};
@@ -15,16 +9,6 @@ use rune_kit::Kit;
 mod tests;
 
 /// A label with matched ranges drawn in an accent colour.
-///
-/// - The accent changes colour only, not weight, so the label never reflows as a query is
-///   typed. It defaults to the Kit's `text_accent`. On a selected or accent row, pass another
-///   Kit token with [`MatchedText::accent`].
-/// - The text defaults to the Kit's `text_small` font in `text_base`.
-/// - Assistive technology hears the plain text: it is one label, with no markup.
-/// - Ranges are byte ranges of the text, normalised by [`normalize_ranges`].
-///
-/// Used by: C6 (completion), C17 (results), C18 (filter), C19 (shortcut search), C20c
-/// (settings search), C20d (icon search).
 #[derive(Clone, Debug)]
 pub struct MatchedText {
     text: String,
@@ -113,11 +97,7 @@ impl MatchedText {
     }
 }
 
-/// `ranges` made safe to draw over `text`: each clamped to the text, widened to whole
-/// characters (a range inside a multibyte character takes the character), empty ones dropped,
-/// then sorted, with overlapping and touching ranges merged.
-///
-/// Used by: [`MatchedText`], and C6, C17, C18, C19, C20c and C20d through it.
+/// `ranges` made safe to draw over `text`: each clamped to the text.
 pub fn normalize_ranges(
     text: &str,
     ranges: impl IntoIterator<Item = Range<usize>>,
@@ -148,10 +128,7 @@ pub fn normalize_ranges(
     merged
 }
 
-/// The byte ranges of the characters at `char_indices` in `text`, normalised: for matchers
-/// that report character positions. Positions past the end are ignored.
-///
-/// Used by: C17, C19, C20c, C20d.
+/// The byte ranges of the characters at `char_indices` in `text`, normalised: for matchers that report character positions.
 pub fn char_ranges(text: &str, char_indices: impl IntoIterator<Item = usize>) -> Vec<Range<usize>> {
     let starts: Vec<(usize, char)> = text.char_indices().collect();
     let ranges = char_indices
@@ -160,9 +137,7 @@ pub fn char_ranges(text: &str, char_indices: impl IntoIterator<Item = usize>) ->
     normalize_ranges(text, ranges)
 }
 
-/// A [`fuzzy`] match: its rank, and the matched byte ranges, normalised.
-///
-/// Used by: C19, C20c, C20d.
+/// A `fuzzy` match: its rank, and the matched byte ranges, normalised.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FuzzyMatch {
     /// Higher ranks first.
@@ -171,20 +146,7 @@ pub struct FuzzyMatch {
     pub ranges: Vec<Range<usize>>,
 }
 
-/// Matches `query` against `text` as rune-kit's Combobox ranks its options, and says which
-/// characters matched, so a list filtered with it orders the same as a Combobox and can draw
-/// its matches with [`MatchedText`].
-///
-/// The rule, ported from rune-kit's private `combobox::score`: the trimmed query must appear in
-/// the text as a subsequence, compared in lower case, taking the first match of each query
-/// character in turn. Each matched character scores 10, plus 12 if the one before it also
-/// matched and 8 if it starts a word (follows a character that isn't alphanumeric, or starts
-/// the text); each other character costs 1. An empty query matches everything with score 0 and
-/// no ranges. Unlike rune-kit, which lowers the whole text at once, each character is lowered
-/// on its own, so the ranges map back onto the original text; only a final Greek sigma can
-/// compare differently.
-///
-/// Used by: C19, C20c, C20d.
+/// Matches `query` against `text` as rune-kit's Combobox ranks its options, and says which characters matched.
 pub fn fuzzy(query: &str, text: &str) -> Option<FuzzyMatch> {
     let needle: Vec<char> = query.trim().to_lowercase().chars().collect();
     if needle.is_empty() {

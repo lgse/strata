@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Behavioral tests for clipboard path escaping, trash cut guards, row marks, and partial vs
-//! full cut consumption.
-
 use std::path::Path;
 
 use rune::{Key, KeyEvent, Mods};

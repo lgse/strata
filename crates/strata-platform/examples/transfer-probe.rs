@@ -1,35 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A Rune window with P0's transfer substrate attached, for strata-platform's session tests
-//! (`tests/session/p0.rs`). It takes commands as JSON lines on stdin and reports what it sees
-//! as JSON lines on stdout. P0's substrate is internal: this example reaches it through the
-//! hidden `strata_platform::transfer` module, which is no public API.
-//!
-//! Commands:
-//! - `{"cmd":"own","via":"data-control"|"data-device"|"x11","selection":"clipboard"|"primary","offers":[Offer]}`:
-//!   takes the selection with lazy writers that log `writer` when they run;
-//! - `{"cmd":"targets","via":…,"selection":…}` and `{"cmd":"read","via":…,"selection":…,"mime":…}`;
-//! - `{"cmd":"hide"}`, `{"cmd":"show"}`, `{"cmd":"quit"}`;
-//! - `{"cmd":"open-window","key":k}` opens window `k` (title `p0 k`), its own app, which
-//!   attaches from `App::on_window` with a turn from that app, as a later P1 or P2 window does
-//!   (`attached` carries its `key`); `{"cmd":"close-window","key":k}` closes it
-//!   (`window-closed`, from its `on_close`).
-//!
-//! Drags into the window are accepted with their first type and Copy; on the drop every type
-//! is read, then the drop is finished.
-//!
-//! Flags: `--title T`, `--own-data-control` (data control on a connection of its own),
-//! `--data-control ext|wlr` (which protocol first), `--as-if-no-data-control` (a compositor
-//! without data control, as mutter: a test switch), `--x11-fallback` (X11 selections through
-//! Xwayland when Wayland has no route, as the clipboard asks), `--no-shared` (don't bind on
-//! winit's display), `--as-if-libwayland-1-22` (behave as on libwayland < 1.23, which has no route to
-//! winit's display: a test switch), `--answer-ask-with-move` (prefer ask on enter, answer the
-//! drop with move), `--clear-actions-after-drop` (set no actions once dropped), `--host` (the
-//! main window attaches nothing: only the windows `open-window` opens do). The `break-own` command makes the compositor end the Wayland connection
-//! of our own with a protocol error (a test switch); `shutdown-elsewhere` calls the shutdown
-//! from another thread, which must refuse; `break-x11` has the X server end the X11
-//! connection (a test switch).
-
 #[cfg(feature = "_transfer")]
 fn main() {
     probe::main();
@@ -62,10 +32,6 @@ mod probe {
         presses: u32,
     }
 
-    /// A handle and the newest selection offer, kept past the event loop on purpose: `main`
-    /// drops them after `run` returns, once winit has closed its display, so the quit and
-    /// close tests check that dropping a shut-down substrate then makes no libwayland call
-    /// (S2's late drops crashed every run).
     static LATE: Mutex<Option<(Transfer, Option<strata_platform::transfer::SelectionOffer>)>> =
         Mutex::new(None);
 
@@ -117,8 +83,6 @@ mod probe {
         }
     }
 
-    /// This app's subscription to the substrate, once attached. The substrate itself is
-    /// `Transfer::current()` until it is shut down.
     static ATTACHED: OnceLock<strata_platform::transfer::Subscription> = OnceLock::new();
     static SHUT_DOWN: AtomicBool = AtomicBool::new(false);
 
@@ -143,8 +107,6 @@ mod probe {
         Transfer::current()
     }
 
-    /// Attaches `w` with a turn from its own app, `handle`. Events reach the main window's app
-    /// whichever window bound the substrate, so they outlive any window `open-window` opened.
     fn attach<S: 'static>(
         w: &WindowHandle,
         handle: &AppHandle<S>,
@@ -265,8 +227,6 @@ mod probe {
                     log("drop", json!({}));
                     if let Some(offer) = DRAG.lock().unwrap_or_else(|e| e.into_inner()).take() {
                         if ANSWER_ASK_WITH_MOVE.load(Ordering::SeqCst) {
-                            // Answer the ask with move, which a source of [copy, ask] lacks: the
-                            // compositor keeps ask, so the finish must be refused.
                             let r =
                                 offer.set_actions(&[Action::Move, Action::Ask], Some(Action::Move));
                             log("ask-answered", json!({ "ok": r.is_ok() }));

@@ -186,8 +186,6 @@ fn bgcode(images: &[(&[u8], u16, u16)]) -> Vec<u8> {
     out.extend(b"GCDE");
     out.extend(1u32.to_le_bytes());
     out.extend(1u16.to_le_bytes());
-    // Compressed printer metadata. Its uncompressed size is a lie so a parser
-    // that skips the wrong field walks into the thumbnail.
     out.extend(3u16.to_le_bytes());
     out.extend(1u16.to_le_bytes());
     out.extend(1_000u32.to_le_bytes());

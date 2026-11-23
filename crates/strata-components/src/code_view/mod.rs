@@ -1,193 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! CodeView (C10b): Strata's source and plain-text previews and its custom-action script
-//! editor, replacing `sourceview5`, with the shared highlighter in `highlight` (C10a).
-//!
-//! Work package: C10b, `docs/rune/work/phase-2-composites/C10b-code-view.md`. Feature map nodes
-//! `preview/preview-panel` (Text), `preview/preview-panel/find`,
-//! `preview/preview-panel/documents/scrollbar` and `integration/custom-actions`, against
-//! Strata's `src/ui/preview/source_view.rs`, `src/ui/virtual_preview` and
-//! `src/ui/settings/actions/editor.rs` at `upstream/main` e9a8993b7.
-//!
-//! ```ignore
-//! // State: code: CodeState, drawer: DrawerState, highlighter: Highlighter (one per app).
-//! s.code = CodeState::new(text).highlighter(&s.highlighter, Some("main.rs"), None);
-//! let view = CodeView::new(|s: &App| &s.code, |s: &mut App| &mut s.code)
-//!     .on_intent(|s: &mut App, intent, tx| s.apply(intent, tx))
-//!     .build(s, &s.look, cx);
-//! PreviewDrawer::new(&s.drawer, |s: &mut App| &mut s.drawer)
-//!     .hosted(&s.code, |s: &mut App| &mut s.code)
-//!     .content(view)
-//!     .build(files, &s.look, cx);
-//! // poll: changed |= s.code.poll(tx);
-//! ```
-//!
-//! # What stays in Strata
-//!
-//! Which files preview as text, the 1 MiB cap and its notice's wording, decoding (UTF-16,
-//! line-break normalising), the wrap preference, which form shows (Rendered or Source) and
-//! loading the file. The text arrives as data ([`CodeState::set_text`]); nothing here reads
-//! files.
-//!
-//! # How it draws
-//!
-//! - **Rows.** One virtual row per line (`El::virtual_rows`, keyed `{key}-l{row}`), and a line
-//!   over 2 KiB split into rows of at most 2 KiB on character boundaries, as Strata's large
-//!   source preview splits it; the later parts' gutter shows "↳". The view costs one key per
-//!   row and the rows on screen, so a 50,000-line file opens at once.
-//! - **Line numbers** sit in each row's gutter, so they stay level with their line under wrap
-//!   and at any text size. With wrap off they stick to the left edge while the code scrolls
-//!   sideways.
-//! - **Wrap.** On, each line wraps at the pane's width. Off, the whole text scrolls sideways
-//!   as one (`scroll_xy` around the list), the list as wide as the widest row: its columns
-//!   times the mono face's advance, or as the widest rows measure when a fallback face (CJK)
-//!   draws them wider. Rune draws tabs to four-column stops, as Strata's `tab_width(4)`.
-//! - **Colours.** C10a's [`CodeDoc`](highlight::CodeDoc), asked for the lines Rune reports
-//!   visible. A line draws plain until its colours land; they only colour, so nothing moves
-//!   (probe P2, and a test).
-//! - **Find.** C9's find bar calls [`HostedPreview`](crate::preview_drawer::HostedPreview):
-//!   literal, case-insensitive, non-overlapping matches over the whole text, folded once per
-//!   text (C11's folding). Every match is painted with `look.fill.highlight`
-//!   (`TextHighlight`, which never reshapes); the current one is also the selection, and is
-//!   centred. The selection and scroll wait for [`CodeState::poll`].
-//! - **Selection and copy.** Rune's selectable text in one selection group: drag, double-click
-//!   for a word, triple-click for a line, Shift-click. Copying takes the text between the
-//!   selection's ends from the model, so a split line copies whole.
-//!   Ctrl+A then Ctrl+C copies the whole text from the model, past Rune's 10,000-row cap
-//!   (C11's rule).
-//! - **The position bar** sits beside the text in its own column while the text overflows,
-//!   its thumb at the reader's row, not at Rune's estimated offset (`position.rs`). It is a
-//!   Tab stop: Strata's bullet has its ends set "from the keyboard or an accessibility tool"
-//!   (`preview/preview-panel/documents/scrollbar`), so Home and End go to the exact start and
-//!   end, Up and Down step a row, Page Up and Page Down a page, and assistive technology
-//!   reads and sets its row. With wrap off, C24's overlay bar scrolls sideways.
-//! - **Keys** in the document: Ctrl+A, Ctrl+C after it, Ctrl+Home and Ctrl+End to the ends,
-//!   and plain Left back to the listing ([`CodeIntent::Leave`]).
-//! - **Accessibility.** The root is a `document` named by [`CodeLabels::document`]; each
-//!   mounted row's text is a text node holding the line (Rune exposes mounted rows only), an
-//!   empty one named [`CodeLabels::blank`] ("Blank", as Orca reads an empty line); the
-//!   gutter is hidden; the position bar is a slider (Rune has no scroll-bar role, U-C10b-3)
-//!   reading "Line N of M".
-//!
-//! # The editor
-//!
-//! [`CodeEditor`] is the custom-action script editor: Strata's `script_view()` (monospace,
-//! line numbers, `tab_width(4)`, `insert_spaces_instead_of_tabs(true)`, `auto_indent(true)`,
-//! wrap off), coloured by an editable [`CodeDoc`](highlight::CodeDoc) and re-highlighted on
-//! each edit. See [`editor`] for its keys and its measured cost.
-//!
-//! # Deviations
-//!
-//! - **D1** (owner item) No drawn caret bar in the read-only view (U-C10b-2: `text_input` has
-//!   no read-only mode), though [`CodeState`] tracks a byte caret for `Home` / `End`,
-//!   `Ctrl+Home` / `Ctrl+End`, `Shift+Arrow` / `Ctrl+Shift+Arrow` selection and gutter-margin
-//!   drags (packet entry 34).
-//! - **D2** One virtual view for every size. Strata shows small or recognised sources in
-//!   sourceview and only large plain text in its virtual view; here every source takes the
-//!   virtual view's rules (lines over 2 KiB split into rows).
-//! - **D3** Every match is highlighted; Strata highlights only the selected one (plan §4).
-//! - **D4** A match that runs past a 2 KiB row boundary selects only its part in the first row
-//!   (C11's R1).
-//! - **D5** The position bar reads as a slider (U-C10b-3).
-//! - **D6** A drag or Shift-click selection over more than 10,000 rows copies Rune's cut list
-//!   (C11's R4); Ctrl+A copies whole.
-//! - **D7** The editor is built on core `text_input`, not rune-kit `TextArea` (plan §4): a
-//!   TextArea takes no `on_secondary_press`, so C21's field menu can't attach (U-C21-2), and
-//!   it wraps at its width.
-//! - **D8** Lines over 16 KiB draw plain (C10a), and colour reaches a split line's rows
-//!   only up to there.
-//! - **D9** The editor missed its 16.7 ms keystroke budget on a 5,000-line script when first
-//!   measured (see [`editor`]), before Rune `631e8a67` (`#979`, `#985`) moved multiline
-//!   `text_input` shaping to per-paragraph caching; colour-span changes still reshape the
-//!   paragraphs they touch (`U-C10b-1`). Owner item.
-//! - **D10** Opening a 50,000-line text takes one commit over the 8 ms budget (14 to 19 ms,
-//!   below): Rune reads every row's key on a list's first commit (Rune issue #203, as C1e
-//!   reports for its 100,000 rows). The jump to the end and scrolling stay within it.
-//! - **D11** A triple-click on a row of a line split at 2 KiB selects that row, not the whole
-//!   line (Rune's triple-click takes one text's paragraph: U-C10b-6).
-//! - **D12** A drag that starts past the end of a line copies from the next line's start,
-//!   without the break after the first line: Rune's selection report leaves out a text
-//!   whose selected part is empty, so the start can't be told from it (U-C10b-7).
-//! - **D13** The position bar's accessible value follows scrolling in steps of a
-//!   two-hundredth of the text (so a scroll runs the view at most 200 times), and exactly
-//!   after a step from the keyboard or assistive technology.
-//! - **D14** With wrap off, a row of a few glyphs that a fallback face draws far wider than
-//!   any estimate can still widen the list when it mounts: `﷽` (U+FDFD, one character, about
-//!   12 columns) ×150 took review 2's probe from 1,740 to 14,487 pt. Rows are measured in
-//!   the order an estimate ranks them (two columns for anything the mono face doesn't draw),
-//!   and only the first six; measuring every row of a large text at open would cost what
-//!   virtual rows save.
-//!
-//! # Measured
-//!
-//! `tests/perf.rs`, perf profile, NVIDIA, two runs at load average 13 to 17 on 24 cores
-//! (review round 1), on `tests/fixtures/code/rust-50k.rs` (50,000 lines, 1.8 MB) with the
-//! highlighter thread colouring as it scrolls:
-//!
-//! | | Wrap on | Wrap off |
-//! | --- | --- | --- |
-//! | First frame (one commit, D10) | 14.0–15.0 ms | 14.5–15.7 ms |
-//! | Ctrl+End, the jump and the 10 frames after it | p95 3.0–3.1 ms, none over 8 ms | p95 3.5–4.0 ms, none over 8 ms |
-//! | 600 wheel frames at 120 Hz, 48 pt each | p50 0.8–1.1, p95 1.6–1.8, max 2.5 ms, none over 8 ms | p50 0.5–1.1, p95 1.7–1.8, max 3.0 ms, none over 8 ms |
-//! | 120 thumb-drag frames over the whole track | p95 7.4–8.3 ms, 1 and 16 over 8 ms | p95 7.8–8.1 ms, 0 and 8 over 8 ms |
-//! | Find "fn" (2,210 matches), the first query | 2.0 ms | 2.0–2.1 ms |
-//! | Find " " (469,465 matches) | 4.5–7.4 ms | 7.2–7.5 ms |
-//! | Ctrl+A then Ctrl+C, from the model | 42–44 ms, 1,847,325 of 1,847,325 bytes | 47 ms |
-//!
-//! A thumb drag's frames over 8 ms are C24's U-C24-8: a scroll request past the mounted rows
-//! runs the view and commits several times in a frame, where the wheel moving as far
-//! doesn't. `RUNE_COMMIT_BUDGET_MS=8` reports no commit over budget while scrolling or after
-//! the jump. Find runs in the handler that edits the query: one handler of up to 7.5 ms for a
-//! query matching nearly every other byte of 1.8 MB, which a keystroke in the find field pays
-//! once; splitting it across frames would leave the count wrong in between, so it isn't.
-//!
-//! # Rune drafts (not filed)
-//!
-//! - **U-C10b-1** A text's colour-only spans are part of its shaping key
-//!   (`text/hash.rs`, `text_hash` hashes each span's start and end), so any change of colours
-//!   reshapes the whole text: in a 153 KB, 5,000-line field every highlight landing costs a
-//!   full reshape (about 25 ms with a 200-line span window, 160 ms with every line's 27,780
-//!   spans; probe P3). Ask: key shaping on the spans that change shaping only (font, weight,
-//!   size, italic, mono), and repaint colour spans over the cached layout.
-//! - **U-C10b-2** `text_input` has no read-only mode: a read-only view can't have a caret,
-//!   Shift+arrow selection or Home and End by line (Strata's source view, GTK's
-//!   `editable(false)` with `cursor_visible(true)`). Ask: `text_input(..).read_only()`,
-//!   keeping navigation, selection and copy, and refusing typing, paste, cut and IME.
-//! - **U-C10b-3** No scroll-bar role: `a11y/roles.rs` maps no `"scrollbar"`, so a scroll bar
-//!   with a value reads as a slider. Ask: map ARIA `scrollbar` to AccessKit's `ScrollBar`,
-//!   with the range value and steps a slider has.
-//! - **U-C10b-4** A multi-line `text_input` always wraps at its width (`text_input` sets
-//!   `wrap`; only `single_line` turns it off). A code editor without wrap has to make the
-//!   field wider than its widest line inside a sideways viewport. Ask: `El::no_wrap` for a
-//!   multi-line field. (`U-C10b-5`, per-paragraph shaping in multiline `text_input`, landed in
-//!   Rune `631e8a67` via `#979` and `#985`.)
-//! - **U-C10b-6** A triple-click selects one text's paragraph, even inside a selection group:
-//!   an app that draws one logical line as several texts (a line split for layout, as here
-//!   past 2 KiB) can't have the triple-click take the whole line. Repro: a selection group of
-//!   two selectable texts, "aaa" and "bbb", side by side in a row; triple-click "aaa":
-//!   `Runtime::selected_text()` is "aaa". Ask: let a group mark texts as parts of one
-//!   paragraph (or take the paragraph across texts that share a row key), so a triple-click
-//!   selects them all.
-//! - **U-C10b-7** A selection's report leaves out an end text whose selected part is empty:
-//!   a drag that starts past the end of one text and goes on into the next reports only the
-//!   texts from the next one on, so `selection_copy` can't tell that it started on the first
-//!   and that the break after it belongs to the copy. Repro: a selection group of two
-//!   selectable texts "one" and "two" in a column; press right of "one"'s end and drag into
-//!   "two": `TextSelection::texts()` holds "two" alone (with C10b's probe, the copy loses the
-//!   "\n"). Ask: report the start text with its empty range at its end (`is_selected` false
-//!   but its range kept), as the end text's range is.
-//! - **U-C10b-8** An element removed while it holds a drag gets no `Phase::Up`, nor a
-//!   cancelled one: its `on_drag_any` hears the Down and the moves, then nothing. A bar whose
-//!   preview closes mid-drag stays held (here its trough stayed tinted, review round 1). C10b
-//!   ends the drag on the next build that finds the bar wasn't laid out. Repro: an element with
-//!   `on_drag_any` recording phases, shown while `s.open`; press on it, move, set `s.open =
-//!   false`, frame, release: the handler heard Down and Move only. Related: U-C24-4 (a modal
-//!   mounted mid-drag drops the capture the same way). Ask: end a removed element's capture
-//!   with a cancelled `Up`, as Escape does mid-drag.
-//!
-//! Shared with C11: R1 (`select_text` within one text), R2 (no caret in selectable text), R4
-//! (copy collection cap), R5.
-
 pub mod editor;
 pub mod highlight;
 
@@ -225,8 +37,6 @@ use render::{Ctx, Paint, build_row, gutter_width};
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CodeIntent {
-    /// Plain Left with focus in the document: Strata's default key map returns focus to the
-    /// listing.
     Leave,
     /// Secondary press (or Menu key) inside the code view, in window points.
     ContextMenu(Point),
@@ -242,9 +52,6 @@ pub struct CodeLabels {
     pub position: String,
     /// The position bar's value: `{line}` and `{lines}` are replaced.
     pub line_of: String,
-    /// An empty line's name. GtkSourceView exposes its buffer as one text, where Orca reads
-    /// an empty line as "blank"; each line here is a text of its own, and an empty text
-    /// with no name reads as nothing, so it takes this.
     pub blank: String,
 }
 
@@ -292,8 +99,6 @@ impl<S: 'static> CodeView<S> {
         self
     }
 
-    /// When enabled (10xer mode), plain `Home` and `End` scroll to the start or end of the
-    /// document instead of moving the line caret.
     pub fn document_home_end(mut self, on: bool) -> Self {
         self.document_home_end = on;
         self
@@ -482,9 +287,6 @@ fn build_viewport_body<S: 'static>(st: &CodeState, viewport: El, spec: &Viewport
     st.sideways.area(area.child(anchor(0.0, 0.0, bar)))
 }
 
-/// Invisible 0×0 selectable text node holding Rune's selection token for whole-line gutter
-/// selections so row highlights paint once via `RowHighlights` without double-compositing the
-/// first selected row's text, while external clicks and modals still clear the selection cleanly.
 fn gutter_selection_sentinel(key: &str, content: Rc<state::Content>) -> El {
     text(" ")
         .key(format!("{key}-gutter-sel"))
@@ -527,9 +329,6 @@ fn configure_position_bar<S: 'static>(
     (key, scroll_key, list_key): (&str, &str, &str),
     (wrap, paint, bar_look): (bool, &Paint, BarLook),
 ) {
-    // A bar the last frame didn't lay out was taken away (the preview closed, or the text
-    // stopped overflowing): Rune sends a removed element no Up, so a drag it held ends
-    // here (U-C10b-8).
     if cx.layout_with(&format!("{key}-position"), |_| ()).is_none() {
         st.position.end_drag();
     }
@@ -545,11 +344,6 @@ fn configure_position_bar<S: 'static>(
     );
 }
 
-/// The list's width with wrap off: the widest row's columns in the mono face's advance, or
-/// the rows estimated widest as measured, if a fallback face draws them wider (probe P1 and
-/// review 1: CJK and emoji rows widen the list when they mount, which this keeps from
-/// happening). Rows are ranked by their drawn width's estimate, not their length, so a short
-/// row of wide characters is among them.
 fn unwrapped_width(st: &CodeState, paint: &Paint, gutter: f32) -> f32 {
     let rows = st.rows();
     let adv = rune::text::advance("0000000000", paint.mono) / 10.0;
@@ -617,8 +411,6 @@ fn position_bar<S: 'static>(
             p.go_step(if end { f64::INFINITY } else { 0.0 }, tx);
         })
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
-            // Down and Page Down move toward the end, as a vertical scroll bar's keys do (a
-            // slider's own Down steps its value down).
             let m = ev.mods;
             if m.ctrl || m.cmd || m.alt || m.shift {
                 return false;
@@ -656,8 +448,6 @@ fn position_bar<S: 'static>(
 /// Vertical line-scroll step in points for arrow-key scrolling.
 const SCROLL_STEP: f32 = 40.0;
 
-/// The document's keys, with focus in it: Ctrl+A and Ctrl+C over the whole text, Up/Down/
-/// PageUp/PageDown scrolling, Ctrl+Home and Ctrl+End to its ends, plain Left back to the listing.
 fn key_in<S: 'static>(
     s: &mut S,
     ev: &KeyEvent,
@@ -674,14 +464,9 @@ fn key_in<S: 'static>(
         st.select_all_text(tx);
         return true;
     }
-    // Without this Ctrl+C still copies the whole text (`selection_copy` answers from the
-    // model), but only after Rune has built up to 10,000 unbuilt rows to collect the
-    // selection it then ignores: 59 ms against 42 to 47 ms on the 50,000-line fixture.
     if copy_shortcut(st, ev, plain, tx) {
         return true;
     }
-    // In a hosted preview (`intent` set), plain Left returns to the listing on the first press
-    // even when text is selected, matching GTK's capture-phase `PreviewSurface::Document`.
     if is_plain_left(ev)
         && let Some(f) = intent.clone()
     {

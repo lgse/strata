@@ -1,26 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Properties dialog for one item, a folder or a selection of items: GTK's
-//! `show_properties` and `show_selection_properties` (`src/ui/browser/properties.rs`), built on
-//! C15's [`StrataDialog`](strata_components::dialog::StrataDialog).
-//!
-//! - **What opens it.** The `properties` command: `Alt+Return` (`Stage::PropertiesCommand`) on the
-//!   selection or focused entry, the entry and selection context menus (`On::Row`), the folder
-//!   background menu (`On::Column`), and the sidebar's place and pin context menus (`On::Place`).
-//!   `recent:///` opens nothing (`show_folder_properties`).
-//! - **Single item / folder** ([`Single`]). Header icon, name, and content-type kind subtitle;
-//!   **General** facts (`LOCATION`, `SIZE` with live spinner on folders and `trash:///`,
-//!   `CONTAINS` with an incomplete-totals warning icon when truncated or unreadable, `MODIFIED`,
-//!   `OPENS WITH`, `HIDDEN`, `properties.pinned`); **Permissions** ([`permissions`]) with symbolic
-//!   and octal mode, owner and group identities, nine `r`/`w`/`x` toggle buttons, and the
-//!   executable `+x` checkbox on files; and footer actions ([`actions`]: `Open`, `Rename`,
-//!   `Pin`/`Unpin`, `Copy path` -> `Copied`).
-//! - **Selection** ([`Selection`]). Item-count title, `"Selection"` subtitle, live recursive
-//!   `SIZE` and `CONTAINS` measurement across files and folders, and the incomplete-totals warning
-//!   icon when any entry or child folder cannot be read or hits a traversal bound.
-//! - **Cancellation.** Closing, replacing or hiding the dialog aborts in-flight info and size
-//!   tasks (`Tasks::abort_all`).
-
 mod actions;
 mod measure;
 mod media;

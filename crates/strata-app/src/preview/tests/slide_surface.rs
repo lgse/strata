@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Mid-animation surface coverage and single-pass compositing regressions for the preview drawer
-//! slide across List, Icons, and Columns views (`UI-62`).
-
 use rune::{Color, Key, Mods, Tx};
 use strata_core::model::Location;
 
@@ -16,8 +13,6 @@ use crate::{
 
 const MODULE: &str = "preview::tests::slide_surface";
 
-/// Steps the runtime clock without settling all motion so immediate and mid-slide frames can be
-/// inspected.
 const SAMPLE_STEPS_S: [f64; 6] = [0.0, 1.0 / 60.0, 0.04, 0.08, 0.08, 0.08];
 
 fn enable_transparency(host: &mut Offscreen) {
@@ -301,8 +296,6 @@ fn columns_unreserved_preview_close_and_empty_slot_release_cover_surface_without
             select(&mut host, &todo);
             focus_view(&mut host);
 
-            // Open preview in Columns, then toggle Appearance -> Preview panel off so the slot
-            // slides completely shut (unreserved close).
             send_key(
                 &mut host,
                 rune::KeyEvent {

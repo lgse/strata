@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Unit tests: no bus. A test that claims or forwards needs a private session bus, so those
-//! are session tests (`tests/session/p8.rs`, `mise run test-platform p8::`); one here would
-//! reach the desktop's own bus through `$XDG_RUNTIME_DIR/bus`.
-
 use std::ffi::OsString;
 use std::os::unix::ffi::OsStringExt;
 use std::path::PathBuf;
@@ -281,8 +277,6 @@ fn actions_are_read_as_glib_reads_them() {
     let two = || vec![s(), OwnedVariant::from(7u32)];
     assert_eq!(parameter(Vec::new(), Pack::Tuple), None);
     assert_eq!(parameter(vec![s()], Pack::Tuple).as_deref(), Some("s"));
-    // org.freedesktop.Application packs several into one tuple, in order; org.gtk.Actions
-    // takes the first.
     assert_eq!(parameter(two(), Pack::Tuple).as_deref(), Some("(su)"));
     assert_eq!(parameter(two(), Pack::First).as_deref(), Some("s"));
 }

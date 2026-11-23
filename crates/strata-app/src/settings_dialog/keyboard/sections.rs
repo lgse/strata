@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Which rows each table lists, and under which heading: GTK's `sections` and `trigger`
-//! (`src/ui/settings/keyboard.rs`).
-//!
-//! **A copy:** `src/ui` does not move, so this is kept beside GTK's by hand. A change to `sections` or `FALLBACK_SECTIONS`
-//! on `main` merges clean and changes nothing here: make the same change in the merge
-//! (`docs/rune/shared-state.md`, "Merging from `main`").
-
 use strata_desktop::keys::{self, Command, CommandKind, Group, Map, bindings::*, conflicts};
 
 use crate::shortcuts::command_sections;
@@ -26,9 +19,6 @@ const FALLBACK_SECTIONS: &[(Command, &str)] = &[
 
 type Sections = Vec<(&'static str, Vec<Command>)>;
 
-/// Each command sits in the first section naming it in `map`'s reference, then in the other
-/// map's. Commands `map` cannot run stay out, and the default map files the 10xer section's
-/// runnable commands under "Search and tools".
 pub(super) fn sections(map: Map) -> Sections {
     let tenxer = command_sections(Map::Tenxer);
     let default = command_sections(Map::Default);
@@ -60,8 +50,6 @@ fn push_new(order: &mut Vec<&'static str>, title: &'static str) {
     }
 }
 
-/// The commands `map`'s table lists: a chord's trigger only in the 10xer map, and none the
-/// map gives no way to run.
 fn runnable(map: Map) -> Vec<Command> {
     keys::registry()
         .filter(|command| {

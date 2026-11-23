@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A Shift range goes on from where it started after F5 reads the folder again, as GTK's
-//! does from the anchor the shared browser keeps by location (finding lgse/strata#2354).
-
 use rune::{Key, Mods};
 
 use super::{MODULE, act, listed, press};
@@ -12,8 +9,6 @@ use crate::{
     test_support::{PATIENCE, view::hosted_in},
 };
 
-/// The keys that move to the next and the previous entry: a row in Columns and List, a tile
-/// in the Icons grid, whose rows the fixture's five entries fit in one of.
 fn steps(mode: &str) -> (Key, Key) {
     if mode == "icons" {
         (Key::Right, Key::Left)

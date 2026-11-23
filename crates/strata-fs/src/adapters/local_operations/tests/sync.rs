@@ -21,8 +21,6 @@ mod roots;
 
 type Before = (Op, &'static str, usize, Racer);
 
-/// A `sources` folder and a `destination` folder beneath one root, and the
-/// names moved between them.
 struct Layout {
     sources: PathBuf,
     destination: PathBuf,
@@ -109,8 +107,6 @@ impl Barriers {
         }
     }
 
-    /// A racer before each barrier of the layout's names, the first of which
-    /// runs `also` first.
     fn racers(&self, layout: &Layout, mut also: Option<Racer>) -> Vec<Before> {
         (0..layout.names.len())
             .map(|_| {
@@ -127,8 +123,6 @@ impl Barriers {
             .collect()
     }
 
-    /// Records which names are gone from the sources and which stand at the
-    /// destination, with the flush and count shown so far.
     fn watcher(&self, layout: &Layout) -> impl Fn() + Send + 'static {
         let (seen, flushing, counted) = (
             self.seen.clone(),
@@ -172,8 +166,6 @@ struct Moving<'a> {
     cancel_after: Option<usize>,
 }
 
-/// A finished move: its handle, every event, and the sources reported moved
-/// while they still existed.
 struct Moved {
     _operation: Rc<RefCell<Option<LoadHandle>>>,
     events: Rc<RefCell<Vec<OperationEvent>>>,

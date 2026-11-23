@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Where GDK and libxkbcommon answer differently for one key, one name or one character.
-//!
-//! Each row is what GDK answers, as the GTK application's test `key_lookups` printed it when
-//! it ran this backend beside GDK without the row. The rows are exact for the libraries of
-//! the test image: the test fails when one is missing or no longer true. It does not fail
-//! for a row the rules would now give without it, which is only redundant. Every table is
-//! sorted by its first column, which the lookups rely on.
-
 /// Keys GDK writes by another name than libxkbcommon does.
 pub(super) const WRITTEN: &[(u32, &str)] = &[
     (0xd0, "Eth"),
@@ -28,20 +20,14 @@ pub(super) const WRITTEN: &[(u32, &str)] = &[
     (0x1008ffa0, "SelectButton"),
 ];
 
-/// Keys libxkbcommon names and GDK writes as a number, beside the vendor ranges that are
-/// a rule.
 pub(super) const WRITTEN_AS_A_NUMBER: &[u32] = &[
     0xfe8e, 0xfe90, 0xfe91, 0xfe92, 0xfe93, 0xffffff, 0x1008ff07, 0x1008ff54, 0x1008ff70,
     0x1008ffb3, 0x1008ffb4, 0x1008ffb5, 0x1008ffb6, 0x1008ffb7, 0x1008ffb8,
 ];
 
-/// Names GDK reads that libxkbcommon does not read, or reads as another key. A vendor key's
-/// name is given without its `XF86` prefix.
 pub(super) const READ: &[(&str, u32)] =
     &[("SelectButton", 0x1008ffa0), ("WindowClear", 0x1008ff55)];
 
-/// Names libxkbcommon reads and GDK does not, beside the vendor ranges that are a
-/// rule. A vendor key's name is given without its `XF86` prefix.
 pub(super) const REFUSED: &[&str] = &[
     "AudioPreset",
     "Calculater",
@@ -166,9 +152,6 @@ pub(super) const TYPED_BY: &[(char, u32)] = &[
     ('⟩', 0xabe),
 ];
 
-/// Keys whose lower case, for GDK, is not the one their character's case gives: keys GDK
-/// pairs by position with no character behind them, and characters Unicode maps to more
-/// than one, where GDK takes the one-character mapping.
 pub(super) const LOWER: &[(u32, u32)] = &[
     (0x1a4, 0x1b4),
     (0x1c1, 0x1e1),
@@ -286,9 +269,6 @@ pub(super) const LOWER: &[(u32, u32)] = &[
     (0x10024cf, 0x10024cf),
 ];
 
-/// Keys whose upper case, for GDK, is not the one their character's case gives: keys GDK
-/// pairs by position with no character behind them, and characters Unicode maps to more
-/// than one, where GDK takes the one-character mapping.
 pub(super) const UPPER: &[(u32, u32)] = &[
     (0xb5, 0xb5),
     (0xff, 0xff),

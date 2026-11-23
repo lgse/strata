@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C26 MountPrompts: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c26-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-2-composites/C26-mount-prompts.md`.
-//!
-//! The page plays the host: openers for each prompt, a status line saying what the last one
-//! answered (a password only by its length), and an End process that answers as the backend
-//! does, by sending the shorter list. The golden scenes open a prompt at once.
-
 use rune::{Cx, El, KeyEvent, LiveRegion, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant};
 use strata_components::mount_prompts::{
@@ -18,7 +9,6 @@ use strata_components::mount_prompts::{
 
 use crate::{Gallery, Scene};
 
-/// C26's demo state, held in `Gallery::c26`.
 #[derive(Default)]
 pub struct Demo {
     pub prompt: MountPromptState<u32>,
@@ -141,8 +131,6 @@ fn scene(g: &mut Gallery, dark: bool, request: MountRequest) {
     g.c26.show(request);
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c26", dark)`, then fills in `g.c26`.
 pub const SCENES: &[Scene] = &[
     ("c26-sign-in-light", |g| {
         scene(g, false, MountRequest::Password(sign_in()))
@@ -326,8 +314,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     rune_kit::root(window, layer)
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }

@@ -139,8 +139,6 @@ fn theme_colored_drag_icon_uses_active_theme_icon_accent() {
 
     assert_transparent_corners(rgba, w, h);
 
-    // Catppuccin Mocha icon_accent is bright blue/lavender, whereas the old
-    // `Look::fallback(false)` rendered a dim dark-gray stroke.
     let bright_opaque_pixels = rgba
         .as_chunks::<4>()
         .0

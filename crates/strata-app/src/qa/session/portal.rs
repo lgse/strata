@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The portal's session host: `strata-rune --qa --portal` in a private sway, when the runner
-//! sets `STRATA_QA_WINDOW=1`. The portal daemon runs as `--portal` does (`host::portal`), each
-//! request in a real chooser window, and the session acts on the window `adopt` picks, through
-//! the same devices and link as the folder's session host ([`Session`]).
-//!
-//! It starts windowless, as the offscreen portal host does (`qa::portal`). Its devices connect
-//! at the first `adopt`, once sway lists a window of this process: before it, no input reaches
-//! the compositor, and the steps that need a window say there is none.
-
 use std::{
     cell::{OnceCell, RefCell},
     fs::File,
@@ -88,8 +79,6 @@ pub(in crate::qa) fn serve() -> Result<(), String> {
     portal::run_with(ui, settings, hooks)
 }
 
-/// The daemon's hooks: each chooser window recorded and followed, and the session's thread
-/// started with what ends the daemon.
 fn hooks(registry: &Registry, (protocol, log, admitted): (File, InputLog, Admitted)) -> Hooks {
     let opening = registry.clone();
     let opened = Rc::new(std::cell::Cell::new(0_u64));
@@ -129,7 +118,7 @@ fn start((registry, log, admitted): (Registry, InputLog, Admitted), protocol: Fi
             quit();
         });
     if let Err(error) = spawned {
-        eprintln!("strata-rune: cannot start the QA session: {error}");
+        eprintln!("strata: cannot start the QA session: {error}");
     }
 }
 
@@ -205,7 +194,7 @@ impl Host for PortalSession {
         };
         match self.act_on(target) {
             Ok(()) => *self.adopted.borrow_mut() = Some(window.0.to_string()),
-            Err(error) => eprintln!("strata-rune: the session host: adopting a chooser: {error}"),
+            Err(error) => eprintln!("strata: the session host: adopting a chooser: {error}"),
         }
     }
 

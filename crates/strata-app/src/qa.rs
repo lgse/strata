@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The scripted QA mode: `strata-rune --qa <directory>` speaks the protocol of `strata-qa`
-//! on stdin and stdout, as the GTK application's `strata --qa` does.
-//!
-//! `strata-qa` runs the session and decides what a step, a target and a predicate mean. This
-//! module answers its `Backend` from Rune's accessibility tree and sends input at Rune's
-//! input layer, on the offscreen host: it needs no display server. With `STRATA_QA_WINDOW=1`
-//! it serves the same protocol from a real window instead ([`session`]).
-//! `docs/rune/slice/V7-rune-qa-backend.md` describes it.
-
 mod backend;
 mod compose;
 mod control_words;
@@ -62,19 +53,11 @@ use crate::{
     startup,
 };
 
-/// What a wrong `--qa` command line prints. The release workflow fails a release binary that
-/// holds the `usage: strata --qa` prefix, and the QA job requires it in a QA build of the GTK
-/// application; the same prefix here lets both checks cover this binary once they are pointed
-/// at it. It names `strata` because that is what this interface's binary is called at parity.
 const USAGE: &str = "usage: strata --qa <directory|--plain|--portal>";
 /// The argument that serves the portal chooser instead of a folder (`src/qa.rs`).
 const PORTAL: &str = "--portal";
-/// The argument of a plain launch, with no folder: the window restores the saved tab session
-/// or opens the default folder, and saves its tabs, as `strata-rune` with no argument does
-/// (`src/qa.rs`, and the runner's `{"restart":{"plain":true}}`).
 const PLAIN: &str = "--plain";
 const OPTION: &str = "--qa";
-/// The GTK window's default size (`src/ui/window`), so `window_width` means the same.
 const SIZE: (f32, f32) = (1200.0, 760.0);
 /// The longest the idle loop sleeps without looking for a command again.
 const IDLE_WAIT: Duration = Duration::from_secs(1);
@@ -100,7 +83,7 @@ pub(crate) fn launch(arguments: &[OsString]) -> Option<ExitCode> {
     Some(match served {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("strata-rune: {error}");
+            eprintln!("strata: {error}");
             ExitCode::FAILURE
         }
     })
@@ -126,8 +109,6 @@ fn serve(directory: &OsStr) -> Result<(), String> {
     Ok(())
 }
 
-/// What the window opens: the folder the argument names, or for `--plain` what a plain launch
-/// opens.
 pub(super) fn initial(directory: &OsStr, settings: &Saved) -> Result<launch::Initial, String> {
     if directory == PLAIN {
         return Ok(launch::initial_for(Opening::Plain, settings));
@@ -137,13 +118,11 @@ pub(super) fn initial(directory: &OsStr, settings: &Saved) -> Result<launch::Ini
         .ok_or_else(|| "the argument is not a location".to_owned())
 }
 
-/// This run's process as the primary on the runner's session bus, where a `launch` step's
-/// `strata-rune` hands its arguments to it; a run with no bus runs alone.
 fn claim() -> Result<strata_platform::single_instance::Primary, String> {
     match application::claim(Launch::default(), true) {
         Claim::Primary(primary) | Claim::Standalone(primary, _) => Ok(primary),
         Claim::Forwarded(_) => {
-            Err("another strata-rune is the primary on the run's session bus".to_owned())
+            Err("another strata is the primary on the run's session bus".to_owned())
         }
     }
 }
@@ -176,9 +155,6 @@ impl Wake for Awake {
     }
 }
 
-/// Runs the session on this thread, which owns the host. A step turns the host itself while
-/// it waits; between steps this loop does, so the application keeps running as a window's
-/// does while the runner works on files. Ends when the session does or the backend quits.
 fn block_on<H: host::Host>(backend: &Rune<H>, session: impl Future<Output = ()>) {
     let awake = Arc::new(Awake(AtomicBool::new(true)));
     let waker = Waker::from(awake.clone());

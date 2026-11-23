@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! The keys the view gives its parts, so hosts, scripts and scroll requests can name them.
-//! Every key starts with the view's key, so two strips (two windows' states in one process,
-//! the chooser) never collide.
-
-/// The key of the collection of the column whose serial is `serial`: its rows' key paths start
-/// there (`viewport_path`, `row_path`). A column gets a new serial for each folder it shows.
+/// The key of the collection of the column whose serial is `serial`.
 pub fn column(view: &str, serial: u64) -> String {
     format!("{view}-col-{serial}")
 }
@@ -20,9 +15,7 @@ pub fn strip(view: &str) -> String {
     format!("{view}-strip")
 }
 
-/// The key of the blank space after the last column: also the key its drop zone reaches the
-/// binder by (W1's `Dnd::drop_zone_keyed`). Each column's rows and background reach it as C1e's
-/// do, under the column's own key.
+/// The key of the blank space after the last column: also the key its drop zone reaches the binder by.
 pub fn blank(view: &str) -> String {
     format!("{view}-blank")
 }
@@ -85,7 +78,5 @@ pub fn reveal(column: &str) -> String {
 /// The key of a row's size badge, under the row's key (`row-<id>/badge`).
 pub const BADGE: &str = "badge";
 
-/// The key of the box around a row's detail line, under the row's key
-/// (`row-<id>/detail`): the line itself is keyed as a label (C1e's `LABEL`), as the row's name
-/// is, so a host's tooling reads it as the row's second label.
+/// The key of the box around a row's detail line, under the row's key (`row-<id>/detail`).
 pub const DETAIL: &str = "detail";

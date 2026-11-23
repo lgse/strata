@@ -293,8 +293,6 @@ struct SortedSnapshot {
     unique_locations: Option<bool>,
 }
 
-/// Proves whether every entry in a sorted listing has a distinct `Location` without
-/// allocating an O(N) `HashSet` when entries are native children sorted by name.
 fn prove_unique_locations(entries: &[FileEntry], preferences: ViewPreferences) -> Option<bool> {
     if entries.len() <= 1 {
         return Some(true);

@@ -43,13 +43,9 @@ impl<S: 'static> Sink for Core<S> {
     }
 }
 
-/// A test switch for strata-platform's own session tests: which route the first attach may
-/// bind. Not API.
 #[doc(hidden)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TestRoute {
-    /// Behave as on a compositor with no data control (mutter): a Wayland window takes the
-    /// data device, or with no winit display, X11 through Xwayland.
     pub as_if_no_data_control: bool,
     /// Behave as on libwayland < 1.23: winit's display is out of reach.
     pub as_if_libwayland_below_1_23: bool,
@@ -66,21 +62,6 @@ fn core<S: 'static>(id: u64) -> Option<Rc<Core<S>>> {
         .and_then(|c| c.downcast::<Core<S>>().ok())
 }
 
-/// The clipboard, for app state `S`: copies with any MIME types, reads by type, and notices
-/// when the selection changes hands. One per state type: an app whose windows share a state
-/// needs one; another window type with its own state gets its own. They all share the one
-/// clipboard of the process.
-///
-/// ```ignore
-/// let clip = Clipboard::<App>::new().on_change(|s, change, _| {
-///     if let Change::Lost { .. } = change { s.marks.clear(); }
-/// });
-/// let app = rune::App::new(spec).init({ let c = clip.clone(); move || App::new(c) });
-/// let handle = app.handle();
-/// app.on_window(move |w| { let _ = clip.attach(w, &handle); }).run();
-/// ```
-///
-/// It is `Rc` inside: clone it into the state, and use it on the UI thread only.
 pub struct Clipboard<S: 'static>(Rc<Core<S>>);
 
 impl<S: 'static> Clone for Clipboard<S> {
@@ -95,8 +76,6 @@ impl<S: 'static> Default for Clipboard<S> {
     }
 }
 
-/// Runs a job on the UI thread, in an update of handle `id`'s app. True if the app heard
-/// something (its state may have changed).
 fn run<S: 'static>(id: u64, job: Job, s: &mut S, tx: &mut Tx) -> bool {
     if let Job::Run(f) = job {
         f();
@@ -115,8 +94,6 @@ fn run<S: 'static>(id: u64, job: Job, s: &mut S, tx: &mut Tx) -> bool {
 }
 
 impl<S: 'static> Core<S> {
-    /// Hands this handle's queued changes to `on_change`, one at a time: it may copy, clear
-    /// or read again.
     fn drain(&self, s: &mut S, tx: &mut Tx) -> bool {
         let f = self.on_change.borrow().clone();
         let mut any = false;
@@ -178,9 +155,6 @@ impl<S: 'static> Clipboard<S> {
         Clipboard(core)
     }
 
-    /// Hears every [`Change`], in an update of the app: another app's copy, the selection
-    /// emptied, and each of this process's copies holding and losing it. A handle attached
-    /// later first hears what each selection offers then.
     pub fn on_change(self, f: impl Fn(&mut S, &Change, &mut Tx) + 'static) -> Self {
         *self.0.on_change.borrow_mut() = Some(Rc::new(f));
         self
@@ -192,9 +166,6 @@ impl<S: 'static> Clipboard<S> {
         self
     }
 
-    /// Attaches a window: call it on the UI thread from `App::on_window`, every time it runs
-    /// (Rune recreates a window's native side after a Wayland hide). The first call binds the
-    /// transfer substrate for the process, shared with drag and drop.
     pub fn attach(&self, window: &WindowHandle, app: &AppHandle<S>) -> Result<Status, Error> {
         let id = self.0.id;
         let handle = app.clone();
@@ -211,11 +182,6 @@ impl<S: 'static> Clipboard<S> {
         hub::status()
     }
 
-    /// Puts `content` on `selection`, replacing whatever was there (this process's earlier
-    /// copy is then [`Lost::Replaced`](super::Lost::Replaced)). Refused for a content that
-    /// asked to offer an X11 meta target ([`Content::with`]). On the UI thread. Call it
-    /// from the key or click handler that asked for the copy: on the data-device route the
-    /// write takes that event's serial.
     pub fn copy(&self, selection: Selection, content: Content) -> Result<CopyId, Error> {
         if content.reserved().is_some() {
             return Err(Error::Refused(
@@ -226,8 +192,6 @@ impl<S: 'static> Clipboard<S> {
         hub::copy(selection, spec, keep)
     }
 
-    /// Empties the selection if `copy` still holds it: true if it did. A copy another app
-    /// has replaced is left alone, and so is that app's copy.
     pub fn clear(&self, copy: CopyId) -> Result<bool, Error> {
         hub::clear(copy)
     }
@@ -237,17 +201,10 @@ impl<S: 'static> Clipboard<S> {
         hub::state(copy)
     }
 
-    /// What `selection` offers, as last heard. On the data-device route another app's copy is
-    /// heard only at the app's next keyboard focus.
     pub fn offered(&self, selection: Selection) -> Option<Offered> {
         hub::offered(selection)
     }
 
-    /// Reads the first of `mimes` that `selection` offers, off the UI thread, and hands it to
-    /// `f` in an update, as `Tx::read_clipboard` does. `f` always runs once attached:
-    /// with [`ReadError::NothingOffered`] when none of `mimes` is offered. A read of this
-    /// process's own copy is served in process, without the compositor. Err, and `f` never
-    /// runs, when the clipboard isn't attached.
     pub fn read(
         &self,
         selection: Selection,
@@ -271,8 +228,6 @@ impl<S: 'static> Clipboard<S> {
         Ok(())
     }
 
-    /// Reads the files on `selection`, in the file managers' formats ([`Files`]): every one
-    /// of them offered, at once, decoded by [`Files::decode`]'s rule. As [`Clipboard::read`].
     pub fn read_files(
         &self,
         selection: Selection,

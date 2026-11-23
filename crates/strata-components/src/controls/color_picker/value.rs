@@ -1,20 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! The picker's colour value: 8-bit sRGB with straight alpha ([`Srgba`]), its hex text, its
-//! conversions to and from `rune::Color` (linear sRGB, straight alpha), and HSV ([`Hsv`]).
-
 use std::fmt;
 use std::str::FromStr;
 
 use rune::Color;
 use rune::color::{srgb_decode, srgb_encode};
 
-/// A colour as Strata saves it: sRGB-encoded channels and straight alpha, 8 bits each.
-///
-/// Equality is exact, so a colour read back from its hex text equals the one written. To
-/// `rune::Color` each channel is decoded to linear light; from it each is encoded and rounded
-/// to the nearest 8-bit step, as `Color::hex` rounds. So `Srgba → Color → Srgba` gives the
-/// same colour back, while `Color → Srgba` rounds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Srgba {
     pub r: u8,
@@ -57,9 +48,6 @@ impl Srgba {
         self.a == 255
     }
 
-    /// Hex text: `#RGB`, `#RGBA`, `#RRGGBB` or `#RRGGBBAA`, in either case, with or without the
-    /// `#`, and with spaces around it. A short form doubles each digit (`#abc` is `#aabbcc`);
-    /// a form without alpha is opaque.
     pub fn parse_hex(text: &str) -> Option<Srgba> {
         let t = text.trim();
         let digits = t.strip_prefix('#').unwrap_or(t);
@@ -78,8 +66,6 @@ impl Srgba {
         }
     }
 
-    /// Lowercase `#rrggbb` when opaque, else `#rrggbbaa`: how Strata saves a colour, and how a
-    /// translucent theme colour reads back.
     pub fn hex(self) -> String {
         if self.is_opaque() {
             self.hex_rgb()
@@ -104,8 +90,6 @@ impl Srgba {
         }
     }
 
-    /// The nearest colour to `c` (linear, straight alpha), clamped to `0..=1`; not a number is
-    /// 0.
     pub fn from_color(c: Color) -> Srgba {
         let enc = |v: f32| unit_byte(srgb_encode(unit(v)));
         Srgba {
@@ -158,11 +142,6 @@ impl FromStr for Srgba {
     }
 }
 
-/// Hue, saturation, value and alpha, over the sRGB-encoded channels as GTK and CSS compute
-/// them: `h` in degrees `0..=360` (360 is red again), `s`, `v` and `a` in `0..=1`.
-///
-/// A grey has no hue and black no saturation: [`Hsv::of_keeping`] keeps the ones it had, so a
-/// drag through the plane's bottom edge or its left edge doesn't lose them.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Hsv {
     pub h: f32,
@@ -185,8 +164,6 @@ impl Hsv {
         )
     }
 
-    /// `c` as HSV, keeping `previous`'s hue where `c` has none (a grey or black) and its
-    /// saturation where `c` has none to speak of (black).
     pub fn of_keeping(c: Srgba, previous: Hsv) -> Hsv {
         let [r, g, b] = c.unit_rgb();
         let max = r.max(g).max(b);

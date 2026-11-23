@@ -1,23 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The saved settings, `settings.toml`, without an interface: what the file holds and its
-//! defaults, how values are stored and kept within range, and how the file is read, salvaged
-//! and merged into on a save.
-//!
-//! The GTK application's `PreferenceManager` (`src/ui/preferences.rs`) owns a [`Preferences`]
-//! and a [`Saving`], and adds what needs its toolkit: the setters, change notifications,
-//! widget bindings and the notices about saving. The Rune interface holds one in `strata-app`'s `settings::Saved`,
-//! which saves the few values that interface changes. `docs/preferences.md` describes each
-//! setting.
-//!
-//! [`folder_views`] is the model of `folder-views.toml`, the sort and icon size a folder
-//! remembers, and [`folder_views_path`], [`load_folder_views`] and [`save_folder_views`] find,
-//! read and save that file. [`FolderViewStore`] holds the values a process has and the
-//! bookkeeping of writing them; when a write is scheduled is each interface's.
-//!
-//! [`Saving`] is the bookkeeping of a save: an interface changes its [`Preferences`], commits,
-//! and awaits the save the commit hands back.
-
 use std::{
     collections::{BTreeSet, HashMap},
     fs, io,

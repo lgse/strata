@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Behavioral regressions for UI-44: theme-colored LaTeX equations and Mermaid diagrams in
-//! rendered document previews (`crates/strata-app/src/preview/document.rs`).
-
 use std::sync::Arc;
 
 use rune::{Pixels, Tx};

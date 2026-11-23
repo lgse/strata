@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! The palette's modes, as data: Ctrl+K search and Ctrl+Shift+K folder jump are two values
-//! of one type, not two components.
-
 use strata_kit::icons::IconName;
 
-/// What a mode's results are.
-///
-/// Used by: hosts.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum ResultKind {
     /// Files and folders: each result's own icon, and its thumbnail if it has one.
@@ -17,9 +11,6 @@ pub enum ResultKind {
     Folders,
 }
 
-/// The status an empty query shows in a mode whose empty query lists nothing.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IdleText {
     /// On open, before anything is typed.
@@ -28,10 +19,6 @@ pub struct IdleText {
     pub cleared: String,
 }
 
-/// One key hint in the footer: an optional icon and its words, such as "↑↓  navigate".
-/// The host writes the keys its key map binds.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Hint {
     pub icon: Option<IconName>,
@@ -56,11 +43,6 @@ impl Hint {
     }
 }
 
-/// A mode: what the palette is called, what its field says, its results' kind, and the words
-/// of each state. [`PaletteMode::search`] and [`PaletteMode::jump`] are Strata's two, in its
-/// English; a translated host fills in its own strings.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug)]
 pub struct PaletteMode {
     pub kind: ResultKind,
@@ -74,8 +56,6 @@ pub struct PaletteMode {
     pub description: Option<String>,
     /// The result list's accessible name.
     pub list_label: String,
-    /// `Some` when an empty query lists nothing and shows this instead (search); `None` when
-    /// an empty query is a query like any other (jump lists its history).
     pub idle: Option<IdleText>,
     /// While a query has nothing to show yet.
     pub searching: String,
@@ -112,8 +92,6 @@ fn hints() -> Vec<Hint> {
 }
 
 impl PaletteMode {
-    /// Ctrl+K: global file search over `locations`, which the field's description lists
-    /// (Strata's `reset_for_search`).
     pub fn search<L: AsRef<str>>(locations: &[L]) -> Self {
         let list = locations
             .iter()

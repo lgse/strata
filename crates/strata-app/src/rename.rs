@@ -1,31 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Inline rename: strata-components' editor (C5) in the row being renamed, Strata's rules
-//! for the name in it, and `Browser`'s rename behind it.
-//!
-//! - **Opening.** F2 and Ctrl+R rename the item `Browser::rename_item` names; the view's slow
-//!   second click and the context menu's Rename row name their own entry. All three end in
-//!   [`open`].
-//! - **The name.** The field is checked as it changes with `name_field_error`, the rule the
-//!   GTK field asks (`src/ui/collection_edit.rs`), and its message is the catalogs'.
-//! - **Ending.** The editor closes itself and says what it closed on. A changed, valid name
-//!   goes to `Browser::rename`; one that is a path goes to `Browser::place_entry`, which moves
-//!   the item (`submit_rename_entry` in `src/ui/browser/inline_edit.rs`). Tab and Shift+Tab
-//!   then carry the editor to the neighbouring entry (`advance_rename`).
-//! - **The answer.** The browser's events say how the rename ended ([`answered`]). A failure
-//!   shows GTK's "Unable to rename item" dialog with the browser's message
-//!   ([`crate::rename_failed`]); the entry keeps its name, and the editor stays closed
-//!   (`on_rename_failed` in `src/ui/browser/events.rs`).
-//!
-//! - **A new item.** A folder or file just created opens the editor with `Naming::NewItem`
-//!   ([`begin_new_item`], from `new_item.rs`): a file may then be named as a folder, and the
-//!   name goes to `Browser::name_new_item`, whose undo trashes the item under its new name.
-//! - **Showing the row.** A plain rename that lands shows its row wherever the new name
-//!   sorts ([`shown`], `reveal_completed_rename`).
-//!
-//! Left out, with what brings each back: the label showing the new name before the rename
-//! lands (`start_pending_rename`); the field's own menu (C21).
-
 use std::ffi::OsStr;
 
 use rune::{El, Tx};
@@ -94,8 +68,6 @@ struct Asked {
     /// `None` when the browser started no operation.
     request: Option<OperationRequestId>,
     editing: Editing,
-    /// What takes the item's row when a typed path moves it: the first folder of the path,
-    /// or the item itself in the folder above.
     placed: Option<Location>,
     /// Where a plain rename puts the item, in its own folder: the row to show once it lands.
     renamed: Option<Location>,
@@ -109,7 +81,6 @@ pub(crate) struct Rename {
     asked: Option<Asked>,
     /// A completed rename whose row waits to be shown ([`shown`]).
     shown: Option<shown::Pending>,
-    /// The field's accessible name, as the GTK field's (`src/ui/browser/columns/rows/widgets.rs`).
     label: String,
 }
 
@@ -148,9 +119,6 @@ fn message(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     None
 }
 
-/// The editor's share of the window: its message, the browser's answers, its poll, and the
-/// window's keys waiting while its field is open. The field itself is in the row, where the
-/// view puts [`editor`]'s slot.
 impl Part for Rename {
     const PLACE: Place<App> = Place::Overlays(message);
 
@@ -173,10 +141,9 @@ impl Part for Rename {
         tick(app, tx)
     }
 
-    const COMMANDS: &'static [Action<App>] =
-        &[Action::new("rename", renamed).command(RENAME).keys(&[
-            // `inline_editing` in `src/ui/window/keyboard/commands.rs`: not from a text field,
-            // but for the filter's.
+    const COMMANDS: &'static [Action<App>] = &[Action::new("rename", renamed)
+        .command(RENAME)
+        .keys(&[
             Keys::at(Stage::InlineEditing, &[RENAME.in_map(Map::Default)])
                 .when(|_, at| !at.within("preview") && (at.filter() || !at.text())),
         ])];
@@ -186,10 +153,6 @@ impl Part for Rename {
     }
 }
 
-/// The command: F2 and Ctrl+R rename the item the keyboard is on, and a stage that opened
-/// no editor has not taken the key (`begin_rename`). The menu's row selects its entry alone
-/// first, and then renames it as the key does (`rename_context_entry` in
-/// `src/ui/browser/context_menu/focus.rs`).
 fn renamed(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     match call.on {
         On::Focus if begin_focused(app, tx) => Outcome::Ran,
@@ -223,7 +186,6 @@ pub(crate) fn editor(app: &App) -> RenameEditor<App> {
     }
 }
 
-/// `can_rename` in `src/ui/browser/file_commands.rs`: nothing in the Trash is renamed.
 pub(crate) fn can_rename(entry: &FileEntry) -> bool {
     !entry
         .location
@@ -243,8 +205,6 @@ fn hold(app: &App, view: &View<App>, editing: bool) {
     }
 }
 
-/// How `entry` is named when nothing says otherwise: a relative path moves a local item, and
-/// elsewhere a name is a name (`begin` in `src/ui/collection_edit.rs`).
 fn naming_of(entry: &FileEntry) -> Naming {
     match entry.location.native_path() {
         Some(_) => Naming::Path,
@@ -252,8 +212,6 @@ fn naming_of(entry: &FileEntry) -> Naming {
     }
 }
 
-/// Opens the editor on `entry`, a row of column `depth`, named as `naming` says. False when
-/// it has no row to open in.
 fn open(app: &mut App, depth: usize, entry: FileEntry, naming: Naming, tx: &mut Tx) -> bool {
     let Some(view) = host(app).filter(|_| can_rename(&entry)) else {
         return false;
@@ -273,16 +231,11 @@ fn open(app: &mut App, depth: usize, entry: FileEntry, naming: Naming, tx: &mut 
     true
 }
 
-/// F2 and Ctrl+R: the focused item, or the folder the keyboard has entered. False when no
-/// editor opened. A new item still waiting for its editor gives way, whether or not one
-/// opens (`begin_rename` in `src/ui/browser/inline_edit.rs`).
 fn begin_focused(app: &mut App, tx: &mut Tx) -> bool {
     if app.rename.pending() {
         return false;
     }
     new_item::cancel(app);
-    // While a filter's results show, F2 renames the result under their cursor, and nothing
-    // when none is (`begin_rename` asks `selected_search_result` first).
     if crate::filter::targets::selected(app).is_some() {
         return match crate::filter::targets::under_cursor(app) {
             Some((depth, entry)) => {
@@ -301,8 +254,6 @@ fn begin_focused(app: &mut App, tx: &mut Tx) -> bool {
     }
 }
 
-/// The view's slow second click and the menu's Rename row: entry `id` of column `depth`. A
-/// new item still waiting for its editor gives way, as to F2.
 pub(crate) fn begin_on(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx) {
     if app.rename.pending() {
         return;
@@ -314,8 +265,6 @@ pub(crate) fn begin_on(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx) {
     }
 }
 
-/// Entry `id` of column `depth`: a filter's result there, or the browser's entry the view's
-/// row is.
 fn entry_of(app: &App, depth: usize, id: EntryId) -> Option<FileEntry> {
     if let Some(result) = crate::filter::targets::at(app, depth, id) {
         return Some(result);
@@ -324,9 +273,6 @@ fn entry_of(app: &App, depth: usize, id: EntryId) -> Option<FileEntry> {
     app.browser.entry_at(depth, position)
 }
 
-/// A folder or file just created, `entry` in column `depth`: the editor opens on it with
-/// `naming`, `Naming::NewItem` unless the folder takes a selection in. False while its row
-/// cannot take the editor yet, or a rename waits for the browser.
 pub(crate) fn begin_new_item(
     app: &mut App,
     depth: usize,
@@ -337,8 +283,6 @@ pub(crate) fn begin_new_item(
     !app.rename.pending() && open(app, depth, entry, naming, tx)
 }
 
-/// Ends an open edit without renaming, before a new item takes the editor
-/// (`cancel_rename`).
 pub(crate) fn cancel(app: &mut App, tx: &mut Tx) {
     let polled = app.rename.state.cancel(By::Host);
     for intent in polled.intents {
@@ -346,12 +290,9 @@ pub(crate) fn cancel(app: &mut App, tx: &mut Tx) {
     }
 }
 
-/// What the name typed for `editing` asks. `None` renames nothing: the name is the one the
-/// entry has, or one the browser would refuse.
 fn wanted(editing: &Editing, typed: &str) -> Option<Wanted> {
     let entry = &editing.entry;
     let directory = entry.is_directory();
-    // `Submission::path` in `src/ui/collection_edit.rs`: a new file may become a folder.
     let path = match editing.naming {
         Naming::Single => None,
         Naming::Path => TypedPath::parse(typed, directory, false).ok(),
@@ -371,14 +312,10 @@ fn wanted(editing: &Editing, typed: &str) -> Option<Wanted> {
     changed.then_some(Wanted::Name(name))
 }
 
-/// Where the first part of `path` lands, for an item in `folder`: what the view selects
-/// once the item has moved.
 fn placed(folder: Option<Location>, path: &TypedPath) -> Option<Location> {
     path.start(&folder?)?.child(OsStr::new(path.first()))
 }
 
-/// Asks the browser for the rename `typed` names, and remembers it until it is answered
-/// (`submit_rename_entry` in `src/ui/browser/inline_edit.rs`).
 fn ask(app: &mut App, editing: Editing, typed: String) {
     let Some(wanted) = wanted(&editing, &typed) else {
         // A folder made for a selection keeps the name it was made with.
@@ -415,9 +352,6 @@ fn ask(app: &mut App, editing: Editing, typed: String) {
     });
 }
 
-/// `BrowserView::start_typed_rename` (`src/ui/browser/file_commands.rs:317`): starts a rename or
-/// relative-path placement submitted from 10xer's footer `rename ›` prompt, tracking its
-/// filter-result follow and completion reveal through [`Rename::asked`].
 pub(crate) fn start_typed_rename(app: &mut App, depth: usize, entry: FileEntry, typed: String) {
     new_item::cancel(app);
     let id = shell::id_of(app, &entry.location);
@@ -434,13 +368,7 @@ pub(crate) fn start_typed_rename(app: &mut App, depth: usize, entry: FileEntry, 
     );
 }
 
-/// Tab and Shift+Tab: the cursor and the editor go on to the neighbour `step` rows away,
-/// unless the entry was the last that way (`advance_rename`).
 fn advance(app: &mut App, (depth, id): (usize, EntryId), step: isize, tx: &mut Tx) {
-    // On a filter's result Tab only commits: GTK's `advance_rename` moves the browser's
-    // cursor in the listing under the results, where no editor shows, and the renamed result
-    // keeps the keyboard (`renamed-filter-result-keeps-focus`, its `tab` runs). The browser's
-    // selection from before the filter stays (finding lgse/strata#2423).
     if crate::filter::targets::at(app, depth, id).is_some() {
         return;
     }
@@ -467,7 +395,6 @@ fn advance(app: &mut App, (depth, id): (usize, EntryId), step: isize, tx: &mut T
 
 /// What the editor asked as it closed: from its own keys, from a poll, or from the host.
 pub(crate) fn heard(app: &mut App, intent: RenameIntent, tx: &mut Tx) {
-    // The field's own menu is C21's, which this interface has not: the edit stays open.
     if matches!(intent, RenameIntent::FieldMenu { .. }) {
         return;
     }
@@ -491,8 +418,6 @@ pub(crate) fn heard(app: &mut App, intent: RenameIntent, tx: &mut Tx) {
     shell::settle(app, tx);
 }
 
-/// One poll: the editor notices its field lost the keyboard, its row left the viewport or
-/// its entry left the listing. True when the view has to run.
 fn tick(app: &mut App, tx: &mut Tx) -> bool {
     let Some(view) = host(app) else {
         return false;
@@ -504,8 +429,6 @@ fn tick(app: &mut App, tx: &mut Tx) -> bool {
     polled.changed | shown::tick(app, tx)
 }
 
-/// Ends an open edit as Enter would, before the window does something that takes the
-/// listing from under it.
 pub(crate) fn commit(app: &mut App, tx: &mut Tx) {
     let polled = app.rename.state.commit(By::Host);
     for intent in polled.intents {
@@ -518,11 +441,6 @@ fn asked_for(app: &mut App, request: Option<OperationRequestId>) -> Option<Asked
     app.rename.asked.take_if(|asked| asked.request == request)
 }
 
-/// The rename landed. A typed path moved the item out of its row: what took its place is
-/// selected (`reveal_placed_entry` in `src/ui/browser/inline_edit/pending.rs`). A plain
-/// rename keeps its cursor under the new name, which the browser sees to, and its row is
-/// shown wherever the new name sorts (`reveal_completed_rename`). Neither, once Tab has
-/// taken the editor on.
 fn completed(app: &mut App, asked: &Asked, tx: &mut Tx) {
     if asked.advanced {
         return;
@@ -542,10 +460,6 @@ fn completed(app: &mut App, asked: &Asked, tx: &mut Tx) {
     }
 }
 
-/// The rename failed: GTK's dialog says why (`on_rename_failed`). The entry kept its
-/// location and its name. One that Tab moved on from takes the cursor back, and the editor
-/// Tab opened on its neighbour closes (`fail_pending_rename_from_browser` in
-/// `src/ui/browser/inline_edit/pending.rs`).
 fn failed(app: &mut App, asked: &Asked, message: String, tx: &mut Tx) {
     crate::filter::forget_renamed(app, &asked.editing.entry.location, asked.renamed.as_ref());
     app.browser
@@ -583,7 +497,6 @@ fn answered(app: &mut App, answer: Answer, tx: &mut Tx) {
                     .clear_group_folder_for(&asked.editing.entry.location);
             }
         }
-        // GTK reports every failed rename, its undo and redo among them, whoever asked.
         Answer::Failed { request, message } => match asked_for(app, request) {
             Some(asked) => failed(app, &asked, message, tx),
             None => rename_failed::show(app, message),

@@ -31,8 +31,6 @@ fn sort(key: SortKey, direction: SortDirection) -> SortOptions {
     (key, direction, NameComparison::default())
 }
 
-/// A remembered folder resolves to its own sort, else to the default; opening it counts as
-/// using it, which wants writing only when the folder has values to keep.
 #[test]
 fn a_folder_resolves_to_its_own_sort_and_opening_it_counts_as_use() {
     let key = key_for_location(&local()).expect("a key");
@@ -52,8 +50,6 @@ fn a_folder_resolves_to_its_own_sort_and_opening_it_counts_as_use() {
     assert!(views.edits() > edits, "the use is an edit to write");
 }
 
-/// A chosen sort is kept only for a remembered folder and only when it can be stored, and as
-/// none when it equals the default, so the folder follows later defaults.
 #[test]
 fn a_chosen_sort_is_kept_where_gtk_keeps_it() {
     let key = key_for_location(&local()).expect("a key");
@@ -98,8 +94,6 @@ fn a_chosen_sort_is_kept_where_gtk_keeps_it() {
     }
 }
 
-/// Resetting a remembered folder drops its own sort; a folder that is not remembered has none
-/// to drop.
 #[test]
 fn a_reset_drops_a_remembered_folders_own_sort() {
     let key = key_for_location(&local()).expect("a key");
@@ -115,8 +109,6 @@ fn a_reset_drops_a_remembered_folders_own_sort() {
     assert_eq!(forget_folder_sort(&settings(true), &remote()), None);
 }
 
-/// A default that cannot be stored changes nothing; one that can is stored, and while folders'
-/// views are remembered it prunes the folders' sorts that now equal it.
 #[test]
 fn a_new_default_sort_prunes_while_folders_are_remembered() {
     let size_down = sort(SortKey::Size, SortDirection::Descending);

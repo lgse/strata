@@ -149,8 +149,6 @@ pub enum PreviewContent {
     Unsupported,
 }
 
-/// Extracted text and per-character bounds for one rendered PDF page.
-/// `glyphs[i]` locates the i-th char of `text` in rendered PNG pixels.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PdfTextLayer {
     pub width: f32,
@@ -230,8 +228,6 @@ impl ModelPreviewStage {
 pub trait PreviewProvider {
     fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle;
 
-    /// Extracts plain text across all pages of a PDF in one sandboxed pass for search.
-    /// Returns `None` when the provider or entry does not support single-pass indexing.
     fn extract_pdf_text(
         &self,
         _entry: &FileEntry,
@@ -279,8 +275,6 @@ pub fn guess_content_type(path: &Path) -> (String, bool) {
     (guessed.to_string(), uncertain)
 }
 
-/// A sniffed type that only says "binary" defers to the name, so Properties agrees with
-/// the preview about formats the MIME database lacks; any byte-backed type wins.
 pub fn refine_reported_content_type(reported: &str, name: &Path) -> String {
     if reported == "application/octet-stream" {
         guess_content_type(name).0
@@ -311,8 +305,6 @@ pub fn read_head_sample(path: &Path) -> std::io::Result<Vec<u8>> {
     Ok(sample)
 }
 
-/// Whether a local file's leading bytes still back the visual family its name claims,
-/// so metadata probes skip source files that merely share a media extension.
 pub fn bytes_support_named_family(path: &Path) -> bool {
     read_supports_named_family(path).unwrap_or(true)
 }
@@ -326,9 +318,6 @@ pub fn read_supports_named_family(path: &Path) -> std::io::Result<bool> {
     Ok(!matches!(content, PreviewContent::Text { .. }))
 }
 
-/// Text is NUL-free and either valid UTF-8 (allowing a sequence cut by the sample
-/// boundary) or a legacy single-byte encoding with few control bytes; UTF-16 announces
-/// itself with a byte-order mark.
 pub fn looks_like_text(sample: &[u8]) -> bool {
     if sample.starts_with(&[0xFF, 0xFE]) || sample.starts_with(&[0xFE, 0xFF]) {
         return true;
@@ -350,8 +339,6 @@ pub fn looks_like_text(sample: &[u8]) -> bool {
     control * 32 < sample.len()
 }
 
-/// Whether a leading file sample begins with a WebP RIFF header whose `VP8X`
-/// feature flags mark it as animated (RFC 9649 §2.7).
 pub fn is_animated_webp_sample(sample: &[u8]) -> bool {
     const VP8X_ANIMATION_FLAG: u8 = 0x02;
     const MIN_VP8X_CHUNK_SIZE: u32 = 10;
@@ -374,10 +361,6 @@ fn same_family(left: &PreviewContent, right: &PreviewContent) -> bool {
     std::mem::discriminant(left) == std::mem::discriminant(right)
 }
 
-/// Lets the file's leading bytes override a name-derived preview family: text is never
-/// handed to a media or image decoder and binary data is never shown as text. Visual
-/// families survive only when the bytes carry their signature, or for XML-based images
-/// such as SVG whose source is legitimately text.
 pub fn reconcile_with_sample(
     content_type: &mut String,
     content: &mut PreviewContent,
@@ -556,8 +539,6 @@ pub struct ArchivePreviewTree {
     pub file_count: usize,
 }
 
-/// Keep dots and backslashes literal; collapse empty slash components for virtual navigation.
-/// The listing budget must use the same split to bound synthesized directory nodes.
 pub fn split_archive_name(name: &str) -> Vec<&str> {
     name.split('/')
         .filter(|segment| !segment.is_empty())

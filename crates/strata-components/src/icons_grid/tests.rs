@@ -13,8 +13,6 @@ use super::metrics::TileMetrics;
 
 const LONG: &str = "2026-10-07-release-candidate-build-final-v3-with-a-very-long-tail.tar.gz";
 
-/// The thumbnail slot keeps the tile size at any text size; the caption's reserved lines grow
-/// with it. (The metrics take no name or details at all: a tile's height never follows them.)
 #[test]
 fn a_tiles_slot_ignores_the_text_size_and_its_caption_follows_it() {
     let look = Look::fallback(false);
@@ -113,8 +111,6 @@ fn a_middle_press_autoscrolls_from_no_tile_or_a_tiles_blank_space_only() {
     assert!(!bg(Some(3), Region::Name), "its name");
 }
 
-/// A tile's frame and name show hover only while `RowCx::hover_live` is on: off after a key
-/// moves the cursor (keyboard mode), until the pointer moves. A bare tile follows it itself.
 #[test]
 fn a_tile_shows_no_hover_in_keyboard_mode() {
     use crate::collection::element::{RowCx, RowState};
@@ -147,8 +143,6 @@ fn a_tile_shows_no_hover_in_keyboard_mode() {
     assert!(super::tile::name_look(&rcx(false, false)).2.is_none());
 }
 
-/// A cut keeps whole grapheme clusters at both ends: no combining mark is left without its
-/// letter, and no ZWJ emoji sequence is split, at any caption width.
 #[test]
 fn a_cut_never_splits_a_grapheme_cluster() {
     use unicode_segmentation::UnicodeSegmentation;
@@ -179,8 +173,6 @@ fn a_cut_never_splits_a_grapheme_cluster() {
     assert!(cuts > 10, "the name was cut at most widths");
 }
 
-/// A details line wider than the card is cut to the card's inner width as it draws, so a
-/// point on the tile's margin beside it is blank space, not the line.
 #[test]
 fn a_long_details_line_hits_only_inside_the_card() {
     use super::caption::Cut;
@@ -208,8 +200,6 @@ fn a_long_details_line_hits_only_inside_the_card() {
     );
 }
 
-/// The filter's Enter target is outlined in the accent (Strata's `.enter-target`), as a
-/// selected frame is outlined in its own ring, unless the cursor ring is drawn over it.
 #[test]
 fn the_enter_target_frame_is_outlined_in_the_accent() {
     use crate::collection::element::{RowCx, RowMarks, RowState};

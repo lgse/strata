@@ -14,8 +14,6 @@ use super::*;
 
 mod bounds;
 
-// The cases below port GTK's `src/portal/tests.rs` to this copy of its validation.
-
 fn run_async<T>(future: impl Future<Output = T>) -> T {
     let context = PrivateContext::new();
     context

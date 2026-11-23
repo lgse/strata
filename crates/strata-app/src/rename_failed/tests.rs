@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A rename the browser fails, on the window the crate registers: GTK's dialog says why,
-//! the window's commands wait under it, and closing it leaves the entry as it was.
-
 use std::{collections::HashSet, path::Path};
 
 use rune::{Key, KeyEvent, Mods};
@@ -135,8 +132,6 @@ fn names_on_disk(folder: &Path) -> Vec<String> {
     names
 }
 
-/// The folder on disk, the browser's first column and the rows the view shows hold the same
-/// names, hidden files left out.
 fn assert_all_agree(host: &Offscreen, folder: &Path, after: &str) {
     let on_disk = names_on_disk(folder);
     let mut browser: Vec<String> = host
@@ -166,8 +161,6 @@ fn assert_all_agree(host: &Offscreen, folder: &Path, after: &str) {
     );
 }
 
-/// GTK's `on_rename_failed`: a name the field accepts and the browser refuses, a taken one.
-/// Then the retry the dialog leaves room for: F2 again, and a free name goes through.
 #[test]
 fn a_failed_rename_shows_the_dialog_and_closing_it_leaves_the_entry_as_it_was() {
     hosted(
@@ -184,7 +177,6 @@ fn a_failed_rename_shows_the_dialog_and_closing_it_leaves_the_entry_as_it_was() 
 
             let failed = wait_for_dialog(&mut host);
             assert_eq!(failed.name, "Unable to rename item");
-            // The browser's message, as GTK's dialog shows it.
             assert_eq!(failed.labels, ["“readme.md” already exists"]);
             assert_eq!(failed.focused.as_deref(), Some("Close"), "{failed:?}");
             assert_eq!(field_text(&host), None, "the editor stays closed");
@@ -221,8 +213,6 @@ fn a_failed_rename_shows_the_dialog_and_closing_it_leaves_the_entry_as_it_was() 
     );
 }
 
-/// GTK shows the dialog for every failed rename, whoever asked: here the undo of a rename
-/// whose old name another file has taken since.
 #[test]
 fn a_failed_undo_of_a_rename_shows_the_dialog() {
     hosted(
@@ -263,9 +253,6 @@ fn keyboard(host: &mut Offscreen) -> Option<String> {
     focused
 }
 
-/// A rename Tab moved on from that fails: Tab's editor on the neighbour closes and the dialog
-/// shows in the same handler, and once the dialog closes the keyboard is on the view, where
-/// GTK's falls back to the listing (`fail_pending_rename_from_browser`).
 #[test]
 fn closing_the_dialog_of_a_rename_tab_moved_on_from_leaves_the_keyboard_on_the_view() {
     hosted(

@@ -24,8 +24,6 @@ fn span(left: f32, right: f32, trailing: f32) -> ColumnSpan {
 
 #[test]
 fn a_column_clipped_even_a_little_is_revealed_whole_and_a_shown_one_stays() {
-    // browser/view-modes/columns: A keyboard move reveals a column clipped by up to 4 px fully
-    // and leaves an already visible column in place.
     let page = 900.0;
     // Clipped by 4 on the right: the strip moves 4.
     assert_eq!(
@@ -55,8 +53,6 @@ fn a_column_clipped_even_a_little_is_revealed_whole_and_a_shown_one_stays() {
 
 #[test]
 fn a_column_wider_than_the_strip_stays_while_it_fills_it_else_goes_to_its_left_edge() {
-    // browser/view-modes/columns: A column wider than the viewport that already fills it stays
-    // in place; a partly off-screen one scrolls to its left edge.
     let wide = span(300.0, 1_400.0, 0.0);
     assert_eq!(wide.reveal_target(400.0, 900.0, 0.0, 500.0), 400.0);
     assert_eq!(wide.reveal_target(0.0, 900.0, 0.0, 500.0), 300.0);
@@ -64,9 +60,6 @@ fn a_column_wider_than_the_strip_stays_while_it_fills_it_else_goes_to_its_left_e
 
 #[test]
 fn widths_never_draw_below_a_standard_column_and_follow_the_text_size() {
-    // browser/view-modes/columns: The width cap never goes below the 300 px standard column,
-    // scaled by text size. And: Dragging a column's right edge resizes only that column ...
-    // never below 300 px.
     assert_eq!(drawn(200.0, 1.0), STANDARD);
     assert_eq!(drawn(400.0, 1.5), 600.0);
     assert_eq!(dragged(300.0, -100.0, 1.0, None), STANDARD);
@@ -116,9 +109,6 @@ fn the_fit_tells_the_drawer_the_columns_through_the_active_one_and_after_it() {
 
 #[test]
 fn a_new_column_slides_in_and_a_sibling_fades_in_its_place() {
-    // browser/view-modes/columns: With a folder open, opening a sibling fades the new column in
-    // where the old one stood, with no 24 px slide. Deeper columns of the old branch shrink
-    // away.
     use super::state::Entrance;
     let look = Look::fallback(false);
     let mut st = super::ColumnsState::new("t", crate::scroll::Autoscroll::new());

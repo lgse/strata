@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Saved item colours and icons (`Preferences::folder_colors` and `Preferences::custom_icons`),
-//! keyed by [`EntryId`] so [`crate::listing::Column`] lends [`EntryGlyph`] from `&self`.
-
 use std::{collections::HashMap, path::Path, rc::Rc};
 
 use rune::Color;
@@ -22,8 +19,6 @@ pub(crate) fn color_of(value: &FolderColorValue) -> Option<Color> {
     Srgba::parse_hex(value.hex()).map(Srgba::to_color)
 }
 
-/// An icon choice saved in `Preferences::custom_icons`: a bundled `strata-*` name or a safe
-/// emoji.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SavedGlyph {
     Icon(Box<str>),
@@ -77,8 +72,6 @@ struct WornItem {
     glyph: Option<SavedGlyph>,
 }
 
-/// Every item customization saved in the window's settings, indexed by [`EntryId`], plus
-/// whether rendered STL model thumbnails are enabled (`Preferences::stl_thumbnails`).
 #[derive(Default)]
 pub(crate) struct Worn {
     version: u64,

@@ -8,34 +8,19 @@ use strata_kit::icons::IconName;
 
 use crate::contract::ThumbKey;
 
-/// One result: a file or folder the host found.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PaletteItem {
-    /// The host's id for it (its path). [`super::PaletteIntent::Open`] and
-    /// [`super::PaletteIntent::Reveal`] name it, the highlight follows it from one answer to
-    /// the next, and its row is built again only when it changes (rows are keyed by place,
-    /// [`super::option_key`]).
     pub id: String,
     /// The first line: the name.
     pub label: String,
     /// Byte ranges of `label` the query matched, drawn in the accent.
     pub matched: Vec<Range<usize>>,
-    /// The second line: the full path, shortened in the middle when it doesn't fit. It is
-    /// also the row's accessible name, as in Strata.
     pub detail: String,
     /// Byte ranges of `detail` the query matched.
     pub detail_matched: Vec<Range<usize>>,
     /// The row's icon, drawn under the thumbnail while one loads.
     pub icon: IconName,
-    /// Optional catalog icon key (resolved via [`Look::icon_named`]) taking precedence over
-    /// [`Self::icon`] when present in the active icon catalog.
     pub icon_key: Option<String>,
-    /// The thumbnail key, for images: drawn from the palette's [`ThumbnailStore`] when the
-    /// palette has one ([`super::SearchPalette::thumbnails`]).
-    ///
-    /// [`ThumbnailStore`]: crate::thumbnails::ThumbnailStore
     pub thumb: Option<ThumbKey>,
 }
 
@@ -85,10 +70,6 @@ impl PaletteItem {
     }
 }
 
-/// A search the palette asks for ([`super::PaletteIntent::Query`]): on every open and every
-/// edit, an empty query included.
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PaletteQuery {
     /// Answer with this generation; an answer for any other is dropped.
@@ -97,26 +78,13 @@ pub struct PaletteQuery {
     pub text: String,
 }
 
-/// An answer to a [`PaletteQuery`]: one batch. A search that streams sends several with the
-/// same generation, each holding every result so far, the last one [`Answer::done`]. More
-/// answers for the same generation after that (a rescan for outside changes) are taken as
-/// updates of the same query.
-///
-/// The batch shape matches C18's footer-prompt candidates (`generation`, every item so far,
-/// `done`).
-///
-/// Used by: hosts.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Answer {
     /// The query's generation.
     pub generation: u64,
     /// Every result so far, best first: each batch replaces the last.
     pub items: Vec<PaletteItem>,
-    /// The search finished: the spinner goes, and an empty answer reads as no results
-    /// instead of "Searching…".
     pub done: bool,
-    /// Why the results are partial (the walk stopped early), if they are: the footer shows
-    /// "Partial results" with this as its description and tooltip.
     pub partial: Option<String>,
 }
 

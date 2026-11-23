@@ -1,27 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-//! What the host hands the location bar: the crumbs of the folder it shows, the suggestions it
-//! listed, and the labels it reads out. Plain data, rebuilt by the host: no I/O.
-
 use std::borrow::Cow;
 use std::ops::Range;
 
 use strata_kit::icons::IconName;
 
-/// The longest crumb label drawn whole, in characters. A longer one is shortened in the middle
-/// (Strata's `BREADCRUMB_LABEL_MAX_CHARS`).
 pub const CRUMB_CHARS: usize = 32;
 
-/// One folder on the path: an ancestor, or the current folder when it is the last.
-///
-/// Fields may be added: build one with [`Crumb::new`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Crumb {
     /// The host's identity for the folder (a URI, say). Intents carry it.
     pub id: String,
-    /// What the crumb shows: `~`, `/`, `Documents`. Drawn shortened in the middle past
-    /// [`CRUMB_CHARS`]; assistive technology hears it whole.
     pub label: String,
     /// The folder's full path as the host displays it: the crumb's accessible description.
     pub description: String,
@@ -72,8 +62,6 @@ impl Crumb {
     }
 }
 
-/// The folder the bar names: its crumbs, root first and the current folder last, and the text
-/// the entry opens with (the folder's path as the host displays it).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Trail {
     pub crumbs: Vec<Crumb>,
@@ -94,21 +82,14 @@ impl Trail {
     }
 }
 
-/// One suggestion, as the host listed it.
-///
-/// Fields may be added: build one with [`Candidate::new`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Candidate {
     /// What the row shows: `Documents/`.
     pub label: String,
-    /// The byte ranges of `label` the typed text matched, drawn in the accent
-    /// ([`crate::contract::MatchedText`]).
     pub matched: Vec<Range<usize>>,
     /// The entry's text once the suggestion is taken: `~/Documents/`.
     pub replacement: String,
-    /// Its parent folder, as the host displays it (`~`): drawn after the label, and the row's
-    /// accessible description.
     pub hint: String,
     /// Its icon.
     pub icon: IconName,
@@ -145,8 +126,6 @@ impl Candidate {
     }
 }
 
-/// What the bar asks suggestions for: the entry's text, and the generation its answer must
-/// carry back. Each text change starts a new generation; an answer for any other is stale.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompletionQuery {
     pub generation: u64,
@@ -169,9 +148,6 @@ impl Completions {
     }
 }
 
-/// What assistive technology hears and the buttons' tooltips say. The host follows its key map
-/// (the shortcut in each name) and its language. The defaults are Strata's English names with
-/// its default keys.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LocationLabels {
     /// The bar: a navigation landmark.
@@ -208,8 +184,6 @@ impl Default for LocationLabels {
     }
 }
 
-/// `label`, shortened in the middle to `max` characters (counting the ellipsis) when longer:
-/// the head keeps one character fewer than the tail when they can't split evenly.
 pub fn elide_middle(label: &str, max: usize) -> Cow<'_, str> {
     let count = label.chars().count();
     if count <= max || max < 3 {

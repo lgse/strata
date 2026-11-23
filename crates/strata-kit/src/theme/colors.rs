@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The typed theme: Strata's nine interface colours and five syntax colours, as its theme
-//! files and catalogue write them (`ThemeTokens` in `src/ui/theme.rs` at lgse/strata
-//! 35ee677ab), and the reader that turns a TOML table into one.
-
 use std::fmt;
 use std::ops::Range;
 
@@ -108,8 +104,6 @@ pub struct Colors {
     pub syntax: SourceColors,
 }
 
-/// The syntax colours a theme sets. A colour left out is derived from the accent and text
-/// ([`super::syntax::resolve`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct SourceColors {
     pub keyword: Option<Rgba8>,
@@ -141,8 +135,6 @@ impl Colors {
         }
     }
 
-    /// Sets the colour behind `key`; `None` leaves a syntax colour out (it has no effect on
-    /// an interface colour).
     pub fn set(&mut self, key: Key, value: Option<Rgba8>) {
         let s = &mut self.syntax;
         let slot = match key {
@@ -188,14 +180,10 @@ pub struct Theme {
 }
 
 impl Theme {
-    /// Strata's library filter: the theme is listed under Light when its background's
-    /// relative luminance exceeds 0.4.
     pub fn is_light(&self) -> bool {
         luminance(self.colors.background) > 0.4
     }
 
-    /// Strata's rule for GTK's dark variant and the Catppuccin icon flavour:
-    /// `(299 R + 587 G + 114 B) / 1000` below 128. K3 picks Mocha icons when it holds.
     pub fn dark_background(&self) -> bool {
         let Rgba8 { r, g, b, .. } = self.colors.background;
         u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114 < 128_000
@@ -273,9 +261,6 @@ pub(crate) fn parse_document(src: &str) -> Result<Spanned<DeTable<'_>>, ThemeErr
     })
 }
 
-/// Reads a theme's name and colours from `table`, a theme file or a catalogue entry in
-/// `src`. `danger` defaults to [`DEFAULT_DANGER`]; the syntax keys are optional. Unknown keys
-/// are ignored, as Strata ignores them. The first problem wins.
 pub(crate) fn read_table(src: &str, table: &DeTable<'_>) -> Result<(String, Colors), ThemeError> {
     let at = |span: Range<usize>| Some(Location::of(src, span.start));
     let string = |key: &'static str| -> Result<Option<(&str, Range<usize>)>, ThemeError> {

@@ -1,79 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-//! The transfer substrate: protocols bound beside winit, multi-MIME offers and sources, and
-//! X11 selections. Internal to `dnd`, `clipboard` and `foreign-parent`, which build their own
-//! APIs on it; reachable (hidden) only for strata-platform's own session tests.
+//! Internal transfer substrate shared by `dnd`, `clipboard`, `foreign-parent`, and `backdrop-blur`.
 //!
-//! Rune lacks: a display handle on `WindowHandle`, a hook before winit closes the display, and
-//! an every-turn hook to dispatch a queue of one's own (all three: draft U9, not filed; see
-//! `docs/rune/decisions/S5-upstream.md#u9`). Its consumers' asks are drafts U1, U2 and U5.
-//! Rune issue: none filed yet.
+//! Rune lacks a native display handle on `WindowHandle`, a pre-teardown display hook, and an
+//! every-turn dispatch hook for a custom Wayland queue.
 //!
-//! Work package: P0, `docs/rune/work/phase-1-leaves/P0-transfer-substrate.md`. The approach is
-//! S2's (`docs/rune/decisions/S2-transfer.md`, "P0 binding approach").
-//!
-//! # Routes
-//!
-//! | Route | Where | Needs |
-//! | --- | --- | --- |
-//! | [`Route::DataDevice`] | `wl_data_device` on winit's display | libwayland ≥ 1.23; focus to hear, a fresh input serial to write |
-//! | [`Route::DataControl`] | ext or wlr data control, on winit's display or a connection of our own | a compositor with data control (not mutter) |
-//! | [`Route::X11`] | `CLIPBOARD` and `PRIMARY` on a second X connection | an X11 window, or a Wayland window with no Wayland route (below) |
-//!
-//! A Wayland window with neither winit's display (libwayland < 1.23) nor data control on a
-//! connection of its own (mutter has none) has no Wayland route at all: Ubuntu 24.04's GNOME
-//! session, an unsupported environment (libwayland 1.23 is the minimum, S3 decision 1). There
-//! the selections go through Xwayland instead ([`Status::x11`]): X11
-//! selections on a connection of our own, which the compositor bridges to Wayland clients,
-//! as arboard falls back (the owner's choice, option a of S2's first question).
-//!
-//! Drags into a Wayland window arrive as [`Event::DragEnter`] and the events after it, on
-//! winit's display. X11 drag and drop, and every drag out, are P1's.
-//!
-//! # One substrate per process
-//!
-//! [`Transfer::attach`] binds once per process: winit has one display, and each keyboard
-//! bound on it makes the compositor resend every keyboard's keymap. Later calls add the window
-//! and return the same substrate. Results and events reach the app off the UI thread: a
-//! subscriber's notify and a read's `done` hand them over with `AppHandle::update`.
-//! A [`Subscription`] dropped unsubscribes.
-//!
-//! Each window keeps the [`Turn`] it attached with, so pass a real one on every attach, built
-//! from that window's app: the reader's turns go to every attached window with none
-//! outstanding, so they keep running when the first window to attach closes, as long as any
-//! attached window lives (`windows`). A window attached again replaces its turn.
-//!
-//! # Threads
-//!
-//! On winit's display, everything that sends a request or dispatches runs on the UI thread,
-//! and is refused on any other: [`Transfer::dispatch`], [`Transfer::set_selection`], and every
-//! request on an offer. Events naming winit's objects may only be parsed there (the reader
-//! never dispatches; see `wayland::reader`), and a request's brief hold on the connection must
-//! not outlive the UI thread's shutdown. On X11 and on a Wayland connection of our own, any
-//! thread may call.
-//!
-//! # Protocols other modules bind
-//!
-//! On winit's display P0 binds `wl_seat` (with a pointer and keyboard for serials),
-//! `wl_data_device_manager` and its device, data control if asked for, and `wl_compositor`
-//! and `wl_shm` for P1's drag icons. It keeps the registry's globals for the rest:
-//! `wayland::Conn::with_globals` hands them and the queue to another module (P4's
-//! `zxdg_importer_v2`), which implements `Dispatch` for P0's `State` for its own objects and
-//! keeps its own state in `State::extension`.
-//!
-//! # Teardown is the app's job
-//!
-//! Call [`Transfer::shutdown`] on the UI thread before the event loop ends: from `App::on_quit`
-//! and in `App::on_close` of the last window when closing it ends the app (both run before
-//! Rune's default `fast_exit` ends the process with `_exit`, and before `orderly_exit` closes
-//! winit's display). It stops the reader and destroys everything bound on winit's display while
-//! the display is alive, the wayland-backend on it included. Rune runs no hook before winit
-//! closes it (U9), and after a quit no further `on_close` runs. After a shutdown, handles and
-//! offers the app still holds are safe to drop at any time, after `run` too: they make no
-//! libwayland call. Under `orderly_exit` without the shutdown, the backend's late drop destroys
-//! its proxies on the freed display (SIGSEGV in every S2 run, and in P0's quit test with the
-//! backend's drop removed). A substrate never shut down is never dropped (it lives in a static),
-//! but its reader then stays parked on a display winit has freed if the process lives on.
+//! Invariants:
+//! - On winit's Wayland display, every request and dispatch must run on the UI thread (the
+//!   reader thread never dispatches).
+//! - Call [`Transfer::shutdown`] on the UI thread before the event loop ends (from `App::on_quit`
+//!   and the last window's `on_close`) so proxies bound on winit's display are destroyed while
+//!   the display is still alive; dropping them after winit frees the display segfaults.
 
 mod data;
 mod error;
@@ -99,10 +36,6 @@ pub use x11::HandOff;
 use event::Subscribers;
 use windows::Windows;
 
-/// Runs a closure on the UI thread soon. Build it from the attaching window's app handle:
-/// `Arc::new(move |f| handle.update_if(move |_, _| { f(); false }))`. Returning false keeps
-/// the turn from redrawing, whose frame callback would wake the reader again. A turn of a
-/// window whose app has closed never runs (see the module docs).
 pub type Turn = Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
 
 /// Where data control goes on Wayland.
@@ -126,18 +59,9 @@ pub struct Wants {
     pub shared: bool,
     pub data_control: DataControl,
     pub prefer: Prefer,
-    /// Wayland: when no Wayland route is left, take X11 selections through Xwayland (where
-    /// `DISPLAY` names one). Off by default: only the clipboard has a use for them, so
-    /// drag and drop alone opens no X11 connection and stays unsupported there.
     pub x11_fallback: bool,
-    /// A test switch: behave as on libwayland < 1.23, whose missing `wl_proxy_get_display`
-    /// puts winit's display out of reach, so the fallback runs on any host. Only
-    /// strata-platform's own tests set it.
     #[doc(hidden)]
     pub as_if_libwayland_below_1_23: bool,
-    /// A test switch: behave as on a compositor with no data control (mutter): its globals
-    /// are left unbound on every connection, so a connection of our own has nothing to bind.
-    /// Only strata-platform's own tests set it.
     #[doc(hidden)]
     pub as_if_no_data_control: bool,
 }
@@ -199,9 +123,6 @@ struct Hub {
     windows: Arc<Windows>,
     subs: Subscribers,
     backend: Backend,
-    /// What modules built on the substrate (P1, P2, P4, backdrop-blur) must do first: tear down
-    /// their own objects on winit's display, undo properties they set on the app's windows, hand
-    /// a selection to a clipboard manager.
     #[cfg(any(
         feature = "dnd",
         feature = "clipboard",
@@ -223,10 +144,6 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 pub struct Transfer(Arc<Hub>);
 
 impl Transfer {
-    /// Binds the substrate for the process, or adds `window` and its `turn` to the one
-    /// already bound; true when this call bound it. Call it on the UI thread, from
-    /// `App::on_window` (which runs again after Rune recreates a window), with a turn built
-    /// from `window`'s own app ([`Turn`]).
     pub fn attach(
         window: &WindowHandle,
         turn: Turn,
@@ -296,15 +213,10 @@ impl Transfer {
         &self.0.status
     }
 
-    /// Hears every event from now on. `notify` runs (on whatever thread produced them) after
-    /// events are queued; drain them from the app, on the UI thread.
     pub fn subscribe(&self, notify: impl Fn() + Send + Sync + 'static) -> Subscription {
         self.0.subs.add(Arc::new(notify))
     }
 
-    /// Wayland on winit's display: runs the handlers of events already read, now. Call it on
-    /// the UI thread (it refuses any other) before reading a serial, so the key or click that
-    /// triggered a data-device write is in. True if there were events.
     pub fn dispatch(&self) -> Result<bool, Error> {
         match &self.0.backend {
             Backend::Wayland {
@@ -314,9 +226,6 @@ impl Transfer {
         }
     }
 
-    /// A test switch for strata-platform's own tests: makes the compositor end the Wayland
-    /// connection of our own with a protocol error, to check how a dead connection is
-    /// reported. False without one.
     #[doc(hidden)]
     pub fn provoke_protocol_error_on_own_connection(&self) -> bool {
         match &self.0.backend {
@@ -325,8 +234,6 @@ impl Transfer {
         }
     }
 
-    /// A test switch for strata-platform's own tests: makes the X server end the X11
-    /// connection, to check how the X11 side's failure is reported. False without one.
     #[doc(hidden)]
     pub fn provoke_x11_connection_failure(&self) -> bool {
         match self.selections_x11() {
@@ -377,8 +284,6 @@ impl Transfer {
         }
     }
 
-    /// Offers `spec` as `selection` on `route`. Each writer runs only when a reader asks for
-    /// its type, once. Replaces this process's earlier source there, which is cancelled.
     pub fn set_selection(
         &self,
         selection: Selection,
@@ -428,15 +333,10 @@ impl Transfer {
         }
     }
 
-    /// Whether `source`'s cancel was the compositor dropping its data-device write (P0 heard
-    /// no echo before its `wl_display.sync`), not another client taking the selection.
     pub fn write_was_dropped(&self, source: SourceId) -> bool {
         self.shared().is_some_and(|c| c.write_was_dropped(source))
     }
 
-    /// Gives up the selection `source` holds, if it still holds it: nobody holds that
-    /// selection after. Subscribers hear [`Event::SourceCancelled`] for it. False if it held
-    /// nothing. On winit's display, call it on the UI thread.
     pub fn clear_selection(&self, source: SourceId) -> Result<bool, Error> {
         match &self.0.backend {
             Backend::X11(x) => x.clear_selection(source),
@@ -454,11 +354,6 @@ impl Transfer {
         }
     }
 
-    /// Hands the clipboard this process holds on X11 to a running clipboard manager, every
-    /// type of it, so it outlives the process: call it just before [`Transfer::shutdown`].
-    /// Blocks the caller until the manager answers, at most about `timeout`. On Wayland
-    /// there is no such protocol ([`HandOff::NoManager`]), except through Xwayland
-    /// ([`Status::x11`]).
     pub fn hand_off_clipboard(&self, timeout: std::time::Duration) -> HandOff {
         match self.selections_x11() {
             Some(x) => x.hand_off(timeout),
@@ -466,11 +361,6 @@ impl Transfer {
         }
     }
 
-    /// Stops and destroys the process's substrate: on the UI thread, before the event loop
-    /// ends (see the module docs). True if one was bound. Handles kept elsewhere stay valid
-    /// to drop, and their calls fail or do nothing. Refused off the UI thread (the one that
-    /// attached), and the substrate stays: its teardown drops winit's display binding, which
-    /// must happen there.
     pub fn shutdown() -> Result<bool, Error> {
         let mut slot = lock(&HUB);
         let Some(hub) = slot.as_ref() else {
@@ -513,8 +403,6 @@ impl Transfer {
     }
 }
 
-/// What P1 (`dnd`), P4 (`foreign-parent`) and `backdrop-blur` build on: the connection on winit's
-/// display.
 #[cfg(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur"))]
 impl Transfer {
     /// The Wayland connection on winit's display, if bound.
@@ -523,18 +411,13 @@ impl Transfer {
     }
 }
 
-/// What P4 (`foreign-parent`) builds on: dropping a window as it closes.
 #[cfg(feature = "foreign-parent")]
 impl Transfer {
-    /// Forgets the window keyed `key` and its turn: call it as the window closes, from its
-    /// `on_close`. True if it was attached. A window that closes without it is set aside
-    /// later, and dropped once a few more pile up (see `windows`).
     pub(crate) fn detach(&self, key: &str) -> bool {
         self.0.windows.detach(key)
     }
 }
 
-/// What P1 (`dnd`) builds on: the X11 actor.
 #[cfg(feature = "dnd")]
 impl Transfer {
     /// The X11 side, on X11.
@@ -546,8 +429,6 @@ impl Transfer {
     }
 }
 
-/// What P1 (`dnd`), P2 (`clipboard`), P4 (`foreign-parent`) and `backdrop-blur` build on: a hook
-/// before the teardown.
 #[cfg(any(
     feature = "dnd",
     feature = "clipboard",
@@ -602,8 +483,6 @@ fn wayland_backend(
     let own = if want_own {
         match wayland::Conn::own(subs.clone(), wants.prefer, wants.as_if_no_data_control) {
             Ok(c) => Some(c),
-            // A compositor without data control (mutter). With winit's display out of reach
-            // too, the X11 fallback below may still serve.
             Err(Error::Unsupported(u)) => {
                 unsupported.get_or_insert(u);
                 None

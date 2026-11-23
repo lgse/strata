@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! GPU shader compositor for Rune `El::effect` slots backed by `rune-fx`.
-//!
-//! At rest (when no `KIND_EFFECT` slot is in the frame's painter stream), [`FxCompositor`]
-//! delegates straight to `Frame::draw_ui` without allocating `FxRenderer`, reports
-//! `draws_own() == false` and `animating() == false`, and adds zero idle CPU or GPU cost.
-
 use rune::{
     compose::{Compositor, DeviceKey, Frame},
     render::{EffectPhase, EffectSite, Instance, KIND_EFFECT},
@@ -102,8 +96,6 @@ impl SlotParams {
     }
 }
 
-/// Window compositor that renders Strata's `rune-fx` effect slots and stays completely
-/// transparent at rest.
 pub(crate) struct FxCompositor {
     gpu: Option<GpuFx>,
     active: bool,
@@ -119,8 +111,6 @@ impl FxCompositor {
         }
     }
 
-    /// Releases cached `BindSet` and backdrop `TextureView` references on the one-time
-    /// transition from active effects back to idle while keeping WGSL pipelines warm.
     fn flush_on_idle<S: 'static>(&mut self, f: &Frame<'_, S>) {
         if !self.active {
             return;
@@ -139,8 +129,6 @@ impl FxCompositor {
             backdrop: None,
             sources: &[],
         };
-        // `BindSet` (`now`/`last`) evicts entries after two empty frames, releasing transient
-        // bind groups and cloned backdrop `TextureView` handles.
         gpu.renderer
             .prepare_with_slots(f.device, f.queue, &empty, &[]);
         gpu.renderer

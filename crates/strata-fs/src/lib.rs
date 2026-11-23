@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Listing, file operations, trash, volumes, search, jobs and the browser's state, on GIO
-//! and GLib without an interface toolkit.
-
 // strata-core embeds the catalogs; this path holds none, so the macro adds none itself.
 rust_i18n::i18n!(
     "src/no-catalogs",

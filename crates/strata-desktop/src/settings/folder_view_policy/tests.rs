@@ -28,8 +28,6 @@ fn remote() -> Location {
     Location::uri("sftp://host/pictures")
 }
 
-/// A folder is remembered only while folders' views are, and only where it has a key; a
-/// folder's own size is read only then.
 #[test]
 fn a_folders_size_is_its_own_only_while_it_is_remembered() {
     for (remember, location, own, expected) in [
@@ -57,9 +55,6 @@ fn a_folders_size_is_its_own_only_while_it_is_remembered() {
     }
 }
 
-/// A changed size is the default while folders' views are off, the folder's own while they
-/// are on (none where it equals the default), and only shown for a folder with no key; each
-/// held between 32 and 256.
 #[test]
 fn a_changed_size_is_kept_where_gtk_keeps_it() {
     let key = key_for_location(&local()).expect("a key");
@@ -92,9 +87,6 @@ fn a_changed_size_is_kept_where_gtk_keeps_it() {
     }
 }
 
-/// A new default is set, held in range, and prunes the folders' sizes only while folders'
-/// views are remembered; remembering them again prunes the sorts and sizes that equal the
-/// defaults.
 #[test]
 fn a_new_default_prunes_while_folders_are_remembered() {
     for (remember, expected) in [(true, Some(Prune::IconsSize(256))), (false, None)] {
@@ -114,8 +106,6 @@ fn a_new_default_prunes_while_folders_are_remembered() {
     assert!(!on.remember_folder_views);
 }
 
-/// Pruning drops the values that equal the default and keeps the rest, and only a return to
-/// remembering reaches the sorts.
 #[test]
 fn pruning_drops_what_equals_the_default() {
     let key = key_for_location(&local()).expect("a key");

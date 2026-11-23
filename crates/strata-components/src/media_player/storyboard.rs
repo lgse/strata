@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Storyboard frames: small cells across the clip, shown over the timeline's pointer and
-//! over the frame while a seek runs.
-//!
-//! Strata's helper decodes a sheet of 8 to 48 cells, about one per 2 s, and streams them
-//! middle first, then quarters, eighths and so on, so a partial board already covers the
-//! timeline (`src/media/storyboard.rs`). The host loads it on
-//! [`MediaIntent::StoryboardWanted`](super::MediaIntent::StoryboardWanted) and hands each cell
-//! over as it lands ([`Storyboard::set_cell`]); a cell not loaded yet shows its nearest loaded
-//! neighbour.
-
 use std::time::Duration;
 
 use rune::Pixels;
@@ -58,8 +48,6 @@ impl Storyboard {
         self.sheet
     }
 
-    /// Cell `index` landed. False for an index outside the sheet or one already loaded (the
-    /// helper sends each once).
     pub fn set_cell(&mut self, index: u32, pixels: Pixels) -> bool {
         match self.cells.get_mut(index as usize) {
             Some(slot @ None) => {
@@ -75,8 +63,6 @@ impl Storyboard {
         self.cells.iter().flatten().count()
     }
 
-    /// The loaded cell nearest the one that shows `t`, earlier first on a tie
-    /// (`Storyboard::nearest`), with its index.
     pub fn nearest(&self, t: Duration) -> Option<(u32, &Pixels)> {
         let wanted = self.sheet.cell_at(t) as usize;
         (0..self.cells.len()).find_map(|distance| {

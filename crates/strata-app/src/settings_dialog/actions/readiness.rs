@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Async runtime interpreter readiness check and status badge for the Script tab,
-//! matching `src/ui/settings/actions/readiness.rs`.
-
 use rune::{El, icon, row, text};
 use strata_core::{
     i18n::tr,

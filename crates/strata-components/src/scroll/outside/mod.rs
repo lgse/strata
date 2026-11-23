@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`OutsideWheel`]: an open panel's (Sort by, Appearance, Thumbnail size) outside layer, which
-//! a wheel tick closes the panel through and then scrolls the listing under the pointer, as
-//! Strata's `ui::scrolling::popover::dismiss_on_outside_scroll` does.
-
 #[cfg(test)]
 mod tests;
 
@@ -18,37 +14,10 @@ use crate::contract::Point;
 type CloseFn<S> = Rc<dyn Fn(&mut S, &mut Tx)>;
 type ListingsFn<S> = Rc<dyn Fn(&S, Point) -> Vec<Target>>;
 
-/// The outside of an open panel: a press there closes it, and a wheel tick there closes it and
-/// scrolls the listing under the pointer, and nothing else, by the tick's own step.
-///
-/// The host mounts [`OutsideWheel::scrim`] in its root layer under the panel, in place of the
-/// panel's own outside-press scrim (rune-kit `Popover::on_close`'s):
-///
-/// ```ignore
-/// let outside = OutsideWheel::new(|s: &mut App, _| s.sort_open = false)
-///     .listings(|s: &App, at| s.listing_targets_at(at)); // the List pane: its rows and its sideways scroll
-/// layer.push(outside.scrim("sort-scrim"));
-/// ```
-///
-/// - Rune hands a wheel delta to the topmost element's `on_wheel` first, so the scrim hears
-///   every tick outside the panel; it takes the tick, so nothing under it scrolls by itself.
-/// - The listing the tick scrolls is whichever of the host's [`Target`]s are under the pointer
-///   ([`OutsideWheel::listings`]): over the sidebar or the chrome the host gives none, and the
-///   tick only closes the panel. Each target moves by the tick's delta on the axes it scrolls,
-///   as Rune's wheel would have moved it, and with Shift held a vertical tick moves it
-///   sideways. Ticks that arrive in one frame add up, as they would on the listing itself.
-/// - **Shift turns only a vertical tick** (a deviation in form, not effect): Strata swaps the
-///   axes of every Shift tick, since GTK hands it the wheel unturned, but Rune's window host
-///   has already turned a Shift + mouse-wheel tick sideways before the scrim hears it, and
-///   swapping that again would scroll it vertically. A tick with both axes (a touchpad's) is
-///   left as Rune's wheel leaves it over the listing.
-/// - The rest of a touchpad gesture whose first delta closed the panel scrolls as usual.
-/// - A tick over the panel itself that no viewport inside it takes scrolls nothing: Rune starts
-///   a wheel's scroll on the topmost element under the pointer and chains it up that element's
-///   ancestors only (anomalyco/rune#1137, retiring draft U-C24b-2), so the panel needs no
-///   handler of its own for it.
-///
-/// Used by: hosts (X1's and Strata's panels), the gallery's `c24-panel` scene.
+/// Dismiss scrim for open panels that forwards outside wheel ticks to underlying listings.
+/// Only turns vertical Shift+wheel ticks sideways because Rune already turns mouse-wheel
+/// Shift ticks; panels need no wheel handler of their own since Rune chains wheel scrolling
+/// up ancestors only (`anomalyco/rune#1137`).
 pub struct OutsideWheel<S> {
     close: CloseFn<S>,
     listings: Option<ListingsFn<S>>,
@@ -72,15 +41,11 @@ impl<S: 'static> OutsideWheel<S> {
         }
     }
 
-    /// The listing viewports under a window point, which a tick there scrolls: none over the
-    /// sidebar or chrome. Without it a tick only closes the panel.
     pub fn listings(mut self, f: impl Fn(&S, Point) -> Vec<Target> + 'static) -> Self {
         self.listings = Some(Rc::new(f));
         self
     }
 
-    /// The layer over the window, under the panel, keyed `key`. Mount it in a root layer that
-    /// fills the window from its top-left (its points are window points).
     pub fn scrim(&self, key: impl Into<String>) -> El {
         let (press, wheel) = (self.clone(), self.clone());
         let pending = Pending::default();
@@ -97,8 +62,6 @@ impl<S: 'static> OutsideWheel<S> {
     }
 
     fn tick(&self, s: &mut S, e: WheelEvent, pending: &Pending, tx: &mut Tx) {
-        // Rune's window host has already turned a Shift + mouse-wheel tick (`wheel_delta` in
-        // `runtime/scroll/x.rs`); a headless one (U-C24-7) is still vertical.
         let (mut dx, mut dy) = (e.dx, e.dy);
         if e.mods.shift && dx == 0.0 {
             (dx, dy) = (dy, 0.0);
@@ -128,8 +91,6 @@ impl<S: 'static> OutsideWheel<S> {
     }
 }
 
-/// The offsets a scrim's ticks have asked of each listing since its feed last moved. A feed
-/// moves once a frame, so ticks queued in one frame each start from the one before.
 #[derive(Clone, Default)]
 struct Pending(Rc<RefCell<Vec<Asked>>>);
 
@@ -141,8 +102,6 @@ struct Asked {
 }
 
 impl Pending {
-    /// Where a tick on the listing `path`, whose feed stands at `offset`, starts from: what
-    /// the frame's ticks have asked of it, while the feed hasn't moved since.
     fn from(&self, path: &str, offset: [f32; 2]) -> [f32; 2] {
         self.0
             .borrow()

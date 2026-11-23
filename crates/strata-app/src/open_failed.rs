@@ -1,23 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Why a folder or a location could not be opened, as GTK reports it on the window's error
-//! dialog ([`crate::error_dialog`]):
-//!
-//! - **A folder opened from a listing** that the browser refuses (`NavigationRejected`):
-//!   "Unable to open directory" (`handle_navigation_rejected` in `src/ui/browser/location.rs`).
-//! - **A location opened by its path**, typed into the location bar or asked for by a part,
-//!   that the browser refuses once it has looked (`LocationNavigationRejected`): "Unable to
-//!   open location" (`on_location_navigation_rejected` in `src/ui/browser/events.rs`). One the
-//!   location bar's text is refused for at once comes here too ([`typed_refused`]).
-//!
-//! The message is the browser's reason. When only permissions keep the user out and the
-//! browser offers the folder's `admin://` form, the dialog offers Open as Administrator, which
-//! opens it in its place (`show_open_failure`). Not reported, as on GTK: a refusal the user
-//! answered already (`NotAuthorized`, a dismissed password prompt). A location that has to be
-//! mounted first is GTK's to mount; this interface does not mount yet, so it is reported as
-//! the refusal it is. A refused location also drops a reveal that waited for it, as GTK's
-//! `abandon_deferred_reveal` does.
-
 use strata_core::{i18n::tr, model::Location};
 use strata_fs::{
     app::{Browser, BrowserEvent},
@@ -39,15 +21,12 @@ pub(crate) struct OpenFailed {
     administrator: String,
 }
 
-/// Which of GTK's two reports a refusal gets.
 #[derive(Clone, Copy)]
 enum Opened {
     FromListing,
     ByPath,
 }
 
-/// A refusal of `location` the user is told of, with the `admin://` form to offer; `None`
-/// for one GTK does not report.
 fn reported(
     browser: &Browser,
     location: &Location,
@@ -78,12 +57,8 @@ fn report(app: &mut App, opened: Opened, error: &LocationValidationError, admin:
     error_dialog::show(app, failure);
 }
 
-/// A typed location refused before it was opened (empty, not absolute, a bad URI): "Unable
-/// to open location", with no offer, as GTK's `submit_location` reports it.
 pub(crate) fn typed_refused(app: &mut App, error: &LocationValidationError) {
     let title = app.open_failed.by_path.clone();
-    // The bar has just given the keyboard back to the view, which the dialog's own record of
-    // the focus does not see yet: it returns there on close, as GTK's does.
     let view = shell::view_focus(app);
     error_dialog::show(app, Error::new(title, error.message()).returning_to(view));
 }
@@ -118,9 +93,6 @@ impl Part for OpenFailed {
             let reported = reported(browser, location, error);
             let error = error.clone();
             heard.then(move |app: &mut App, _| {
-                // A reveal that waited for this location is dropped with it
-                // (`abandon_deferred_reveal`): this interface does not mount, so it would fire
-                // on a later visit instead.
                 if matches!(opened, Opened::ByPath) {
                     app.browser.cancel_deferred_reveal();
                     if crate::connect_server::fail_pending(app, &error) {

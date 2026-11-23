@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf: 100,000 entries, select all, then a Shift range across the list, each under a
-//! millisecond. Release builds only:
-//! `cargo test --release -p strata-components --lib selection::tests::perf -- --nocapture`.
-//!
-//! Each timing is the best of five runs, each on a fresh selection, so allocation counts. Each
-//! timed block also reads the count and 60 rows, as a frame would, so no cost hides in a lazy
-//! first read.
-
 use std::time::{Duration, Instant};
 
 use super::*;
@@ -16,8 +8,6 @@ const N: u64 = 100_000;
 const BUDGET: Duration = Duration::from_millis(1);
 const RUNS: usize = 5;
 
-/// 100,000 entries with sparse ids, shuffled, so neither hashing nor the source's order is
-/// kind to the selection.
 fn big_listing() -> ListSource {
     let mut ids: Vec<u64> = (0..N).map(|i| i * 7_919 + 13).collect();
     let mut x = 0x2545_F491_4F6C_DD1D_u64;

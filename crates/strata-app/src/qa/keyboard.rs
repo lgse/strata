@@ -105,9 +105,6 @@ impl Keyboard {
         keysym.map_or(Composed::Passed, |keysym| compose.feed(keysym))
     }
 
-    /// What a window hears when the key a scenario names goes down: [`Keyboard::press`]
-    /// after dead keys are composed. `None` for a dead key, and for a character that breaks
-    /// a sequence off: winit delivers neither. A named key that breaks one off is delivered.
     pub(super) fn strike(
         &mut self,
         name: &str,
@@ -137,8 +134,6 @@ impl Keyboard {
         }
     }
 
-    /// The press that types `character`, if a window hears one. A character no US key types
-    /// is sent as it is, where the GTK harness lends it a keycode.
     pub(super) fn typed(&mut self, character: char) -> Option<KeyEvent> {
         let unlisted = keys::event(Named::Character(character), None, self.mods());
         self.strike(&character.to_string(), &[])

@@ -24,8 +24,6 @@ fn meeting(conflict: TransferConflict, destination: &Path, item: &Path) -> io::R
     Ok(())
 }
 
-/// Records whether `watched` still exists each time the destination is
-/// flushed.
 fn exists_at_flush(watched: PathBuf) -> (Arc<std::sync::Mutex<Vec<bool>>>, Racer) {
     let during = Arc::new(std::sync::Mutex::new(Vec::new()));
     let record = during.clone();

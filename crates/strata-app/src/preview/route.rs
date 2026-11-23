@@ -1,21 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C14b [`RouteView`] adapter for GPS route previews (`PreviewContent::Route`), as GTK's
-//! `src/ui/preview/route.rs` and `route/player.rs` host them:
-//!
-//! - **The route** comes from the sandboxed helper, offline: its picture as a PNG, the samples
-//!   the marker plays along, the distance, the duration and the recorded heights. The PNG images are
-//!   decoded off the UI thread (`gio::spawn_blocking`), and the view shows once they are, through
-//!   `Later`; a reply for a preview that has moved on is dropped.
-//! - **Playback** runs on the poll's clock ([`poll`]). The media keys (`media_play_pause`,
-//!   `media_seek_back`, `media_seek_forward`) play, pause and seek it at the dispatcher's
-//!   `video_controls` stage (`super::transport`, GTK's `handle_video_key`), outside the
-//!   sidebar, the header and text fields (`keys::media_keys_reach`).
-//! - **Units** follow Settings → Units live: each poll gives the view the saved
-//!   `unit_system`, as GTK binds the preference.
-//!
-//! Every element is keyed under [`ROUTE_KEY`].
-
 use std::cell::Cell;
 
 use rune::{Cx, El, Pixels, Tx};
@@ -42,7 +26,6 @@ use crate::{App, location::labels::with_keys, shell};
 /// Key of the route viewer inside the preview drawer.
 pub(crate) const ROUTE_KEY: &str = "preview-route";
 
-/// The profile's space when the helper sends no profile: GTK's 800 × 70.
 const PROFILE_PX: [f32; 2] = [800.0, 70.0];
 
 thread_local! {
@@ -185,7 +168,6 @@ fn route_labels() -> RouteLabels {
     labels
 }
 
-/// GTK's `distance`.
 fn distance(metres: f64, units: Units) -> String {
     match units {
         Units::Metric => rust_i18n::t!("%{distance} km", distance = decimal(metres / 1000.0, 1)),
@@ -196,7 +178,6 @@ fn distance(metres: f64, units: Units) -> String {
     .into_owned()
 }
 
-/// GTK's `elevation_text`.
 fn height(metres: f64, units: Units) -> String {
     match units {
         Units::Metric => rust_i18n::t!("%{elevation} m", elevation = decimal(metres, 0)),
@@ -207,7 +188,6 @@ fn height(metres: f64, units: Units) -> String {
     .into_owned()
 }
 
-/// GTK's `elevation_range`.
 fn range([low, high]: [f64; 2], units: Units) -> String {
     match units {
         Units::Metric => rust_i18n::t!(
@@ -224,7 +204,6 @@ fn range([low, high]: [f64; 2], units: Units) -> String {
     .into_owned()
 }
 
-/// GTK's `audio::clock`: "m:ss", or "h:mm:ss" from an hour.
 fn clock(seconds: u64) -> String {
     let (hours, minutes, seconds) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
     if hours > 0 {
@@ -242,8 +221,6 @@ pub(super) fn build_view(route: &RouteViewer, app: &App, cx: &mut Cx<App>) -> El
         .build(&app.look, cx)
 }
 
-/// The route view's state, or, for a handler Rune queued before the viewer changed, the
-/// preview's detached one (`viewer::Detached`).
 fn route_mut(app: &mut App) -> &mut RouteState {
     let preview = &mut app.preview;
     match &mut preview.viewer {

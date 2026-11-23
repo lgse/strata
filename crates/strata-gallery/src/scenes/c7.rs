@@ -1,27 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C7 BrowserTabs: its scenes, demo state, view and key and poll hooks. Scene
-//! names start with `c7-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C7-browser-tabs.md`.
-//!
-//! The page plays Strata's part with fake folders: the strip, a stand-in view per tab, and two
-//! lines scripts read, `c7-log` (what the last intent did) and `c7-title` (the window title,
-//! which the page also sets with `Tx::set_title`).
-//!
-//! - **Keys** stand in for Strata's key map: Ctrl+T, Ctrl+W, Ctrl+Shift+T, Ctrl+Tab and
-//!   Ctrl+Shift+Tab, Ctrl+Page Up and Down, Ctrl+Shift+Page Up and Down, Ctrl+Shift+1…0, F9
-//!   in place of holding Ctrl+Shift for the badges, and F8 for the active tab's folder changing
-//!   (it takes a child's name).
-//! - **Drops** run Strata's rules on fake data: every folder is on one volume, so a plain drop
-//!   moves and Ctrl copies. Rune's binder brings every drag from outside the process, so the
-//!   page needs a stand-in for one of Strata's own folder-only drags, which open tabs (X2's
-//!   binder tells them by the drag's in-process payload): folders under [`OWN_DRAG`]. Any other
-//!   folder is another app's, and transfers like a file.
-//! - **Every tab's view stays mounted**, the inactive ones drawn under the active one at the
-//!   same place, hidden by styling. A drag that a spring carries to another tab then keeps its
-//!   source mounted at its path with its handlers, as P1's capture needs.
-
 use rune::{Cx, El, Key, KeyEvent, Tx, col, el, row, text};
 use strata_components::contract::dnd::{
     ActionInput, CrossDevice, DropAction, DropHover, DropOffer, Dropped, VolumeRelation,
@@ -38,10 +16,6 @@ use crate::{Gallery, Scene};
 /// The strip's key: tabs are `t-c7-<id>`, New tab `c7-new`.
 pub const KEY: &str = "c7";
 
-/// Dropped folders under this path stand in for Strata's own folder-only drags, which open
-/// tabs (at the folder past it: `/strata-own-drag/home/demo/Projects/` opens
-/// `/home/demo/Projects`). Under Rune's binder the page hears a drag's paths only at the drop
-/// (U3), so before it nothing tells them apart, and no gap opens.
 pub const OWN_DRAG: &str = "/strata-own-drag";
 
 /// One fake tab.
@@ -54,7 +28,6 @@ pub struct DemoTab {
     pub accepts: Accepts,
 }
 
-/// C7's demo state, held in `Gallery::c7`.
 pub struct Demo {
     pub tabs: Vec<DemoTab>,
     pub active: Option<TabId>,
@@ -127,8 +100,6 @@ impl Demo {
         id
     }
 
-    /// Strata's close: the last tab closes the window (here, nothing closes and nothing is
-    /// recorded); any other is recorded, and the active one hands over to its neighbour.
     fn close(&mut self, id: TabId) {
         let Some(index) = self.index_of(id) else {
             return;
@@ -254,8 +225,6 @@ fn action(offer: &DropOffer, mods: rune::Mods) -> Option<DropAction> {
     ))
 }
 
-/// The stand-in for X2's check of Strata's own folder-only drags: every dragged path is a
-/// folder under [`OWN_DRAG`].
 fn opens_tabs(offer: &DropOffer) -> bool {
     offer.uris.as_ref().is_some_and(|uris| {
         !uris.is_empty()
@@ -360,8 +329,6 @@ fn tear_out(g: &mut Gallery, dark: bool) {
     scene(g, dark, demo);
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c7", dark)`, then fills in `g.c7`.
 pub const SCENES: &[Scene] = &[
     ("c7-one-tab-light", |g| one_tab(g, false)),
     ("c7-one-tab-dark", |g| one_tab(g, true)),
@@ -377,8 +344,6 @@ pub const SCENES: &[Scene] = &[
     ("c7-badges-dark", |g| badges(g, true)),
 ];
 
-/// Scenes for review with `--scene` only, kept out of the goldens: tear-out is on, so a tab
-/// dragged 36 points down off the strip tears out (logged; the page opens no window).
 pub const REVIEW: &[Scene] = &[
     ("c7-tear-out-light", |g| tear_out(g, false)),
     ("c7-tear-out-dark", |g| tear_out(g, true)),
@@ -419,8 +384,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
                 .focusable(d.active == Some(t.id))
                 .label(format!("{} view", t.name))
                 .child(text(t.path.clone()).font(k.ty.ui).color(k.c.text_muted));
-            // Inactive views stay mounted where they are, under the active one, so a drag
-            // from one keeps its source while a spring shows another tab (P1's rule).
             let pane = if d.active == Some(t.id) {
                 pane.raise()
             } else {
@@ -458,8 +421,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     )
 }
 
-/// Keys no focused element took while this page is open: Strata's tab shortcuts, and F9 for
-/// the badges.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     let d = &mut g.c7;
     let ctrl = key.mods.ctrl || key.mods.cmd;
@@ -514,8 +475,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     true
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds: the
-/// strip's tick (its spring, the title, revealing the active tab). True when state changed.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     let d = &mut g.c7;
     d.now = t;

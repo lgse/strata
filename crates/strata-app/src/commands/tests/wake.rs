@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A command wakes the GLib wait (`commands::wake_glib`), so what it attached to the
-//! interface thread's context runs without a frame: on a real window, the windowed host's
-//! helper waits on that context (strata-platform's `glib_loop`), and GLib wakes it for no
-//! source its owner attaches. Without the wake, Ctrl+Z after a drag-move waited for the next
-//! input on the session host (`docs/rune/parity/packages/F5.md`).
-
 use std::{
     sync::mpsc::{self, Receiver, RecvTimeoutError},
     time::Duration,

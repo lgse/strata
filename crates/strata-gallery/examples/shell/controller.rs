@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The windowless controller: it owns the single-instance name, the desktop settings, the
-//! overrides file, the GLib bridge and the look, opens a window per launched path, and sends
-//! every window what changed.
-//!
-//! A windowless Rune app still runs `poll` when woken and its `wake_after` timers (Rune's
-//! `window/any_host.rs` and `window/lifecycle.rs` at `78d22ed`), so the bridge's answers and
-//! the 75 ms settle land here.
-
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
@@ -136,8 +128,6 @@ fn start_glib(state: &mut Controller, wake: AppHandle<Controller>) {
     }
 }
 
-/// Claims the app id, then runs the controller until the last window closes. Returns the exit
-/// status.
 pub fn run(options: Options) -> i32 {
     let primary = match claim_primary() {
         Ok(p) => p,
@@ -152,7 +142,6 @@ pub fn run(options: Options) -> i32 {
         primary.release();
         return 2;
     };
-    // Windowless, but its fonts are the process's for `rune::text::measure` (K6).
     let app = App::new(AppSpec {
         poll: Some(poll),
         fonts: strata_kit::fonts::FONTS,
@@ -244,8 +233,6 @@ fn on_event(c: &mut Controller, event: Event, _: &mut Tx) {
     }
 }
 
-/// `browser/navigation/startup-arguments`: each path opens its own window, at launch and
-/// when already running; the last takes the launch's activation token, so it ends focused.
 fn on_launch(c: &mut Controller, cmd: CommandLine) {
     let args::LaunchArgs {
         paths,
@@ -283,8 +270,6 @@ fn on_launch(c: &mut Controller, cmd: CommandLine) {
         (false, _) => {
             let last = paths.len() - 1;
             for (i, path) in paths.iter().enumerate() {
-                // A URI goes through untouched; a path is resolved against the launch's
-                // working directory.
                 let full = match &cwd {
                     Some(cwd) if !args::is_uri(path) => cwd.join(path),
                     _ => PathBuf::from(path),
@@ -344,9 +329,6 @@ fn poll(c: &mut Controller, t: f64, tx: &mut Tx) -> bool {
 }
 
 impl Controller {
-    /// Lists the mounted volumes again; the listing reaches every window.
-    /// Without a bridge every window gets the failure at once, so no dialog waits on a listing
-    /// that can never come.
     pub fn list_volumes(&mut self) {
         match &self.bridge {
             Some(bridge) => self.listing = Some(list_mounts(bridge)),
@@ -378,8 +360,6 @@ impl Controller {
         self.take(overrides, present, 0);
     }
 
-    /// A read after a change to the file. K4's host rule: the same overrides change nothing,
-    /// and the same overrides with the file there or gone only change the readout.
     fn reread(&mut self, read: Read) {
         let (overrides, present) = parse(read);
         match Change::of(&self.overrides, self.status.present, &overrides, present) {
@@ -460,8 +440,6 @@ pub fn broadcast(f: impl Fn(&mut Window, &mut Tx) + Clone + Send + 'static) {
     }
 }
 
-/// A read's overrides and whether the file was there: no file or an unreadable one is no
-/// overrides, which restores the theme's look.
 fn parse(read: Read) -> (Overrides, bool) {
     let bytes = match read {
         Ok(bytes) => bytes,
@@ -503,8 +481,6 @@ fn list_mounts(bridge: &GlibThread) -> Task<Vec<Volume>> {
     })
 }
 
-/// Mounts coming and going. The volume monitor's first `get` is on the bridge, so its signals
-/// arrive there (P9's rule).
 fn watch_mounts(bridge: &GlibThread) -> Signal<()> {
     bridge.handle().listen(|emit| {
         let monitor = gio::VolumeMonitor::get();
@@ -519,9 +495,6 @@ fn watch_mounts(bridge: &GlibThread) -> Signal<()> {
     })
 }
 
-/// Any change to the overrides file: created, written, moved over (an editor's save), deleted
-/// or made unreadable, plus one change when the monitor goes live. The settle in `poll` turns
-/// a burst into one read.
 fn watch_file(bridge: &GlibThread, path: PathBuf) -> Signal<()> {
     bridge.handle().listen(move |emit| {
         let file = gio::File::for_path(&path);
@@ -531,9 +504,6 @@ fn watch_file(bridge: &GlibThread, path: PathBuf) -> Signal<()> {
                 let changed = monitor.connect_changed(move |_, _, _, _| {
                     let _ = emit.emit(());
                 });
-                // The first read ran before the monitor existed, so a write in between went
-                // unseen: read once more now it's live, as Strata's theme watch does
-                // (`src/ui/theme/watch.rs`). A read that finds nothing new changes nothing.
                 let _ = live.emit(());
                 Keep::new().object(&monitor).handler(&monitor, changed)
             }

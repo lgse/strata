@@ -1,61 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Syntax colours: Strata's source palette, and the rune-kit [`SyntaxTheme`] it becomes.
-//!
-//! Strata colours code with a GtkSourceView scheme built from five theme colours plus the
-//! dim text (`src/ui/theme/source_style.rs` at lgse/strata 35ee677ab). A theme that leaves a
-//! syntax colour out gets one blended from its accent and text, as Strata's
-//! `resolved_source_palette` does.
-//!
-//! # Kinds
-//!
-//! GtkSourceView's `def.lang` maps functions and built-ins onto identifiers, which Strata's
-//! scheme draws in the text colour, and styles nothing else. So rune-kit's kinds map as:
-//!
-//! | rune-kit kind | Colour |
-//! | --- | --- |
-//! | `Keyword` | keyword (`def:statement`) |
-//! | `String` | string |
-//! | `Number` | constant (`def:constant`, numbers and special characters) |
-//! | `Type` | type |
-//! | `Comment` | dim text |
-//! | `Function`, `Property`, `Parameter`, `Punctuation` | text |
-//! | `Inserted`, `Deleted` | the kit's success and danger colours |
-//!
-//! Deliberate changes from Strata (owner rulings Q9):
-//!
-//! - Strata's scheme draws keywords and types bold, comments italic and the shebang bold.
-//!   rune-kit highlights change colour only, never weight or style, so those are dropped.
-//! - Strata's scheme leaves diff lines unstyled; rune-kit's diff kinds keep green and red,
-//!   and so do [`Role::Inserted`] and [`Role::Deleted`].
-//! - Strata's scheme draws errors (`def:error`) bold, in the background colour on a danger
-//!   fill. C10a's spans change colour only, so [`Role::Error`] draws in the danger colour on
-//!   the code's own background: the fill is dropped, and the background-coloured text with it.
-//!
-//! # Scopes
-//!
-//! [`SCOPES`] maps TextMate scope selectors, which syntect's grammars emit, onto a [`Role`],
-//! following GtkSourceView's `def:` groups and the language files that map onto them, and
-//! [`Role::color`] reads each role's colour from a finished [`Look`], so a user's `syntax.*`
-//! override reaches it. [`syntect_theme`] builds C10a's syntect theme from both (K1b), and
-//! [`editor`] gives the colours around the code.
-//!
-//! Known gaps, where these selectors don't follow Strata:
-//!
-//! - Rust's `let`, `const` and `Self` draw as types: the grammar scopes them
-//!   `storage.type.rust`, as it does the primitive types, so no selector tells them apart.
-//! - C's `struct`, `enum`, `union` and `typedef` draw as types: the grammar scopes them
-//!   `storage.type.c`, as it does `int`, though c.lang lists them as keywords.
-//! - C++'s `class`, `struct` and `typename` (`storage.type.c++`) and `template`
-//!   (`storage.type.template.c++`) draw as types; cpp.lang lists them as keywords.
-//! - C's number suffixes (`storage.type.numeric` inside a number) draw as types.
-//! - TypeScript's `const`, `let` and `var` (`storage.type.ts`), `interface` and `namespace`
-//!   draw as types; Strata's TypeScript files draw them as keywords.
-//! - A variable or command substitution inside a shell string (`"$dir"`) draws as the
-//!   string; sh.lang draws it as an identifier, in the text colour. Following it would need
-//!   text-role rows that override an enclosing string.
-//! - A Markdown fence's language name (`constant.other.language-name`) draws as a constant.
-
 use std::str::FromStr;
 
 use rune::Color;
@@ -88,8 +32,6 @@ pub fn resolve(colors: &Colors) -> Palette {
     resolve_over(colors, None)
 }
 
-/// [`resolve`], with left-out colours taken from `fallback` when there is one (an Omarchy
-/// theme's terminal palette), else blended.
 pub(crate) fn resolve_over(colors: &Colors, fallback: Option<Palette>) -> Palette {
     let (accent, text) = (colors.accent, colors.text);
     let f = fallback.unwrap_or(Palette {
@@ -123,9 +65,6 @@ pub(crate) fn themes(kit: &Kit, colors: &Colors) -> (SyntaxTheme, SyntaxExtra) {
         .with(Syntax::Property, text)
         .with(Syntax::Parameter, text)
         .with(Syntax::Punctuation, text)
-        // The kinds rune-kit added at `2a44156`, placed as [`SCOPES`] places their scopes:
-        // `markup.heading` in the accent, links and regexes as strings, `keyword.operator`
-        // as a keyword, attribute names as types, and variables as identifiers.
         .with(Syntax::Heading, kit.c.text_accent)
         .with(Syntax::Link, p.string.color())
         .with(Syntax::Regex, p.string.color())
@@ -141,7 +80,6 @@ pub(crate) fn themes(kit: &Kit, colors: &Colors) -> (SyntaxTheme, SyntaxExtra) {
 /// What colours a scope.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Role {
-    /// Unstyled code: identifiers, functions, built-ins (GtkSourceView's `def:identifier`).
     Text,
     Comment,
     String,
@@ -196,8 +134,6 @@ impl Role {
     }
 }
 
-/// TextMate scope selectors and their roles. A scope not listed draws as [`Role::Text`];
-/// the most specific match wins, as syntect matches them.
 pub const SCOPES: &[(&str, Role)] = &[
     ("comment", Role::Comment),
     ("punctuation.definition.comment", Role::Comment),
@@ -216,9 +152,6 @@ pub const SCOPES: &[(&str, Role)] = &[
     ("storage", Role::Keyword),
     ("storage.modifier", Role::Keyword),
     ("storage.type", Role::Type),
-    // Declaration keywords some grammars file under `storage.type`: Strata's language files
-    // list them as keywords (`def:keyword`, then `def:statement`), as rust.lang and js.lang do
-    // `fn`, `struct`, `impl`, `class`, `function` and `const`.
     ("storage.type.function", Role::Keyword),
     ("storage.type.class", Role::Keyword),
     ("storage.type.struct", Role::Keyword),
@@ -230,22 +163,15 @@ pub const SCOPES: &[(&str, Role)] = &[
     ("storage.type.extends", Role::Keyword),
     // JavaScript has no type keywords: Babel's `storage.type.js` is `const`, `let`, `async`.
     ("storage.type.js", Role::Keyword),
-    // Go's `func`, `type`, `struct`, `interface`, `var` and `const`, which go.lang lists as
-    // keywords; it lists `map` and `chan` as types.
     ("storage.type.keyword", Role::Keyword),
     ("storage.type.keyword.map", Role::Type),
     ("storage.type.keyword.chan", Role::Type),
-    // String prefixes (`r""`, `b""`, `f""`) are part of the string in GtkSourceView.
     ("storage.type.string", Role::String),
     ("entity.name.type", Role::Type),
     ("entity.name.class", Role::Type),
     ("entity.other.inherited-class", Role::Type),
     ("support.type", Role::Type),
     ("support.class", Role::Type),
-    // xml.lang's `attribute-name`, which html.lang uses, maps to `def:type`, as css.lang's
-    // `attribute-selector-name` (`[href]`) does. The CSS grammar files class and id selectors
-    // under attribute names too: css.lang's `class-selector` is `def:identifier`, in the text
-    // colour, and its `id-selector` is `def:statement`.
     (
         "entity.other.attribute-name - entity.other.attribute-name.class.css",
         Role::Type,
@@ -264,13 +190,6 @@ pub const SCOPES: &[(&str, Role)] = &[
     ("markup.deleted", Role::Deleted),
 ];
 
-/// The syntect theme for `look`, after the user's overrides: each [`SCOPES`] selector in its
-/// role's colour, the most specific match winning. The default foreground is the look's
-/// text, so a scope in [`Role::Text`] gets no span and draws in the host's own text colour.
-/// The settings take [`editor`]'s colours; C10a reads only the foregrounds.
-///
-/// Build a new one when the look changes and hand it to C10a's `Highlighter::set_theme`, which
-/// re-colours open texts without re-parsing them.
 pub fn syntect_theme(look: &Look) -> Theme {
     let scopes = SCOPES
         .iter()
@@ -330,8 +249,6 @@ pub struct Editor {
     pub line_highlight: Color,
 }
 
-/// The colours around code in `look`: text on the surface, an accent caret and selection
-/// with background-coloured text, dim line numbers and a background-coloured current line.
 pub fn editor(look: &Look) -> Editor {
     let c = &look.kit.c;
     Editor {

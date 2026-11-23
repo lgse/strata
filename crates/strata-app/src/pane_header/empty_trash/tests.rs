@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Trash's "Empty Trash" header button on the offscreen host: shown only over the Trash's
-//! root, insensitive while it lists nothing, and asking to empty it when pressed. The Trash is
-//! a folder of the test's own (`trash::empty::use_test_root`): a hosted test has no gvfs.
-
 use std::path::PathBuf;
 
 use rune::{Key, KeyEvent, Mods, Tx};
@@ -71,8 +67,6 @@ fn dialog(host: &Offscreen) -> Option<String> {
     dialogs.first().map(|dialog| view::text(dialog, "name"))
 }
 
-/// Over a Trash that holds something the button is named and pressable, and Return on it asks
-/// to empty the Trash.
 #[test]
 fn over_the_trash_it_asks_to_empty_it() {
     let name = "over_the_trash_it_asks_to_empty_it";
@@ -162,8 +156,6 @@ fn click(host: &mut Offscreen, key: &str) {
     idle(host);
 }
 
-/// In Columns the button is in the targeted Trash column's header, as GTK's column header has
-/// it, and a press on it asks to empty the Trash; over an empty Trash it cannot be pressed.
 #[test]
 fn a_columns_trash_column_has_it_in_its_header() {
     let name = "a_columns_trash_column_has_it_in_its_header";
@@ -205,8 +197,6 @@ fn a_columns_empty_trash_column_has_it_insensitive() {
     });
 }
 
-/// Only the targeted column shows its header actions, as on GTK: with a folder of the Trash
-/// opened and targeted beside it, the Trash's column shows no Empty Trash.
 #[test]
 fn only_the_targeted_column_shows_it() {
     let name = "only_the_targeted_column_shows_it";

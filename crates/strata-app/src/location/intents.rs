@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the bar's intents do: GTK's `submit_location`, `cancel_location_edit` and the crumbs'
-//! handlers (`src/ui/browser/location.rs`, `location/breadcrumbs.rs`).
-//!
-//! A crumb's middle click runs `open-in-tab` on its folder, and with Ctrl or Shift
-//! `open-in-window` (`commands::On::Place`), as GTK's crumbs open a new tab or window. Neither
-//! does anything until a part registers it.
-
 use rune::{Mods, TextEdit, Tx};
 use strata_components::{
     contract::dnd::{DropAction, DropOffer},
@@ -69,12 +62,6 @@ pub(super) fn route(app: &mut App, polled: Polled, tx: &mut Tx) {
     }
 }
 
-/// Routes what the bar's tick raised. Its `Cancelled` is a press elsewhere that took the
-/// keyboard from the entry, and the keyboard stays where that press put it: GTK cancels in the
-/// press's capture phase (`install_location_cancellation`, `src/ui/window/composition/input.rs`)
-/// and the pressed widget then takes focus. Only when nothing has the keyboard does it go back
-/// to the view. It cannot still be in the bar: the entry has lost it, and the bar's buttons
-/// take none.
 pub(super) fn route_ticked(app: &mut App, polled: Polled, tx: &mut Tx) {
     for intent in polled.intents {
         match intent {
@@ -90,9 +77,6 @@ fn crumb(app: &App, id: &str) -> Option<Location> {
     app.location.crumbs.get(index).cloned()
 }
 
-/// A crumb: a click or the hierarchy menu opens its folder selecting the one the user came
-/// from (`navigate_to_ancestor`); a drag resting on it opens it plainly
-/// (`attach_crumb_drop_target`).
 fn open(app: &mut App, id: &str, via: Via, tx: &mut Tx) {
     let Some(folder) = crumb(app, id) else {
         return;
@@ -113,18 +97,7 @@ fn open_in_new(app: &mut App, id: &str, command: &str, tx: &mut Tx) {
     }
 }
 
-/// Enter, Navigate or a chosen suggestion: the typed location opens, and the keyboard goes
-/// back to the view. The bar is on its crumbs already.
-///
-/// A location refused at once, or once the browser has looked (`LocationNavigationRejected`,
-/// which [`crate::open_failed`] hears), is reported as "Unable to open location". GTK mounts a
-/// location that needs it first; this interface does not mount yet.
-///
-/// The text opened stays for the next Ctrl+L until the columns change (`Bar::typed`); one
-/// refused at once does not.
 fn submit(app: &mut App, text: &str, tx: &mut Tx) {
-    // What was typed is not kept in the closed entry or its undo history; the text kept for the
-    // next Ctrl+L is without a password a URI carried.
     app.location.state.edit = TextEdit::new("");
     shell::publish(app);
     let browser = app.browser.clone();
@@ -138,8 +111,6 @@ fn submit(app: &mut App, text: &str, tx: &mut Tx) {
     }
 }
 
-/// The text to open: a URI loses the credentials typed into it, which GTK hands its mount
-/// operation and never keeps with the text (`credentials_from_location_input`).
 fn typed(text: &str) -> Result<String, LocationValidationError> {
     if !text.contains("://") {
         return Ok(text.to_owned());

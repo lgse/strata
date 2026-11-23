@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Scroll panes through the engine: a target the Columns strip has scrolled away is wheeled
-//! back into view before it is clicked, as
-//! `locations/scrolled-away-crumbs-and-columns-stay-reachable` asks at its line 22.
-
 use serde_json::json;
 use strata_qa::{Backend as _, Remembered};
 

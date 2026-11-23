@@ -11,8 +11,6 @@ use super::speed::{
 use super::{ColumnGeometry, DragScroll, Scroll, StripGeometry};
 use crate::contract::{Point, Rect};
 
-/// A strip 900 wide at the window's left, scrolled `offset` of `max`, of three 300-wide
-/// columns whose listings are 600 tall, each scrolled `listing` of 2,000.
 fn strip(offset: f32, max: f32, listing: f32) -> StripGeometry {
     StripGeometry {
         strip: Rect::new(0.0, 40.0, 900.0, 600.0),
@@ -35,8 +33,6 @@ fn strip(offset: f32, max: f32, listing: f32) -> StripGeometry {
 
 #[test]
 fn the_speed_peaks_within_16_points_of_the_edge_at_720_and_520() {
-    // operations/drag-and-drop/column-autoscroll: Scroll speed peaks within 16 px of the edge,
-    // at 720 px/s horizontally and 520 px/s vertically.
     let full = RAMP * 2;
     for at in [0.0, 8.0, 16.0] {
         assert_eq!(edge_direction(at, 900.0), -1.0, "{at}");
@@ -58,8 +54,6 @@ fn the_speed_peaks_within_16_points_of_the_edge_at_720_and_520() {
 
 #[test]
 fn the_speed_starts_at_35_percent_and_is_full_after_350_ms() {
-    // operations/drag-and-drop/column-autoscroll: Scrolling starts at 35% of that speed and
-    // reaches full speed after 350 ms in the same direction.
     assert_eq!(scroll_speed(1.0, Duration::ZERO, 1000.0), 350.0);
     let half = scroll_speed(1.0, RAMP / 2, 1000.0);
     assert!(half > 350.0 && half < 1000.0, "{half}");
@@ -97,8 +91,6 @@ fn a_held_drag_glides_toward_the_edge_and_its_dwell_restarts_with_a_new_directio
 
 #[test]
 fn autoscroll_stops_on_leaving_the_edge_the_strip_or_the_end_and_when_the_drag_goes() {
-    // operations/drag-and-drop/column-autoscroll: Autoscroll stops when the drag leaves the
-    // strip, drops, or ends, or the content cannot scroll further.
     let geo = strip(300.0, 600.0, 0.0);
     let start = |m: &mut DragScroll| {
         m.over(Some(Point::new(5.0, 300.0)));
@@ -153,8 +145,6 @@ fn a_listing_scrolls_near_its_top_or_bottom_and_only_the_one_under_the_drag() {
 
 #[test]
 fn the_column_under_the_drag_follows_the_strip_under_a_still_pointer() {
-    // operations/drag-and-drop/column-autoscroll: The column under a held file drag shows an
-    // accent wash and ring, including a column just revealed by autoscroll.
     let mut m = DragScroll::new();
     m.over(Some(Point::new(250.0, 300.0)));
     assert!(m.hover(&strip(0.0, 600.0, 0.0)));

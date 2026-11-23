@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C8's page in process: what the accessibility tree doesn't show (tooltips, motion, focus
-//! rings, the Trash target's key, and a drop target that holds while its gap opens). The
-//! scripts in `tests/scripts/c8/` check the rest. Each test names the bullets it covers.
-
 mod c8 {
     use std::path::PathBuf;
 
@@ -75,8 +71,6 @@ mod c8 {
         (r[0] + r[2] / 2.0, r[1] + r[3] / 2.0)
     }
 
-    // operations/trash/animation: "flies its icons from their rows into the sidebar Trash
-    // button": C8 publishes the target's key in both widths, and none while hidden.
     #[test]
     fn the_trash_target_is_keyed_in_full_and_rail_and_gone_when_hidden() {
         assert!(element(&mount("c8-full-light"), TRASH_TARGET).is_some());
@@ -84,8 +78,6 @@ mod c8 {
         assert!(element(&mount("c8-hidden-light"), TRASH_TARGET).is_none());
     }
 
-    // browser/sidebar/rail: "In the icon rail, rows show only icons with name tooltips, and
-    // device buttons are hidden."
     #[test]
     fn rail_rows_show_their_names_as_tooltips_and_hide_device_buttons() {
         let rt = mount("c8-rail-light");
@@ -126,8 +118,6 @@ mod c8 {
         );
     }
 
-    // browser/sidebar: "In the icon rail, a heading's tooltip is its section name, such as
-    // "PINNED"; in the full sidebar it has no tooltip."
     #[test]
     fn a_rail_heading_names_its_section_in_a_tooltip() {
         let rail = mount("c8-rail-light");
@@ -143,8 +133,6 @@ mod c8 {
         assert_eq!(help(&full, "places-heading-pinned"), None);
     }
 
-    // browser/sidebar: "Expanding PINNED returns the open pin to its original slot, and the pin
-    // stays visible throughout the animation."
     #[test]
     fn expanding_pinned_keeps_the_open_pin_in_view_throughout() {
         let mut rt = mount("c8-collapsed-light");
@@ -188,8 +176,6 @@ mod c8 {
         assert!(!devices_move_after_collapse(false));
     }
 
-    /// Drags a folder over gap 1, re-sampling the pointer every frame as a window does, and
-    /// returns the drop target each frame.
     fn targets_while_gap_opens(animations: bool) -> Vec<Option<String>> {
         let mut rt = mount_with("c8-full-light", |g| g.look.animations = animations);
         let at = centre(&rt, "places-band-1");
@@ -203,9 +189,6 @@ mod c8 {
         seen
     }
 
-    // browser/sidebar/pins/drag-to-pin: "A folder pin drag that crosses a row's edges and gap,
-    // or leaves a spring-loaded row for a gap, keeps one insertion target." The gap opening
-    // under a still pointer keeps the target.
     #[test]
     fn an_opening_gap_keeps_its_drop_target() {
         for animations in [true, false] {
@@ -229,7 +212,6 @@ mod c8 {
         (first, element(&rt, "places-gap-1").expect("gap").rect[3])
     }
 
-    // C8 work package: the open-gap animation, which with animations off opens at once.
     #[test]
     fn the_gap_opens_on_a_spring_or_at_once_with_animations_off() {
         let (first, open) = gap_height_after_a_frame(true);
@@ -252,10 +234,6 @@ mod c8 {
         rt.frame(FRAME);
     }
 
-    // browser/sidebar/pins: "Dropping a pinned row on the upper or lower half of another pinned
-    // row moves it before or after that row." A drag released off its row gets no press from
-    // Rune (U21): with no host draining it, the next click on another row reports the move
-    // first and then opens that row.
     #[test]
     fn a_reorder_released_off_its_row_is_reported_before_the_next_click() {
         let mut rt = mount("c8-full-light");
@@ -268,8 +246,6 @@ mod c8 {
         assert_eq!(rt.state.c8.log, "Open downloads (pointer)");
     }
 
-    // The selected row keeps an opaque fill while it is lifted, so the rows it passes don't
-    // show through (rune-kit's lift fill under the accent tint).
     #[test]
     fn a_lifted_selected_row_is_opaque() {
         let mut rt = mount("c8-full-light");
@@ -300,8 +276,6 @@ mod c8 {
         (before, centre(&rt, TRASH_TARGET).0)
     }
 
-    // browser/sidebar/rail: "At text size 10, pressing Ctrl+B between the full sidebar and the
-    // rail moves no row icon."
     #[test]
     fn a_step_to_the_rail_moves_no_icon_at_any_text_size() {
         for size in [10, 13, 20] {
@@ -310,9 +284,6 @@ mod c8 {
         }
     }
 
-    // browser/sidebar: "Dragging files over a pinned folder's row body shows a highlight and an
-    // accent outline". The highlight is the row's fill while the drag is over it; the outline
-    // (a border, which `ElementInfo` doesn't report) is in the c8-drop-row PNG.
     #[test]
     fn a_drag_over_a_pin_row_highlights_it_until_it_leaves() {
         let mut rt = mount("c8-full-light");

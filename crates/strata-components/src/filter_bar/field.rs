@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The single-line field the filter bar and the footer prompts share: Rune's core
-//! `text_input` inside a text box frame of our own, drawn with the Kit tokens rune-kit's
-//! `TextInput` draws its box with.
-//!
-//! Not rune-kit's `TextInput`: at Rune 631e8a67 it builds its inner field itself and takes no
-//! `on_secondary_press` for it (Rune draft U-C21-2), so a right-click on it asks for Rune's
-//! native field menu, which shows nothing on Linux. A core field takes the press itself
-//! (probe P4): the bar and the prompt raise a field-menu intent, which C21's `FieldMenu`
-//! answers, while keeping Rune's Linux primary selection, middle-click paste, and IME
-//! finish-on-blur.
-
 use std::rc::Rc;
 
 use rune::{El, KeyEvent, PointerPress, TextEdit, TextStyle, Tx, row, text_input};
@@ -55,8 +44,6 @@ impl<S> Clone for Handlers<S> {
     }
 }
 
-/// The core field: single-line, no spell marks (a query or a name isn't prose), its keys,
-/// edits and menu press going to `h`.
 pub(crate) fn input<S: 'static>(
     look: &Look,
     edit: &TextEdit,
@@ -102,11 +89,6 @@ pub(crate) fn input<S: 'static>(
     field
 }
 
-/// The text box frame around a field's row, as rune-kit's `TextInput` draws its box: the
-/// base fill and medium corners, the input shadows at rest, a focus outline while `focused`,
-/// and a danger outline while `invalid`. The frame is a `textbox`, so Rune routes a press
-/// anywhere in it to the field inside (as rune-kit's box does), and its menu press is the
-/// field's too.
 pub(crate) fn frame<S: 'static>(
     look: &Look,
     inner: El,
@@ -145,8 +127,6 @@ pub(crate) fn frame_row(look: &Look, key: String) -> El {
         .min_w(0.0)
 }
 
-/// Notices a field losing the keyboard: Rune has no focus-change hook (upstream #106, Rune
-/// draft U-C6-3), so the owner's `tick` asks each frame, as C6's entry does.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) struct FocusWatch {
     seen: bool,

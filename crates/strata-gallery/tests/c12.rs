@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C12's page in process: what scripts can't reach (the requests the view asks, their widths
-//! and order, stale and cancelled replies, the zoom's rest from wake to wake, the budgets, a
-//! pane wider than 1280 points, where a zoom lands far down a mixed document, the cursor, a
-//! rebound reset key). The scripts in `tests/scripts/c12/` check the rest. Each test names the
-//! bullets it covers.
-
 mod c12 {
     use rune::text::TextSystem;
     use rune::{Cursor, Cx, El, ElementInfo, Env, Key, KeyEvent, Mods, Runtime, WheelEvent};
@@ -47,8 +41,6 @@ mod c12 {
         }
     }
 
-    /// Steps a resting window: a frame only at each requested wake, none in between, for at
-    /// most `limit` seconds. Returns the clocks it stepped to.
     fn rest(rt: &mut Runtime<Gallery>, limit: f64) -> Vec<f64> {
         let start = rt.state.c12.now;
         let mut stops = Vec::new();
@@ -121,9 +113,6 @@ mod c12 {
         rt.wheel_event(WheelEvent::new(0.0, dy).at(x, y).mods(ctrl()));
     }
 
-    // preview/preview-panel/pdf: "PDF pages render at the preview pane's width, at most 1280
-    // px". preview/preview-panel/layout: "In a preview wider than 1280 px, PDF pages … stop at
-    // 1280 px, centered; Ctrl+wheel PDF zoom scales from that width."
     #[test]
     fn pages_render_at_the_panes_width_up_to_1280_points() {
         let rt = mount("c12-pages-light");
@@ -179,9 +168,6 @@ mod c12 {
         assert_eq!(p0.rect[2], (1268.0 * 0.28f32.exp()).round());
     }
 
-    // The work package: "zoom triggers re-render requests for visible pages only". With the zoom
-    // resting 0.15 s first, in a window at rest: the wake the zoom asked for is the one that
-    // starts the renders, with no frame between.
     #[test]
     fn a_zoom_asks_for_the_visible_pages_once_it_rests() {
         let mut rt = mount("c12-pages-light");
@@ -199,8 +185,6 @@ mod c12 {
         }
         assert_eq!(rt.state.c12.renderer.rendered.len(), before);
         let t0 = rt.state.c12.now;
-        // From wake to wake: the first render starts at the wake that ends the rest. (The bars'
-        // fade asks for frames of its own in between; none of them starts one.)
         let mut started = None;
         for _ in 0..100 {
             let Some(deadline) = rt.wake_deadline() else {
@@ -232,8 +216,6 @@ mod c12 {
         assert!(d.renderer.rendered[before..].iter().all(|r| r.1 > 500));
     }
 
-    // preview/preview-panel/pdf: "Queued PDF pages that leave the view are cancelled before
-    // rendering." Ctrl+End while the first pages render.
     #[test]
     fn a_jump_cancels_what_was_asked_for_the_pages_left_behind() {
         let mut g = Gallery::default();
@@ -317,8 +299,6 @@ mod c12 {
         g.c12.pdf.open(doc);
     }
 
-    /// Zooms `notches` notches at page `target`, `gap` frames apart: where the centre was, where
-    /// it lands, and the farthest any frame drew it from there, in pages.
     fn zoom_mixed(target: usize, notches: usize, gap: usize) -> ((usize, f32), (usize, f32), f32) {
         let mut rt = mount_with("c12-long-light", 1.0, mixed_known);
         rt.state.c12.pdf.show_page(target, 0.4);
@@ -348,9 +328,6 @@ mod c12 {
         (before, at_centre(&rt), worst)
     }
 
-    // D6: a zoom far down a document of mixed page sizes keeps the centre once its page lands:
-    // one notch, notches on consecutive frames (review 1's B2: each took the centre from pages
-    // the last notch's estimate had put on screen, and landed 3 pages off), and notches apart.
     #[test]
     fn a_zoom_far_down_a_mixed_document_keeps_the_centre() {
         for (target, notches, gap) in [(300, 1, 0), (300, 4, 0), (300, 4, 20), (30, 4, 0)] {
@@ -391,8 +368,6 @@ mod c12 {
         assert!((f2 - f0).abs() < 0.02, "{f0} then {f2}");
     }
 
-    // A Ctrl+wheel in the frame after a plain wheel moved the pages: input comes after the
-    // pages report where the scroll put them, so the zoom keeps the point under the centre.
     #[test]
     fn a_ctrl_wheel_right_after_a_scroll_keeps_the_centre() {
         let mut rt = mount("c12-pages-light");
@@ -411,9 +386,6 @@ mod c12 {
         );
     }
 
-    // A zoom asked as the pages first lay out (the zoomed scene zooms from its first poll after
-    // them) keeps the centre too: a row of the last zoom that reports its layout late doesn't
-    // place the anchor.
     #[test]
     fn a_zoom_right_after_the_first_layout_keeps_the_centre() {
         let at_fit = at_centre(&mount("c12-pages-light"));
@@ -446,8 +418,6 @@ mod c12 {
         );
     }
 
-    // A window moved to a 2× display: no input and no layout change in points, yet the visible
-    // pages ask again at twice the pixels (C14a's rescale element).
     #[test]
     fn a_new_display_scale_renders_the_visible_pages_again() {
         let mut rt = mount("c12-pages-light");
@@ -467,8 +437,6 @@ mod c12 {
         );
     }
 
-    // Review 1's B1: a page whose text layer the budget dropped while it kept its image gets
-    // its text back once it's in view again.
     #[test]
     fn a_page_that_lost_its_text_gets_it_back_in_view() {
         let mut rt = mount_with("c12-long-light", 1.0, |g| {
@@ -500,8 +468,6 @@ mod c12 {
             .any(|e| e.path.ends_with(&tail) && !e.exiting)
     }
 
-    // The text budget holds while find is open: pages whose layers it drops stay counted, and
-    // aren't asked for their text again while the query runs.
     #[test]
     fn find_holds_the_text_budget_and_keeps_its_count() {
         let count = |budget: usize| {
@@ -523,8 +489,6 @@ mod c12 {
         assert!(renders <= 502, "each page asked once, not again: {renders}");
     }
 
-    // Review 1's S3: when the zoom rests, a request still out for a visible page at the width
-    // before it is cancelled at once.
     #[test]
     fn the_rest_cancels_a_request_at_the_old_width() {
         let mut rt = mount_with("c12-pages-light", 1.0, |g| g.c12.renderer.paused = true);
@@ -568,8 +532,6 @@ mod c12 {
         let mut rt = mount("c12-pages-light");
         let p0 = page(&rt, 0).expect("page 1");
         let k = p0.rect[2] / 612.0;
-        // Over the last line of page 1 with text (the fake page's lines are 16 points apart from
-        // 72, their boxes 13 points tall).
         let last = prose(0, 38)
             .iter()
             .rposition(|l| l.len() > 20)
@@ -593,8 +555,6 @@ mod c12 {
         assert_eq!(rt.cursor(), Cursor::Grab);
     }
 
-    // A drag from text that ends over a margin shows the grab once released, not the I-beam
-    // it started with.
     #[test]
     fn the_cursor_is_worked_out_again_on_release() {
         let mut rt = mount("c12-pages-light");
@@ -635,9 +595,6 @@ mod c12 {
         }
     }
 
-    // preview/preview-panel/pdf: "Dragging on a page margin … pans the view instead of
-    // selecting." With the cursor Strata shows: text over text, grab elsewhere, grabbing while
-    // panning.
     #[test]
     fn the_cursor_shows_which_a_drag_does_and_a_margin_drag_pans() {
         let mut rt = mount("c12-pages-light");
@@ -665,8 +622,6 @@ mod c12 {
         assert!(!rt.state.c12.pdf.has_selection());
     }
 
-    /// A host of the test's own, for a rebound reset key: Strata's `pdf_zoom_reset` with
-    /// Ctrl+E.
     struct Host {
         pdf: PdfState,
         look: Look,
@@ -678,9 +633,6 @@ mod c12 {
             .build(h, &h.look, cx)
     }
 
-    // app/window/key-dispatch: "With `text_reset = ["<Control>9"]` and `pdf_zoom_reset =
-    // ["<Control>0", "<Control>e"]`, Ctrl+0 and Ctrl+E reset a focused document's zoom" (the
-    // key map is Strata's; the view takes the keys it's given).
     #[test]
     fn a_rebound_reset_key_resets_the_zoom() {
         let mut pdf = PdfState::new("pdf");

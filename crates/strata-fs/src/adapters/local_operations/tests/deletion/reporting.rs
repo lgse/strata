@@ -235,8 +235,6 @@ fn cancelling_between_deletions_reports_completed_and_unattempted_items()
     Ok(())
 }
 
-/// Cancels as the delete of `cut` starts: before Trash takes it, or after
-/// a permanent delete checks it or the file inside it.
 fn cancel_at_cut(permanent: bool, cut_is_folder: bool, cancellable: &gio::Cancellable) -> Quirks {
     let cancel = cancellable.clone();
     let cancel: Racer = Box::new(move || cancel.cancel());

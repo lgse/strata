@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The hooks X2 binds the system drag through: the container's drag phases
-//! ([`Collection::on_drag_phase`]) and the drop zones' action ([`Collection::drop_action`]).
-
 use std::cell::RefCell;
 
 use rune::{Cx, El, Env, Mods, Runtime};
@@ -21,8 +18,6 @@ struct Host {
     look: Look,
     /// Every phase the hook heard, with the key it was given.
     phases: Vec<(rune::Phase, String)>,
-    /// The hook takes phases from this one on, once a drag began (as P1's `owns` does after
-    /// `start_drag`).
     taking: bool,
     began: usize,
     intents: Vec<String>,
@@ -35,8 +30,6 @@ thread_local! {
     static ZONES: RefCell<Vec<(String, DropZone<Host>)>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Records each zone attached, the latest for each key: rows are memoised, so a view run that
-/// rebuilds none attaches none.
 fn binder() -> Dnd<Host> {
     Dnd::custom_keyed(
         |el, key, zone| {
@@ -121,8 +114,6 @@ fn step(rt: &mut Runtime<Host>) {
     rt.frame(1.0 / 60.0);
 }
 
-/// A drag the host starts from `BeginDrag` owns the phases after it: the hook hears every
-/// phase with the collection's key, and the release it takes is no click.
 #[test]
 fn a_taken_release_after_a_drag_begins_is_no_click_and_the_hook_hears_the_key() {
     let mut rt = runtime();
@@ -151,8 +142,6 @@ fn a_taken_release_after_a_drag_begins_is_no_click_and_the_hook_hears_the_key() 
     );
 }
 
-/// A release the hook takes is a cancelled one even with no drag: a plain press that the
-/// host's drag owns finishes with no click.
 #[test]
 fn a_release_the_hook_takes_is_cancelled() {
     let mut rt = runtime();
@@ -191,8 +180,6 @@ fn zone(key: &str) -> DropZone<Host> {
     })
 }
 
-/// The host's action reaches each folder row's zone with the row's id, and the background's
-/// with none: a binder that negotiates while hovering (P1's) shows it, or refuses the drag.
 #[test]
 fn the_drop_action_answers_for_each_folder_row_and_the_background() {
     let rt = runtime();
@@ -240,9 +227,6 @@ fn moves_the_hook_takes_start_nothing() {
     assert_eq!(rt.state.began, 0, "{:?}", rt.state.intents);
 }
 
-/// With the host's action, a folder row stops a drop it refuses (its own folder, here) instead
-/// of passing it to the background around it, which would take it into the folder shown; a
-/// refused row draws no drop highlight.
 #[test]
 fn a_folder_row_the_action_refuses_stops_the_drop() {
     let mut rt = runtime();
@@ -266,11 +250,6 @@ fn a_folder_row_the_action_refuses_stops_the_drop() {
     assert_eq!(rt.state.coll.drop_over(), None, "a refused drop clears it");
 }
 
-/// A drag a zone refuses still drives the host's drag-over hook (autoscroll, C2's column
-/// wash) when it offers files, as Strata's motion controller does whatever accepts: the
-/// refusal keeps the hook's last point and each move gives it the next, with no drop
-/// highlight. The background, with the host's action, stops what it refuses too, so it hears
-/// those moves.
 #[test]
 fn a_refused_drag_still_drives_the_drag_over_hook() {
     use crate::contract::{DropHover, Point};
@@ -304,8 +283,6 @@ fn a_refused_drag_still_drives_the_drag_over_hook() {
             Some(&None),
             "{key}: gone when it leaves"
         );
-        // column-autoscroll: "Only drags offering a file list or `text/uri-list`
-        // autoscroll": a refused text drag's moves reach no hook.
         let text = DropOffer::new(vec!["text/plain".into()], DropActions::COPY);
         rt.state.overs.clear();
         rt.update(|s, tx| {

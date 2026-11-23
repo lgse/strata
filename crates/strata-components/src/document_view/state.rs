@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`DocumentState`]: what the host keeps per document preview, and what the drawer's header
-//! and find bar ask of it.
-
 use std::borrow::Cow;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
@@ -29,10 +26,6 @@ pub const DOUBLE_CLICK: f64 = 0.5;
 /// How long Copy code shows its check and "Code copied" (Strata's 2 s).
 pub const COPIED_FOR: Duration = Duration::from_secs(2);
 
-/// Figure spaces kept at the end of a code block's first line, under the Copy code button, so
-/// the button never covers the line's end (`El::uncopied`: they draw, but don't copy). A
-/// figure space doesn't break and is a digit wide, about one cell of a mono face and as wide
-/// in a proportional one, so five keep room for the button at any text size.
 pub(crate) const BUTTON_ROOM: &str = "\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}";
 
 /// An image, diagram or equation's pixels, as the host has them.
@@ -54,13 +47,8 @@ pub(crate) enum Request {
     Reveal(String),
 }
 
-/// Process-unique monotonic counter so each document's embedded table scroll viewports receive
-/// distinct Rune keys and never inherit horizontal scroll offsets from a previous document.
 static NEXT_CONTENT_GEN: AtomicU64 = AtomicU64::new(1);
 
-/// What doesn't change between [`DocumentState::set_document`]s: the document, its shown
-/// texts, and per-table interactive state. The view's copy handler holds it, since Rune gives
-/// that handler no app state.
 #[derive(Debug)]
 pub(crate) struct Content {
     pub key: String,
@@ -136,8 +124,6 @@ impl Content {
         out
     }
 
-    /// What copying `sel` takes (Strata's rule): units wholly inside it copy their copy text,
-    /// and its end units the part selected, with the block's newline where it goes on.
     pub fn copy(&self, sel: &TextSelection) -> String {
         if self.all.get() && copy::reads_whole(self, sel) {
             return self.copy_all();
@@ -146,8 +132,6 @@ impl Content {
     }
 }
 
-/// One document preview's state, kept by the host (one per preview) and given to
-/// [`DocumentView`](super::DocumentView) by accessor.
 #[derive(Debug)]
 pub struct DocumentState {
     content: Rc<Content>,
@@ -208,8 +192,6 @@ impl DocumentState {
         s
     }
 
-    /// The view's key, `doc` unless set: its rows are keyed `{key}-u{index}` and each row's
-    /// text `t`. Give each document view on screen its own.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.content = Rc::new(Content::new(key.into(), self.content.doc.clone()));
         self
@@ -223,9 +205,6 @@ impl DocumentState {
         self.content.clone()
     }
 
-    /// Replaces the document (a reload). Media states are dropped. An open find runs again on
-    /// the new text with no match selected (the next step selects one), and selections find
-    /// queued and hasn't flushed are dropped: they name the old document's bytes.
     pub fn set_document(&mut self, doc: Arc<Document>) {
         self.searchable = doc
             .units
@@ -272,14 +251,10 @@ impl DocumentState {
         self.content.scroll_gen
     }
 
-    /// Whether the file has a Source view (Markdown, HTML, RTF, CSV, TSV): the header then
-    /// offers View source. DOCX, ODT and workbooks have none. Off by default.
     pub fn set_source_available(&mut self, on: bool) {
         self.source_available = on;
     }
 
-    /// The wrap preference, or `None` for a document that always wraps (DOCX, ODT): the
-    /// header then hides the toggle. With wrap off, each row scrolls sideways on its own (D7).
     pub fn set_wrap(&mut self, wrap: Option<bool>) {
         self.wrap = wrap;
     }
@@ -319,8 +294,6 @@ impl DocumentState {
         self.content.shown_of(i)
     }
 
-    /// Rune's visible rows: true when a code block that colours came within reach of the
-    /// viewport or left it, so the view builds again and asks for its colours.
     pub(crate) fn set_visible(&mut self, rows: Range<usize>) -> bool {
         let old = std::mem::replace(&mut self.visible, rows.clone());
         let reach = |r: &Range<usize>| (r.len() * 2).max(8);
@@ -352,12 +325,6 @@ impl DocumentState {
         self.content.all.set(false);
     }
 
-    /// Runs the host's clock: Copy code goes back to its icon [`COPIED_FOR`] after a press.
-    /// Call it from the host's poll with the poll's clock; true when the view changed.
-    ///
-    /// A press stamps the clock of the poll its frame ran (Rune polls before input) and asks
-    /// for a wake [`COPIED_FOR`] later, so that wake's poll finds the time up, on a window at
-    /// rest too; a second press stamps afresh and asks for its own.
     pub fn tick(&mut self, now: f64) -> bool {
         self.now = now;
         let Some((_, at)) = self.copied else {
@@ -371,14 +338,10 @@ impl DocumentState {
         false
     }
 
-    /// The double-click time, in seconds (P5's, from the desktop's settings): a second click on
-    /// a link within it doesn't open the link again. [`DOUBLE_CLICK`] until set.
     pub fn set_double_click_interval(&mut self, secs: f64) {
         self.double_click = secs;
     }
 
-    /// A plain click on link `id`: true when it should open, false for the second click of
-    /// a double-click (or a third), timed by the host's clock.
     pub(crate) fn link_pressed(&mut self, id: String) -> bool {
         let again = self
             .last_link
@@ -394,9 +357,6 @@ impl DocumentState {
         self.copied = Some((unit, self.now));
     }
 
-    /// Applies the selections and scrolls find has asked for. [`HostedPreview::find`] gets no
-    /// `Tx`, so they wait here: call this from the host's poll (which has one). True when it
-    /// asked for anything.
     pub fn flush(&mut self, tx: &mut Tx) -> bool {
         let any = !self.pending.is_empty();
         for r in self.pending.drain(..) {
@@ -503,8 +463,6 @@ impl DocumentState {
         index.find(&self.query)
     }
 
-    /// Selects match `c` and scrolls to it. A match that spans two units selects only its
-    /// part in the first (Rune selects within one text from code: R1).
     fn select_current(&mut self) {
         let Some(m) = self.current.map(|c| self.matches[c]) else {
             return;

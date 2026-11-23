@@ -9,32 +9,23 @@ use super::step::Step;
 use super::store::{Inner, Job, ThumbnailStore, Ticket};
 use crate::contract::{EntryId, EntrySource, ThumbKey};
 
-/// How far around a viewer's visible rows, in viewports per side, pruning leaves handles
-/// alone. Rune keeps an index-built list's rows mounted up to two viewports past the viewport
-/// (`OVERSCAN` in `el/virtual_list.rs` at the pinned rev), and rows drawn during motion up to
-/// two more; a row mounted outside this guard still builds again on the commit `sync` asks
-/// for after a prune (see [`ThumbnailStore::sync`]).
 const GUARD: usize = 5;
 
 /// One view showing entries from the store: a list, a grid, a Columns column, a peek.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ViewerId(u32);
 
-/// What a viewer shows, as [`ThumbnailStore::sync`] takes it.
-///
-/// Fields may be added: build one with [`Viewport::new`].
+/// What a viewer shows, as `ThumbnailStore::sync` takes it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Viewport {
-    /// The entries in the viewport, by index in the source: C1e's `on_visible` range, or
-    /// `CollectionState::visible_range`.
+    /// The entries in the viewport, by index in the source: `on_visible` range, or `CollectionState::visible_range`.
     pub visible: Range<usize>,
     /// Entries a line: 1 for a list, the tiles a row for a grid. The margin is whole lines.
     pub per_line: usize,
     /// The step the viewer draws at.
     pub step: Step,
-    /// The host's listing version (C1e's): ranges of two versions aren't compared for the
-    /// scroll direction.
+    /// The host's listing version: ranges of two versions aren't compared for the scroll direction.
     pub listing: u64,
 }
 
@@ -83,8 +74,7 @@ pub enum Tier {
     Behind,
 }
 
-/// A thumbnail to load: render `key` (the entry `entry`) with its long edge at most `step`,
-/// then hand the result to [`ThumbnailStore::complete`] with `ticket`.
+/// A thumbnail to load: render `key` (the entry `entry`) with its long edge at most `step`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Request {
@@ -126,8 +116,6 @@ pub(crate) struct Viewer {
 }
 
 impl Viewer {
-    /// Makes the next sync recompute the lists even for an unchanged viewport. The viewport
-    /// itself stays: its keys are still wanted at its step, and a resync still has it.
     pub(crate) fn stale(&mut self) {
         self.stale = true;
     }
@@ -158,15 +146,7 @@ impl Viewer {
 }
 
 impl ThumbnailStore {
-    /// A new viewer. Drop it with [`ThumbnailStore::drop_viewer`] when its view goes.
-    ///
-    /// It takes the slot of a viewer dropped before, if any, fresh, so the list is never
-    /// longer than the most viewers alive at once: `pop`, `rewant` and the settings walk it,
-    /// and a host that opens and closes views all session (Strata's Columns, a viewer per
-    /// column) would otherwise grow it without end. A dropped viewer's id may so name a new
-    /// viewer: a host forgets an id once it drops it. A late result for the dropped viewer's
-    /// request lands by its ticket, never by viewer: its request was cancelled with the
-    /// viewer unless another viewer still wants the key.
+    /// A new viewer.
     pub fn viewer(&mut self) -> ViewerId {
         let viewers = &mut self.inner.get_mut().viewers;
         let slot = match viewers.iter().position(Option::is_none) {
@@ -202,23 +182,12 @@ impl ThumbnailStore {
             .map_or(Direction::Down, |w| w.direction)
     }
 
-    /// Records what viewer `v` shows from `src`. Call it from C1e's `on_visible` (and from
-    /// `poll`, cheaply: an unchanged viewport returns at once).
-    ///
-    /// The viewport's keys are touched (drawn, least-recently-used order) and protected from
-    /// eviction, with the previous sync's: Rune reports a reflowed grid's rows a frame late
-    /// (C1e's draft U-C1f-5). Requests out for keys no viewer shows or has in its margin any
-    /// more are cancelled ([`ThumbnailStore::take_cancelled`]).
-    ///
-    /// True only when the store pruned handles it no longer needed: then the host's handler
-    /// returns true, so the view runs once and any row still drawing a pruned key builds on
-    /// its new handles. That happens once per few thousand keys scrolled past.
+    /// Records what viewer `v` shows from `src`.
     pub fn sync(&mut self, v: ViewerId, src: &dyn EntrySource, view: Viewport) -> bool {
         self.sync_with(v, src, view, false)
     }
 
-    /// Syncs viewer `v` again after its source changed (a refresh, a filter, a re-sort),
-    /// with its last viewport and listing version `listing`.
+    /// Syncs viewer `v` again after its source changed (a refresh, a filter, a re-sort).
     pub fn resync(&mut self, v: ViewerId, src: &dyn EntrySource, listing: u64) -> bool {
         let last = {
             let inner = self.inner.borrow();
@@ -234,8 +203,7 @@ impl ThumbnailStore {
         }
     }
 
-    /// Syncs viewer `v` again at a new step with its last viewport: a zoom or a change of
-    /// display scale that moved no row.
+    /// Syncs viewer `v` again at a new step with its last viewport: a zoom or a change of display scale that moved no row.
     pub fn set_step(&mut self, v: ViewerId, src: &dyn EntrySource, step: Step) -> bool {
         let last = {
             let inner = self.inner.borrow();
@@ -280,8 +248,6 @@ impl ThumbnailStore {
                 w.direction = Direction::Up;
             }
         } else if w.last.as_ref().is_none_or(|l| l.listing != view.listing) {
-            // A new listing starts afresh; a reflow (another count a line) moves `start`
-            // without a scroll, so it keeps the direction.
             w.direction = Direction::Down;
         }
         let (visible, above, below) = spans(&view, src.len(), margin);
@@ -312,14 +278,7 @@ impl ThumbnailStore {
         inner.prune(src, visible)
     }
 
-    /// The best request to work on next, or `None` when nothing is wanted (or thumbnails are
-    /// off). The host pulls as many as it has workers for, from `poll`.
-    ///
-    /// Order: every viewer's visible keys in reading order, then the margin each viewer is
-    /// scrolling toward, nearest line first, then the margin behind, nearest first. Within a
-    /// tier, keys never loaded go before keys held at another step. Keys in a request, failed
-    /// less than [`Settings`](super::Settings)' `retry_after` ago or stopped are skipped. Margin
-    /// keys wait while the rows on screen fill the budget.
+    /// The best request to work on next, or `None` when nothing is wanted (or thumbnails are off).
     pub fn pop(&mut self, now: f64) -> Option<Request> {
         let inner = self.inner.get_mut();
         if !inner.enabled {
@@ -366,8 +325,6 @@ impl ThumbnailStore {
                 .saturating_add(inner.margin_out_bytes)
                 .saturating_add(room);
             if tier != Tier::Visible && needs > budget {
-                // A margin image could only land by evicting a key some viewer wants: wait
-                // until a request ends, a wanted image goes, or the viewport moves.
                 inner.gated = true;
                 continue;
             }
@@ -399,9 +356,6 @@ impl Viewer {
 }
 
 impl Inner {
-    /// Ranks every wanted key that may need a request: by tier, every viewer's viewport
-    /// before any margin, keys never loaded before keys held at another step. `pop` then
-    /// walks it once; it is ranked again only when something it skipped could have changed.
     fn rank(&mut self, now: f64) {
         self.queue.clear();
         self.cursor = 0;
@@ -475,9 +429,6 @@ impl Inner {
         self.dirty = true;
     }
 
-    /// Drops handles that hold nothing and wait for nothing, once there are many, except
-    /// those any viewer wants or protects and those near `visible` in `src`. True if any
-    /// went.
     fn prune(&mut self, src: &dyn EntrySource, visible: Range<usize>) -> bool {
         let busy = self.lru.len() + self.in_flight.len();
         if self.entries.len().saturating_sub(busy) <= self.prune_slack {
@@ -489,8 +440,6 @@ impl Inner {
         keep.extend(self.wanted.keys().copied());
         keep.extend(self.protected.iter().copied());
         let before = self.entries.len();
-        // Failed and stopped keys go too: near a viewer they keep their wait, and one seen
-        // again after a prune is just asked for again.
         self.entries.retain(|k, e| {
             e.held.is_some() || matches!(e.job, Job::Requested { .. }) || keep.contains(k)
         });
@@ -522,8 +471,6 @@ fn keyed(src: &dyn EntrySource, range: Range<usize>) -> Keyed {
         .collect()
 }
 
-/// The margin `range`, nearest line first: below the viewport that is reading order; above
-/// it, the lines from the last one up, each line still in reading order.
 fn keyed_lines(src: &dyn EntrySource, range: &Range<usize>, per_line: usize, above: bool) -> Keyed {
     if !above {
         return keyed(src, range.clone());

@@ -22,10 +22,6 @@ pub enum UndoEntry {
     },
     Move(Vec<MoveRecord>),
     Copy(Vec<Location>),
-    /// `created` paths are trashed, or deleted where Trash is unavailable;
-    /// `overwritten` paths lose the incoming copy and get their staged
-    /// original back from Trash. Either is touched only while it still
-    /// matches its `placed` snapshot.
     Merge {
         created: Vec<Location>,
         overwritten: Vec<Location>,
@@ -193,9 +189,6 @@ pub(super) struct PendingUndo {
     pub(super) background: bool,
     pub(super) generation: u64,
     pub(super) entry: UndoEntry,
-    /// Items already reversed, kept so a partial undo can offer a matching
-    /// redo. Stays `None` until an item completes so single-shot entries like
-    /// Rename only redo when they actually reverted.
     pub(super) completed: Option<UndoEntry>,
     pub(super) claimed: bool,
 }
@@ -253,7 +246,6 @@ impl UndoState {
     }
 }
 
-// Undo follows the latest operation across every Strata window on the GTK main thread.
 thread_local! {
     pub(super) static PENDING_UNDO: RefCell<UndoState> = RefCell::new(UndoState::default());
 }
@@ -270,8 +262,6 @@ pub(super) fn push_pending_undo(entry: UndoEntry) {
     });
 }
 
-/// Naming a new item moves or replaces the item its creation recorded, so
-/// undoing that creation removes what the naming made instead.
 pub(super) fn retarget_created_undo(created: &Location, placed: Location) {
     let retargeted = PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();

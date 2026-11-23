@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The demo's stand-in for Strata's file side: entry ids by path, listings read from disk, and
-//! pastes applied inside `--root` only.
-//!
-//! The guards (`inside`, `place`, `copy_all`, `move_all`, `below`) are X2's
-//! (`examples/dnd_wiring/fsys.rs`), copied while both demos are in review and adapted for a
-//! paste: a copy into its own folder takes a numbered name, as Strata's Duplicate does, and a
-//! name taken elsewhere is kept beside under a numbered name (Keep Both). A follow-up shares
-//! them in `examples/common/transfer.rs` once both merge.
-
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::io;
@@ -17,7 +8,6 @@ use std::path::{Path, PathBuf};
 
 use strata_components::contract::{EntryId, EntryKind, ListEntry, ListSource};
 
-/// Entry ids by path: an id lives for the process and is never reused (W1).
 #[derive(Default)]
 pub struct Ids {
     next: u64,
@@ -88,20 +78,9 @@ pub struct Pasted {
     pub conflicts: Vec<(String, String)>,
     /// Sources left alone, and why.
     pub skipped: Vec<(String, &'static str)>,
-    /// The source the paste stopped at, and why: what came before it is done (and listed
-    /// above), what came after it is untouched.
     pub failed: Option<(String, String)>,
 }
 
-/// Pastes `sources` into `dest`, copying or `moving`. Refuses the whole paste if `dest` or any
-/// source is outside `root`, before touching anything. A copy into its own folder takes the
-/// first free numbered name (`name (1).ext`); a move into its own folder, and a folder into
-/// itself or one of its descendants, does nothing. A name taken in `dest` is kept beside
-/// under the first free numbered name (Keep Both). A link is copied or moved as the link
-/// (never followed out of the root), and nothing is created over an existing entry.
-///
-/// A source that fails stops the paste there, in [`Pasted::failed`]; the Ok still says what
-/// was done before it, so a cut's moved sources still leave the clipboard.
 pub fn paste(
     root: &Path,
     sources: &[PathBuf],
@@ -157,8 +136,6 @@ pub fn paste(
     Ok(done)
 }
 
-/// Writes a pasted image into `dest` as `image.png`, else the first free `image (n).png`.
-/// The name written.
 pub fn paste_image(root: &Path, dest: &Path, png: &[u8]) -> Result<String, String> {
     let root = root.canonicalize().map_err(|e| format!("root: {e}"))?;
     let dest = folder_inside(&root, dest)?;
@@ -188,8 +165,6 @@ fn folder_inside(root: &Path, dest: &Path) -> Result<PathBuf, String> {
     Ok(dest)
 }
 
-/// `src` with its folder resolved but not itself (a pasted link is the link), if it is there
-/// and inside `root`. (X2's.)
 fn inside(root: &Path, src: &Path) -> Result<PathBuf, String> {
     let outside = || format!("{} is outside the root", src.display());
     let name = src.file_name().ok_or_else(outside)?;
@@ -206,8 +181,6 @@ fn inside(root: &Path, src: &Path) -> Result<PathBuf, String> {
     Ok(src)
 }
 
-/// The names `name` may take, in order: itself when `plain`, then Strata's numbered names
-/// (`stem (n).ext`, a file's last extension kept; one past the number it has already).
 fn names(name: &OsStr, is_dir: bool, plain: bool) -> impl Iterator<Item = OsString> + '_ {
     let (stem, ext) = parts(name, is_dir);
     let (base, has) = number_of(stem);
@@ -233,8 +206,6 @@ fn parts(name: &OsStr, is_dir: bool) -> (&OsStr, &OsStr) {
     (stem, OsStr::from_bytes(&name.as_bytes()[stem.len()..]))
 }
 
-/// A stem's ` (n)` suffix, as Strata reads it (`parse_copy_suffix`): digits, no leading zero,
-/// and below `u64::MAX`, so one past it is a number too.
 fn number_of(stem: &OsStr) -> (&OsStr, Option<u64>) {
     let bytes = stem.as_bytes();
     if let Some(open) = bytes.strip_suffix(b")")
@@ -255,9 +226,6 @@ fn number_of(stem: &OsStr) -> (&OsStr, Option<u64>) {
     (stem, None)
 }
 
-/// Makes an entry in `dest` with `make`, under the first of [`names`] free: `make` creates it
-/// exclusively, failing with `AlreadyExists` only when the name is taken. (X2's, with
-/// Strata's numbering.)
 fn place(
     dest: &Path,
     name: &OsStr,
@@ -276,8 +244,6 @@ fn place(
     Err(io::Error::other("no free name"))
 }
 
-/// An error below the entry `place` made: never "the name is taken", which would have it
-/// try another name over a half-made entry. (X2's.)
 fn below(e: io::Error) -> io::Error {
     if e.kind() == io::ErrorKind::AlreadyExists {
         io::Error::other(e)
@@ -286,8 +252,6 @@ fn below(e: io::Error) -> io::Error {
     }
 }
 
-/// Copies `from` to `to`, which must not exist: a link as the link, a folder with its entries.
-/// (X2's.)
 fn copy_all(from: &Path, to: &Path) -> io::Result<()> {
     let meta = from.symlink_metadata()?;
     let kind = meta.file_type();
@@ -316,14 +280,8 @@ fn copy_all(from: &Path, to: &Path) -> io::Result<()> {
     }
 }
 
-/// Moves `from` to `to`, which must not exist, never replacing an entry there. Copies and
-/// removes only across devices: any other failure is reported, with the source untouched.
-/// A file whose source can't be removed once its new name is made loses the new name again,
-/// so nothing is left in both places. (X2's, with its review-2 fix and that.)
 fn move_all(from: &Path, to: &Path) -> io::Result<()> {
     if from.symlink_metadata()?.file_type().is_dir() {
-        // Reserve the name with an empty folder of our own, which `rename` replaces (it only
-        // replaces an empty folder).
         std::fs::create_dir(to)?;
         match std::fs::rename(from, to) {
             Ok(()) => return Ok(()),

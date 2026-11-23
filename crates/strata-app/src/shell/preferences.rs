@@ -85,8 +85,6 @@ fn look_context(window: &Window) -> LookContext {
     }
 }
 
-/// The look follows the saved settings as they are now: a part that changes one the look
-/// reads calls this after `saved(app).change(…)`, as GTK's theme follows its preference.
 pub(crate) fn follow_look(app: &mut App) {
     let App { look, window, .. } = app;
     let ctx = look_context(window);
@@ -112,8 +110,6 @@ pub(crate) fn follow_look_tx(app: &mut App, tx: &mut Tx) {
     crate::preview::sync_theme(app);
 }
 
-/// Syncs live preferences (`date_format`, relative-date timers, and active `Preview`
-/// backend/wrap/header) after a Settings edit or external reload.
 pub(crate) fn sync_live_preferences(app: &mut App, tx: &mut Tx) {
     let format = DateFormat::parse(&preferences(app).date_format);
     strata_core::util::set_date_format(format);
@@ -126,9 +122,6 @@ pub(crate) fn sync_live_preferences(app: &mut App, tx: &mut Tx) {
     crate::preview::sync_preferences(app);
 }
 
-/// Another window of the process changed the settings: this one reads them again, and what
-/// follows a change made here follows this one too, as every GTK window binds to the one
-/// `PreferenceManager`. What a part reads at use follows with the values themselves.
 pub(crate) fn follow_another_window(app: &mut App, tx: &mut Tx) -> bool {
     if !app.window.settings.follow() {
         return false;

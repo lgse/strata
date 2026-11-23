@@ -15,8 +15,6 @@ fn offer(actions: DropActions, local: bool, serial: u64) -> DropOffer {
     DropOffer::new(mimes, actions).local(local).serial(serial)
 }
 
-// browser/sidebar/rail: "each press of the header toggle or Ctrl+B steps the sidebar from
-// full to icon rail to hidden, then back to full", and the tooltip naming the next step.
 #[test]
 fn the_toggle_steps_full_rail_hidden_full_and_names_the_next_step() {
     let mut w = Width::default();
@@ -46,8 +44,6 @@ fn a_chosen_rail_ignores_the_fit_rule() {
     assert_eq!(w.shown(), Step::Rail);
 }
 
-// browser/sidebar/rail: "Choosing the rail while space has already railed the sidebar keeps the
-// rail when the window widens again".
 #[test]
 fn choosing_the_rail_over_an_automatic_rail_keeps_it_when_room_returns() {
     let mut w = Width::default();
@@ -58,8 +54,6 @@ fn choosing_the_rail_over_an_automatic_rail_keeps_it_when_room_returns() {
     assert_eq!(w.shown(), Step::Rail);
 }
 
-// browser/sidebar/rail: "stepping from hidden to full shows the full sidebar even when too
-// narrow. It stays full until the window or the preview next runs out of room."
 #[test]
 fn stepping_from_hidden_shows_the_full_sidebar_until_the_fit_rule_next_rails_it() {
     let mut w = Width::default();
@@ -81,8 +75,6 @@ fn a_hidden_sidebar_ignores_the_fit_rule() {
     assert!(!w.auto_rail());
 }
 
-// browser/sidebar/rail: "Reopening the sidebar at a 10px text size restores at least its
-// measured minimum width".
 #[test]
 fn the_full_width_comes_back_at_least_at_the_minimum() {
     let mut w = Width::new(40.0);
@@ -98,9 +90,6 @@ fn the_full_width_comes_back_at_least_at_the_minimum() {
     );
 }
 
-// drag-to-pin: "Holding Shift during a drag from Strata still pins the folder and moves
-// nothing", and "A Move-only drag from another application is rejected by the gaps; a Copy
-// drag from it is accepted."
 #[test]
 fn gaps_take_copies_and_local_moves_but_refuse_a_foreign_move_only_drag() {
     let both = DropActions::COPY | DropActions::MOVE;
@@ -128,8 +117,6 @@ fn gaps_take_copies_and_local_moves_but_refuse_a_foreign_move_only_drag() {
     );
 }
 
-// drag-to-pin: "Dragging a file, or a selection mixing files and folders, over a gap shows no
-// insertion line, and releasing it pins and transfers nothing."
 #[test]
 fn a_refused_drag_shows_no_line_and_is_refused() {
     let check = PinCheck {
@@ -141,8 +128,6 @@ fn a_refused_drag_shows_no_line_and_is_refused() {
     assert_eq!(pin_action(&o, check.verdict(&o)), None);
 }
 
-// drag-to-pin: "A folder dragged from another file manager shows the insertion line only once
-// every item is confirmed to be a directory."
 #[test]
 fn under_wait_a_foreign_drag_shows_the_line_only_once_confirmed() {
     let mut check = PinCheck {
@@ -186,9 +171,6 @@ fn one_site_holds_the_indicator_and_a_late_leave_never_clears_another() {
     assert!(!s.dragging());
 }
 
-// drag-to-pin: "After another window unpins a gap's neighbour, a drop on that gap in a window
-// that has not rebuilt lands beside the following pin, else the preceding one." The gap
-// carries both neighbours for the host to resolve.
 #[test]
 fn a_gap_names_the_pins_on_either_side() {
     let pins = [Pin::new("a", "A"), Pin::new("b", "B")];
@@ -206,9 +188,6 @@ fn dev(id: &str) -> Device {
     Device::new(id, id, IconName::Drive, "/")
 }
 
-// devices/volumes/drive-order: "No divider shows above the first group or below the last", and
-// "A pending-release stand-in for a device no longer listed follows every group, with no
-// divider before it."
 #[test]
 fn dividers_sit_only_between_groups() {
     let groups = [
@@ -228,8 +207,6 @@ fn dividers_sit_only_between_groups() {
     assert_eq!(lines, ["a", "b", "|2", "c", "ghost"]);
 }
 
-// browser/sidebar: "A collapsed DEVICES badge counts device rows only, not the dividers between
-// drives: two partitions plus one other drive read `3`."
 #[test]
 fn the_devices_count_is_rows_not_dividers() {
     let groups = [
@@ -254,9 +231,6 @@ fn gap_zone(check: PinCheck, verdict: PinVerdict) -> crate::contract::dnd::DropZ
     )
 }
 
-// drag-to-pin: "A folder dragged from another file manager shows the insertion line only once
-// every item is confirmed to be a directory." Under `Wait`, the gap takes a drop only once the
-// host confirmed it; under `Accept`, the host checks at the drop.
 #[test]
 fn under_wait_a_gap_refuses_a_drop_the_host_hasnt_confirmed() {
     let state = SidebarState::default();
@@ -573,8 +547,6 @@ fn wide_grip_resizes_clamps_cancels_resets_and_leaves_file_pane_untouched() {
     let default = rt.state.sidebar.width.pane.default_width();
     let y = 250.0;
 
-    // Clicking or dragging inside the adjacent file pane (2 pt past the divider) stays in the
-    // file pane rather than resizing the sidebar.
     drag_horizontal(&mut rt, default + 2.0, default + 42.0, y);
     assert_eq!(rt.state.file_drags, 1);
     assert_eq!(rt.state.sidebar.width.full_width(), default);
@@ -690,8 +662,6 @@ fn overlay_above_sidebar_wins_pointer_hits_over_wide_grip() {
     let edge = rt.state.sidebar.width.full_width();
     let y = 250.0;
 
-    // Clicking and dragging on the grip coordinates covered by an overlay hits the overlay,
-    // not the sidebar's resize grip.
     drag_horizontal(&mut rt, edge - 3.0, edge + 37.0, y);
     assert_eq!(rt.state.overlay_presses, 1);
     assert_eq!(rt.state.sidebar.width.full_width(), edge);

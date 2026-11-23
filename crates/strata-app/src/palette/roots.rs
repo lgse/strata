@@ -1,25 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Where the palette searches: Home, then the local drives Devices lists, as GTK's
-//! `global_search_roots`.
-//!
-//! The rule is ported from `src/ui/window/devices.rs`, which stays where it is (A10, by the
-//! coordinator's ruling; `docs/rune/parity/owner.md`, A10 item 3, asks whether it should move
-//! to a shared crate). Each piece names its GTK source:
-//!
-//! - [`MountListing::has_own_row`]: `MountListing::has_own_row`, a mount that Devices shows
-//!   on a row of its own, neither shadowed nor standing for a listed volume.
-//! - [`MountRoot::local_path`]: `MountRoot::local_path`, a root with a native path, so GVfs's
-//!   FUSE mirrors of remote shares are left out.
-//! - [`local_device_roots`]: `local_device_roots`, the listed volumes' mounts and the mounts
-//!   with a row of their own, read from the volume monitor alone ([`device_mount_roots`]), so
-//!   the search skips what the backend hides, such as btrfs subvolume mounts.
-//! - [`search_roots`]: `search_roots`, Home first, then the absolute roots that are neither
-//!   Home, a system mount nor under GVfs's `/run/user/<uid>/gvfs`, sorted and without
-//!   repeats. A drive that holds Home is kept, and so is a mount nested in another.
-//!
-//! The unit cases in `roots/tests.rs` are `src/ui/window/devices/tests.rs`'s for these.
-
 use std::path::{Path, PathBuf};
 
 use gio::prelude::*;
@@ -88,8 +68,6 @@ fn local_device_roots(
         .collect()
 }
 
-/// Taken from the volume monitor alone, so search skips what the backend hides, such as
-/// btrfs subvolume mounts. On the interface thread, whose context is GLib's default.
 fn device_mount_roots() -> Vec<PathBuf> {
     let monitor = gio::VolumeMonitor::get();
     let volumes = monitor.volumes();
@@ -110,8 +88,6 @@ pub(super) fn global_search_roots() -> Vec<PathBuf> {
     search_roots(&crate::launch::home_directory(), mounted_drives())
 }
 
-/// The machine's drives, but none in this crate's tests: a hosted palette searches only the
-/// test's own Home, never the drives of the machine the tests run on.
 fn mounted_drives() -> Vec<PathBuf> {
     #[cfg(test)]
     return Vec::new();

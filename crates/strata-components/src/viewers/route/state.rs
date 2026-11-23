@@ -1,22 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The route view's state: the route as data, the marker's place on it, and playback.
-//!
-//! Playback runs on the poll's clock: the host calls [`RouteState::tick`] from its poll on every
-//! frame, as it does `Collection::tick`. A tick moves the markers through `Live` values, which draw
-//! with no view commit. It reports a change, and so a commit, only when the text the view shows
-//! changes (the distance to a tenth, the height to a metre), and then at most every
-//! [`TEXT_INTERVAL`]: on a long route the tenths change faster than frames, and a commit a frame
-//! would rebuild the whole window for a label (C1d's auto-scroll applies at about 10 Hz the same
-//! way). Whatever stops playback (its end, a pause, a seek, a hover) commits the exact text at
-//! once.
-//!
-//! That holds for what asks the view to commit: [`RouteState::tick`]'s answer, the view's own
-//! handlers and [`RouteState::command_tx`]. [`RouteState::pause`] and [`RouteState::command`]
-//! only change the state, so a host that calls them directly commits itself: from its poll it
-//! returns true, and a handler mustn't say `live_only`. Otherwise the text stays behind the
-//! marker until something else commits.
-
 use std::cell::RefCell;
 
 use rune::{Live, Tx};
@@ -25,15 +8,11 @@ use super::trace::{self, RouteSample};
 use crate::viewers::layout::Position;
 use crate::viewers::viewport::{Mode, ViewportState};
 
-/// How long playback takes from start to end, whatever the route's length (Strata's
-/// `PLAYBACK_SECONDS`): the marker moves at a steady ground-distance pace.
 pub const PLAYBACK_SECONDS: f64 = 15.0;
 
 /// The shortest time between two text commits during playback, in seconds: about 10 Hz.
 pub const TEXT_INTERVAL: f64 = 0.1;
 
-/// A route as Strata's helper returns it (Strata's `RoutePreview`, less its PNG images: the route
-/// picture arrives as the host's `Pixels`, and the profile is drawn here from the samples).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RouteData {
     /// The display name.
@@ -55,8 +34,6 @@ pub struct RouteData {
     pub profile_px: [f32; 2],
 }
 
-/// Distances in kilometres and heights in metres, or miles and feet (Settings → Units, the
-/// host's preference).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Units {
     #[default]
@@ -73,8 +50,6 @@ pub enum Seek {
     By(f64),
 }
 
-/// What the media keys ask of a route. Mute and volume aren't among them: they do nothing to a
-/// route, and the host doesn't send them.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RouteCommand {
     PlayPause,
@@ -88,8 +63,6 @@ pub enum Plot {
     Profile,
 }
 
-/// The words the route view shows and reads. Strata passes translated text and its keymap's
-/// keys; the defaults are Strata's English with the default key map.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct RouteLabels {
@@ -140,8 +113,6 @@ impl Default for RouteLabels {
     }
 }
 
-/// What the view shows that a marker move can change: a move that leaves it alone commits
-/// nothing.
 #[derive(Clone, Debug, PartialEq)]
 struct Shown {
     distance: String,
@@ -149,9 +120,6 @@ struct Shown {
     playing: bool,
 }
 
-/// The route view's state. The host makes one per route ([`RouteState::new`]), sets the route
-/// picture's `Pixels`, calls [`RouteState::tick`] from its poll, sends the media keys to
-/// [`RouteState::command`], and [`RouteState::pause`]s when the preview hides.
 pub struct RouteState {
     /// The route picture's viewport (Fit, fixed).
     pub viewport: ViewportState,
@@ -317,15 +285,11 @@ impl RouteState {
         self.place_markers();
     }
 
-    /// Stops playback where the marker is: another file was selected, the preview closed or
-    /// hid in a narrow window. It doesn't commit: the caller does (module docs).
     pub fn pause(&mut self) {
         self.playing = false;
         self.last_tick = None;
     }
 
-    /// A media key. False when it does nothing here (a route of zero length). It doesn't
-    /// commit: the caller does (module docs), or calls [`RouteState::command_tx`].
     pub fn command(&mut self, command: RouteCommand) -> bool {
         if !self.playable() {
             return false;
@@ -355,10 +319,6 @@ impl RouteState {
         taken
     }
 
-    /// One frame of playback at `now` seconds on the host's clock. True when the view should
-    /// commit (the host's poll returns it): the text it shows is behind, and [`TEXT_INTERVAL`]
-    /// has passed since playback last asked, or playback just reached the end. The markers move
-    /// either way. While playing it asks for the next frame.
     pub fn tick(&mut self, now: f64, tx: &mut Tx) -> bool {
         if !self.playing {
             return false;
@@ -385,9 +345,6 @@ impl RouteState {
         self.place_markers();
     }
 
-    /// The pointer moved over a picture, at `point` in that picture's own points: playback
-    /// pauses and both markers go to the point it picks. True when what the view shows is
-    /// behind, so the handler commits.
     pub fn hover(&mut self, plot: Plot, point: [f32; 2]) -> bool {
         if self.last_pointer.replace((plot, point)) == Some((plot, point)) {
             return false;
@@ -445,8 +402,6 @@ impl RouteState {
         Some(level / self.viewport.scale())
     }
 
-    /// Puts the markers where the marker's sample draws: on the route picture in its content's
-    /// points, and on the profile in its own.
     pub fn place_markers(&self) {
         let Some(p) = self.position else { return };
         if let Some(k) = self.points_per_px() {

@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A fake `org.freedesktop.portal.Settings`, served from the test process on the session's
-//! private bus only: it connects to the address it is given (`Session::bus().address()`), never
-//! to a bus from the environment. It answers `ReadAll`, `Read` and `ReadOne` from the values
-//! it holds, emits `SettingChanged` when a test changes one, logs every call, and can delay
-//! or hold back its `ReadAll` answers, as a slow portal does. A restarted portal is a second `FakePortal`:
-//! another connection, under a new unique name.
-
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
@@ -39,8 +32,6 @@ struct State {
     after_answer: Option<After>,
 }
 
-/// Something the fake does right after a `ReadAll` answer goes out: it is queued on the fake's
-/// runtime as the answer is built, so it reaches the bus just after the answer.
 enum After {
     /// Store this value and announce it.
     Change(String, String, OwnedVariant),
@@ -194,8 +185,6 @@ impl FakePortal {
             .expect("the fake portal's runtime");
         let handle = runtime.handle().clone();
         let (stop, stopped) = oneshot::channel::<()>();
-        // The runtime's own thread drives its I/O; the test thread hands it work through
-        // `Handle::block_on`.
         let thread = std::thread::Builder::new()
             .name("fake-settings-portal".into())
             .spawn(move || {
@@ -235,9 +224,6 @@ impl FakePortal {
             .expect("owning the portal's name");
     }
 
-    /// Takes the portal's name so that another portal may take it over, taking it over from
-    /// the current owner if there is one. The replaced portal stays on the bus and can still
-    /// answer a read it was asked.
     pub fn take_over(&self) {
         let flags = RequestNameFlags::ALLOW_REPLACEMENT
             | RequestNameFlags::REPLACE_EXISTING
@@ -297,8 +283,6 @@ impl FakePortal {
             .expect("the fake portal's connection")
     }
 
-    /// Makes each later `ReadAll` wait `delay` before it answers. Signals still go out
-    /// meanwhile.
     pub fn set_delay(&self, delay: Duration) {
         self.state
             .lock()

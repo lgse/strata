@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Bundled script template library button and searchable popover, matching
-//! `src/ui/settings/actions/examples.rs`.
-
 use rune::{Color, Cursor, El, Key, KeyEvent, ScrollSpec, TextEdit, Tx, col, icon, row, text};
 use rune_kit::{IconButton, IconButtonVariant, Placement, TextInput, popover};
 use strata_components::scroll::Bar;

@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The search behind a filter and the search palette: GTK's `SearchSession`
-//! (`src/ui/search_session.rs`), the index of a folder on strata-fs's worker and its results
-//! for the current query, and the palette's index of its roots (`start_search` in
-//! `src/ui/search.rs`).
-//!
-//! - **One index for a scope.** A query that keeps the scope, whether hidden entries show
-//!   and the search limits asks the running index again; anything else starts a new one, as
-//!   `SearchSession::update` does. The palette starts its index on open, before a query
-//!   ([`Session::prepare`]).
-//! - **Results on GLib's clock.** GTK reads the worker's channel every 16 ms, eight events
-//!   at a time, keeping only the last batch for the query typed now (`drain`); the batch is
-//!   queued for the interface through [`Later`], as every service's callback is.
-//! - **Cancelling** drops the worker and its timer: a batch already queued names a generation
-//!   that has gone and is dropped where it lands.
-
 use std::{
     cell::{Cell, RefCell},
     collections::HashSet,
@@ -34,7 +19,6 @@ use strata_fs::{
     },
 };
 
-/// How often GTK reads the worker's channel, and how many events at a time.
 const POLL: Duration = Duration::from_millis(16);
 const PER_POLL: usize = 8;
 
@@ -57,8 +41,6 @@ pub(crate) enum Scope {
         root: PathBuf,
         refused: RefusedFolders,
     },
-    /// The palette's roots, every subfolder but the excluded ones
-    /// (`index_trees_with_exclusions`).
     Trees {
         roots: Vec<PathBuf>,
         exclusions: Vec<String>,
@@ -180,8 +162,6 @@ impl Session {
         state.query.borrow_mut().clear();
     }
 
-    /// Probes `paths` on `strata-fs`'s mount lanes and calls `apply` with the subset proven
-    /// absent (`SearchSession::prune_missing` in `src/ui/search_session.rs`).
     pub(crate) fn prune_missing(
         &self,
         paths: Vec<PathBuf>,
@@ -218,8 +198,6 @@ impl Session {
         });
     }
 
-    /// Asks for `query`'s results over `input`, joining the running index when it is the
-    /// same search. An empty query cancels.
     pub(crate) fn update(
         &self,
         input: Input,
@@ -236,8 +214,6 @@ impl Session {
         self.ask(query);
     }
 
-    /// Starts the index of `input`, unless it runs already: the palette reads its roots from
-    /// the moment it opens, as GTK's `show` starts the search before anything is typed.
     pub(crate) fn prepare(
         &self,
         input: Input,
@@ -263,14 +239,10 @@ impl Session {
         self.listen(receiver, deliver);
     }
 
-    /// The text the field holds now, before its wait ends: a batch for any other query is
-    /// dropped as it arrives (GTK's `expect_query`).
     pub(crate) fn expect(&self, query: &str) {
         self.0.query.replace(query.trim().to_owned());
     }
 
-    /// Asks the worker for more candidates of `query`, when the shown results fell short of
-    /// the cap after the interface's own checks (`eligible_results`).
     pub(crate) fn more(&self, query: &str, count: usize) {
         if *self.0.query.borrow() != query {
             return;
@@ -320,8 +292,6 @@ impl Session {
     }
 }
 
-/// The last batch among the next few events that answers the query typed now, and whether
-/// the worker has gone.
 fn drain(
     receiver: &Receiver<SearchEvent>,
     current: &str,

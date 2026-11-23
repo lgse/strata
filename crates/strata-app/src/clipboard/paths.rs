@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Path, URI and shell-escaping rules for clipboard operations, matching
-//! `src/ui/browser/clipboard.rs` and `src/ui/browser/paths.rs`.
-
 use std::{collections::HashSet, os::unix::ffi::OsStrExt, path::Path};
 
 use gio::prelude::*;
@@ -67,8 +64,6 @@ pub(crate) fn retain_untransferred(cut: &mut Vec<Location>, transferred: &[Locat
     });
 }
 
-/// Encodes `locations` into the three Linux file-manager clipboard formats (`Files`) and the
-/// plain-text path fallback offered alongside them.
 pub(crate) fn files_for_locations(locations: &[Location], cut: bool) -> Option<(Files, String)> {
     if locations.is_empty() {
         return None;

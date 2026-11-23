@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Persisted variable surface transparency & frosted glass preferences (`settings.toml`).
-//!
-//! Stored beside `Preferences` so Rune's transparency settings persist and merge through
-//! [`super::Saving`] without altering GTK's `Preferences` schema.
-
 use serde::{Deserialize, Serialize};
 
 use super::{read_state_file, settings_path};
@@ -34,8 +29,6 @@ pub const fn normalized_surface_transparency(percent: u32) -> u32 {
     }
 }
 
-/// Clamps and rounds the unfocused transparency multiplier to `0.00..=2.00` (0.01 precision).
-/// Non-finite values fall back to [`DEFAULT_UNFOCUSED_TRANSPARENCY_MULTIPLIER`].
 pub fn normalized_unfocused_transparency_multiplier(multiplier: f64) -> f64 {
     if !multiplier.is_finite() {
         return DEFAULT_UNFOCUSED_TRANSPARENCY_MULTIPLIER;
@@ -146,11 +139,6 @@ impl TransparencyPreferences {
     }
 }
 
-/// Parses transparency settings from raw `settings.toml` contents, salvaging each key
-/// independently and clamping out-of-range values.
-///
-/// Returns `(preferences, repaired_keys)` where `repaired_keys` lists any keys whose stored
-/// values had the wrong type or had to be clamped. Missing keys silently take defaults.
 pub fn parse_transparency_preferences(
     contents: &str,
 ) -> (TransparencyPreferences, Vec<&'static str>) {

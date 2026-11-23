@@ -50,8 +50,6 @@ fn select(host: &mut Offscreen, root: &std::path::Path, name: &str) {
     while host.turn() {}
 }
 
-/// A 10xer window in `mode` on a folder holding `documents` (two files), `pictures` and
-/// `readme.md`, with the cursor on `name`.
 fn on_folder(host: &mut Offscreen, name: &str) -> tempfile::TempDir {
     let root = tempfile::tempdir().expect("folder");
     std::fs::create_dir(root.path().join("documents")).expect("folder");
@@ -159,9 +157,6 @@ fn step(mode: &str) -> &'static str {
     if mode == "icons" { "l" } else { "j" }
 }
 
-/// Any cursor or selection move closes the peek, as GTK's `keyboard_navigation` does: a key,
-/// Invert Selection, a click, a find. Then `i` peeks the folder the cursor reached, and `i`
-/// while a peek is open only closes it (`toggle_folder_peek`).
 fn moves_close_the_peek(mode: &'static str, name: &str) {
     in_mode(mode, name, |mut host| {
         let root = on_folder(&mut host, "documents");
@@ -221,9 +216,6 @@ fn peeked_names(host: &Offscreen) -> Vec<String> {
         .collect()
 }
 
-/// GTK's card lists the folder as it was when the peek opened: a file made in it later is not
-/// added, and Reload (F5) reloads the view but keeps the peek open on that listing (checked by
-/// hand on GTK with `qa-drive.sh`).
 fn the_peek_keeps_its_listing_through_a_reload(mode: &'static str, name: &str) {
     in_mode(mode, name, |mut host| {
         let root = on_folder(&mut host, "documents");
@@ -295,10 +287,6 @@ fn centre_of(host: &Offscreen, text: &str) -> (f32, f32) {
     (x + w.min(24.0) / 2.0, y + h / 2.0)
 }
 
-/// With "Folder peeking" on, the pointer resting on a folder opens its peek, listed by the
-/// browser; a drag starting from it closes the peek, as GTK's item drag source does. The
-/// folder is selected first, so the press that starts the drag moves no selection, which
-/// would close the peek on its own.
 fn a_resting_pointer_peeks_and_a_drag_closes_it(mode: &'static str, name: &str) {
     peeking(mode, false, name, |mut host| {
         let _root = on_folder(&mut host, "documents");
@@ -351,8 +339,6 @@ fn set_folder_peeking(host: &mut Offscreen, on: bool) {
     while host.turn() {}
 }
 
-/// Pointer peeking follows "Folder peeking" live; a keyboard peek holds it on while it is
-/// open, whatever the preference, and gives it back to the preference as it closes.
 #[test]
 fn pointer_peeking_follows_the_preference_and_a_keyboard_peek_holds_it_on() {
     let name = "pointer_peeking_follows_the_preference_and_a_keyboard_peek_holds_it_on";
@@ -374,8 +360,6 @@ fn pointer_peeking_follows_the_preference_and_a_keyboard_peek_holds_it_on() {
     });
 }
 
-/// A peek a resting pointer opened survives Reload as a keyboard one does: the part notes the
-/// selection it opened over with the same check (`seen`), which a reload's sync leaves alone.
 #[test]
 fn a_pointer_peek_survives_a_reload() {
     peeking(

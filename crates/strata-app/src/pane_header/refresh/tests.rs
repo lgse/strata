@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The headers' Refresh on the offscreen host, in each view: named for its key, and reading the
-//! folder again when pressed, from the pane header by Return and from a Columns column's
-//! header by a click, which reads that column only.
-
 use std::os::unix::fs::PermissionsExt;
 
 use rune::{Key, KeyEvent, Mods, Tx};
@@ -56,8 +52,6 @@ fn click(host: &mut Offscreen, key: &str) {
     idle(host);
 }
 
-/// Opens a folder of files in the view and waits for the header's Refresh, keyed `key`. Files
-/// only: in Columns a selected folder opens beside, and its read would pass for a refresh.
 fn opened(host: &mut Offscreen, key: &str) -> tempfile::TempDir {
     let folder = folder_of(&["a.txt", "b.txt", "c.txt"]);
     host.app().open(Location::local(folder.path()));
@@ -117,8 +111,6 @@ fn a_columns_headers_refresh_reads_the_folder_again() {
     });
 }
 
-/// A monitor reads a folder whose files change, so the column's own read shows only where the
-/// change is one no monitor reports: the folder made unreadable behind the application.
 #[test]
 fn a_columns_headers_refresh_reads_only_its_own_column() {
     let name = "a_columns_headers_refresh_reads_only_its_own_column";

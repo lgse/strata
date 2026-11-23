@@ -25,8 +25,6 @@ fn modifiers(names: &[String]) -> Result<Vec<Modifier>, String> {
 const KEYMAP: &str = "keymap";
 const INVARIANTS: &str = "invariants";
 
-/// A line the runner sends the application: a scenario's step, or the runner's own `keymap`
-/// or `invariants`.
 pub fn parse_request(line: &str) -> Result<Command, String> {
     let sent: Option<Value> = serde_json::from_str(line).ok();
     if let Some(sent) = sent.as_ref().filter(|sent| sent.get(INVARIANTS).is_some()) {

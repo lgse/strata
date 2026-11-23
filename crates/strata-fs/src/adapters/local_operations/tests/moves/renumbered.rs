@@ -7,20 +7,13 @@ enum Change {
     None,
     /// Rewritten in place with as many bytes, a tick after the source.
     Rewritten,
-    /// Replaced by another file of its size within the tick that stamped
-    /// the source.
     ReplacedWithinTheTick,
     /// Replaced by another file of its size and modification time.
     ReplacedAlike,
-    /// Renamed away, with what the merge placed in it, and another folder
-    /// made at its name.
     FolderReplaced,
     FolderEvicted,
 }
 
-/// A mount, the moved item, how it meets the destination, what happens to
-/// its copy as the mount numbers it afresh, and whether the move deletes
-/// its source.
 struct Afresh {
     preset: Preset,
     item: &'static str,
@@ -90,8 +83,6 @@ impl Afresh {
         })
     }
 
-    /// Settles the times a change must show in, and waits until what
-    /// replaces the copy is born in a later tick than what it stands in for.
     fn settle_times(
         &self,
         files: &[&Path; 2],
@@ -152,8 +143,6 @@ fn check_afresh(case: &Afresh) -> Result<(), Box<dyn Error>> {
     // Before the kernel's coarse clock, which may run a tick behind.
     let tick = SystemTime::now() - Duration::from_secs(1);
     let _clock = within_the_tick.then(|| ClockGuard::set(tick));
-    // Multigrain source times: only the destination can call for a
-    // comparison of contents.
     let _kernel = KernelGuard::set(Some((6, 13, 0)));
     let coarse_clock = within_the_tick.then_some(tick);
     let root = tempfile::tempdir()?;
@@ -215,11 +204,6 @@ fn check_afresh(case: &Afresh) -> Result<(), Box<dyn Error>> {
 fn copies_a_mount_numbers_afresh_are_known_by_birth_time_or_else_by_inode_number()
 -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // exFAT and FUSE daemons without `use_ino` number an entry afresh once
-    // the kernel evicts it, here right after the copy is published; on ext4,
-    // which keeps inode numbers, another number is another file. Merging into
-    // a folder on exFAT sets its birth time again. Whether the move deletes
-    // its source.
     let fail = |preset, item, change, deleted| Afresh {
         preset,
         item,
@@ -255,8 +239,6 @@ fn copies_a_mount_numbers_afresh_are_known_by_birth_time_or_else_by_inode_number
     Ok(())
 }
 
-/// A mount, the moved item, how it meets the destination, and whether
-/// another link takes the placed link's place.
 struct LinkAfresh {
     preset: Preset,
     item: &'static str,
@@ -281,8 +263,6 @@ impl LinkAfresh {
         )
     }
 
-    /// The call after which the link stands at `placed`; a link in a
-    /// staged folder is first made there under its name.
     fn placing(&self, placed: &'static str, racer: Racer) -> Before {
         if self.made_again() {
             (
@@ -384,11 +364,6 @@ fn copied_links_a_mount_numbers_afresh_are_known_by_their_size_and_time()
         rename_flags: Support::Supported,
         ..Quirks::sshfs()
     };
-    // The placed link is numbered afresh, and on sshfs, which leaves a
-    // link's times as it was made, another link may take its place first.
-    // Without `RENAME_NOREPLACE`, a merge and the publication of a selected
-    // link make the link again at its name. Whether another link takes its
-    // place.
     let merge = TransferConflict::Merge;
     let fail = TransferConflict::FailIfExists;
     let rows: [(Preset, &str, TransferConflict, bool); 10] = [

@@ -59,8 +59,6 @@ impl<Node> Scene<Node> {
     }
 }
 
-/// Panes are the drawn nodes marked as one, left to right. A pane's entries are those of the
-/// first drawn entry container inside it, top to bottom and then left to right.
 pub fn scan<B: Backend + ?Sized>(backend: &B, window: &B::Node) -> Scene<B::Node> {
     let labels = backend.labels();
     let focus = backend.focus(window);

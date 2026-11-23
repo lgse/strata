@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! New Folder and New File on the window the crate registers, in temporary folders: the
-//! item is made, the editor opens on it, and the name typed there is the one it keeps. What
-//! `undo-created-folder-trashes` and `new-item-named-with-path` do, by the key and the row.
-
 use std::{path::Path, time::Duration};
 
 use rune::{Key, KeyEvent, Mods};
@@ -101,8 +97,6 @@ fn run_now(host: &mut Offscreen, id: &str, on: On) -> Option<Outcome> {
     outcome
 }
 
-/// `undo-created-folder-trashes/columns-typed-name`: Ctrl+Shift+N makes `new folder`, the
-/// editor opens on it, and the typed name is what it is called.
 #[test]
 fn ctrl_shift_n_makes_a_folder_that_takes_the_typed_name() {
     hosted(
@@ -128,8 +122,6 @@ fn ctrl_shift_n_makes_a_folder_that_takes_the_typed_name() {
     );
 }
 
-/// `new-item-named-with-path/columns-file-to-folder`: the folder menu's New File makes
-/// `new file`, and a trailing slash names it as a folder, which only a new item may become.
 #[test]
 fn a_new_file_named_with_a_trailing_slash_becomes_a_folder() {
     hosted(
@@ -152,9 +144,6 @@ fn a_new_file_named_with_a_trailing_slash_becomes_a_folder() {
     );
 }
 
-/// `begin_rename` gives up a naming that waits: a rename of another entry asked before the
-/// new folder's editor opens keeps its editor and what is typed in it, and the folder keeps
-/// its free name.
 #[test]
 fn a_rename_begun_while_a_new_item_waits_gives_the_naming_up() {
     hosted(

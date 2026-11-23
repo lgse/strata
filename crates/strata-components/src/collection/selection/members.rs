@@ -1,19 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Which ids are selected: an id set plus an optional overlay of index ranges.
-//!
-//! A range operation over 100,000 entries can't afford to hash every id it covers (that alone
-//! takes over a millisecond). So a range lands as an overlay: the index ranges it covers, with a
-//! plain copy of their ids. While the source keeps its order, membership is a range check on
-//! the index. [`Members::freeze`] (on every sync) hashes the copied ids, because after a re-sort
-//! or a live update the indices no longer name the same entries, and the copy is all that
-//! still says which entries the range held.
-//!
-//! On top of both sits a small set of flipped ids: Space inside a 10xer `v`/`V` range flips an
-//! entry over whatever the range makes of it, and the flip holds while later steps replace the
-//! range ([`Members::flip_over`]). An entry is selected if `op(base, overlay)` says so, unless
-//! it is flipped.
-
 use std::collections::HashSet;
 use std::hash::{BuildHasherDefault, Hasher};
 
@@ -22,9 +8,6 @@ use crate::contract::{EntryId, EntrySource, IndexRanges};
 /// A set of entry ids, hashed with [`IdHasher`].
 pub(super) type IdSet = HashSet<EntryId, BuildHasherDefault<IdHasher>>;
 
-/// A hasher for [`EntryId`]s: splitmix64's finaliser over the raw value. Hosts often number
-/// ids in sequence, which the standard SipHash handles well but slowly; this mixes as well for
-/// a single `u64` at a fraction of the cost.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct IdHasher(u64);
 
@@ -77,8 +60,6 @@ struct Overlay {
 
 #[derive(Clone, Debug)]
 enum OverlayIds {
-    /// Index ranges into the source as it was when they were captured, with their ids in
-    /// index order. Valid until the source changes, which a sync marks.
     Live {
         ranges: IndexRanges,
         ids: Vec<EntryId>,
@@ -125,8 +106,6 @@ impl Overlay {
         None
     }
 
-    /// Whether every one of a live overlay's copied ids is still at its index in `source`:
-    /// O(the range), for the paths verbs act on. A frozen overlay doesn't depend on the source.
     fn matches_exactly<S: EntrySource + ?Sized>(&self, source: &S) -> bool {
         let OverlayIds::Live {
             ranges,
@@ -167,11 +146,6 @@ impl Overlay {
         }
     }
 
-    /// Whether a live overlay's indices still name its copied ids in `source`, as far as a
-    /// cheap check can tell: the same length, and the same first and last ids. A missed
-    /// [`Selection::sync`](super::Selection::sync) that re-sorted the source usually fails
-    /// it; [`Overlay::matches_exactly`] catches the rest. A frozen overlay doesn't depend on
-    /// the source.
     fn matches<S: EntrySource + ?Sized>(&self, source: &S) -> bool {
         let OverlayIds::Live {
             ranges,
@@ -207,8 +181,6 @@ impl Overlay {
 pub(super) struct Members {
     base: IdSet,
     overlay: Option<Overlay>,
-    /// Ids flipped over what the base and the overlay make: Space inside an extend run.
-    /// Usually empty; [`Members::commit`] folds them into the base with the overlay.
     flips: IdSet,
     /// How many ids are selected, kept exact by every change.
     len: usize,
@@ -223,8 +195,6 @@ impl Members {
         !self.flips.is_empty() && self.flips.contains(id)
     }
 
-    /// Whether the base and the overlay select `id`, before the flips, reading the overlay's
-    /// copied ids: O(the overlay) for a live one, so callers freeze it first.
     fn held_before_flips(&self, id: EntryId) -> bool {
         let in_base = self.base.contains(&id);
         match &self.overlay {
@@ -244,8 +214,6 @@ impl Members {
         ranged != self.flipped(&id)
     }
 
-    /// Whether `id` is selected. An id the source doesn't list can still be selected while a
-    /// listing loads.
     pub(super) fn contains<S: EntrySource + ?Sized>(&self, source: &S, id: EntryId) -> bool {
         let in_base = self.base.contains(&id);
         let ranged = match &self.overlay {
@@ -303,8 +271,6 @@ impl Members {
         self.len = self.base.len();
     }
 
-    /// Flips `id` over what the base and the overlay select, keeping both: an extend run
-    /// replaces its overlay on every step, and the flip holds through those steps.
     pub(super) fn flip_over<S: EntrySource + ?Sized>(&mut self, source: &S, id: EntryId) {
         let was_selected = self.contains(source, id);
         if !self.flips.remove(&id) {
@@ -334,20 +300,12 @@ impl Members {
         added
     }
 
-    /// Whether `id` is held in the base, the overlay's copied ids, or the run flips, without
-    /// consulting an [`EntrySource`].
     pub(super) fn holds(&self, id: EntryId) -> bool {
         self.base.contains(&id)
             || self.overlay.as_ref().is_some_and(|ov| ov.holds(id))
             || self.flips.contains(&id)
     }
 
-    /// Renames `from` to `to` wherever the selection holds it: in the base, in the overlay's
-    /// copied ids and in the flips. An open gesture goes on over the renamed id. Returns
-    /// whether `from` was selected.
-    ///
-    /// `to` is a new id, so the selection doesn't hold it yet (debug builds check). If it
-    /// does, the two merge and the count follows.
     pub(super) fn relocate(&mut self, from: EntryId, to: EntryId) -> bool {
         let already = self.holds(to);
         debug_assert!(
@@ -393,8 +351,6 @@ impl Members {
         was_selected
     }
 
-    /// Adds `id` to the base alone, leaving an open gesture's overlay and flips to apply over
-    /// it, as they do over the rest of the base. Returns whether that selected it.
     pub(super) fn insert_base(&mut self, id: EntryId) -> bool {
         self.freeze();
         let selected = |m: &Self| m.held_before_flips(id) != m.flipped(&id);
@@ -404,13 +360,6 @@ impl Members {
         selected(self) != before
     }
 
-    /// Replaces the overlay with `ranges`, combined by `op` with the base and under the flips,
-    /// or with nothing if `clear_base`, which drops the flips too. Returns whether the
-    /// selected set changed.
-    ///
-    /// Callers fold an overlay from another gesture into the base first ([`Members::commit`]):
-    /// the overlay this replaces belongs to the same gesture, so the base is that gesture's
-    /// starting point.
     pub(super) fn set_ranges<S: EntrySource + ?Sized>(
         &mut self,
         source: &S,
@@ -482,9 +431,6 @@ impl Members {
         changed
     }
 
-    /// Whether replacing the live overlay with `ranges` changes the set, worked out from the
-    /// indices the two cover differently: `None` when there's no live overlay of the same `op`
-    /// over the same base and flips to compare with.
     fn delta_since_live<S: EntrySource + ?Sized>(
         &self,
         source: &S,
@@ -517,8 +463,6 @@ impl Members {
         })
     }
 
-    /// Drops the overlay, leaving the base and the flips. Returns whether the selected set
-    /// changed.
     pub(super) fn discard_overlay(&mut self) -> bool {
         let Some(ov) = self.overlay.take() else {
             return false;
@@ -533,8 +477,6 @@ impl Members {
         changed
     }
 
-    /// Selects exactly the listed entries that aren't selected now. Returns whether that
-    /// changed anything.
     pub(super) fn invert<S: EntrySource + ?Sized>(&mut self, source: &S) -> bool {
         let mut ranges = IndexRanges::new();
         let mut ids = Vec::new();
@@ -588,8 +530,6 @@ impl Members {
         self.len != before
     }
 
-    /// Counts the members again. Reads a live overlay's copied ids once per flip, so callers
-    /// with flips freeze it first.
     fn recount(&mut self) {
         let ranged_len = match &self.overlay {
             None => self.base.len(),
@@ -626,8 +566,6 @@ impl Members {
         if let Some(ov) = &self.overlay
             && !ov.matches_exactly(source)
         {
-            // A missed sync: what verbs act on must not come from stale indices, so read the
-            // copied ids instead, as a sync would have.
             let mut copied = IdSet::default();
             ov.for_each_id(|id| {
                 copied.insert(id);
@@ -666,8 +604,6 @@ impl Members {
             .collect()
     }
 
-    /// Whether the selection is exactly `ids`. Freezes a live overlay first, which needs no
-    /// source: its copied ids are its members.
     pub(super) fn equals(&mut self, ids: &IdSet) -> bool {
         self.freeze();
         if self.len != ids.len() {

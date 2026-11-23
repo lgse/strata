@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! The parent handle an XDG portal passes: `wayland:<xdg-foreign handle>`, `x11:<xid>`, or
-//! nothing.
-
 use std::fmt;
 use std::num::NonZeroU32;
 use std::str::FromStr;
 
 use super::outcome::WindowSystem;
 
-/// The longest `wayland:` handle accepted, in bytes. Real handles are 32 to 36 bytes (wlroots'
-/// hex, KWin's UUIDs). A string near libwayland's 4096-byte message limit would fail to
-/// marshal, and that failure would end winit's whole connection.
 pub const MAX_WAYLAND_HANDLE: usize = 1024;
 
 /// The most of an unknown kind kept in [`ParseError::UnknownKind`], in bytes.
@@ -21,8 +15,6 @@ const MAX_KIND_SHOWN: usize = 32;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Parent {
-    /// No parent: the request carried `""` (zenity, GTK 3 below 3.24.44 on a v2-only
-    /// compositor).
     None,
     /// An xdg-foreign handle, exported by a Wayland client.
     Wayland(WaylandHandle),
@@ -30,8 +22,6 @@ pub enum Parent {
     X11(Xid),
 }
 
-/// An xdg-foreign handle, kept opaque: Mutter's are random ids and KWin's UUIDs, so its shape
-/// isn't checked. Made only by [`Parent::parse`]: no NUL, at most [`MAX_WAYLAND_HANDLE`] bytes.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WaylandHandle(String);
 
@@ -90,9 +80,6 @@ impl fmt::Display for ParseError {
 impl std::error::Error for ParseError {}
 
 impl Parent {
-    /// Parses a portal's `parent_window`. Surrounding whitespace is ignored, and an empty
-    /// string is [`Parent::None`]. The kinds are lowercase, as the portal spells them.
-    /// `x11:` takes GTK's bare hex (`x11:400003`) and Chromium's `0x` (`x11:0x400003`).
     pub fn parse(s: &str) -> Result<Parent, ParseError> {
         let s = s.trim();
         if s.is_empty() {

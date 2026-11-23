@@ -1,33 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Omarchy Quattro: the current Omarchy theme as a Strata theme, in the variant the user
-//! picked.
-//!
-//! Strata reads `~/.local/state/omarchy/current/theme.name` and
-//! `current/theme/colors.toml`, watches them, and remembers the variant per Omarchy theme.
-//! Here both files arrive as their contents. The mapping is Strata's (`src/ui/theme/omarchy.rs`
-//! and `omarchy_state.rs` at lgse/strata 35ee677ab):
-//!
-//! - `background` is the window; `dark_background` (else `background`) the panes and
-//!   headers; `lighter_background` the hover surface, unless missing or equal to
-//!   `background`, when it is `background` 10 % toward `foreground`; `selection` (else 25 %
-//!   toward `accent`) the selection; `muted` (else 36 % toward `foreground`) the borders; dim
-//!   text is 62 % toward `foreground`; danger is `color1`, else Strata's default. ANSI
-//!   `color8` is never read.
-//! - Syntax colours are `magenta`, `green`, `orange`, `cyan` and `yellow`, else the older
-//!   `color5`, `color2`, `color9` and `color3`. A colour still missing comes from the
-//!   terminal palette (`magenta` or `blue`, `green`, `orange` or `yellow`, `cyan` or `blue`,
-//!   `yellow`, all present), else from the accent and text.
-//! - A value that doesn't parse as a colour counts as missing. Without a valid `background`,
-//!   `foreground` and `accent` there is no theme, and Strata hides Follow Omarchy.
-//!
-//! [`Variant::Darker`] moves the file columns onto `dark_background`. [`Variant::Contrast`]
-//! does that, then raises text to 7:1 against the window, pane, hover and selection
-//! surfaces, dim text, accent and danger to 4.5:1, borders to 3:1, and syntax colours to
-//! 4.5:1 against the window and pane. A surface moves (toward black, or white on a light
-//! palette) only when even the opposite pole can't reach 7:1 on it. Light is `mode = "light"`,
-//! dark `mode = "dark"`, else a background luminance above 0.45.
-
 use toml::de::{DeTable, DeValue};
 
 use super::color::{Rgba8, blend, contrast, luminance, readable, toward};
@@ -49,9 +21,6 @@ pub enum Variant {
     Contrast,
 }
 
-/// The Omarchy theme named `name` (the contents of `theme.name`) with the colours in
-/// `colors_toml` (the contents of `colors.toml`), or `None` without a valid background,
-/// foreground and accent.
 pub fn theme(name: &str, colors_toml: &str, variant: Variant) -> Option<Theme> {
     let doc = DeTable::parse(colors_toml).ok()?;
     let values = doc.get_ref();
@@ -103,8 +72,6 @@ pub fn theme(name: &str, colors_toml: &str, variant: Variant) -> Option<Theme> {
     if variant == Variant::Contrast {
         raise_contrast(&mut colors, light, palette);
     }
-    // Strata resolves the left-out syntax colours from the terminal palette as it applies
-    // the theme; resolving them here gives the same colours.
     if let Some(p) = palette {
         let s = &mut colors.syntax;
         s.keyword.get_or_insert(p.statement);

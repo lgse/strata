@@ -1,41 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The sidebar: the built-in places and the pinned folders, in strata-components' C8
-//! `PlacesSidebar`, as the GTK window's sidebar lists and opens them (`build_sidebar` and
-//! `bind_place_row` in `src/ui/window/sidebar.rs`). [`places`] says which rows show.
-//!
-//! - **Opening a row.** A click or Return opens its location; from the keyboard the first
-//!   item is selected, as GTK's `connect_activate` asks. Home, Network and the pins are
-//!   checked before they open (`navigate_location`), the other places open at once
-//!   (`navigate_with_selection`).
-//! - **The open place.** The row of the browser's active location carries the accent. A
-//!   clicked row is marked before its folder opens, as GTK's `select_sidebar_row` does, and
-//!   of two rows for one location the marked one stays marked (`sync_active_place`).
-//! - **A middle click** on a row runs `open-in-tab` on its location
-//!   (`commands::On::Place`), as GTK's `install_open_in_tab` opens it in a new tab. Only
-//!   while a part registers that command: until then the row takes no middle click.
-//! - **The keyboard.** Left at the start of the view comes here (`shell::leave_view_at_start`),
-//!   onto the open place's row, else the first (`focus_active_place`). In 10xer mode the
-//!   component's `h`, Left and Backspace give it back to the view; in the default map the
-//!   arrows move it as GTK's `sidebar_navigation` does ([`keys`]), and in the window's header
-//!   as its `top_bar_navigation` does ([`header`]), back down to the row they left.
-//! - **The pins** come from GTK's bookmarks file, through the store both interfaces share
-//!   (`strata_fs::adapters::bookmarks`), read when the sidebar starts and again whenever the
-//!   store hears that the file changed.
-//! - **The width and the sections** start as the settings saved them; a section's heading
-//!   saves its own state, and the header's toggle steps the width and saves it ([`width`]).
-//!
-//! - **The context menus** of the rows, by right-click and the Menu key ([`menu`]).
-//!
-//! Each tab has a sidebar of its own, as GTK builds one for each tab: its scroll, its marked
-//! row and its menu are the tab's. What another tab changes in the settings is followed when
-//! the tab is shown again (`Part::tab_shown`).
-//!
-//! - **DEVICES**: the volumes and mounts, mounting, Eject and Unmount ([`devices`]).
-//!
-//! Drops, the device rows' menus, the full Trash's icon and the `g` keycaps are not here yet:
-//! `docs/rune/parity/packages/A3.md` lists them.
-
 use std::io;
 
 use rune::{El, Tx};
@@ -78,8 +42,6 @@ pub(crate) use width::toggle_face;
 use menu::OPEN_IN_TAB;
 use places::{Environment, Listed, Navigation};
 
-/// Whether a folder can be pinned, is already pinned, or is a standard sidebar place
-/// (`PinStatus` in `src/ui/browser.rs` and `pin_status` in `src/ui/window/sidebar_pins.rs`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PinState {
     Available,
@@ -181,14 +143,6 @@ impl Part for Sidebar {
         relist_if_started(app);
     }
 
-    /// The tab is shown: what another tab changed while it was hidden (the width step, the
-    /// sections, the places shown and their order) is followed, as GTK binds each tab's
-    /// sidebar to the settings. The pins come from the bookmarks store, which this tab's
-    /// sidebar hears for itself, held while it was hidden.
-    ///
-    /// A new tab's sidebar starts here, before the tab's first frame, not in its first
-    /// `poll`: a frame drawn without it puts the files where the sidebar goes, and the move
-    /// back is a layout Rune may never report to the view (finding lgse/strata#2477).
     fn tab_hidden(app: &mut App, _tx: &mut Tx) {
         app.sidebar.state.scroll_bar.release();
     }
@@ -229,7 +183,6 @@ pub(crate) fn relist_if_started(app: &mut App) {
     }
 }
 
-/// `event_changes_active_place` in `src/ui/window/sidebar_places.rs`.
 fn changes_active_place(event: &BrowserEvent) -> bool {
     matches!(
         event,
@@ -238,8 +191,6 @@ fn changes_active_place(event: &BrowserEvent) -> bool {
             | BrowserEvent::ColumnsTruncated { .. }
             | BrowserEvent::ColumnsRelocated { .. }
             | BrowserEvent::FocusChanged { .. }
-            // A clicked place is marked before its folder opens; a refusal leaves the
-            // previous location open.
             | BrowserEvent::LocationNavigationRejected { .. }
     )
 }
@@ -253,8 +204,6 @@ fn saved_step(expanded: bool, compact: bool) -> Step {
     }
 }
 
-/// The sidebar's first poll: its state from the look and the settings, the pins from the
-/// store, and the watch that hears the store again.
 fn start(app: &mut App) {
     let saved = shell::preferences(app);
     let mut state = SidebarState::new(&app.look);
@@ -296,8 +245,6 @@ fn heard_pins(later: &Later<App>, pins: Result<&Vec<(Location, String)>, &io::Er
     }
 }
 
-/// Lists the rows again from the settings and the pins, lets go of a held row, and marks the
-/// active location's row again, as GTK's `rebuild` ends with `sync_active_place`.
 fn relist(app: &mut App) {
     let listed = places::listed(
         shell::preferences(app),
@@ -313,9 +260,6 @@ fn relist(app: &mut App) {
 }
 
 impl Sidebar {
-    /// Where the keyboard comes in from the view: the open place's row, else the list's first
-    /// row (`focus_active_place` in `src/ui/window/sidebar_places.rs`). None while the sidebar
-    /// is hidden: GTK's `grab_focus` fails there, and the keyboard stays in the view.
     fn focus_key(&self) -> Option<String> {
         if self.state.width.shown() == Step::Hidden {
             return None;
@@ -327,8 +271,6 @@ impl Sidebar {
         Some(key)
     }
 
-    /// Its full width less its rail's while it is railed, else nothing (`full_sidebar_width`
-    /// in `src/ui/preview/layout/sidebar.rs`, which GTK's column cap subtracts).
     fn held_back(&self, look: &Look) -> f32 {
         if self.state.width.shown() != Step::Rail {
             return 0.0;
@@ -376,8 +318,6 @@ impl Sidebar {
         changed
     }
 
-    /// Pinned places in sidebar display order, excluding rows the sidebar hides
-    /// (`SidebarState::visible_pins` in `src/ui/window/sidebar_places.rs`).
     pub(crate) fn visible_pins(&self) -> Vec<Location> {
         if self.started {
             return self
@@ -423,8 +363,6 @@ impl Sidebar {
         self.listed.rows.iter().chain(self.devices.rows())
     }
 
-    /// Marks the active location's row: the marked row while it is still that location's,
-    /// else the first row for it. True when the mark moved.
     fn follow(&mut self, browser: &Browser) -> bool {
         let active = browser.active_location();
         let at = |row: &places::Row| active.as_ref() == Some(&row.location);
@@ -461,11 +399,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         sidebar.state.scroll_bar.release();
         return None;
     }
-    // GTK's headings and their count (`append_section_header`, `set_item_count` in
-    // `src/ui/window/sidebar_sections.rs`).
     let (pinned, devices) = (tr("PINNED"), tr("DEVICES"));
-    // GTK's device buttons and pending row (`media_release_label`, `EncryptedMediaAction::label`
-    // and `pending_device_shell` in `src/ui/window`).
     let [eject, unmount, unlock, lock, releasing] = [
         "Eject",
         "Unmount",
@@ -564,8 +498,6 @@ fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
     }
 }
 
-/// Shows or hides 10xer's `g` place and pin keycaps on sidebar rows, relisting when shown so
-/// live `[keymap.tenxer]` or locale updates take effect immediately.
 pub(crate) fn show_keycaps(app: &mut App, shown: bool) {
     if shown && app.sidebar.started {
         relist(app);
@@ -573,8 +505,6 @@ pub(crate) fn show_keycaps(app: &mut App, shown: bool) {
     app.sidebar.state.keycaps = shown;
 }
 
-/// Refreshes `app.sidebar.pins` from the shared store at once so a caller reading
-/// [`Sidebar::visible_pins`] after `bookmarks::update` sees the newly saved slot.
 pub(crate) fn sync_pins_from_store(app: &mut App) {
     if !app.sidebar.started {
         return;
@@ -598,8 +528,6 @@ fn open(app: &mut App, item: &ItemId, via: Via, tx: &mut Tx) {
     let tenxer = shell::preferences(app).tenxer_mode;
     let before = app.browser.active_location();
     app.sidebar.current = Some(row.item);
-    // In 10xer mode, GTK activates a sidebar row with `emit_clicked()` (`select_first = false`)
-    // and hands focus back to the view once the location changes (`keyboard/tenxer.rs:181`).
     let select_first = via == Via::Keyboard && !tenxer;
     shell::publish(app);
     let browser = app.browser.clone();

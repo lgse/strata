@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C20a Slider and NumberField: its scenes, demo state, view and key and poll
-//! hooks. Scene names start with `c20a-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C20a-slider-number-field.md`.
-//!
-//! The page lays the controls out as Strata's settings do, each in a rune-kit `Field`: the
-//! Appearance menu's Frame and Content density sliders (in a scroll view, as the menu is),
-//! the Icons thumbnail-size slider, and the Thumbnail workers, Text size and Corner roundness
-//! spin buttons, with C21's text menu on the fields. What each change reports shows in the
-//! log line (`c20a-log`), so scripts can tell a live drag from a commit.
-
 use rune::{Cx, El, KeyEvent, ScrollSpec, Tx, WheelEvent, col, row, text};
 use rune_kit::Field as KitField;
 use strata_components::context_menu::{FieldMenu, FieldMenuState};
@@ -25,7 +14,6 @@ pub const FRAME: (f64, f64, f64) = (12.0, 0.0, 4.0);
 /// Strata's Content density: 0–16 px, Compact 4, Airy 8.
 pub const CONTENT: (f64, f64, f64) = (16.0, 4.0, 8.0);
 
-/// The page's text fields, for C21's field menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Field {
     Workers,
@@ -33,7 +21,6 @@ pub enum Field {
     Roundness,
 }
 
-/// C20a's demo state, held in `Gallery::c20a`.
 pub struct Demo {
     pub frame: SliderState,
     pub content: SliderState,
@@ -100,8 +87,6 @@ impl Demo {
     }
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c20a", dark)`, then fills in `g.c20a`.
 pub const SCENES: &[Scene] = &[
     ("c20a-controls-light", |g| g.open("c20a", false)),
     ("c20a-controls-dark", |g| g.open("c20a", true)),
@@ -245,8 +230,6 @@ fn field_edit(g: &Gallery, f: Field) -> Option<&rune::TextEdit> {
     (!g.c20a.disabled).then(|| g.c20a.field(f).edit())
 }
 
-/// C21's text menu on the page's number fields. An edit it makes is checked again; closing it
-/// lets a blur commit the field again.
 fn field_menu() -> FieldMenu<Gallery, Field> {
     FieldMenu::new(
         "c20a-field-menu",
@@ -275,8 +258,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     let mut layer = Vec::new();
     let menu = field_menu().build(g, look, &mut layer);
 
-    // The Appearance menu's DENSITY section scrolls with its menu, so a wheel over a slider
-    // there scrolls (the sliders take no wheel).
     let appearance = col()
         .key("c20a-appearance")
         .w(280.0)
@@ -411,8 +392,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     .font(k.ty.small)
     .color(k.c.text_muted);
 
-    // The page hears what a control passes on (a sideways wheel, Ctrl+wheel for the text
-    // size, Ctrl+Shift+wheel for Strata's thumbnail size) and takes none of it.
     rune_kit::root(
         col()
             .key("c20a")
@@ -446,15 +425,10 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     )
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Commits a number field that lost the keyboard, and closes the field menu if its field
-/// went. True when state changed.
 pub fn poll(g: &mut Gallery, _t: f64, tx: &mut Tx) -> bool {
     let mut changed = false;
     for f in FIELDS {

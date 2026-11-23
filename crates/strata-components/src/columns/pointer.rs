@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Presses in the strip: which column a press targets and activates, the second press of a
-//! click that opened a column, clipped-column peek clicks, and plain clicks on a column's empty
-//! space.
-
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -15,15 +11,9 @@ use crate::collection::element::{
 use crate::collection::pointer::PointerSettings;
 use crate::contract::Point;
 
-/// What [`ColumnPointer`] sends as `Intent::Other` for a plain click on no entry: the view
-/// closes deeper columns and picks what the column selects (`browser/view-modes/columns`,
-/// "Background clicks").
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct BackgroundClick;
 
-/// What [`ColumnPointer`] sends as `Intent::Other` for a plain click on empty space of a
-/// partially clipped column: the view focuses and reveals the column without clearing selection
-/// or closing deeper columns (`src/ui/browser/columns/reveal.rs`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct PeekClick(pub(super) Point);
 
@@ -46,10 +36,6 @@ enum HeldPeek {
     Suppress,
 }
 
-/// A column's pointer controller: the one inside (C24's autoscroll over C1b) hears everything,
-/// and a plain primary click on no entry, released where it was pressed, also sends a
-/// [`BackgroundClick`]. A press that becomes a band hands its gesture to the marquee, so its
-/// release never comes here: a band is no click.
 pub(super) struct ColumnPointer {
     inner: Box<dyn PointerController>,
     gate: Rc<Cell<PeekGate>>,

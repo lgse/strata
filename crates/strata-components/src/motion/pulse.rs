@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The target's pulses (Strata's `trash-receiving`, `trash-impact`, `trash-release` and
-//! `trash-rebel-shudder`): a scale on the target itself, through [`dress_target`], and an
-//! accent ring over it in the motion layer.
-
 use rune::{Beat, Easing, El, Sequence, el};
 use strata_kit::look::Look;
 
@@ -75,9 +71,6 @@ const SHUDDER: &[Beat] = &[
     Beat::new(SHAKE * 0.78).scale(1.05).easing(SPRINGY),
     Beat::new(SHAKE).easing(SPRINGY),
 ];
-// The rings' opacities are the accent alphas of Strata's box shadows, and their scales its
-// spreads: impact 0.34 at 1 px, 0.18 at 5 px, gone by 8 px; release 0.16 at 4 px, then only a
-// glow; receiving 0.16 at 3 px at 55 %, then 0.28 at 1 px.
 const IMPACT_RING: &[Beat] = &[
     Beat::new(0.0).opacity(0.34),
     Beat::new(BOUNCE * 0.34)
@@ -107,8 +100,6 @@ const RECEIVING_RING: &[Beat] = &[
     Beat::new(RECEIVING).opacity(0.28).easing(SETTLE),
 ];
 
-/// Each target's pulses: how many it has started, and its latest one's kind and whether that
-/// still plays. A new count is a new key, which replays a sequence.
 #[derive(Debug, Default)]
 pub(super) struct Pulses(Vec<Pulse>);
 
@@ -117,8 +108,6 @@ struct Pulse {
     target: String,
     n: u32,
     kind: PulseKind,
-    /// Its flight hasn't ended. Rune replays a sequence whenever its key mounts, so a spent
-    /// pulse drops its sequence, or a target that remounts would play it again.
     live: bool,
 }
 
@@ -160,14 +149,6 @@ impl Pulses {
     }
 }
 
-/// The target element `el`, keyed `key`, dressed for its pulses: pass C8's Trash icon box
-/// through it (`PlacesSidebar::trash_icon(|el| dress_target(&fx, &key, el))`).
-///
-/// Until its first pulse it is `el` itself. From then on, for good, it sits in a wrapper keyed
-/// by its pulse count, so each pulse mounts it afresh and plays the scale. Its element path
-/// gains the wrapper's `c23-pulse-<n>` step. Once the pulse's flight ends (or
-/// [`Effects::settle`] ends it), the wrapper stays but plays nothing, so a target that
-/// remounts later (its sidebar shown again, its page reopened) doesn't replay it.
 pub fn dress_target(fx: &Effects, key: &str, el: El) -> El {
     match fx.pulses.last(key) {
         None => el,
@@ -182,8 +163,6 @@ pub fn dress_target(fx: &Effects, key: &str, el: El) -> El {
     }
 }
 
-/// The ring's key over the target keyed `target` for its pulse `n`: one per pulse, so each
-/// replays. The target is escaped (`_` as `__`, `/` as `_s`), so no two targets share one.
 pub fn ring_key(target: &str, n: u32) -> String {
     let target = target.replace('_', "__").replace('/', "_s");
     format!("c23-ring-{target}-{n}")

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! MIME-keyed recent-application history (`strata/recent-apps.toml`), matching
-//! `src/ui/recent_apps/mod.rs` on `strata-core`'s background storage writer.
-
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, HashMap, HashSet},

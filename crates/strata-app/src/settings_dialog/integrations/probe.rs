@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Off-thread catalog scanning, PNG icon decoding, requirement probing, and filesystem mutations
-//! for Settings -> Integrations.
-
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},

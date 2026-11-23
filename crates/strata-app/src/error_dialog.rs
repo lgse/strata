@@ -1,30 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The window's message dialog: an error, a partial failure, or an informational report, as
-//! GTK's `src/ui/modal/messages.rs` shows them (`Message::error`, `Message::partial_failure`,
-//! `Message::information`), and with an action beside Close as `show_error_dialog_with_action`
-//! does. Every failure or post-operation report the window shows goes through it: a rename the
-//! browser fails ([`crate::rename_failed`]), a folder or location that cannot be opened
-//! ([`crate::open_failed`]), and transfer outcomes ([`crate::transfer`]).
-//!
-//! It is GTK's message dialog on C15's [`StrataDialog`]: an icon in a toned box, the title,
-//! a summary line under it ("The operation could not be completed" by default for errors), and
-//! the message as the body.
-//!
-//! - **An error alone:** the X in a danger box and one Close button, which has the keyboard
-//!   when it opens.
-//! - **A partial failure (`Completed with errors`):** the X in a danger box, "Some items could
-//!   not be processed" under the title, and Close.
-//! - **An informational report:** the Info icon in an accent box, the caller's summary under
-//!   the title, and Close.
-//! - **An error with an action** (Open as Administrator): the action's icon in an accent box,
-//!   the action as the primary button with the keyboard, and Close beside it. The action closes
-//!   the dialog, then runs.
-//!
-//! Escape, a click outside and the header's close button close it too. The keyboard goes back
-//! where it was. While it is open the window's commands wait, as under any GTK modal layer. A
-//! second error while one shows takes its place.
-
 use std::rc::Rc;
 
 use rune::Tx;
@@ -90,7 +65,6 @@ impl Error {
         }
     }
 
-    /// GTK's `show_partial_failure_dialog` (`MessageKind::PartialFailure` in `messages.rs`).
     pub(crate) fn partial_failure(message: impl Into<String>) -> Self {
         Self {
             title: tr("Completed with errors"),
@@ -103,7 +77,6 @@ impl Error {
         }
     }
 
-    /// GTK's `show_information_dialog_with_summary` (`MessageKind::Information` in `messages.rs`).
     pub(crate) fn information(
         title: impl Into<String>,
         summary: impl Into<String>,
@@ -126,8 +99,6 @@ impl Error {
         self
     }
 
-    /// The same error, giving the keyboard to the element keyed `key` when it closes: for an
-    /// error raised as the keyboard moves there, which the dialog would not see it reach.
     pub(crate) fn returning_to(mut self, key: Option<&'static str>) -> Self {
         self.returns_to = key;
         self

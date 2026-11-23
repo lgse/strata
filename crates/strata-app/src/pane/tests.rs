@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Which folder a pane shows as the browser's columns change: the active one, as GTK's Icons
-//! and List views rebuild their pane. The handover itself is the Columns view's tests'.
-
 use strata_components::{
     collection::{element::CollectionState, selection::Position},
     contract::EntrySource,
@@ -72,8 +69,6 @@ impl Fixture {
         self.list((depth, active), &folder, vec![row]);
     }
 
-    /// The browser opens `folder` at `depth`, active or not, lists `rows` in it, and ends its
-    /// load with no cursor of its own. What the opening did to the folder shown.
     fn list(
         &mut self,
         (depth, active): (usize, bool),
@@ -127,8 +122,6 @@ fn a_column_opened_with_its_parent_kept_active_leaves_the_parent_shown() {
     assert_eq!(fixture.pane.depth(), Some(0));
 }
 
-/// Escape closing the deepest column, and `close_column`, send no active `ColumnAdded`: the
-/// column the browser leaves active shows, with the rows it already had.
 #[test]
 fn closing_the_shown_column_shows_the_one_the_browser_leaves_active() {
     let mut fixture = Fixture::new();
@@ -147,8 +140,6 @@ fn closing_the_shown_column_shows_the_one_the_browser_leaves_active() {
     assert_eq!(fixture.shows(), shown(1));
 }
 
-/// The cursor change that follows a column closing lands on the folder the browser leaves
-/// the keyboard on, and the pane adopts it in the column it now shows.
 #[test]
 fn after_a_column_closes_the_browsers_cursor_is_adopted_in_the_column_shown() {
     let mut fixture = Fixture::new();
@@ -221,9 +212,6 @@ fn file(folder: &Location, name: &str) -> FileEntry {
     }
 }
 
-/// While the browser groups the folder, the pane shows it in file-type groups, gives the
-/// collection their headers, and steps between neighbours in the order shown; once it no
-/// longer does, the browser's order and no groups.
 #[test]
 fn a_grouped_folder_shows_and_steps_in_its_groups_and_an_ungrouped_one_does_not() {
     let mut fixture = Fixture::new();
@@ -290,9 +278,6 @@ impl Fixture {
     }
 }
 
-/// A folder left and shown again comes back at its position, by id: in a grouped folder the
-/// rows show in their groups' order, and the browser lists them in another order on return,
-/// and the same entry still holds the cursor and the selection.
 #[test]
 fn a_folder_shown_again_comes_back_at_its_position_by_id() {
     let mut fixture = Fixture::new();
@@ -321,8 +306,6 @@ fn a_folder_shown_again_comes_back_at_its_position_by_id() {
     );
 }
 
-/// The browser revealing an entry in the folder wins over the position remembered for it,
-/// which stays for a later visit.
 #[test]
 fn a_reveal_wins_over_the_remembered_position() {
     let mut fixture = Fixture::new();
@@ -352,8 +335,6 @@ fn a_reveal_wins_over_the_remembered_position() {
     );
 }
 
-/// A folder whose read failed is not remembered, as GTK's `loaded_location` skips it: when it
-/// later opens and lists, it is a first visit.
 #[test]
 fn a_folder_that_failed_to_read_is_not_remembered() {
     let mut fixture = Fixture::new();
@@ -377,8 +358,6 @@ fn a_folder_that_failed_to_read_is_not_remembered() {
     assert_eq!(fixture.visit(&folder, &["a.txt"]), Applied::Entered);
 }
 
-/// A cursor whose entry went while the folder was left falls back to the first restored
-/// selected entry, and the anchor stays, as GTK's `restore_selection` places them.
 #[test]
 fn a_restored_cursor_whose_entry_went_falls_back_to_the_selection() {
     let mut fixture = Fixture::new();
@@ -410,10 +389,6 @@ fn a_restored_cursor_whose_entry_went_falls_back_to_the_selection() {
     assert_eq!(selection.anchor(), Some(b));
 }
 
-/// A cursor whose entry went while the folder was left, with nothing else selected, falls back
-/// to the browser's own cursor, the load's, as GTK's `restore_selection` leaves it: not to the
-/// entry that took its index (finding lgse/strata#2628, seed 0x64 of `drag v2`: an Undo took
-/// the entry out).
 #[test]
 fn a_restored_cursor_whose_entry_went_alone_falls_back_to_the_browser_s_cursor() {
     let mut fixture = Fixture::new();
@@ -462,8 +437,6 @@ fn a_restored_cursor_whose_entry_went_alone_falls_back_to_the_browser_s_cursor()
     assert_eq!(fixture.pane.collection().selection.cursor(), Some(a));
 }
 
-/// As above, where the browser holds no cursor either, as after a folder opened by a click:
-/// the first row takes the cursor, with nothing selected, as GTK's list view focuses it.
 #[test]
 fn a_restored_cursor_whose_entry_went_with_no_browser_cursor_falls_back_to_the_first_row() {
     let mut fixture = Fixture::new();

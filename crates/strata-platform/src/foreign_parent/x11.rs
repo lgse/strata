@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! X11 (an X11 session, or Xwayland): `WM_TRANSIENT_FOR`, `_NET_WM_WINDOW_TYPE_DIALOG` and
-//! `_NET_WM_STATE_MODAL`, set on a connection of the shim's own.
-//!
-//! Rune exposes no X connection (draft U9, not filed), and properties can be set from any
-//! client. Each call opens a connection, sets the properties, waits until the server has
-//! them (`sync`), and closes it: the window manager then reads them when winit maps the
-//! window.
-
 use rune::WindowHandle;
 use x11rb::connection::Connection;
 use x11rb::errors::ReplyError;
@@ -35,10 +27,6 @@ const STATE_ADD: u32 = 1;
 /// The client message's source: a normal application.
 const SOURCE_APPLICATION: u32 = 1;
 
-/// Sets `window`'s (X11 window `child`) parent hints for `parent`. The window is a dialog
-/// either way, as GTK's portal dialog always is; it is transient for, and modal to, a parent
-/// that exists. A parent that doesn't, or isn't a window (a pixmap, the root), gets no
-/// transient-for, and the window is centred on its screen (S3's fallback).
 pub(super) fn apply(window: &WindowHandle, child: Window, parent: &Parent, modal: bool) -> Outcome {
     match set(child, parent, modal) {
         Ok(outcome) => {
@@ -153,9 +141,6 @@ fn set(child: Window, parent: &Parent, modal: bool) -> Result<Outcome, String> {
     Ok(outcome)
 }
 
-/// Whether `xid` names a window that can be a parent: one `GetWindowAttributes` answers for
-/// (`GetGeometry` answers for a pixmap too), and no screen's root, for which
-/// `WM_TRANSIENT_FOR` would mean ICCCM's group transient instead.
 fn exists(conn: &RustConnection, xid: Window) -> Result<bool, String> {
     if conn.setup().roots.iter().any(|s| s.root == xid) {
         return Ok(false);

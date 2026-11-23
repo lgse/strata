@@ -26,8 +26,6 @@ fn two() -> Vec<Candidate> {
     ]
 }
 
-// browser/navigation/location-bar: "Crumb labels longer than 32 characters are shortened in
-// the middle."
 #[test]
 fn long_labels_shorten_in_the_middle() {
     assert_eq!(elide_middle("short", CRUMB_CHARS), "short");
@@ -188,8 +186,6 @@ fn a_leave_from_another_crumb_keeps_the_hover() {
     assert_eq!(s.drop_hover(), None);
 }
 
-// Review round 1, SF3: a binder that reports the same accepting hover again (X2's may, on every
-// motion) must not restart the spring, as Strata's `schedule_spring_load_navigation` keeps it.
 #[test]
 fn a_repeated_hover_on_the_same_crumb_keeps_the_spring_s_start() {
     let mut s = LocationBarState::new();
@@ -246,8 +242,6 @@ fn a_second_copy_restarts_the_feedback() {
     assert!(!s.copied());
 }
 
-// Review round 1, nit: Ctrl+L while editing keeps the typed text and selects it, as Strata's
-// `begin_location_edit` does.
 #[test]
 fn ctrl_l_while_editing_keeps_the_typed_text() {
     let mut s = LocationBarState::new();
@@ -259,8 +253,6 @@ fn ctrl_l_while_editing_keeps_the_typed_text() {
     assert_eq!(query(&p).text, "~/Mu");
 }
 
-// Review round 1, nit: a click on a shown suggestion while keys wait for a listing takes that
-// suggestion at once, as Strata's `row_activated` does; the waiting keys and listing are dropped.
 #[test]
 fn a_click_takes_its_suggestion_even_while_keys_wait() {
     let mut s = LocationBarState::new();
@@ -392,8 +384,6 @@ fn middle_press_on_ancestor_crumb_opens_tab_or_window_when_enabled() {
     assert!(disabled.state.intents.is_empty());
 }
 
-// Packet entry 108: a `Tx::element_at` callback inside `Runtime::frame` sees `tx.clock() == 0.0`
-// even when the window's clock is seconds ahead; the spring stamps its start on the next tick.
 #[test]
 fn a_zero_clock_pick_hover_waits_the_full_delay_from_next_tick() {
     let mut s = LocationBarState::new();
@@ -498,8 +488,6 @@ fn copy_path_reveals_on_keyboard_focus_and_while_copied() {
         "blurring Copy path hides it again"
     );
 
-    // Clicking Copy path keeps the confirmation checkmark visible even after the pointer leaves,
-    // until COPIED_FOR elapses.
     let (bx, by) = element_center(&rt, "loc-copy");
     rt.pointer_move(bx, by);
     rt.frame(1.0 / 60.0);

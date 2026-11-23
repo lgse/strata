@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`Dnd`]: one window's drag and drop. Its targets, the drag over it, and the drags it
-//! starts.
-
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -23,17 +20,6 @@ use super::registry::Registry;
 use super::session::{self, Decision, Guard, Landing, Release, Step};
 use crate::transfer::{ReadError, mime};
 
-/// One window's drag and drop: create it with the window's state, attach it from
-/// `App::on_window`, and build drop targets and drag sources through it in the view.
-///
-/// ```ignore
-/// let dnd = Dnd::<App>::new();
-/// let app = rune::App::new(spec).init({ let d = dnd.clone(); move || App::new(d) });
-/// let handle = app.handle();
-/// app.on_window(move |w| { let _ = dnd.attach(w, &handle); }).run();
-/// ```
-///
-/// It is `Rc` inside: clone it into the state, and use it on the UI thread only.
 pub struct Dnd<S: 'static>(Rc<Core<S>>);
 
 impl<S: 'static> Clone for Dnd<S> {
@@ -130,23 +116,11 @@ pub(crate) struct Core<S: 'static> {
     seq: Cell<u64>,
     /// The drag started from this window, and whether its guard waits for a real release.
     out: Cell<Option<(u64, Release)>>,
-    /// Where the drag started from this window's source sits, to check before an Escape that
-    /// Rune still holds a live element there (see [`SourceAt`]).
     source: RefCell<Option<SourceAt>>,
     /// Test switches for strata-platform's own tests ([`Dnd::test_route`]).
     test: Cell<hub::TestRoute>,
 }
 
-/// The element a drag started from: its key, its exact path in Rune's tree (learned by a
-/// pick in the handler that started the drag, before any commit), and the press point,
-/// which Rune found inside its visible box.
-///
-/// Rune's capture ends on an Escape only if the captured element is still live at the path
-/// it was pressed at: `cancel_drag` finds it by that path, skipping exiting subtrees. An
-/// Escape sent otherwise goes on to the app's keys (review round 2, R2-B1). Rune has no
-/// public query for that, but `Tx::element_at_in` runs its callback after the handler and
-/// before the keys it sent are handled, against the same tree, and skips exiting subtrees
-/// too: the Escape is sent from that callback only if what it picks lies at that path.
 #[derive(Clone, Debug)]
 struct SourceAt {
     id: u64,
@@ -155,8 +129,6 @@ struct SourceAt {
     at: (f32, f32),
 }
 
-/// The keyed segments of `path`, as `Tx::element_at_in` takes a scope: `#n` segments stand
-/// for elements without keys.
 fn selector(path: &str) -> String {
     path.split('/')
         .filter(|s| !s.is_empty() && !s.starts_with('#'))
@@ -164,8 +136,6 @@ fn selector(path: &str) -> String {
         .join("/")
 }
 
-/// `path` up to and including its segment `key`: the keyed element's own path, from a pick
-/// that may have found one of its descendants.
 fn through(path: &str, key: &str) -> Option<String> {
     let segs: Vec<&str> = path.split('/').collect();
     let i = segs.iter().position(|s| *s == key)?;
@@ -244,18 +214,12 @@ impl<S: 'static> Dnd<S> {
         }))
     }
 
-    /// A test switch for strata-platform's own tests: what the first attach behaves as if it
-    /// found. Not API.
     #[doc(hidden)]
     pub fn test_route(self, route: hub::TestRoute) -> Self {
         self.0.test.set(route);
         self
     }
 
-    /// Attaches this window: call it on the UI thread from `App::on_window`, every time it
-    /// runs (Rune recreates a window's native side after a Wayland hide). The first window
-    /// binds P0's substrate for the process; on X11 each call points the window's
-    /// `XdndProxy` at P1's window again.
     pub fn attach(&self, window: &WindowHandle, app: &AppHandle<S>) -> Result<Status, Error> {
         let key = window.key().to_owned();
         let handle = app.clone();
@@ -279,28 +243,17 @@ impl<S: 'static> Dnd<S> {
         hub::current_status()
     }
 
-    /// `el`, keyed `key`, as a drop target. The key must be unique in the window: drops find
-    /// their target by it (draft U-P1-1, not filed). It also takes the element's
-    /// `drawn_rect_into` slot, for points in the target's own coordinates.
     pub fn drop_target(&self, el: El, key: &str, target: DropTarget<S>) -> El {
         let rect = self.0.registry.borrow_mut().put(key, target);
         el.key(key).drawn_rect_into(&rect)
     }
 
-    /// `el`, keyed `key`, as a drop target whose key is unique only inside the keyed element
-    /// `scope`, one of its ancestors: rows keyed by an id inside a list keyed by the list, so
-    /// two lists showing the same ids keep their targets apart. A drag finds it under the
-    /// nearest ancestor keyed `scope`. Otherwise as [`Dnd::drop_target`].
     pub fn drop_target_in(&self, el: El, scope: &str, key: &str, target: DropTarget<S>) -> El {
         let id = super::registry::scoped(scope, key);
         let rect = self.0.registry.borrow_mut().put(&id, target);
         el.key(key).drawn_rect_into(&rect)
     }
 
-    /// `el`, keyed `key`, as a drag source. It takes the element's `on_drag`: give the
-    /// element's own handler to [`DragSource::on_drag`], which hears every phase that isn't
-    /// the system drag's. For an element whose `on_drag` belongs to someone else, call
-    /// [`Dnd::start_drag`] and [`Dnd::owns`] from that handler instead.
     pub fn drag_source(&self, el: El, key: &str, source: DragSource<S>) -> El {
         let me = self.clone();
         let source_key = key.to_owned();
@@ -339,14 +292,6 @@ impl<S: 'static> Dnd<S> {
             })
     }
 
-    /// Starts a system drag from the press the app's own `on_drag` is handling, once it has
-    /// decided the press is a drag: `drag` is the phase it is handling, and `key` the key of
-    /// the element whose `on_drag` that is (unique in the window). Call [`Dnd::owns`] first
-    /// in that handler on every phase: the phases after this belong to the system drag.
-    ///
-    /// Keep that element mounted at the same place in the tree, and not exiting, until the
-    /// drag ends: on Wayland, P1 ends Rune's capture of the press only while it is (see the
-    /// module docs).
     pub fn start_drag(
         &self,
         tx: &mut Tx,
@@ -358,9 +303,6 @@ impl<S: 'static> Dnd<S> {
         self.begin(tx, drag, key, item, Some(Rc::new(on_end)))
     }
 
-    /// Whether `drag` (a phase of an app's own `on_drag`) belongs to a system drag this
-    /// window started: if so, the handler should ignore it. It also tracks the press, so
-    /// call it on every phase.
     pub fn owns(&self, drag: &Drag) -> bool {
         let decision = self.0.guard.borrow_mut().owns(Step::of(drag));
         match decision {
@@ -377,9 +319,6 @@ impl<S: 'static> Dnd<S> {
         }
     }
 
-    /// Cancels the drag this process started. On Wayland it is the only way: under the
-    /// compositor's drag grab no key reaches the app, and wlroots compositors (sway) don't
-    /// cancel on Escape themselves.
     pub fn cancel_drag(&self) {
         hub::cancel_drag();
     }
@@ -401,13 +340,7 @@ impl<S: 'static> Dnd<S> {
             self.0.ends.borrow_mut().insert(id, end);
         }
         self.0.out.set(Some((id, release)));
-        // On Wayland the Escape that ends Rune's capture waits for the compositor's proof
-        // that it took the pointer (`Routed::Holding`): see `session`.
         self.0.guard.borrow_mut().started(release);
-        // The press point, in window points: Rune hit-tested it inside the source's visible
-        // box, which its centre may not be (a row more than half scrolled out, review round
-        // 3, SF1). And the source's path, picked now, while Rune's tree is the one this phase
-        // reached it in.
         let [wx, wy] = drag.window_point();
         let at = (wx - drag.dx, wy - drag.dy);
         *self.0.source.borrow_mut() = Some(SourceAt { id, path: None, at });
@@ -445,8 +378,6 @@ impl<S: 'static> Dnd<S> {
         self.0.drain(s, tx);
     }
 
-    /// For the headless tests: jobs go to `poster`, as an attached window's go to its
-    /// update; [`Dnd::run_job_for_test`] runs them.
     #[cfg(test)]
     pub(crate) fn set_poster_for_test(&self, poster: Poster) {
         *self.0.poster.borrow_mut() = Some(poster);
@@ -458,8 +389,6 @@ impl<S: 'static> Dnd<S> {
         self.0.run_job(job, s, tx)
     }
 
-    /// For the headless tests: `drop`, dropped at once, with no hit test, to reach the reads
-    /// of [`Core::dropped`].
     #[cfg(test)]
     pub(crate) fn drop_on_for_test(&self, drop: TestDrop, s: &mut S, tx: &mut Tx) -> bool {
         let TestDrop { port, mimes, key } = drop;
@@ -498,9 +427,6 @@ impl<S: 'static> Core<S> {
         self.key.borrow().clone().unwrap_or_default()
     }
 
-    /// The compositor took the pointer for drag `id`: end Rune's capture of its press with an
-    /// Escape, if the guard still holds that press and `live` confirms the drag hasn't
-    /// dropped or ended (see `session`).
     fn holding(self: &Rc<Self>, id: u64, tx: &mut Tx, live: impl FnOnce() -> bool) {
         if self.out.get() != Some((id, Release::Escape)) {
             return;
@@ -512,8 +438,6 @@ impl<S: 'static> Core<S> {
         self.escape_if_live(id, tx);
     }
 
-    /// Sends the Escape, from a pick's callback, only if the drag's source is still live at
-    /// the path it started from (see [`SourceAt`]), and the guard still allows it.
     fn escape_if_live(self: &Rc<Self>, id: u64, tx: &mut Tx) {
         let (path, at) = {
             let src = self.source.borrow();
@@ -563,10 +487,6 @@ impl<S: 'static> Core<S> {
                     false
                 }
                 Routed::Ended { id, outcome } => {
-                    // Nothing ends Rune's capture after the drag (review round 3, B1): Rune
-                    // drops a capture without an Up when a press replaces it or a modal
-                    // mounts, so a later Escape could reach the app. A drag no proof reached
-                    // keeps it until the next press or focus change (module docs, path 3).
                     let f = self.ends.borrow_mut().remove(&id);
                     match f {
                         Some(f) => {
@@ -703,8 +623,6 @@ impl<S: 'static> Core<S> {
                 f(s, landing.hover(), &offer, tx);
             }
         }
-        // A rejecting target (one with `on_reject` that refuses the drag) hears moves too:
-        // autoscroll follows any drag over a view, not only one it would take.
         if let Landing::Accepting { key, .. } | Landing::Rejecting { key } = &landing
             && let Some(f) = self.target(key).and_then(|t| t.on_move.clone())
         {
@@ -873,8 +791,6 @@ impl<S: 'static> Core<S> {
         changed
     }
 
-    /// The reads of drop `id` are in: the target reads the next type it chooses
-    /// ([`DropTarget::read_next`]), or hears the drop.
     fn deliver(&self, id: u64, s: &mut S, tx: &mut Tx) -> bool {
         let Some(mut p) = self.pending.borrow_mut().remove(&id) else {
             return false;
@@ -917,8 +833,6 @@ impl<S: 'static> Core<S> {
     }
 }
 
-/// For the headless tests: a drag from another client, over target `key`, offering `mimes`
-/// through `port`.
 #[cfg(test)]
 pub(crate) struct TestDrop {
     pub(crate) port: Rc<dyn InPort>,
@@ -926,8 +840,6 @@ pub(crate) struct TestDrop {
     pub(crate) key: String,
 }
 
-/// The type `next` chooses to read for `data`'s drop, if the drag offers it and it was not
-/// read already: anything else ends the reads.
 fn next_read(next: &NextReadFn, data: &DropData) -> Option<String> {
     let mime = next(data)?;
     let read = data.items.iter().map(|(m, _)| m);

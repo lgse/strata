@@ -12,8 +12,6 @@ pub enum Policy {
     Auto,
     /// Always borderless.
     Borderless,
-    /// Keep the native frame: the server's title bar, or winit's own frame where the compositor
-    /// draws none (GNOME on Wayland).
     Native,
 }
 
@@ -27,8 +25,6 @@ pub enum Frame {
 }
 
 impl Policy {
-    /// The frame this policy opens. `Auto` is borderless on every backend: on Wayland that
-    /// means no edge resize, minimise or window menu until Rune ships U6–U8 (module docs).
     pub fn frame(self) -> Frame {
         match self {
             Policy::Auto | Policy::Borderless => Frame::Borderless,
@@ -50,15 +46,10 @@ pub fn window_options(frame: Frame, base: WindowOptions) -> WindowOptions {
 pub enum Backend {
     Wayland,
     X11,
-    /// No native window this module knows: a headless run, a test, or a window not attached
-    /// yet. Requests are recorded in their [`Outcome`](super::Outcome) and go nowhere.
     Headless,
 }
 
 impl Backend {
-    /// The backend winit 0.30 picks from the environment: Wayland when `WAYLAND_DISPLAY` or
-    /// `WAYLAND_SOCKET` is set and not empty, else X11 when `DISPLAY` is, else none.
-    /// [`attach`](super::attach) confirms it from the window once it exists.
     pub fn from_env() -> Backend {
         let var = |name| std::env::var(name).ok();
         pick(
@@ -69,8 +60,6 @@ impl Backend {
     }
 }
 
-/// winit 0.30.13's order (`platform_impl/linux/mod.rs`): Wayland first, since an X server can
-/// run under Wayland too.
 pub(super) fn pick(
     wayland_display: Option<&str>,
     wayland_socket: Option<&str>,

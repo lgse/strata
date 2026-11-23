@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C10b CodeView: its scenes, demo state, view and key and poll hooks. Scene
-//! names start with `c10-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-2-composites/C10b-code-view.md`.
-//!
-//! A source preview in C9's drawer beside a fake listing, coloured by the real highlighter
-//! thread, and the custom-action script editor with C21's field menu. The page stands in for
-//! Strata's policy: it keeps the wrap preference and moves focus back to the files on Leave.
-//! Golden scenes wait for the colours of the lines on screen before the first frame
-//! ([`CodeState::settle`], headless only); the review scenes don't.
-
 use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::Duration;
@@ -80,7 +69,6 @@ impl Live {
     }
 }
 
-/// C10b's demo state, held in `Gallery::c10`.
 #[derive(Default)]
 pub struct Demo {
     pub fixture: Fixture,
@@ -91,8 +79,6 @@ pub struct Demo {
     pub live: Option<Live>,
     /// The last intent, as the page's status line reads it ("Leave", "Show Rendered").
     pub last: String,
-    /// What copying the selection would take, read from the page's poll: scripts check
-    /// selections and copies through the line keyed `c10-selection`.
     pub selection: String,
 }
 
@@ -173,8 +159,6 @@ fn wrap_off() -> String {
     s
 }
 
-/// A 5,000-byte token with no whitespace between two short lines: Strata's source preview
-/// splits it on character boundaries into rows of 2,048, 1,476 and 1,476 bytes.
 pub fn long_line() -> String {
     format!("before\n{}\nafter\n", "0123456789".repeat(500))
 }
@@ -274,8 +258,6 @@ fn find_open(g: &mut Gallery, dark: bool) {
     g.c10.code.find_step(true);
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c10", dark)`, then fills in `g.c10`.
 pub const SCENES: &[Scene] = &[
     ("c10-rust-light", |g| setup(g, false, Fixture::Rust, true)),
     ("c10-rust-dark", |g| setup(g, true, Fixture::Rust, true)),
@@ -309,8 +291,6 @@ pub const SCENES: &[Scene] = &[
     ("c10-editor-dark", |g| setup(g, true, Fixture::Editor, true)),
 ];
 
-/// Scenes for review with `--scene` only, kept out of the goldens: colours landing as the
-/// thread answers.
 pub const REVIEW: &[Scene] = &[
     ("c10-async-light", |g| {
         setup(g, false, Fixture::Large, false)
@@ -435,9 +415,6 @@ fn drawer_intent(g: &mut Gallery, intent: DrawerIntent, _tx: &mut Tx) {
     }
 }
 
-/// The fake listing beside the drawer, its focus group keyed `files`, and under it two lines
-/// scripts read: the last intent (`c10-last-intent`) and what copying the selection would
-/// take (`c10-selection`), each named "None" while empty.
 fn files(look: &Look, last: &str, selection: &str) -> El {
     let k = &look.kit;
     let line = |key: &str, s: &str| {
@@ -496,15 +473,10 @@ fn files(look: &Look, last: &str, selection: &str) -> El {
     col().w_full().h_full().child(list).child(status)
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds:
-/// starts the highlighter, takes the colours that landed, applies find's selections and
-/// closes the field menu when its field goes, as Strata's poll would. True when state changed.
 pub fn poll(g: &mut Gallery, _t: f64, tx: &mut Tx) -> bool {
     let mut changed = false;
     if g.c10.live.is_none() {

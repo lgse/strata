@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A start that reaches no platform, for the headless tests of the source's guard, and the
-//! hub's own tests.
-
 use std::cell::Cell;
 use std::sync::Arc;
 
@@ -22,8 +19,6 @@ pub(super) fn next_id() -> u64 {
     })
 }
 
-/// Review round 1: a window attached again (Rune recreates its native side on every Wayland
-/// show) replaces its poster instead of adding one more.
 #[test]
 fn a_window_attached_again_keeps_one_poster() {
     let posters = Posters::default();

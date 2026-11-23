@@ -1,36 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C2 ColumnsView: its scenes, demo state, view and key and poll hooks. Scene
-//! names start with `c2-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-3-views/C2-columns-view.md`.
-//!
-//! The page is a stand-in Columns pane over a fake tree (see [`folder`]): Home, holding
-//! Documents, Pictures, Music, Projects, Empty, Slow (which takes 2 s to list), Big (100,000
-//! entries) and a chain `deep/level-1/…/level-20`. Entry ids are fixed per folder, `number ×
-//! 1,000,000 + position`, so scripts name rows by them: Home's entries are `row-1000001` on.
-//! Its header shows the columns open (`c2-path`) and the last thing the view told the host
-//! (`c2-intent`).
-//!
-//! The page stands in for Strata's policy, as C4's sorts for it:
-//!
-//! - opening a folder (a click, Return, or Right on a folder whose column isn't open) opens its
-//!   column after the one it is in, as a sibling where a deeper column was open;
-//! - a plain click on a file in a column before the last closes the deeper columns;
-//! - Alt+Up returns to the parent of the active column's folder, selecting the folder it came
-//!   from (Back to an ancestor);
-//! - the close button, Escape with nothing selected and a click on a column's empty space close
-//!   columns as the view asks.
-//!
-//! It mirrors nothing (Up and Down open no child column): mirroring is Strata's.
-//!
-//! Rows show size badges (C2b): a folder's item count (Slow's is unknown until it has been
-//! listed, so it shows none till then) and
-//! a file's size made up from its name. `Demo::show_sizes` stands in for Strata's "Show sizes
-//! in Columns view". A rename (a slow second click) draws a stand-in editor, the row's name in
-//! an outline, until the selection or cursor moves. With `Listings::describe_kinds` the page
-//! describes each row by what it is, as Strata does, in place of the badge's words.
-
 use std::borrow::Cow;
 
 use rune::{Cx, El, Key, KeyEvent, Tx, col, row, text};
@@ -66,14 +35,10 @@ pub struct Listed {
     pub from: Option<EntryId>,
 }
 
-/// The open columns' listings, root first, whether Slow's item count is known yet (once it
-/// has been listed: a count that fills in late), and whether the page describes its rows.
 #[derive(Debug, Default)]
 pub struct Listings(pub Vec<Listed>, pub bool, pub bool);
 
 impl Listings {
-    /// Describes each row to assistive technology by what it is ("Folder", "File"), as
-    /// Strata does, in place of the badge's words.
     pub fn describe_kinds(&mut self, on: bool) {
         self.2 = on;
     }
@@ -125,8 +90,6 @@ impl ColumnSources for Listings {
     }
 }
 
-/// How many entries folder `name` lists, when the page knows: Slow's only once it has been
-/// listed (`slow_known`).
 fn count_of(name: &str, slow_known: bool) -> Option<usize> {
     match name {
         "Slow" if !slow_known => None,
@@ -161,14 +124,12 @@ fn size_text(bytes: u64) -> String {
     }
 }
 
-/// C2's demo state, held in `Gallery::c2`.
 pub struct Demo {
     pub listings: Listings,
     pub columns: ColumnsState,
     pub clock: f64,
     /// The last thing the view told the host.
     pub intent: String,
-    /// The C9 drawer beside the strip, with its Columns slot reserved, when set.
     pub drawer: Option<DrawerState>,
     /// The strip's width, when narrower than the page.
     pub width: Option<f32>,
@@ -208,8 +169,6 @@ impl Default for Demo {
     }
 }
 
-/// The fake tree: folder `name`'s number and its entries, folders first. Unknown names list
-/// three files under a number from their name.
 pub fn folder(name: &str) -> (u64, Vec<(String, EntryKind)>) {
     let folders = |names: &[&str]| -> Vec<(String, EntryKind)> {
         names
@@ -392,8 +351,6 @@ impl Demo {
             .unwrap_or_default()
     }
 
-    /// The listing for folder `name`, entered from `from`, as the page lists it: Slow takes a
-    /// while.
     fn listed(&self, name: &str, from: Option<EntryId>) -> Listed {
         let slow = name == "Slow";
         Listed {
@@ -409,8 +366,6 @@ impl Demo {
         }
     }
 
-    /// Opens folder `id` of column `depth` as the next column: a sibling where a deeper column
-    /// was open.
     fn open(
         &mut self,
         look: &strata_kit::look::Look,
@@ -554,7 +509,6 @@ pub fn columns_view() -> ColumnsView<Gallery> {
         c.settings(KeySettings::default().letters(g.c2.letters))
             .rename(
                 move |g: &Gallery| g.c2.renaming.filter(|(d, _)| *d == depth).map(|(_, id)| id),
-                // A stand-in for C5's editor: the name, outlined.
                 Slot::pure(|_: &Gallery, rcx| {
                     let kit = &rcx.look.kit;
                     text(rcx.entry.name.to_owned())
@@ -601,8 +555,6 @@ fn start(g: &mut Gallery, dark: bool) {
     open_home(g, &mut Tx::default());
 }
 
-/// Opens Home as the only column, focused: what every scene starts from, and what the page
-/// shows when the index opens it.
 fn open_home(g: &mut Gallery, tx: &mut Tx) {
     let look = g.look.clone();
     let d = &mut g.c2;
@@ -743,8 +695,6 @@ fn wide_column(g: &mut Gallery, dark: bool) {
     open_path(g, &["Music"]);
 }
 
-/// Sizes in the badges: Documents on the open path in Home, two selected rows in Documents,
-/// the keyboard cursor on one of them.
 fn badges(g: &mut Gallery, dark: bool) {
     start(g, dark);
     open_path(g, &["Documents", "Reports"]);
@@ -770,8 +720,6 @@ fn sizes_off(g: &mut Gallery, dark: bool) {
     g.c2.show_sizes = false;
 }
 
-/// The badges' scene with each row described by what it is: the chips still show the sizes,
-/// and assistive technology hears "Folder" and "File".
 fn kinds(g: &mut Gallery, dark: bool) {
     badges(g, dark);
     g.c2.listings.describe_kinds(true);
@@ -863,9 +811,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     page
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index, as
-/// it does once the strip has nothing left to clear or close.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     let look = g.look.clone();
     let d = &mut g.c2;
@@ -886,9 +831,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Deliver fake async results here; a worker wakes the loop with `Gallery::waker`. True when
-/// state changed.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     let mut changed = false;
     // Opened from the index, the page has no scene to set it up.

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`ProgressDialog`]: the blocking progress dialog, on C15's [`StrataDialog`], for operations
-//! that must hold the window (Strata's moves, extracts, restores, Empty Trash, undo).
-
 use std::rc::Rc;
 
 use rune::{Align, El, row, text};
@@ -15,35 +12,16 @@ use crate::dialog::{Focus, StrataDialog};
 /// What Escape does in the progress dialog.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum EscapeDoes {
-    /// Cancels the operation, as Strata's code does (`install_progress_keys`) and its feature
-    /// map says ("Escape in the progress dialog acts as Cancel").
     #[default]
     Cancel,
     /// Leaves the dialog alone: the host decides (docking it, say).
     Nothing,
 }
 
-/// The speed's box in the dialog (`TRANSFER_RATE_TEXT_WIDTH_CHARS`: 26 characters,
-/// `src/ui/browser/progress.rs`).
 pub const RATE_WIDTH: f32 = 190.0;
 
 type Intent<S> = Rc<dyn Fn(&mut S, DockIntent)>;
 
-/// The blocking dialog for operation `id`, shown once the op is revealed with
-/// [`Placement::Dialog`], until the host ends it. A click outside leaves it open; its one way
-/// out is Cancel, which it focuses first. Cancel turns into "Cancellation requested",
-/// disabled, and a transfer reads "Device not responding" 8 s later.
-///
-/// ```ignore
-/// ProgressDialog::new("progress", |s: &App| &s.dock, |s: &mut App| &mut s.dock, op)
-///     .return_focus(cursor_row_key)
-///     .on_intent(|s: &mut App, intent| s.ops.handle(intent))
-///     .build(s, &s.look, &mut layer);
-/// ```
-///
-/// Keys: C15's (`<key>-dialog`, `<key>-title`, `<key>-subtitle`, `<key>-primary` for Cancel),
-/// plus `<key>-bar`, `<key>-track`, `<key>-fill`, `<key>-status`, `<key>-bytes`, `<key>-items`
-/// and `<key>-meta`.
 pub struct ProgressDialog<S> {
     key: String,
     get: fn(&S) -> &Dock,
@@ -74,9 +52,6 @@ impl<S: 'static> ProgressDialog<S> {
         }
     }
 
-    /// Hears Cancel ([`DockIntent::Cancel`]). C15's handlers carry no `Tx`, so this one has
-    /// none either; the dialog's wake beacon brings the tick the cancel needs
-    /// ([`Dock::cancel_untimed`]).
     pub fn on_intent(mut self, f: impl Fn(&mut S, DockIntent) + 'static) -> Self {
         self.on_intent = Rc::new(f);
         self
@@ -123,8 +98,6 @@ impl<S: 'static> ProgressDialog<S> {
             label: shown.title.clone(),
         }
         .progress_described(look, op, dock.animations(), self.get_mut, &{
-            // The bytes show in a live label assistive technology doesn't read: the bar says
-            // them, as committed.
             match &shown.bytes {
                 Some(b) if !shown.description.is_empty() => format!("{b} · {}", shown.description),
                 Some(b) => b.clone(),

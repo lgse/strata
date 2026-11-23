@@ -132,8 +132,6 @@ struct EqualStamp {
     case: &'static str,
     baseline: DirectoryStamp,
     before: &'static [Elsewhere],
-    /// Checks and re-lists at 3 s, checks and re-lists at 15 s, whether the late name
-    /// shows, and checks of the folder on another mount.
     expected: (usize, usize, usize, usize, bool, usize),
 }
 

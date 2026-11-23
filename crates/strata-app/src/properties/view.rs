@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Properties dialog's view: single-item / folder Properties, multi-item Selection Properties,
-//! and the stacked permission-failure notice, built on C15's [`StrataDialog`].
-
 use rune::{El, col, el, icon, row, text};
 use rune_kit::{Button, ButtonVariant, Checkbox, ControlSize, Spinner};
 use strata_components::dialog::{Focus, MESSAGE_WIDTH, StrataDialog, Tone, keep_words_whole};

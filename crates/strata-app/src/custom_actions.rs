@@ -1,23 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Custom actions and the background Jobs dashboard (A14):
-//!
-//! - **Catalog & menu rows** (`src/ui/actions.rs`, `src/ui/browser/context_menu/actions.rs`):
-//!   loads `$XDG_CONFIG_HOME/strata/actions/*/action.toml` through [`ActionRegistry`] and
-//!   [`LocalActionStore`], places `MenuPlacement::Top` matches directly on entry and folder
-//!   context menus, and groups `MenuPlacement::Submenu` matches under the `"Actions"` submenu.
-//!   As on GTK, the rows are built when the menu opens and never change while it is open.
-//! - **Confirmation & execution** (`src/ui/actions.rs`, `src/ui/window/keyboard/direct.rs`):
-//!   re-verifies the action's manifest on disk before running, asks `"Run this action?"` on
-//!   C15's `StrataDialog` when `run.confirm` is set, binds `CUSTOM_ACTIONS` (1..10) in
-//!   `Map::Default` at `Stage::DirectCommands`, and exposes [`numbered_actions`] and
-//!   [`run_numbered`] for [A11]'s 10xer `;` / `; .` chords.
-//! - **Jobs dashboard** (`src/ui/jobs.rs`): feeds [`JobService`] snapshots into C16's [`Jobs`]
-//!   button and popover in the window footer (`footer.rs`). The service is the process's, as
-//!   GTK's `SHARED_JOBS` is, so a job outlives the window it started in (`shared`).
-//!
-//! [A11]: ../../../docs/rune/parity/packages/A11.md
-
 mod dialog;
 mod icons;
 mod jobs;
@@ -158,8 +140,6 @@ impl CustomActions {
         self.services.as_ref().map(|s| s.jobs.clone())
     }
 
-    /// The custom actions loaded so far, once the window's first poll has started the
-    /// registry; Settings' keyboard page names each action slot's action from it.
     pub(crate) fn catalog(&self) -> Option<Rc<strata_fs::services::ActionCatalog>> {
         self.services.as_ref().map(|s| s.registry.catalog())
     }
@@ -173,8 +153,6 @@ pub(crate) fn shared_registry(app: &mut App) -> Rc<ActionRegistry> {
     registry
 }
 
-/// Whether a job still runs or waits, without starting the job service if nothing has
-/// (GTK's last-window guard, `src/ui/jobs.rs`).
 pub(crate) fn jobs_active(app: &App) -> bool {
     app.custom_actions
         .job_service()

@@ -1,28 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Path suggestions for the location bar's entry: GTK's planner, ported, answering C6's
-//! `LocationIntent::Complete` (`PathCompletion::refresh` and `plan_completions` in
-//! `src/ui/browser/location/completion.rs`).
-//!
-//! - **What is suggested:** the folders under the folder the typed text names, matched by the
-//!   leaf being typed, case-insensitively, at most 50, sorted by name; `~` offers `~/`, `~/`
-//!   lists the home folder, a relative path lists from the shown folder. When one folder or
-//!   none matches and the text names a folder itself, that folder's children are offered. Hidden
-//!   folders show when the leaf starts with a dot or hidden files are shown.
-//! - **Off Rune's thread:** a listing runs on `strata-fs`'s mount lanes (`child_folders`), and
-//!   its answer comes back through the part's [`Later`]. A newer request or the bar's
-//!   `CancelCompletion` aborts the one in flight, and C6 drops an answer whose generation is
-//!   not the latest (`LocationBarState::deliver`).
-//!
-//! C6 holds the rest: the popup, its keys, the common prefix Tab completes, the deferred keys
-//! while a listing is out, and dismissing on the window's deactivation.
-//!
-//! **Ported from GTK: watch merges from `main`.** The planner (`plan_completions`, `Folder`,
-//! `Listing`, `compact_hint`, `directory_prefix`) is a copy of `src/ui/browser/location/completion.rs`
-//! as of `65019ba16cb530a2bc7235cc665f367574d19239` (`plan_completions`'s `~/` and `/` arms split out as `plan_home` and
-//! `plan_absolute`, unchanged), and its tests of `completion/tests.rs`. A fix there that
-//! reaches `main` is ported here by hand.
-
 use std::{
     ops::Range,
     path::{Path, PathBuf},
@@ -39,7 +16,6 @@ use crate::{App, slots::Later};
 const MAX_COMPLETION_CANDIDATES: usize = 50;
 const MAX_SCANNED_ENTRIES: usize = 10_000;
 
-/// One suggestion as GTK's planner makes it (`CompletionCandidate`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Suggestion {
     display_name: String,
@@ -79,16 +55,12 @@ pub(super) struct Completing {
 }
 
 impl Completing {
-    /// Stops the listing in flight: a newer request supersedes it, or the bar has stopped
-    /// listing.
     pub(super) fn cancel(&mut self) {
         if let Some((_, task)) = self.task.take() {
             task.abort();
         }
     }
 
-    /// The listing for `generation` finished. A newer one may have started meanwhile, its
-    /// answer queued behind this one's: it stays in flight, so a cancel still stops it.
     fn finished(&mut self, generation: u64) {
         if self.task.as_ref().is_some_and(|(of, _)| *of == generation) {
             self.task = None;
@@ -96,8 +68,6 @@ impl Completing {
     }
 }
 
-/// Answers the bar's request for suggestions: at once when nothing has to be listed, else
-/// once the listing comes back through `later`.
 pub(super) fn complete(app: &mut App, query: CompletionQuery, later: &Later<App>, tx: &mut Tx) {
     app.location.completing.cancel();
     let current = app

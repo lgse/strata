@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The filter's results in the place of a column's rows: what a command on them acts on, and
-//! what holds the keyboard after the view changes.
-
 use super::{MODULE, find, fixture, idle, open, press, seen, text, wait};
 use crate::{
     commands::Holds,
@@ -27,8 +24,6 @@ fn type_text(host: &mut Offscreen, typed: &str) {
     }
 }
 
-/// Filters the fixture's first column down to `photo.txt`, which is in `pictures`, with
-/// `todo.txt` selected before the filter.
 fn filtered_to_photo(host: &mut Offscreen) -> tempfile::TempDir {
     let folder = fixture();
     open(host, folder.path());
@@ -44,8 +39,6 @@ fn filtered_to_photo(host: &mut Offscreen) -> tempfile::TempDir {
     folder
 }
 
-/// GTK's `begin_rename` asks `selected_search_result` first: F2 on a result renames it, not
-/// the entry the browser had selected before the filter, and the new name reaches the disk.
 #[test]
 fn f2_on_a_filter_result_renames_the_result() {
     hosted(
@@ -84,9 +77,6 @@ fn f2_on_a_filter_result_renames_the_result() {
     );
 }
 
-/// Ctrl+period with the filter open searches again with hidden files shown, so a hidden
-/// entry that matches joins the results, as GTK's `on_hidden_toggled` asks each column's
-/// search session (lgse/strata#2697).
 #[test]
 fn showing_hidden_files_brings_a_hidden_match_into_the_filters_results() {
     hosted(
@@ -113,8 +103,6 @@ fn showing_hidden_files_brings_a_hidden_match_into_the_filters_results() {
     );
 }
 
-/// A view switch keeps the filter, its query and its results, and the keyboard in its field
-/// (GTK's `ActivePaneFilter` and `restore_view_switch_focus`), into Icons and back.
 #[test]
 fn a_view_switch_keeps_the_filter_with_its_field_focused() {
     hosted(
@@ -172,8 +160,6 @@ fn focused_field(host: &Offscreen) -> bool {
         })
 }
 
-/// After a view switch kept the filter, Escape in its field closes it, and no part holds
-/// the keyboard as a filter any more.
 #[test]
 fn escape_after_a_view_switch_releases_the_filters_hold() {
     hosted(
@@ -197,9 +183,6 @@ fn escape_after_a_view_switch_releases_the_filters_hold() {
     );
 }
 
-/// Tab in a rename on a result commits the name and opens no other editor, as GTK's: the
-/// renamed result keeps the keyboard (`renamed-filter-result-keeps-focus`, its `tab` runs).
-/// Here the next row of the results is a result, which a step would open an editor on.
 #[test]
 fn tab_in_a_rename_on_a_result_only_commits() {
     hosted(
@@ -271,9 +254,6 @@ fn click_key(host: &mut Offscreen, key: &str) {
     idle(host);
 }
 
-/// Leaving a filtered column for window chrome (`header-appearance`) closes its filter and
-/// restores its rows and selection, while opening the column's own Sort menu keeps it open
-/// (`close_filter_after_blur` in `src/ui/browser/columns/append/shell.rs`).
 #[test]
 fn leaving_a_filtered_column_for_chrome_closes_its_filter() {
     hosted(

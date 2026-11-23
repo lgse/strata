@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Interactive per-table state for embedded Markdown/document tables inside
-//! [`DocumentView`](super::DocumentView): column width measurement and manual resizing,
-//! multi-key column header sorting with a three-state cycle, display-order copy formatting,
-//! and C24 horizontal overlay scroll state.
-
 pub(crate) mod render;
 pub(crate) mod sort;
 
@@ -17,7 +12,6 @@ use super::model::Cell;
 use crate::scroll::Bar;
 use sort::ColumnKeys;
 
-/// Narrowest manual drag width for a column (matching GTK's `table_view.rs`).
 pub const MIN_WIDTH: f32 = 48.0;
 /// Widest manual drag width for a column.
 pub const MAX_WIDTH: f32 = 4000.0;
@@ -138,8 +132,6 @@ impl TableState {
         self.keys[column].get_or_init(|| ColumnKeys::new(body, column))
     }
 
-    /// Resolves current column widths for layout: caches measured content widths per font size,
-    /// fits them to `available` width until the user resizes a column manually.
     pub(crate) fn resolve_widths(
         &mut self,
         rows: &[Vec<Cell>],
@@ -252,7 +244,6 @@ impl TableState {
     }
 }
 
-/// Whether row 0 is a header row (non-empty and every cell marked `header`), matching GTK.
 pub(crate) fn has_header(rows: &[Vec<Cell>]) -> bool {
     rows.first()
         .is_some_and(|row| !row.is_empty() && row.iter().all(|c| c.header))
@@ -276,8 +267,6 @@ fn append_row(out: &mut String, row: &[Cell]) {
     out.push('\n');
 }
 
-/// Measures each column's desired width from up to the first 64 rows, matching GTK's
-/// `measure_columns` (`72..=640`, extra room for padding and the header sort indicator).
 fn measure_columns(
     rows: &[Vec<Cell>],
     columns: usize,
@@ -310,9 +299,6 @@ fn measure_cell(text: &str, font: TextStyle, extra: f32) -> f32 {
     widest
 }
 
-/// Distributes `available` width across columns (matching GTK `table_view.rs` & `sheet_grid`):
-/// each column keeps at least `min(wanted, 160)` and shares remaining width proportionally.
-/// If the floors exceed `available`, columns keep their floors and the table scrolls sideways.
 pub(crate) fn fit_widths(wanted: &[f32], available: f32) -> Vec<f32> {
     let floors: Vec<f32> = wanted.iter().map(|w| w.min(SHARE_FLOOR)).collect();
     let extra = (available - floors.iter().sum::<f32>()).max(0.0);

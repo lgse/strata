@@ -1,33 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-//! The `sidebar.*` slot tokens (for example `sidebar.row`) that PlacesSidebar reads.
-//!
-//! Work package: C8, `docs/rune/work/phase-1-leaves/C8-places-sidebar.md`.
-//!
-//! W2 seeded `sidebar.row.height` so K4 has a slot to override before C8 lands. C8 owns this
-//! file. Slot names are API: renaming one breaks users' override files (plan K4).
-//!
-//! Every default follows the rest of the [`Look`]: colours from `kit.c`, lengths from `row`,
-//! `space`, `frame` and `icon_size`. The one exception is `sidebar.pane.width`, Strata's own
-//! default sidebar width, which no other token says.
-
 use rune::Color;
 
 use crate::look::Look;
 use crate::tokens::Token;
 
-/// Strata's default full sidebar width (`SIDEBAR_WIDTH` in `src/ui/window/sidebar_width.rs`,
-/// lgse/strata `upstream/main` 35ee677ab).
 pub const DEFAULT_PANE_WIDTH: f32 = 201.0;
 
-/// The leading inset inside a sidebar row before its icon box (`space.xs`). Paired with the
-/// list's `space.xs` horizontal padding, this puts the icon `space.md` (8 pt) from the sidebar's
-/// left edge — matching the `space.md` gap between icon and label, lining up with the header's
-/// sidebar toggle, and keeping the icon column fixed across full and rail widths.
 pub const ROW_INSET: f32 = 4.0;
 
-/// The leading icon box inside a sidebar row, shared by full and rail rows so stepping between
-/// widths moves no icon even when K2 scales icons past it.
 pub const ICON_BOX: f32 = 16.0;
 
 /// PlacesSidebar's slot tokens. `None` inherits.
@@ -84,8 +65,6 @@ pub fn hover_fill(look: &Look) -> Color {
         .unwrap_or_else(|| k.alpha(k.c.text_base, 0.06))
 }
 
-/// Drive dividers, heading rules and the rail's section separators: `sidebar.divider.color`,
-/// else the base border at 24 %.
 pub fn divider_color(look: &Look) -> Color {
     let k = &look.kit;
     look.slots
@@ -94,8 +73,6 @@ pub fn divider_color(look: &Look) -> Color {
         .unwrap_or_else(|| k.alpha(k.c.border_base, 0.24))
 }
 
-/// How far a drive divider stays in from each side of the full sidebar:
-/// `sidebar.divider.inset`, else `space.md + space.xxs` (Strata's 10 px).
 pub fn divider_inset(look: &Look) -> f32 {
     look.slots
         .sidebar
@@ -103,8 +80,6 @@ pub fn divider_inset(look: &Look) -> f32 {
         .unwrap_or(look.space.md + look.space.xxs)
 }
 
-/// A pin gap's height while it takes a drop: `sidebar.gap.open`, else half of `row.sidebar`.
-/// Slot tokens inherit only from core tokens, so it doesn't follow `sidebar.row.height`.
 pub fn gap_open(look: &Look) -> f32 {
     look.slots
         .sidebar
@@ -112,8 +87,6 @@ pub fn gap_open(look: &Look) -> f32 {
         .unwrap_or(look.row.sidebar / 2.0)
 }
 
-/// How far a pin gap's drop area reaches over each neighbouring row's edge:
-/// `sidebar.gap.reach`, else `space.sm`.
 pub fn gap_reach(look: &Look) -> f32 {
     look.slots.sidebar.gap_reach.unwrap_or(look.space.sm)
 }
@@ -126,8 +99,6 @@ pub fn heading_height(look: &Look) -> f32 {
         .unwrap_or(look.frame.control)
 }
 
-/// The icon rail's width: `sidebar.rail.width`, else the row icon's box with the row's and
-/// the list's insets on each side (`ICON_BOX + 2 × (ROW_INSET + space.xs)`).
 pub fn rail_width(look: &Look) -> f32 {
     look.slots
         .sidebar
@@ -135,8 +106,6 @@ pub fn rail_width(look: &Look) -> f32 {
         .unwrap_or(ICON_BOX + 2.0 * (ROW_INSET + look.space.xs))
 }
 
-/// The full sidebar's starting width, before the user resizes it: `sidebar.pane.width`, else
-/// [`DEFAULT_PANE_WIDTH`].
 pub fn pane_width(look: &Look) -> f32 {
     look.slots.sidebar.pane_width.unwrap_or(DEFAULT_PANE_WIDTH)
 }

@@ -107,8 +107,6 @@ fn sections(model: &MenuModel) -> Vec<Vec<&str>> {
         .collect()
 }
 
-/// The order `dialogs_and_menus/entry-menu-named-actions` expects of the GTK menu, with the
-/// rows that scenario's subsequence check leaves out.
 #[test]
 fn a_files_menu_lists_the_gtk_menus_rows_in_its_order_under_the_name_and_path() {
     let todo = file("todo.txt");
@@ -273,8 +271,6 @@ fn hints_are_the_bindings_and_a_typed_one_shows_only_with_type_to_search_off() {
     assert_eq!(hint(&preview, "Quick preview"), Some("Space"));
 }
 
-/// A saved keymap moves a row's hint with its keys, as GTK's `default_hint` reads the keymap
-/// in force: rebound keys show, and a row whose command is not rebound keeps its own.
 #[test]
 fn a_saved_keymap_moves_the_hints_with_the_keys() {
     hosted_after(
@@ -305,7 +301,6 @@ fn a_saved_keymap_moves_the_hints_with_the_keys() {
     );
 }
 
-/// The order `dialogs_and_menus/pane-menu-directory-actions` expects of the GTK menu.
 #[test]
 fn a_panes_menu_lists_the_gtk_menus_rows_with_paste_greyed() {
     let menu = folder(&FolderTarget {
@@ -370,8 +365,6 @@ fn every_row_is_in_the_catalogs() {
     assert_eq!(untranslated, Vec::<&str>::new());
 }
 
-/// A row runs the command registered under its id, and is inert while no part has one. The
-/// list of rows that act grows as the parts that own the others land.
 #[test]
 fn the_rows_with_a_command_act_and_the_rest_are_inert() {
     hosted(
@@ -422,8 +415,6 @@ fn the_rows_with_a_command_act_and_the_rest_are_inert() {
     );
 }
 
-/// A view the opener has never heard of: it draws one element and answers only what
-/// [`Rows`](crate::slots::Rows) asks about a row's position, from the browser's own order.
 struct Plain;
 
 fn plain_view() -> View<App> {
@@ -477,8 +468,6 @@ fn id_of(host: &Offscreen, folder: &Path, name: &str) -> EntryId {
     shell::id_of(host.app(), &Location::local(folder.join(name)))
 }
 
-/// Asks for the menu as a view's handler does, and says what opened: the name assistive
-/// technology hears, the entry it is for, and the header's lines.
 fn opened(host: &mut Offscreen, entry: Option<EntryId>) -> (String, Option<EntryId>, Vec<String>) {
     let request = Request {
         depth: 0,
@@ -494,8 +483,6 @@ fn opened(host: &mut Offscreen, entry: Option<EntryId>) -> (String, Option<Entry
     (menu.name.clone(), target, header)
 }
 
-/// `context_entries` in `src/ui/browser/context_menu.rs`, through a view that gives only
-/// its rows' positions.
 #[test]
 fn a_menu_is_for_the_selection_its_entry_is_in_and_else_for_the_entry_alone() {
     hosted_over(
@@ -564,9 +551,6 @@ fn center_of(host: &mut Offscreen, wanted: &str) -> (f32, f32) {
     (x + w / 2.0, y + h / 2.0)
 }
 
-/// `focus_context_column` (`src/ui/browser/context_menu/focus.rs`): right-clicking an entry in
-/// an ancestor column while another column is active and focus sits outside the view activates
-/// that column and returns keyboard focus to the shown view when the menu closes.
 #[test]
 fn opening_a_menu_activates_its_column_and_returns_focus_to_the_view() {
     hosted(
@@ -637,9 +621,6 @@ fn current_focus(host: &mut Offscreen) -> Option<String> {
     focused
 }
 
-/// `focus_context_column` and `focus_context_entry` while filter results show: a background
-/// folder menu (`entry = None`) keeps focus on the filter field across dismissal, whereas a
-/// result row's menu (`entry = Some(id)`) focuses the view (`focus_search_result`).
 #[test]
 fn filter_menus_keep_field_focus_on_background_and_focus_view_on_result_row() {
     hosted(
@@ -721,8 +702,6 @@ fn filter_menus_keep_field_focus_on_background_and_focus_view_on_result_row() {
     );
 }
 
-/// 10xer mode's rows hint its verbs where it has one for the row, and nothing where its map
-/// binds no key of the row's own (`tenxer_hint` in `src/ui/shortcut_reference.rs`).
 #[test]
 fn tenxer_rows_hint_the_tenxer_verbs() {
     hosted(

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The footer's count and clipboard badge on the window the crate registers, read as the
-//! window draws them.
-
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_core::model::Location;
 
@@ -51,9 +48,6 @@ fn counts_every_size(host: &Offscreen) -> bool {
     drawn(host).as_deref() == Some(EVERY_SIZE)
 }
 
-/// A short window over a folder and 64 files, with the keyboard on the first file: a range
-/// from it to the last row leaves rows in the middle that no view ever shows, so only the
-/// count asks for their sizes.
 fn short_listing(host: &mut Offscreen) -> tempfile::TempDir {
     host.runtime().set_viewport((800.0, 300.0), 1.0);
     let names: Vec<String> = (0..64).map(|n| format!("f{n:02}")).collect();
@@ -483,9 +477,6 @@ fn columns_filter_blur_close_restores_selection_summary_immediately() {
             }
             wait_count(&mut host, "1 item");
 
-            // Leaving the filtered column closes the filter in `Filter::poll` (after `Footer::poll`).
-            // Frame 1 commits the focus move; frame 2 runs `blur::follow` in `Filter::poll` and
-            // must already render the restored selection summary on that frame, not stale "1 item".
             host.runtime().update(|_, tx| {
                 tx.focus("footer-shortcuts", true);
             });
@@ -530,8 +521,6 @@ fn closing_filter_after_reload_still_fills_selected_sizes() {
             }
             wait_count(&mut host, "1 item");
 
-            // Reload while filtered: `replaced` and `heard` arrive while `ask_metadata` is
-            // suppressed, leaving offscreen selected rows without sizes until the filter closes.
             let before = host.app().browser().column_request_id(0);
             host.runtime()
                 .update(|app: &mut App, _: &mut Tx| app.browser().reload_active());

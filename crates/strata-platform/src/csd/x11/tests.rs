@@ -39,8 +39,6 @@ fn without_an_ewmh_window_manager_nothing_is_known_but_the_state() {
     );
 }
 
-/// wlroots' X11 window manager: `_NET_WM_MOVERESIZE` and the maximised states, no window menu,
-/// no allowed actions.
 #[test]
 fn a_window_manager_that_lists_no_window_menu_or_allowed_actions_reports_what_it_lists() {
     let a = atoms();
@@ -59,8 +57,6 @@ fn a_window_manager_that_lists_no_window_menu_or_allowed_actions_reports_what_it
     assert_eq!(r.state.maximized, Some(false), "maximised one way only");
 }
 
-/// mutter's kind: a window menu, and allowed actions that can take resizing away (a maximised
-/// window, or one of fixed size).
 #[test]
 fn allowed_actions_narrow_what_the_window_manager_supports() {
     let a = atoms();

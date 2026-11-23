@@ -1,27 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The process behind the windows: one primary instance on the session bus, which opens a
-//! window for its own launch and one for each later launch handed to it, as the GTK
-//! application's GApplication does (`handle_command_line` and `connect_open` in `src/main.rs`).
-//!
-//! The claim is strata-platform's P8 shim (`strata_platform::single_instance`), which speaks
-//! GApplication's protocol on the session bus. It names this interface's own app id, so a
-//! launch of it never reaches the GTK application. Rune's own `single_instance` hands a later
-//! launch's `scheme://` links over, and none of its paths, its working folder or an answer: the
-//! shim's module docs have the gap and its upstream issue (Rune #22, packet entry 58).
-//!
-//! The shim delivers its events on its bus thread. [`attach`] sends each to the interface
-//! thread through GLib (`MainContext::invoke`), where it is dispatched like any other source:
-//! it only queues ([`Opening`]), and the host opens what is queued after the dispatch
-//! ([`take`]). A primary's own launch is delivered at [`attach`], before the first window.
-//!
-//! The primary also serves `org.freedesktop.FileManager1`, as GTK's
-//! `export_file_manager_interface` does: browsers and other applications call it for "Open file
-//! location". A call is grouped into a window per folder by GTK's own rules
-//! (`strata_fs::adapters::reveal_requests`), and each opens with its items selected
-//! ([`open_reveal`]). The name is queued for, never taken, so while another file manager holds it
-//! the calls keep reaching that one.
-
 mod argument;
 mod reveal;
 
@@ -43,19 +21,12 @@ use crate::startup::APPLICATION_ID;
 pub(crate) enum Opening {
     /// The process's own launch with no argument: the saved session, or the default folder.
     Plain,
-    /// A later launch with no argument, or an activation: as GTK's `present`, the saved
-    /// session or the default folder, in a window that persists its tabs.
     Present,
     /// An argument: a folder opens, a file is shown selected in its folder.
     Argument(Location),
-    /// A FileManager1 call's folder, with the items it named selected, and their Properties
-    /// shown when it was `ShowItemProperties`.
     Reveal(RevealRequest),
 }
 
-/// A window asked for, with the activation token its asker forwarded: the compositor lets a
-/// window created with it take the focus, as GTK's GApplication hands a launch's token to the
-/// window it presents.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Asked {
     pub(crate) opening: Opening,
@@ -69,9 +40,6 @@ thread_local! {
     static PRIMARY: RefCell<Option<single_instance::Primary>> = const { RefCell::new(None) };
 }
 
-/// Claims this interface's app id for `launch`: the primary, or the status to exit with once
-/// the running primary took the launch. A `service` claim delivers no launch of its own: the
-/// QA mode's, whose host opens its folder itself.
 pub(crate) fn claim(launch: Launch, service: bool) -> Claim {
     let id = AppId::new(APPLICATION_ID).expect("Strata's application id is a valid one");
     single_instance::claim(
@@ -85,24 +53,17 @@ pub(crate) fn claim(launch: Launch, service: bool) -> Claim {
     )
 }
 
-/// Keeps `primary` for the process and has its events reach the interface thread. Call it on
-/// the interface thread, which owns the default GLib context: the events queued since the
-/// claim, the process's own launch among them, are queued before it returns.
 pub(crate) fn attach(primary: single_instance::Primary) {
     primary.attach(|event| glib::MainContext::default().invoke(move || heard(event)));
     PRIMARY.with(|kept| *kept.borrow_mut() = Some(primary));
 }
 
-/// Gives the app id up, so that a launch from now on starts a new primary rather than reach
-/// this one as it quits.
 pub(crate) fn release() {
     if let Some(primary) = PRIMARY.with(|kept| kept.borrow_mut().take()) {
         primary.release();
     }
 }
 
-/// The windows asked for since the last call, in the order they were asked for, with their
-/// tokens.
 pub(crate) fn take_asked() -> Vec<Asked> {
     QUEUED.with(|queued| queued.borrow_mut().drain(..).collect())
 }
@@ -115,8 +76,6 @@ pub(crate) fn take() -> Vec<Opening> {
         .collect()
 }
 
-/// Puts `openings` back at the head of the queue, for the host's first pump. They are the
-/// process's own launch's, whose token Rune gives its first window itself.
 pub(crate) fn queue_first(openings: impl IntoIterator<Item = Opening>) {
     let openings: Vec<Opening> = openings.into_iter().collect();
     QUEUED.with(|queued| {
@@ -130,10 +89,6 @@ pub(crate) fn queue_first(openings: impl IntoIterator<Item = Opening>) {
     });
 }
 
-/// Asks for a window on `location`, as GTK's `open-window-at` presents one
-/// (`present_location_window` in `src/ui/window/open_argument.rs`): the argument's path, a
-/// folder opened and a file shown selected in its folder, leaving `tabs.toml` alone. The host
-/// opens it after the update ([`take`]).
 pub(crate) fn ask_for_window(location: Location) {
     queue_with([Opening::Argument(location)], None);
 }
@@ -156,8 +111,6 @@ fn queue(openings: impl IntoIterator<Item = Opening>) {
     queue_with(openings, None);
 }
 
-/// One event of the bus, on the interface thread. A launch is answered as it is dropped, with
-/// status 0, as GTK answers once it has asked for its windows.
 fn heard(event: Event) {
     match event {
         Event::CommandLine(command) => queue_with(
@@ -180,7 +133,6 @@ fn heard(event: Event) {
     }
 }
 
-/// The windows a FileManager1 call opens: one per folder, as GTK groups them.
 fn revealed(reveal: &Reveal) -> Vec<Opening> {
     let method = match reveal.method {
         Called::Folders => RevealMethod::Folders,
@@ -191,9 +143,6 @@ fn revealed(reveal: &Reveal) -> Vec<Opening> {
     requests.into_iter().map(Opening::Reveal).collect()
 }
 
-/// What a launch opens: a window for each argument that names a location, resolved against
-/// the launch's working folder `cwd` as GIO resolves a command-line argument; with none, the
-/// plain launch's window, or GTK's `present` for a launch another process handed over.
 fn openings(arguments: &[OsString], cwd: Option<&Path>, handed_over: bool) -> Vec<Opening> {
     let paths = paths(arguments);
     if paths.is_empty() {
@@ -210,8 +159,6 @@ fn openings(arguments: &[OsString], cwd: Option<&Path>, handed_over: bool) -> Ve
         .collect()
 }
 
-/// The arguments after the program that are paths: every one after `--`, and before it every
-/// one that is not an option. The launch parsed its own options before it was handed over.
 fn paths(arguments: &[OsString]) -> Vec<&OsString> {
     let mut ended = false;
     let mut paths = Vec::new();
@@ -231,8 +178,6 @@ fn paths(arguments: &[OsString]) -> Vec<&OsString> {
     paths
 }
 
-/// The location `argument` names from `cwd`, as `g_file_new_for_commandline_arg_and_cwd`
-/// reads it: a URI, an absolute path, or a path relative to the launch's folder.
 fn location_for_argument(argument: &OsString, cwd: Option<&Path>) -> Option<Location> {
     let file = match cwd {
         Some(cwd) => gio::File::for_commandline_arg_and_cwd(argument, cwd),

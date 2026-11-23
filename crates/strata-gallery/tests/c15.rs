@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C15's page in process: what the accessibility tree doesn't show (motion, the backdrop,
-//! keyboard focus rings), and focus after closing by every route. These tests, not the
-//! scripts, check the motion, blur and ring bullets; the scripts in `tests/scripts/c15/` check
-//! the rest. Each test names the `app/dialogs` bullets it covers.
-
 mod c15 {
     use rune::{ElementInfo, Env, Key, KeyEvent, Mods, Runtime};
     use strata_components::dialog::BACKDROP_KEY;
@@ -87,8 +82,6 @@ mod c15 {
         element(rt, key).map(|e| (e.opacity, e.scale, e.exiting))
     }
 
-    /// app/dialogs: "Opening an action or search dialog fades in the backdrop and fades the
-    /// dialog in from 96% scale over 200 ms; closing reverses it over 200 ms."
     #[test]
     fn a_dialog_scales_and_fades_in_and_out_in_about_200_ms() {
         let mut rt = mount("c15-openers-light");
@@ -114,8 +107,6 @@ mod c15 {
         assert_eq!(pose(&rt, BACKDROP_KEY), None);
     }
 
-    /// app/dialogs: "Opening Settings fades its whole layer…", "The first Settings open of a
-    /// process fades in…": the shell's fade-only panel, opened for the first time.
     #[test]
     fn a_fade_only_panel_fades_without_scaling_on_its_first_open() {
         let mut rt = mount("c15-openers-light");
@@ -133,8 +124,6 @@ mod c15 {
         assert_eq!(scale, 1.0);
     }
 
-    /// app/dialogs: "Closing Settings during its fade-in stops the fade-in and fades out from
-    /// the current opacity."
     #[test]
     fn closing_mid_open_fades_out_from_where_it_was() {
         let mut rt = mount("c15-openers-light");
@@ -156,8 +145,6 @@ mod c15 {
         }
     }
 
-    /// app/dialogs: "With Reduce motion on, or GTK `gtk-enable-animations` off, Settings
-    /// appears at full opacity at once and closes without a fade."
     #[test]
     fn with_animations_off_a_dialog_shows_and_goes_at_once() {
         let mut rt = mount("c15-reduced-light");
@@ -173,8 +160,6 @@ mod c15 {
         }
     }
 
-    /// app/dialogs: "While a dialog is open, the window content behind it is blurred; closing
-    /// one of two stacked dialogs keeps the blur until the last one closes."
     #[test]
     fn the_backdrop_stays_until_the_last_stacked_dialog_closes() {
         let mut rt = mount("c15-openers-light");
@@ -200,9 +185,6 @@ mod c15 {
         assert_eq!(backdrops(&rt), 0);
     }
 
-    /// app/dialogs: "A keyboard-focused confirm button… shows a 3 px theme-accent halo",
-    /// "That halo sits flush…", "Moving keyboard focus off the confirm button removes its
-    /// halo." The ring's look is in the PNG of a keyboard-opened dialog, checked by hand.
     #[test]
     fn a_keyboard_focused_confirm_button_shows_its_ring_until_focus_moves() {
         let mut rt = mount("c15-openers-light");
@@ -222,8 +204,6 @@ mod c15 {
         assert!(!focus_visible(&rt, "c15-danger-primary"));
     }
 
-    /// The keyboard scenes' golden shows the ring: their poll puts focus in keyboard mode on
-    /// the primary, which keeps focus.
     #[test]
     fn the_keyboard_scene_shows_the_primary_focused_from_the_keyboard() {
         let mut rt = mount("c15-danger-keyboard-light");
@@ -231,8 +211,6 @@ mod c15 {
         assert!(focus_visible(&rt, "c15-danger-primary"));
     }
 
-    /// app/dialogs: "Closing the last open dialog by any route returns focus to the widget
-    /// focused before the first one opened, if still on screen."
     #[test]
     fn every_route_that_closes_a_dialog_returns_focus_to_its_opener() {
         type Close = fn(&mut Runtime<Gallery>);
@@ -261,8 +239,6 @@ mod c15 {
         }
     }
 
-    /// app/dialogs: "A dialog closed from the keyboard keeps the focus ring where focus lands
-    /// once the last modal closes."
     #[test]
     fn a_keyboard_close_keeps_the_ring_on_the_opener() {
         let mut rt = mount("c15-openers-light");
@@ -274,8 +250,6 @@ mod c15 {
         assert!(focus_visible(&rt, "c15-open-basic"));
     }
 
-    /// app/dialogs: "A dialog closed from the keyboard over a modal that stays open, such as
-    /// Settings, keeps the ring on the control that gets focus."
     #[test]
     fn a_keyboard_close_over_a_dialog_keeps_the_ring_on_its_opener_there() {
         let mut rt = mount("c15-openers-light");

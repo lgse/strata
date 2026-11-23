@@ -1,72 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! PreviewDrawer (C9): the resizable drawer that hosts every preview, beside the file views in
-//! a browser window and in the chooser.
-//!
-//! Work package: C9, `docs/rune/work/phase-1-leaves/C9-preview-drawer.md`. Feature map nodes
-//! `preview/preview-panel` and `preview/preview-panel/layout`.
-//!
-//! ```ignore
-//! PreviewDrawer::new(&s.drawer, |s: &mut App| &mut s.drawer)
-//!     .arrangement(Arrangement::List)
-//!     .header(HeaderInfo::new("notes.md").details(["2 KB", "Today", "Markdown"]))
-//!     .hosted(&s.view, |s: &mut App| &mut s.view)
-//!     .content(code_view)
-//!     .on_intent(|s: &mut App, intent, tx| s.apply(intent, tx))
-//!     .build(listing, &s.look, cx)
-//! ```
-//!
-//! # Why its own split
-//!
-//! The drawer is a row the component lays out itself, `[files | divider | slot]`, driven by a
-//! [`DrawerState`] the host keeps per window. It is neither rune-kit's `SplitView` inspector
-//! nor a rune-kit `PaneState`:
-//!
-//! - `SplitView` is a window's whole shell (title band, toolbar, main card, sidebar). The
-//!   drawer sits inside the browser area of both the browser window and the chooser, and a
-//!   second `SplitView` would bring a second title band.
-//! - The inspector fixes what the drawer has to set: its region is named "Inspector", its grip
-//!   "Resize inspector", focus returns to keys of its own (`main-pane`, `sidebar-toggle`), and
-//!   the grip never takes focus, which rules out Strata's F8 and arrow keys.
-//! - `PaneState`'s rules contradict Strata's: dragging below half the minimum collapses the
-//!   pane (Strata keeps at least one standard column), it has one fixed width (Strata has an
-//!   automatic width that fills the space beside the focused column, and a session minimum),
-//!   its range is fixed (Strata's maximum moves with the window), and only the kit can set its
-//!   resizing flag.
-//! - Strata slides for 260 ms where the kit springs, a reserved Columns slot never slides, and
-//!   the slot lends its width to C2's trailing column. Neither type can say that.
-//!
-//! From `SplitView` it keeps the zero-size `focus_return` stubs, the grip as a `separator`
-//! whose value is the width, the 6 point grip inside the pane's edge, and the slot that clips
-//! content held at its full width while it slides.
-//!
-//! # Focus moves
-//!
-//! The drawer moves focus with zero-size stubs carrying `focus_return`: each request
-//! ([`DrawerState::focus_content`] and kin) bumps a counter in the stub's key, so the old stub
-//! is removed and Rune returns focus to the stub's target, as it does when a popover closes. A
-//! stub inside the slot returns focus to the files when the preview closes. The stubs stay
-//! although Rune `631e8a67` has `Tx::focus`: a returned focus goes to the target's
-//! `focus_selected` element first (the files' cursor row, an archive's chosen member), while
-//! `Tx::focus` takes the target's first focusable element (`runtime/input/focus.rs`). When the
-//! drawer's content is still loading and nothing inside [`BODY_KEY`] is focusable yet,
-//! [`DrawerState::focus_content_when_shown`] queues `Tx::focus_when_shown(BODY_KEY, true)` so
-//! focus lands as soon as the viewer mounts (cancelling automatically if the user acts first).
-//!
-//! # Focus indicator
-//!
-//! While focus is anywhere inside the drawer, a 3-point accent bar draws across the top edge of
-//! the header without shifting it, matching focused Miller column headers (`.preview-pane
-//! .preview-header`). It uses a clipped `focus_within_ring` wrapper inside `preview-drawer` so
-//! only the top edge is visible and updates with zero frame lag.
-//!
-//! # What stays in Strata
-//!
-//! Which files preview, when the preview opens and closes (Space, `i`, Escape, following the
-//! cursor), whether the user dismissed it, the wrap preference, the sidebar rail, and the
-//! keymap. The drawer holds the interaction and the placement and reports through
-//! [`DrawerIntent`].
-
 mod divider;
 mod find;
 mod header;
@@ -88,9 +21,6 @@ pub use hosted::{DocumentView, FindStatus, HostedPreview, NoPreview};
 pub use layout::{Arrangement, ColumnsFit, DrawerRules, RightPane, Solved, right_pane, solve};
 pub use state::{DrawerState, FIND_MAX_CHARS, FindBar, SLIDE_SECONDS};
 
-/// The widest image, video, PDF page or rendered document text in a preview, centered in a
-/// wider drawer (`preview/preview-panel/layout`). C11–C14 lay their content out within it;
-/// source views and standalone tables keep the full width.
 pub const CONTENT_MAX_WIDTH: f32 = 1280.0;
 
 /// The split's key: its width is what the rules solve against.
@@ -100,8 +30,6 @@ pub const SPLIT_KEY: &str = "preview-split";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DrawerIntent {
-    /// The close button closed the drawer (the drawer has already closed). Strata marks the
-    /// preview dismissed.
     Closed,
     /// Open in the default application.
     Open,
@@ -109,15 +37,11 @@ pub enum DrawerIntent {
     SetWrap(bool),
     /// The Rendered/Source switch, to the form it offers.
     ShowView(DocumentView),
-    /// The narrow-window rule hid (`true`) or showed again (`false`) the open preview's
-    /// content: pause media and defer loading, or resume.
     Suspend(bool),
     /// A plain primary press landed in the empty reserved slot beside the columns.
     EmptySlotPressed,
 }
 
-/// The words the drawer shows and assistive technology reads. Strata passes translated text
-/// and its keymap's keys; the defaults are English with the default key map.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct DrawerLabels {
@@ -163,10 +87,6 @@ impl Default for DrawerLabels {
     }
 }
 
-/// The previewed item in the header: its icon, name and one line of details (size, modified,
-/// type). The header is a bar's height, so it holds nothing more: a view's badges (a video's
-/// resolution, a route's distance, "2 of 5 in folder") belong in its own content, as C13 and
-/// C14b show them.
 #[derive(Clone, Default)]
 pub struct HeaderInfo {
     pub icon: Option<&'static Icon>,
@@ -198,8 +118,6 @@ pub fn default_find_keys(ev: &KeyEvent) -> bool {
 
 /// What the slot holds while the drawer is open.
 enum Body {
-    /// Nothing: in Columns, the empty reserved slot (a focused folder lends it to its child
-    /// column).
     Empty,
     Placeholder(String),
     View(Box<El>),
@@ -257,8 +175,6 @@ impl<S: 'static> Shared<S> {
     }
 }
 
-/// The drawer and the files beside it: `PreviewDrawer::new(&s.drawer, access) … .build(files,
-/// look, cx)`.
 pub struct PreviewDrawer<'a, S> {
     state: &'a DrawerState,
     access: fn(&mut S) -> &mut DrawerState,
@@ -348,8 +264,6 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
         self
     }
 
-    /// Whether the preview drawer currently owns keyboard focus: highlights the header with the
-    /// active header surface fill (`columns::header_fill`) and top accent bar.
     pub fn focused(mut self, on: bool) -> Self {
         self.focused = on;
         self
@@ -372,16 +286,11 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
         self
     }
 
-    /// Which keys open find while focus is in the preview ([`default_find_keys`] unless set;
-    /// Strata passes its keymap's, `/` in 10xer mode).
     pub fn find_keys(mut self, f: fn(&KeyEvent) -> bool) -> Self {
         self.find_keys = f;
         self
     }
 
-    /// Dragging the header's icon and name drags the previewed file, through `dnd`. The source
-    /// reaches the binder keyed `preview-handle` (W1's `Dnd::drag_source_keyed`), so a window
-    /// has one drawer with a drag source.
     pub fn drag_source(mut self, dnd: Dnd<S>, source: DragSource<S>) -> Self {
         self.drag = Some((dnd, source));
         self
@@ -392,9 +301,6 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
         self
     }
 
-    /// Forwards primary drags starting on the drawer's blank chrome (`clears_on_press = false`
-    /// inside an open preview, `true` in the empty reserved slot) so a drag into the listing
-    /// starts a marquee band while a plain click inside an open preview keeps selection and focus.
     pub fn on_background_drag(
         mut self,
         f: impl Fn(&mut S, &mut Drag, bool, &mut Tx) + 'static,
@@ -587,8 +493,6 @@ pub(crate) struct Parts<'b, S> {
     pub find_keys: fn(&KeyEvent) -> bool,
 }
 
-/// Exit transition shared by the drawer pane and its leading divider: mounts instantaneously and
-/// stays visible while the clipped slot slides shut.
 pub(super) fn slide_exit(animations: bool) -> Transition {
     if animations {
         Transition::identity().springs(rune::SpringPair {
@@ -658,9 +562,6 @@ fn pane<S: 'static>(
     drawer_pane.child(focus_accent_bar(look, content))
 }
 
-/// Wraps the drawer's header and body in a `focus_within_ring` positioned so only its top bar
-/// sits inside `preview-drawer`'s clip rect; the left, right, and bottom sides extend past the
-/// clip by 1 pt so fractional DPI scaling never leaks a sliver.
 fn focus_accent_bar(look: &Look, content: El) -> El {
     let indicator = strata_kit::slots::columns::header_indicator(look);
     let bleed = 1.0;
@@ -682,8 +583,6 @@ pub(crate) fn return_as_space<S: 'static>(_: &mut S, ev: &KeyEvent, tx: &mut Tx)
     true
 }
 
-/// Keys that reach the drawer from a focused element inside it: Escape closes find, and the
-/// find keys open find while the view is searchable. Others pass on.
 fn drawer_key<S: 'static>(
     shared: &Shared<S>,
     s: &mut S,
@@ -698,8 +597,6 @@ fn drawer_key<S: 'static>(
         find::close(shared, s, tx);
         return true;
     }
-    // A plain key typed in the find field is the field's (10xer's `/` is literal there);
-    // modified chords such as Ctrl+F still re-select the query.
     if (shared.access)(s).find.query.focused && !(ev.mods.ctrl || ev.mods.cmd || ev.mods.alt) {
         return false;
     }
@@ -710,12 +607,6 @@ fn drawer_key<S: 'static>(
     false
 }
 
-// State markers: zero-size elements that run once, after the layout that mounts them, to
-// settle state the view can't change while it builds. Each key carries `DrawerState::marks`,
-// which every marker that acts bumps (and each open). That is defensive: a marker's own
-// handler clears its condition, so it unmounts on the next build anyway; the counter only
-// keeps a marker needed again in the same commit from staying mounted unheard.
-
 fn marker(name: &str, st: &DrawerState) -> El {
     el().key(format!("preview-{name}-marker-{}", st.marks))
         .size(0.0, 0.0)
@@ -723,9 +614,6 @@ fn marker(name: &str, st: &DrawerState) -> El {
         .transition(Transition::none())
 }
 
-/// Mounted when the pane has gone (closed, nothing to show, or too narrow) while a drag, the
-/// divider's caption or the find field's focus request is left over: it clears them, so the
-/// pane doesn't come back mid-drag or take focus when it shows again.
 fn hidden_marker<S: 'static>(shared: &Shared<S>, st: &DrawerState) -> El {
     let access = shared.access;
     marker("hidden", st).on_layout(move |s: &mut S, _| {
@@ -738,8 +626,6 @@ fn hidden_marker<S: 'static>(shared: &Shared<S>, st: &DrawerState) -> El {
     })
 }
 
-/// Mounted while the find field's focus request stands but the bar isn't built: drops the
-/// request, so the field doesn't take focus when the view is searchable again.
 fn find_focus_marker<S: 'static>(shared: &Shared<S>, st: &DrawerState) -> El {
     let access = shared.access;
     marker("find-focus", st).on_layout(move |s: &mut S, _| {
@@ -749,8 +635,6 @@ fn find_focus_marker<S: 'static>(shared: &Shared<S>, st: &DrawerState) -> El {
     })
 }
 
-/// Mounted while find has ended and the hosted view hasn't heard: tells it. Needs the view
-/// passed with [`PreviewDrawer::hosted`] in that build.
 fn find_end_marker<S: 'static>(shared: &Shared<S>, st: &DrawerState) -> El {
     let shared = shared.clone();
     marker("find-end", st).on_layout(move |s: &mut S, _| {
@@ -785,9 +669,6 @@ fn empty_reserved_slot<S: 'static>(
     if empty_slot.width <= 0.0 {
         return slot;
     }
-    // The empty reserved slot keeps the divider's line, so the edge beside the columns looks the
-    // same with or without a preview, and a plain click there clears the columns' selection like
-    // blank space beside the strip.
     let empty = shared.clone();
     let slot = if let Some(bg) = shared.background_drag.clone() {
         slot.preserve_focus_on_press(true)
@@ -832,9 +713,6 @@ fn empty_slot_press<S: 'static>(shared: &Shared<S>, s: &mut S, tx: &mut Tx) {
     }
 }
 
-/// Mounted while the drawer is open with something to show, keyed by whether it fits (and by
-/// the open, which bumps `marks`), so each change of verdict, and each open, mounts a new
-/// marker and reports it.
 fn fit_marker<S: 'static>(shared: &Shared<S>, st: &DrawerState, fits: bool) -> El {
     let shared = shared.clone();
     marker(if fits { "fit-shown" } else { "fit-hidden" }, st).on_layout_tx(

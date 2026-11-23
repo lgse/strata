@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Settings -> Actions page state, live `ActionRegistry` observation, and async CRUD/import/export
-//! coordination, ported from `src/ui/settings/actions.rs`.
-
 mod editor;
 mod editor_view;
 mod examples;

@@ -1,48 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The per-folder views this process keeps, `folder-views.toml`: the one
-//! [`FolderViewStore`] of the process, and when it is written. The store's rules are its
-//! module's (`strata_desktop::settings::folder_view_store`); which values it keeps is
-//! `strata_desktop::settings::folder_view_policy`'s, shared with the GTK application. When a
-//! write happens stays in each interface, by the owner's ruling (`docs/rune/shared-state.md`),
-//! so this is the GTK manager's `schedule_folder_views_write`, `write_folder_views` and
-//! `folder_views_saved` (`src/ui/preferences/folder_view_settings.rs`) on Rune's loop:
-//!
-//! - **Loaded at start-up,** once, with the window.
-//! - **One timer.** A change asks for a write [`SAVE_DELAY`] later; a pending write keeps its
-//!   time unless a shorter wait is asked for. It is stamped with the window's clock when it is
-//!   asked (`Tx::clock`) and fired from the poll, so it follows Rune's clock, virtual in tests.
-//! - **A write's result** comes back through the window's queue: `Busy` asks again
-//!   [`SAVE_DELAY`] later; a write that reached the file adopts what another process had saved,
-//!   publishes it and then counts its own changes as saved, in that order.
-//! - **At exit** a store with unsaved changes writes once more, with `exit` set
-//!   ([`flush_at_exit`], from the window's `on_close` and `on_quit`), before the settings
-//!   writer is flushed.
-//! - **What another process saves** is read again when the file changes, and once when the
-//!   monitor is live, and adopted under this process's unsaved changes.
-//!
-//! The GTK notices (saving off for a file that could not be read, a write that failed, and the
-//! notice cleared by the next write that succeeds) are only logged: this interface has no
-//! notice yet. A view reads a folder's values with [`views`], and follows a change by
-//! [`revision`].
-//!
-//! **The folders' sorts** (A10's): while `remember_folder_views` is on, the browser resolves a
-//! folder's sort through the store ([`Kept::follow_sorts`], GTK's `set_folder_sorts` binding),
-//! so a folder opens in its saved sort as its column is made. A folder only opened counts as
-//! used, and a write is asked [`USE_SAVE_DELAY`] later. A sort chosen in a remembered folder is
-//! kept for it ([`chosen`], `BrowserEvent::FolderSortChosen`), and when the folders' sorts
-//! change, here or in another process, the browser's columns follow
-//! (`resync_column_sorts`). The policy is `strata_desktop::settings::folder_sort_policy`.
-//!
-//! The store is shared with the browser's resolver, which the browser calls while it opens a
-//! folder: a caller of [`views`] drops the borrow before it calls into the browser.
-//!
-//! **One store for the process,** as GTK's windows share their `PreferenceManager`'s: every
-//! window of the process, a floating chooser's included, holds the same [`Shared`] values,
-//! revision and sorts' moves, while one is open. Each window keeps its own timer, its own
-//! write and what its columns last followed; a change in one wakes the others, whose views
-//! read the values again and whose columns follow the sorts ([`follow_others`]).
-
 use std::{
     cell::{Cell, Ref, RefCell},
     rc::Rc,
@@ -114,8 +71,6 @@ impl Shared {
         shared
     }
 
-    /// The values changed in the window whose queue is `own`: every other window is woken to
-    /// read them again.
     fn moved(&self, own: &Later<App>) {
         self.revision.set(self.revision.get() + 1);
         let own = own.downgrade();
@@ -130,8 +85,6 @@ impl Shared {
     }
 }
 
-/// Another window changed the values: this one's columns follow the sorts, and its views draw
-/// again.
 fn follow_others(app: &mut App, _: &mut Tx) -> bool {
     follow_sorts_moved(app);
     true
@@ -153,8 +106,6 @@ enum Tick {
 }
 
 impl Timer {
-    /// Asks at `clock` for a write `delay` later: a pending write keeps its time unless this
-    /// wait is shorter. When the timer took it, the time it is due, for the caller to wake at.
     fn ask(&mut self, clock: f64, delay: Duration) -> Option<f64> {
         if self.due.is_some_and(|(_, held)| held <= delay) {
             return None;
@@ -188,9 +139,6 @@ pub(crate) struct Kept {
     store: Rc<RefCell<FolderViewStore>>,
     timer: Timer,
     later: Later<App>,
-    /// Whether the last write before the process ends has started: closing the window and
-    /// quitting may both ask for it. Strata does not use Rune's `keep_running`; if it ever
-    /// does, a closed window can open again, and this must be cleared on reopen, or dropped.
     exiting: bool,
     /// Follows what another Strata process, such as the portal chooser, saves.
     _monitors: [LoadHandle; 2],
@@ -201,8 +149,6 @@ pub(crate) struct Kept {
 }
 
 impl Kept {
-    /// Reads the file once in a process, for its first window, and follows it through the
-    /// window's queue; a later window shares what the open ones hold ([`Shared`]).
     pub(crate) fn load(later: Later<App>) -> Self {
         let monitors = [follow_file(later.clone()), follow_settings(later.clone())];
         let shared = Shared::join(&later);
@@ -228,9 +174,6 @@ impl Kept {
         self.shared.sorts.set(self.shared.sorts.get() + 1);
     }
 
-    /// Gives `browser` the folders' sorts while `remember_folder_views` is on, as GTK's
-    /// binding does (`set_folder_sorts`), before its first folder opens. The browser resolves
-    /// a folder's sort as its column is made, from the store.
     pub(crate) fn follow_sorts(&self, browser: &Rc<Browser>, saved: &Preferences) {
         if saved.remember_folder_views {
             browser.set_folder_sorts(Some(self.resolver()));
@@ -348,8 +291,6 @@ pub(crate) fn forget_all(app: &mut App, tx: &mut Tx) {
     app.window.folder_views().sorts_moved();
 }
 
-/// The values, as a view reads a folder's. The borrow is dropped before anything calls into
-/// the browser, whose resolver borrows the store.
 pub(crate) fn views(app: &App) -> Ref<'_, FolderViews> {
     Ref::map(
         app.window.folder_views().store.borrow(),
@@ -372,8 +313,6 @@ pub(crate) fn change(app: &mut App, change: impl FnOnce(&mut FolderViews) -> boo
     }
 }
 
-/// A sort chosen in `location`, a remembered folder (`BrowserEvent::FolderSortChosen`): kept
-/// for it as `folder_sort_policy` says (`set_folder_sort_options`).
 pub(crate) fn chosen(app: &mut App, location: &Location, options: SortOptions, tx: &mut Tx) {
     let settings = crate::shell::preferences(app);
     let kept = folder_sort_policy::keep_folder_sort(settings, location, options);
@@ -382,8 +321,6 @@ pub(crate) fn chosen(app: &mut App, location: &Location, options: SortOptions, t
     }
 }
 
-/// Changes the folders' sorts (a sort kept, forgotten or pruned): when they changed, a write
-/// is asked for and the open columns follow at the next poll.
 pub(crate) fn change_sorts(
     app: &mut App,
     change_views: impl FnOnce(&mut FolderViews) -> bool,
@@ -410,8 +347,6 @@ pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) {
     follow_sorts_moved(app);
 }
 
-/// The folders' sorts changed, here or in another window: the open columns follow
-/// (`folder_sorts_revision`'s binding).
 fn follow_sorts_moved(app: &mut App) {
     let kept = app.window.folder_views_mut();
     let moved = kept.shared.sorts.get();
@@ -421,9 +356,6 @@ fn follow_sorts_moved(app: &mut App) {
     }
 }
 
-/// The last write, before the process ends, when anything is unsaved (`flush_folder_views`).
-/// Once: the window's `on_close` and `on_quit` both call it, since a quit runs no `on_close`
-/// and the last window closing may run both.
 pub(crate) fn flush_at_exit(app: &mut App) {
     let kept = app.window.folder_views_mut();
     if !kept.exiting && kept.store.borrow().views().has_unsaved() {
@@ -470,9 +402,6 @@ impl Kept {
     }
 }
 
-/// Reads the file again whenever it changes, and once when the monitor is live, which covers
-/// a save made between the load and the monitor starting; adopts what another process saved
-/// (`merge_folder_views_saved_elsewhere`, which GTK's monitor calls both ways).
 fn follow_file(later: Later<App>) -> LoadHandle {
     let live = later.clone();
     watch(

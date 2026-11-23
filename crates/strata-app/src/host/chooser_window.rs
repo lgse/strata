@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A chooser's own window, as the portal daemon ([`super::portal`]) and the browser window's
-//! floating destination chooser ([`super::floating`]) open one.
-
 use rune::{AppHandle, AppSpec, Tx, WindowHandle, WindowOptions};
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::{
@@ -12,8 +9,6 @@ use strata_platform::{
 
 use crate::{App, commands, shell};
 
-/// What a chooser's window is called until its state names it, as the browser window's is:
-/// `App::retitle` gives it the request's title once the chooser lists its folder.
 const OPENING_TITLE: &str = "Strata";
 
 /// How a chooser's window runs.
@@ -47,8 +42,6 @@ pub(crate) fn chooser_app(window: ChooserWindow) -> rune::App<App> {
     .on_close(window.on_close)
 }
 
-/// Binds a fresh [`BackdropBlur`] handle to a chooser `App` and returns a clone for
-/// `App::on_window`.
 pub(crate) fn bind_backdrop_blur(state: &mut App) -> BackdropBlur {
     let blur = BackdropBlur::new();
     shell::bind_backdrop_blur(state, blur.clone());

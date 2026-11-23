@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What a mount operation asks, and what the prompts answer: plain data, mapped one to one onto
-//! `GMountOperation`'s signals and properties by the binding (in Strata).
-
 use std::fmt;
 
 /// One question from a mount operation.
@@ -16,8 +13,6 @@ pub enum MountRequest {
     Processes(ProcessesRequest),
 }
 
-/// `ask-password`: its message and defaults, and the flags as switches
-/// (`GAskPasswordFlags`). A field shows only when its flag is set.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct PasswordRequest {
     /// The backend's message, shown above the fields.
@@ -36,12 +31,7 @@ pub struct PasswordRequest {
     pub anonymous_allowed: bool,
     /// `SAVING_SUPPORTED`: the "Password storage" choice.
     pub saving_allowed: bool,
-    /// What the secret field asks for: a password, or a passphrase (a key's or a LUKS
-    /// volume's), which renames the title and the field.
     pub secret: Secret,
-    /// Why the last attempt failed, shown and announced over the fields: the host decides that
-    /// a request is a retry (Strata: a second `ask-password` in one operation) and words it,
-    /// for example with [`MountLabels::retry_message`](super::MountLabels::retry_message).
     pub error: Option<String>,
 }
 
@@ -55,9 +45,6 @@ pub enum Secret {
 }
 
 impl Secret {
-    /// Strata's rule: a passphrase when the backend's message says "passphrase", as GVfs's SSH
-    /// key and udisks2 LUKS prompts do. A host that knows the target is an encrypted volume
-    /// sets [`Secret::Passphrase`] itself.
     pub fn guess(message: &str) -> Secret {
         if message.to_lowercase().contains("passphrase") {
             Secret::Passphrase
@@ -94,9 +81,6 @@ impl PasswordRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Choice {
     pub label: String,
-    /// Declines: Cancel, Cancel Login, Disconnect. A rejecting choice takes focus when the
-    /// prompt opens, and the first one is the secondary button. The host marks it: GIO doesn't
-    /// say, and labels come translated.
     pub rejects: bool,
 }
 
@@ -109,9 +93,6 @@ impl Choice {
     }
 }
 
-/// Strata's English heuristic for a declining choice (`is_rejection_choice`): the label is, or
-/// starts with, one of "cancel", "reject", "deny", "disconnect", "abort", "do not", "don't",
-/// "no", ignoring case.
 pub fn looks_like_rejection(label: &str) -> bool {
     let label = label.trim().to_lowercase();
     [
@@ -131,18 +112,11 @@ pub fn looks_like_rejection(label: &str) -> bool {
 /// `ask-question`: the backend's message and its choices.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct QuestionRequest {
-    /// The backend's message: its first line is the title, the rest the body, as GTK shows it.
-    /// A host-key question shows it whole under its own title. It is shown as given: taking
-    /// credentials out of a URI in it (Strata's `sanitize_failure_message`) is the host's.
     pub message: String,
     pub choices: Vec<Choice>,
-    /// An SSH host key to trust (Strata: a question while mounting an `sftp://` location):
-    /// "Verify server identity", with a warning, in the danger tone.
     pub host_key: bool,
 }
 
-/// `show-processes`: the processes keeping a volume busy, and the choices. The backend sends
-/// it again as the list changes; the prompt then updates in place.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ProcessesRequest {
     /// The backend's message: its first line is the title, the rest the body.
@@ -190,9 +164,6 @@ impl fmt::Debug for MountResponse {
 pub struct Credentials {
     pub user: Option<String>,
     pub domain: Option<String>,
-    /// The password or passphrase. `Debug` never prints it. From the answer on it is the host's,
-    /// a plain `String` that isn't zeroized on drop: the prompt's own secure field has wiped its
-    /// copy, but this one lives as long as the host keeps it.
     pub password: Option<String>,
     /// `password-save`: [`Remember::Never`] unless the request allowed saving.
     pub remember: Remember,

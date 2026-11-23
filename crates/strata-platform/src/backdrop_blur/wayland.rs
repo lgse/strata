@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Wayland implementation of compositor backdrop blur on the shared `transfer` queue.
-//!
-//! Binds `ext_background_effect_manager_v1` first (standard cross-compositor staging protocol),
-//! waits one round trip for its initial `capabilities` event, and falls back to
-//! `org_kde_kwin_blur_manager` when either the global is absent or `Capability::Blur` is not
-//! advertised. All proxies live in `State::extension::<BlurState>()` and are destroyed by the
-//! `before_shutdown` hook before winit closes its `wl_display`, never from a thread-local
-//! destructor or on winit's `wl_surface`.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -30,14 +21,8 @@ use super::Protocol;
 use crate::transfer::wayland::{State, with_surface};
 use crate::transfer::{Transfer, Turn, Wants};
 
-/// Logical extent passed to `wl_region.add(0, 0, w, h)` for full-surface blur under
-/// `ext_background_effect_v1`. The specification guarantees the compositor clips the blur region
-/// to the surface bounds; `1_000_000` covers any desktop surface while staying safely below
-/// `i32` / `wl_fixed_t` overflow limits even under high scale factors.
 pub(super) const FULL_SURFACE_EXTENT: i32 = 1_000_000;
 
-/// Returns whether `flags` includes [`Capability::Blur`], tolerating unknown future bitfield
-/// flags that `wayland-client` decodes as `WEnum::Unknown`.
 pub(super) fn capabilities_include_blur(flags: WEnum<Capability>) -> bool {
     let raw = match flags {
         WEnum::Value(caps) => caps.bits(),
@@ -49,8 +34,6 @@ pub(super) fn capabilities_include_blur(flags: WEnum<Capability>) -> bool {
 pub(super) enum Manager {
     Ext {
         manager: ExtBackgroundEffectManagerV1,
-        /// Updated by `ext_background_effect_manager_v1::Event::Capabilities`. Starts `false`
-        /// until the compositor confirms `Capability::Blur` in the initial round trip.
         blur_supported: bool,
     },
     Kde(OrgKdeKwinBlurManager),
@@ -89,11 +72,7 @@ impl SurfaceEffect {
 
 struct SurfaceEntry {
     window: WindowHandle,
-    /// Raw `wl_surface` pointer when `effect` was created, so a recreated native surface under
-    /// the same window key never reuses a stale effect proxy.
     surface_ptr: usize,
-    /// Latest requested state for this window, used to reconcile live surfaces when the
-    /// compositor dynamically restores `Capability::Blur`.
     desired: bool,
     effect: Option<SurfaceEffect>,
 }
@@ -136,8 +115,6 @@ impl BlurState {
 
 /// Phase-1 result of probing compositor blur globals before any round trip.
 pub(super) enum InitialBind {
-    /// Bound `ext_background_effect_manager_v1`; caller must run one round trip and then call
-    /// [`finalize_ext_probe`] to confirm `Capability::Blur` or fall back to KDE blur.
     PendingExt(Manager),
     /// Resolved immediately (`Kde` or `Unavailable`); no round trip needed.
     Resolved(Manager),
@@ -173,9 +150,6 @@ where
     Manager::Unavailable
 }
 
-/// Completes the `ext_background_effect_manager_v1` probe after its initial round trip: keeps
-/// `Manager::Ext` when `Capability::Blur` was advertised, or destroys the unused ext manager
-/// and falls back to `org_kde_kwin_blur_manager` (or `Manager::Unavailable`).
 pub(super) fn finalize_ext_probe<D>(
     slot: &mut Option<Manager>,
     roundtrip_ok: bool,
@@ -216,10 +190,6 @@ pub(super) struct SurfaceTarget<'a, D> {
     pub(super) qh: &'a QueueHandle<D>,
 }
 
-/// Applies `enabled` to `target.surface` using `manager`, reusing or updating `slot` so
-/// `ext_background_effect_manager_v1.get_background_effect` is never sent twice for the same
-/// surface. Returns `true` when the requested state was applied to the surface, or `false` when
-/// skipped (e.g. `Capability::Blur` is currently absent).
 pub(super) fn apply_to_surface<D>(
     manager: &Manager,
     target: &SurfaceTarget<'_, D>,
@@ -327,10 +297,6 @@ fn disable_kde(
     }
 }
 
-/// Attaches `window` to the shared Wayland display substrate and binds a blur manager if the
-/// compositor advertises one. When `ext_background_effect_manager_v1` is bound for the first
-/// time, performs one round trip to observe its initial `capabilities` event before selecting
-/// `ExtBackgroundEffect` or falling back to `KdeBlur`.
 pub(super) fn attach<S: 'static>(window: &WindowHandle, app: &AppHandle<S>) -> Protocol {
     let handle_app = app.clone();
     let turn: Turn = Arc::new(move |f| {
@@ -393,8 +359,6 @@ pub(super) fn attach<S: 'static>(window: &WindowHandle, app: &AppHandle<S>) -> P
     protocol
 }
 
-/// Applies `enabled` to `window`'s live `wl_surface` on the UI thread.
-/// Returns `true` when the requested state took effect on the surface.
 pub(super) fn apply(window: &WindowHandle, enabled: bool) -> bool {
     let Some(transfer) = Transfer::current() else {
         return false;
@@ -499,7 +463,7 @@ pub(super) fn detach(window: &WindowHandle) {
     conn.flush();
 }
 
-/// Before P0 tears down winit's foreign display backend, destroy all blur proxies on the UI thread.
+/// Before `transfer` tears down winit's foreign display backend, destroy all blur proxies on the UI thread.
 fn teardown(transfer: &Transfer) {
     if let Some(conn) = transfer.shared_conn() {
         let _ = conn.with_globals(|_, _, st| st.extension::<BlurState>().destroy_all());
@@ -507,8 +471,6 @@ fn teardown(transfer: &Transfer) {
     }
 }
 
-/// Re-applies blur to every live window whose desired state is enabled after `Capability::Blur`
-/// transitions from `false` to `true`.
 fn reconcile_ext_surfaces(st: &mut State, conn: &Connection, qh: &QueueHandle<State>) {
     let compositor = st.compositor().cloned();
     let blur = st.extension::<BlurState>();

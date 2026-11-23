@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The walk over made-up parts: the order commands are asked in, what their answers do, and
-//! what each owner of the keyboard leaves of the stages.
-
 use std::{
     any::TypeId,
     cell::{Cell, RefCell},
@@ -154,8 +151,6 @@ fn two_tables() -> Vec<Entry<App>> {
     ]
 }
 
-/// GTK's chain: a press is the first stage's that reads it, a stage that declines hands it
-/// on, and one that leaves it to the focused widget ends the chain.
 #[test]
 fn a_press_is_asked_by_stage_then_by_registration_until_one_runs_or_leaves_it() {
     hosted_over(
@@ -230,10 +225,6 @@ fn an_owner_and_every_stage() -> Vec<Entry<App>> {
     ]
 }
 
-/// The GTK dispatcher's owners of input, row by row: how far the chain runs, whether the tab
-/// strip's commands do, and whether a window action runs or only takes its key
-/// (`input_owner.rs`, `commands.rs:85` and `:177`, `composition/tabs.rs:760`,
-/// `composition.rs:239`).
 #[test]
 fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
     const HEAD: [&str; 3] = ["tab strip", "entry", "zoom"];
@@ -251,7 +242,6 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
             ]),
             false,
         ),
-        // A plain popover takes every key: no stage hears it (GTK, driven).
         (Some(Holds::Popover), vec![], false),
         (
             Some(Holds::Field),
@@ -346,8 +336,6 @@ fn an_owner_and_held_keys() -> Vec<Entry<App>> {
     ]
 }
 
-/// GTK's plain popover takes every key while focus is in it, with Ctrl or Alt held as
-/// without (driven: Alt+Up and Ctrl+Alt+= do nothing there): no stage hears one.
 #[test]
 fn a_popover_takes_every_key_with_or_without_modifiers() {
     const ALL: [&str; 3] = ["window command", "item navigation", "unclaimed"];
@@ -401,10 +389,6 @@ fn an_owner_every_stage_and_a_button() -> Vec<Entry<App>> {
     parts
 }
 
-/// Rune hears a key at the root element when an element has the keyboard and at the window
-/// when none has or a part holds it. Wherever it lands, each stage hears the press once: a
-/// view that did not put the registry ahead of its keys (`commands::in_view`) loses no
-/// stage, since the root then asks them all.
 #[test]
 fn a_press_is_offered_once_from_wherever_the_keyboard_is() {
     const WHOLE: [&str; 10] = [
@@ -447,8 +431,6 @@ fn a_press_is_offered_once_from_wherever_the_keyboard_is() {
     );
 }
 
-/// `context_of` in `src/ui/keys/alias.rs` counts any focused editable, so a letter typed in a
-/// modal layer's field is text, where beside the field it is the arrow it stands for.
 #[test]
 fn a_letter_is_text_in_any_field_and_an_arrow_elsewhere() {
     let cases = [
@@ -482,7 +464,6 @@ fn a_letter_is_text_in_any_field_and_an_arrow_elsewhere() {
     );
 }
 
-/// The GTK application reads its preference manager at each press, wherever the press lands.
 #[test]
 fn a_press_in_a_field_is_read_with_the_map_the_settings_select_now() {
     hosted_over(
@@ -521,8 +502,6 @@ fn a_view_and_one_that_queues() -> Vec<Entry<App>> {
     vec![view(), part::<Queues>("queues", QUEUES, |_| None)]
 }
 
-/// Rune commits nothing for a key no handler took, so what is in the queue then is applied
-/// by the frame's `poll`, whose answer runs the view.
 #[test]
 fn what_was_queued_when_a_command_declined_still_runs_the_view() {
     hosted_over(
@@ -576,8 +555,6 @@ fn a_view_and_guards() -> Vec<Entry<App>> {
     vec![view, part::<Guards>("guards", WHERE, |_| None)]
 }
 
-/// GTK's guards ask where the keyboard is (`item_view_has_focus`, `sidebar.contains`),
-/// including when a pointer text selection inside a part blurs keyboard focus.
 #[test]
 fn a_guard_can_ask_whether_the_view_or_a_parts_element_has_the_keyboard() {
     hosted_over(

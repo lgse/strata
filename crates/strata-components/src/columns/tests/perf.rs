@@ -1,38 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf: a strip of four columns of 100,000 entries each, held to C1e's bar against four
-//! rune-kit Tables of 100,000 rows side by side (the same rows drawn), measured in the same run.
-//!
-//! `cargo test --profile perf -p strata-components --lib columns::tests::perf -- --ignored --nocapture`
-//!
-//! As C1e's and C4's: a 900 pt tall window at scale 2, each figure the best of three runs:
-//!
-//! - 600 frames at 120 Hz, each scrolling the last column 48 pt by the wheel;
-//! - 300 frames of sideways strip scrolling, in a window narrower than the columns;
-//! - 30 clicks on rows of the last column (commit time, rows rebuilt);
-//! - 30 Left and Right keys, moving the cursor between columns;
-//! - opening a fifth column of 100,000 entries;
-//! - 120 frames of a held file drag near the bottom of a column (its autoscroll).
-//!
-//! Every row has a size badge (C2b), as in Strata, where every file has a size: its chip, hover
-//! group and description are in the figures. The chip costs each scroll frame what its text
-//! costs to mount: at C2b, p50 0.70 to 0.75 ms and p95 2.2 to 3.5 ms against 0.58 and 1.6 with
-//! no badges (machine load near 50), every hard bar still held.
-//!
-//! The bar (plan §4 C1, C2, work package C2: "a column of 100k entries"), asserted: no view run
-//! while scrolling either way or while a held drag autoscrolls; no scroll frame, either way,
-//! over 16.7 ms; a click and a Left or Right commit within 4 ms at p95, a click rebuilding at
-//! most 4 rows on average; and opening a 100,000-entry column within the 60 ms guard (Rune issue
-//! #203: a length change costs a pass over the keys). Every commit stays within
-//! `RUNE_COMMIT_BUDGET_MS = 8` but the open.
-//!
-//! Reported, not asserted: C1e's ceilings against Table, max(1.5 × Table's, 0.5 ms) at p50 and
-//! max(1.5 × Table's, 1.5 ms) at p95. The strip misses them (about 1.8× and 2.2× at the pinned
-//! rev): each collection on screen costs about 0.14 ms a frame while another scrolls, where an
-//! idle Table costs nothing. Four bare C1e collections in a row, with no Columns parts, cost the
-//! same, so it is C1e's (one collection beats Table: 0.60 against 0.92 ms at p95); see the
-//! module docs.
-
 use std::borrow::Cow;
 use std::cell::Cell as StdCell;
 use std::rc::Rc;
@@ -123,7 +90,6 @@ impl ColumnSources for Sources {
         (depth + 1 < self.0.len()).then(|| self.0[depth].id_at(0))
     }
     fn badge(&self, _depth: usize, index: usize) -> Option<Cow<'_, str>> {
-        // Every row has a badge (C2b), the worst case: its chip, hover group and description.
         Some(Cow::Owned(format!("{} kB", index % 1000)))
     }
 }
@@ -376,9 +342,6 @@ fn columns_run() -> Run {
     run.hscroll_p95 = percentile(&mut frames, 0.95);
     run
 }
-
-// Four of rune-kit's Tables over 100,000 rows, one column each, side by side: the rows the strip
-// draws, with C1e's own baseline in each.
 
 struct TableApp {
     ids: Vec<String>,

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`Shield`]: what a running autoscroll mounts over the window. A modal layer that takes every
-//! press and Escape (so the press that stops it does nothing else), follows the pointer, shows
-//! the scroll cursor over the listing and draws the anchor.
-
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -24,21 +20,6 @@ type GetFn<S> = Rc<dyn Fn(&S) -> &Autoscroll>;
 type LookFn<S> = Rc<dyn Fn(&S) -> &Look>;
 type StopFn<S> = Rc<dyn Fn(&mut S, Stop)>;
 
-/// The shield's builder. The host mounts what [`Shield::build`] returns as the last child of a
-/// root that fills its window from the top-left (window points are its points), on every
-/// view: it is `None` unless an autoscroll runs.
-///
-/// While mounted it is a modal (`El::modal`), as Strata's capture-phase gestures are:
-///
-/// - any press, with any button, anywhere in the window stops the autoscroll and goes no
-///   further, so it neither selects, opens nor starts a band;
-/// - Escape stops it, whatever has focus, and reaches nothing else;
-/// - the pointer's moves steer it, wherever they are;
-/// - the pointer over the listing shows [`Cursor::Move`] (Rune has no all-scroll cursor).
-///
-/// See the [scroll module's deviations](crate::scroll#deviations) for what the modal costs.
-///
-/// Used by: hosts (X1's window root), the gallery.
 pub struct Shield<S> {
     get: GetFn<S>,
     look: LookFn<S>,
@@ -60,15 +41,11 @@ impl<S: 'static> Shield<S> {
         }
     }
 
-    /// What assistive technology reads for it while it runs: "Autoscroll" by default (the host
-    /// passes its translation).
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = label.into();
         self
     }
 
-    /// Hears the autoscroll stop by Escape or a press: an Escape also cancels an armed 10xer
-    /// chord (the host's).
     pub fn on_stop(mut self, f: impl Fn(&mut S, Stop) + 'static) -> Self {
         self.on_stop = Some(Rc::new(f));
         self
@@ -129,8 +106,6 @@ impl<S: 'static> Shield<S> {
                 tokens::anchor_shadow_blur(look),
                 tokens::anchor_shadow(look),
             );
-        // Over the listing: the scroll cursor, and the anchor clipped to it. Rune takes the
-        // cursor from the element a press would go to, so this region takes presses too.
         let listing = self
             .presses(col())
             .absolute(viewport.x, viewport.y)
@@ -150,8 +125,6 @@ impl<S: 'static> Shield<S> {
             }
         };
         let mover = auto.clone();
-        // The presses are a layer's under the dialog, not the dialog's own: a secondary-press
-        // handler on the dialog would give it a context-menu action for assistive technology.
         let window = self
             .presses(col())
             .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
@@ -160,8 +133,6 @@ impl<S: 'static> Shield<S> {
             col()
                 .key(KEY)
                 .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-                // A modal reads as a dialog, and hides the window behind it from assistive
-                // technology while it runs.
                 .label(self.label.clone())
                 .modal_tx(false, dismiss)
                 .on_pointer_move_any(move |p, tx| {

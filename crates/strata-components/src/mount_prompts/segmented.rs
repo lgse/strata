@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! Strata-styled single-selection segmented control for mount prompts.
-//!
-//! Matches GTK's `.segmented-control` (`src/style.css`) and Settings' segmented toggles: a
-//! translucent track with an accent-tinted active highlight and radii scaled by [`Look::round`].
-
 use std::rc::Rc;
 
 use rune::{Color, Cursor, El, Tx, row, text};
 use strata_kit::look::Look;
 
-/// Inner segment radius at 100 % corner roundness (`.segmented-control-option`, `src/style.css`).
 const SEGMENT_RADIUS: f32 = 4.0;
 /// Minimum height of each segment option.
 const SEGMENT_HEIGHT: f32 = 28.0;
@@ -39,8 +33,6 @@ pub(crate) fn radii(look: &Look) -> (f32, f32) {
     (look.kit.radius.md, look.round(SEGMENT_RADIUS))
 }
 
-/// Builds a radio-group segmented selector whose container and options follow `look`'s theme
-/// colours and corner roundness.
 pub(crate) fn build<S: 'static>(
     look: &Look,
     spec: SegmentedSpec<'_>,

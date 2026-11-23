@@ -10,9 +10,6 @@ use crate::{
 
 use super::{Browser, ColumnFreshness, Presence};
 
-/// What one pass over the columns found: whether any still needs following,
-/// which changed their not-responding state, and which may retry a refresh
-/// now that their source answers (with whether their load had failed).
 #[derive(Default)]
 struct Sweep {
     follow: bool,

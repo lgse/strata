@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`PdfState`]: one PDF preview's pages, zoom, selection and find, and the requests it asks
-//! the host for.
-
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
@@ -30,8 +27,6 @@ pub(crate) enum Gesture {
     Select,
 }
 
-/// The point under the viewport's centre, kept across rapid zoom steps: a page, how far down
-/// it the centre is, and how far across the content.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Anchor {
     pub page: usize,
@@ -44,26 +39,18 @@ pub(crate) struct Anchor {
 /// How long a zoom's anchor stays cached across consecutive zoom frames before it's let go.
 const ANCHOR_WAIT: f64 = 0.25;
 
-/// A find match or restored page to bring into view: its page, and its point as fractions of
-/// the page.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Reveal {
     pub page: usize,
     pub at: [f32; 2],
 }
 
-/// One PDF preview. The host keeps it in its state and hands the view accessors to it.
-///
-/// Pages, sizes, images and text layers arrive as data; the view asks for renders through
-/// [`PdfState::pop`] and never renders, decodes or reads files.
 pub struct PdfState {
     key: String,
     pub(crate) doc: PdfDocument,
     pub(crate) content: Content,
     pub(crate) queue: Queue,
     pub(crate) level: f32,
-    /// Bumped at each change of every page's size (a zoom, a new pane width): the rows' keys
-    /// carry it, so Rune drops their old heights and places them all from one estimate.
     pub(crate) zoom_gen: u32,
     pub(crate) scale: f32,
     /// The scroll viewport's rect in window points, from its last layout.
@@ -93,13 +80,9 @@ pub struct PdfState {
     settle_at: Option<f64>,
     /// Bumped when requests are waiting, to mount the element that wakes the host.
     pub(crate) wake: u64,
-    /// The host's last [`PdfState::pop`] found nothing: it may be at rest, so new work wakes
-    /// it. While it pops, its own poll takes the work and no wake is needed.
     idle: bool,
     /// A zoom the host asked for ([`PdfState::set_level`]), applied from a layout report.
     level_request: Option<f32>,
-    /// The pointer's last point over the view, in window points: the I-beam follows the text
-    /// that scrolls under a still pointer.
     pointer: Option<[f32; 2]>,
     pub(crate) feed: ScrollFeed,
     pub(crate) bar: Bar,
@@ -163,9 +146,6 @@ impl PdfState {
         }
     }
 
-    /// Shows `doc` from its first page at fitted width, dropping what the last document held.
-    /// Replies to requests from before are dropped, and requests still in flight are
-    /// cancelled ([`PdfState::take_cancelled`]).
     pub fn open(&mut self, doc: PdfDocument) {
         self.queue.reset(doc.pages());
         self.doc = doc;
@@ -189,10 +169,6 @@ impl PdfState {
         self.level_request = None;
     }
 
-    /// [`PdfState::open`], with the page the preview opened on already rendered: Strata loads
-    /// a PDF by rendering its first page. A [`PageReply::Failed`] here is dropped and the page
-    /// asked for once more through [`PdfState::pop`] (Strata fails the whole preview when its
-    /// first page doesn't render: a host doing the same calls [`PdfState::failed`]).
     pub fn open_with(&mut self, doc: PdfDocument, page: usize, reply: PageReply) {
         self.open(doc);
         let ticket = Ticket {
@@ -204,8 +180,6 @@ impl PdfState {
         self.complete(ticket, reply);
     }
 
-    /// Shows "Preview unavailable" and "This PDF is password protected." with an Open button,
-    /// as Strata does for a PDF that needs an opening password: the renderer can't take one.
     pub fn locked(&mut self) {
         self.open(PdfDocument::new(0, [1.0, 1.0]));
         self.content = Content::Locked;
@@ -225,9 +199,6 @@ impl PdfState {
         &self.doc
     }
 
-    /// Whether the drawer offers find over the text layer, and find asks for the text of pages
-    /// it hasn't seen. Off unless set: Strata's find doesn't search PDF pages
-    /// (`preview/preview-panel/find`).
     pub fn set_searchable(&mut self, on: bool) {
         self.searchable = on;
         if !on {
@@ -236,9 +207,6 @@ impl PdfState {
         }
     }
 
-    /// Marks the document's single-pass text index as loading (showing `label` in the preview
-    /// header's busy indicator) or finished (`None`). Suppresses per-page `RenderKind::TextOnly`
-    /// requests while loading.
     pub fn set_text_index_loading(&mut self, label: Option<String>) {
         self.text_index_busy = label;
         let want = self.want();
@@ -246,9 +214,6 @@ impl PdfState {
         self.wake_if_idle();
     }
 
-    /// Supplies per-page plain text extracted in one pass for searching unrendered pages.
-    /// Suppresses per-page `RenderKind::TextOnly` requests for the rest of this document and
-    /// immediately indexes unrendered pages for any active find query.
     pub fn set_page_texts(&mut self, texts: Vec<Option<String>>) -> bool {
         let n = self.doc.pages();
         self.page_texts = texts
@@ -294,8 +259,6 @@ impl PdfState {
         became_current || (self.find.hits.len(), self.find.current) != prev
     }
 
-    /// Whether a find query is active and unrendered pages would benefit from a single-pass
-    /// text index. Returns `false` for 1-page PDFs whose sole page is already rendered.
     pub fn needs_text_index(&self) -> bool {
         if !self.searchable
             || !self.find.active()
@@ -320,8 +283,6 @@ impl PdfState {
         self.queue.caps = caps;
     }
 
-    /// The byte budgets for images (RGBA) and text layers. Defaults:
-    /// [`IMAGE_BUDGET`](super::IMAGE_BUDGET) and [`TEXT_BUDGET`](super::TEXT_BUDGET).
     pub fn set_budgets(&mut self, images: usize, text: usize) {
         self.queue.image_budget = images;
         self.queue.text_budget = text;
@@ -414,8 +375,6 @@ impl PdfState {
         format!("{}-pages", self.key)
     }
 
-    /// Page `page`'s row key: it carries the zoom generation ([`PdfState::zoom_gen`]), so Rune
-    /// measures every row afresh after a zoom (it keeps a row's height while its key stays).
     pub(crate) fn row_key(&self, page: usize) -> String {
         format!("{}-z{}-p{page}", self.key, self.zoom_gen)
     }
@@ -464,9 +423,6 @@ impl PdfState {
         }
     }
 
-    /// The next render to start, or none. Pop whenever the renderer is free: what's wanted
-    /// most when popped (the visible pages from the centre out, then the next page, then, with
-    /// find open, pages' text), so a page that left the view while queued is never asked for.
     pub fn pop(&mut self) -> Option<RenderRequest> {
         if self.content != Content::Pages || self.viewport.is_none() {
             return None;
@@ -489,8 +445,6 @@ impl PdfState {
 
     /// Takes a render's reply. Return [`Landed::commits`] from the host's poll.
     pub fn complete(&mut self, ticket: Ticket, reply: PageReply) -> Landed {
-        // Any answer to the request in flight counts the page for this query, even one that
-        // changes nothing (a text-only reply with no text): else the page is asked again.
         let page = ticket.page();
         let had_layer = self.layer(page).is_some();
         let answered = self.queue.is_wanted(ticket);
@@ -513,8 +467,6 @@ impl PdfState {
         landed
     }
 
-    /// The host's clock, each frame (seconds). Ends the zoom's rest, after which visible pages
-    /// render again at the new level. True when the view changed.
     pub fn tick(&mut self, now: f64) -> bool {
         self.clock = now;
         if self.anchor.is_some_and(|a| now - a.at > ANCHOR_WAIT) {
@@ -531,9 +483,6 @@ impl PdfState {
         false
     }
 
-    /// Applies what find or [`PdfState::show_page`] asked for, from the host's poll: those calls
-    /// carry no `Tx`. True when it placed a target (`Tx::scroll_key_to` mounts and centres an
-    /// unmounted virtual row in the same frame).
     pub fn flush(&mut self, tx: &mut Tx) -> bool {
         if self.reveal.is_none() || self.viewport.is_none() {
             return false;
@@ -558,8 +507,6 @@ impl PdfState {
         }
     }
 
-    /// Selects from `from` to `to` (each a page and a character), over the pages whose layers
-    /// the view holds: a host putting a selection back.
     pub fn select(&mut self, from: (usize, usize), to: (usize, usize)) {
         self.selection.clear();
         self.selection.anchor = Some(from);
@@ -571,8 +518,6 @@ impl PdfState {
         );
     }
 
-    /// Brings page `page` into view, the point `down` (0 to 1) of the way down it at the
-    /// viewport's centre, from the host's next [`PdfState::flush`]: a host restoring a page.
     pub fn show_page(&mut self, page: usize, down: f32) {
         if page < self.doc.pages() {
             self.reveal = Some(Reveal {
@@ -582,9 +527,6 @@ impl PdfState {
         }
     }
 
-    /// Zooms to `level` (1 to 4), about the view's centre, as Ctrl+wheel does: a host restoring
-    /// a zoom. It applies once the view has laid out again, where the pages are known; return
-    /// true from the poll that calls it.
     pub fn set_level(&mut self, level: f32) {
         self.level_request = Some(level);
         self.wake = self.wake.wrapping_add(1);
@@ -600,8 +542,6 @@ impl PdfState {
 
     // ---- From the view's handlers ----
 
-    /// Rune's visible rows. True when the view should run again (requests are waiting, or a
-    /// page dropped its image).
     pub(crate) fn set_visible(&mut self, r: Range<usize>) -> bool {
         if r != self.visible {
             if r.start != self.visible.start {
@@ -617,8 +557,6 @@ impl PdfState {
         woke || evicted || retried
     }
 
-    /// Mounts the element that wakes the host when work is waiting and the host may be at
-    /// rest. True when it did (the view runs again).
     fn wake_if_idle(&mut self) -> bool {
         if !self.idle || (!self.queue.has_work(&self.doc, &self.want()) && !self.needs_text_index())
         {
@@ -629,8 +567,6 @@ impl PdfState {
         true
     }
 
-    /// The viewport's layout. A new width refits the pages, keeping the centre. The `Tx` asks
-    /// the scroll; true when the view reads something new.
     pub(crate) fn set_viewport(&mut self, rect: [f32; 4], scale: f32, tx: &mut Tx) -> bool {
         let old = self.viewport;
         self.scale = scale;
@@ -652,13 +588,6 @@ impl PdfState {
         old.is_some_and(|o| (o[3] - rect[3]).abs() > 0.25)
     }
 
-    /// A page's layout, from the row built at zoom generation `zoom_gen`. Records its laid-out
-    /// rect, clears a zoom's cached anchor once reported at the placed offset, and turns the
-    /// I-beam on or off for text moving under a still pointer. True when the page under the
-    /// centre changed (assistive technology reads it) or the cursor did.
-    ///
-    /// A row of an earlier generation can still report its layout after a zoom (its handler
-    /// runs on the next turn): that rect is the old size, and is ignored.
     pub(crate) fn page_laid_out(&mut self, page: usize, zoom_gen: u32, rect: [f32; 4]) -> bool {
         if zoom_gen != self.zoom_gen {
             return false;
@@ -691,12 +620,6 @@ impl PdfState {
         }
     }
 
-    /// The visible pages laid out, with their rects.
-    ///
-    /// Rune reports layouts as queued actions, handled after the host's poll and before the
-    /// frame's input: a handler for input sees where the last frame put the pages, while the
-    /// poll can run before the last scroll's reports. So the poll's zoom waits for a layout
-    /// report of its own ([`PdfState::set_level`]).
     fn shown(&self) -> impl Iterator<Item = (usize, [f32; 4])> + '_ {
         self.rects
             .range(self.visible.clone())
@@ -735,9 +658,6 @@ impl PdfState {
         self.zoom_to(next, tx)
     }
 
-    /// Back to fitted width on the same page, as Ctrl+0 does: for a host that reads the reset
-    /// from its own key map ([`PdfView::reset_key`](super::PdfView::reset_key) off). Already
-    /// there, nothing moves. True when the zoom changed.
     pub fn reset_zoom(&mut self, tx: &mut Tx) -> bool {
         self.zoom_to(LIMITS.min, tx)
     }
@@ -747,8 +667,6 @@ impl PdfState {
         if (level - self.level).abs() < 1e-4 || self.content != Content::Pages {
             return false;
         }
-        // A notch on the frame right after the last one can arrive before the new rows' layout
-        // reports have repopulated `rects`, so reuse the active anchor until its page reports.
         let anchor = self.pending_anchor().or_else(|| self.anchor_now());
         self.rezoom(level, anchor, tx);
         self.settle_at = Some(self.clock + SETTLE);
@@ -756,8 +674,6 @@ impl PdfState {
         true
     }
 
-    /// Every page changes size: the rows take new keys and `Tx::scroll_key_to` mounts and places
-    /// the anchor's row in the same frame, alongside `Tx::scroll_to_x` sideways.
     fn rezoom(&mut self, level: f32, anchor: Option<Anchor>, tx: &mut Tx) {
         self.level = level;
         self.zoom_gen = self.zoom_gen.wrapping_add(1);
@@ -803,8 +719,6 @@ impl PdfState {
         best.map(|(at, _)| at)
     }
 
-    /// A primary drag on the pages: over text it selects, elsewhere it pans. True when the
-    /// view reads something new.
     pub(crate) fn drag(&mut self, d: &Drag, shift: bool, tx: &mut Tx) -> bool {
         let p = d.window_point();
         match d.phase {
@@ -885,8 +799,6 @@ impl PdfState {
         true
     }
 
-    /// Ctrl+A: the text of every page whose layer the view holds. False when none has text,
-    /// so the key goes on (Strata's `select_all`).
     pub fn select_all(&mut self) -> bool {
         let q = &self.queue;
         let layers = q
@@ -938,15 +850,11 @@ impl PdfState {
         });
         let became_current = self.find.add(page, source);
         let current_hit = self.find.current_hit();
-        // When the active hit's page upgrades from plain text (or unrendered) to its real glyph
-        // layer, re-select its glyph range and refine scroll reveal to center the matched line.
         let upgraded_current =
             !had_layer && layer.is_some() && current_hit.is_some_and(|h| h.page == page);
         if became_current || current_hit != prev_hit || upgraded_current {
             self.select_hit();
         }
-        // The selection keeps its offsets on a page whose text came back the same; a page
-        // whose text changed drops its part.
         if let Some(&(_, end)) = self.selection.ranges.get(&page)
             && layer.as_ref().is_none_or(|l| end > l.len())
         {
@@ -1034,8 +942,6 @@ impl HostedPreview for PdfState {
     }
 }
 
-/// The same page's row at every zoom: `key` without the zoom generation when it is a page
-/// row's key ([`PdfState::row_key`]), for a harness that follows one page across zooms.
 pub fn page_row_identity(key: &str) -> Option<String> {
     let (head, page) = key.rsplit_once("-p")?;
     let (base, generation) = head.rsplit_once("-z")?;

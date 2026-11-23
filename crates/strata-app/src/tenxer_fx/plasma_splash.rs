@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! **Plasma splash** — GTK's 80s synthwave `ENABLING 10XER MODE` splash card
-//! supercharged with `rune-fx` GPU swirling plasma filaments, crackling overload electricity,
-//! forking corner lightning arcs, and a charged window perimeter.
-
 use std::sync::OnceLock;
 
 use rune::{El, Pixels, Shadow, SurfaceFit, effect, el};

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The filter in a single pane (A10): its results in a collection of their own in the
-//! listing's place, and the keyboard between its field and them.
-
 use rune::{Key, Mods};
 
 use super::{Case, FIXTURE, ICONS, LIST, MODULE};
@@ -24,9 +21,6 @@ fn type_text(host: &mut crate::host::offscreen::Offscreen, typed: &str) {
     }
 }
 
-/// GTK's `inline_search::wrap`: a query's results show in a list or grid named "Search
-/// results" in the listing's place, and closing the filter gives the listing back with the
-/// selection it had, which the browser held all along.
 fn results_take_the_listings_place_until_the_filter_closes(
     case: &Case,
     field_name: &str,
@@ -87,8 +81,6 @@ fn results_take_the_tables_place_until_the_filter_closes() {
     );
 }
 
-/// Down from the field lands on the top result with the keyboard, and Up from the first
-/// result gives the field the keyboard back, its query kept.
 fn down_and_up_move_between_the_field_and_the_results(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
@@ -138,8 +130,6 @@ fn down_and_up_move_between_the_field_and_the_rows() {
     );
 }
 
-/// F2 on a result opens the rename editor in the results, on the result, and its commit
-/// renames that file, not the listing's entry the browser had selected before the filter.
 fn f2_renames_the_result_under_the_cursor(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
@@ -194,9 +184,6 @@ fn rename_field(host: &crate::host::offscreen::Offscreen) -> Option<String> {
     Some(crate::test_support::view::text(fields.first()?, "value"))
 }
 
-/// Opens the fixture with `archive` selected, then filters it to the results of `query`,
-/// with subfolders searched: the browser's selection, and the results' names in the order
-/// they show.
 fn filtered(
     host: &mut crate::host::offscreen::Offscreen,
     case: &Case,
@@ -223,10 +210,6 @@ fn filtered(
     (before, names)
 }
 
-/// Tab or Shift+Tab in a rename on a result commits the name, and the browser's selection
-/// from before the filter stays (`renamed-filter-result-keeps-focus`, its `tab` runs). In a
-/// pane the listing's neighbour is never a shown result, so no other editor could show here
-/// either way: the Columns twin holds that (`columns::tests::filter`).
 fn tab_in_a_rename_on_a_result_only_commits(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
@@ -292,9 +275,6 @@ fn tab_in_a_rename_on_a_row_among_the_results_only_commits() {
     );
 }
 
-/// GTK's results keep an anchor of their own, which neither a right-click nor a Shift+press
-/// sets: with none, each Shift+click selects the clicked result alone (findings
-/// lgse/strata#2375 and #2431).
 fn a_right_click_leaves_the_results_without_an_anchor(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let names = ["a1.txt", "a2.txt", "a3.txt", "a4.txt", "b.md"];
@@ -356,9 +336,6 @@ fn a_right_click_leaves_the_rows_without_an_anchor() {
     );
 }
 
-/// Escape from the results closes the filter and gives the keyboard to the listing, on the
-/// entry it had before the filter, so the next arrow moves on from there (GTK's
-/// `dismiss_focused_filter`; finding lgse/strata#2421).
 fn escape_from_the_results_gives_the_listing_the_keyboard(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
@@ -410,9 +387,6 @@ fn escape_from_the_rows_gives_the_table_the_keyboard() {
     );
 }
 
-/// While search results hold focus, directory commands (`Ctrl+.`, `Backspace`, `Alt+Up`) stand
-/// back, whereas `Delete` moves the focused result to Trash (`search_result_keys` in
-/// `src/ui/window/keyboard.rs`).
 #[test]
 fn directory_commands_stand_back_on_results_while_trash_runs() {
     hosted_in(

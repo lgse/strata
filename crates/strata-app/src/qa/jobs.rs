@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Jobs footer indicator text and dashboard row status text as the QA backend presents them.
-//! GTK's `JobsIndicator` (`src/ui/jobs.rs`) draws both as `gtk::Label`s (`role: "label"`), while
-//! C16 (`strata_components::progress_dock::jobs::Jobs`) folds them into the footer button's and
-//! row group's accessible names/descriptions (`a11y_hidden` on the inner text elements).
-//! Presenting the drawn text elements as labels lets shared scenarios read them without changing
-//! assistive-technology semantics.
-
 use rune::ElementInfo;
 use strata_qa::Rect;
 

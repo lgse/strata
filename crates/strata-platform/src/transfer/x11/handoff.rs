@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Handing `CLIPBOARD` to a clipboard manager before the process exits (freedesktop's
-//! ClipboardManager spec, built on ICCCM). The owner converts `CLIPBOARD_MANAGER` to
-//! `SAVE_TARGETS`, naming the targets to save in a property of its window; the manager then
-//! takes every one of them from the owner (by `MULTIPLE`, or one by one), takes `CLIPBOARD`
-//! over, and answers. The actor serves those requests while it waits, until the answer or the
-//! deadline. Without a manager running nothing waits.
-
 use std::sync::mpsc::{self, Sender};
 use std::time::{Duration, Instant};
 
@@ -46,8 +39,6 @@ impl Waiting {
     }
 }
 
-/// Asks the actor behind `mailbox` to hand `CLIPBOARD` over, and waits for the answer, at
-/// most `timeout` (plus a little for the actor's last turn).
 pub(super) fn hand_off(mailbox: &Mailbox, timeout: Duration) -> HandOff {
     let (reply, answer) = mpsc::channel();
     let deadline = Instant::now() + timeout;

@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Rune view for Settings -> Diagnostics, matching `src/ui/settings/diagnostics.rs` and `src/style.css`.
-
 use std::rc::Rc;
 
 use rune::{Color, Cursor, El, Tx, col, el, icon, row, text};

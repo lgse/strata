@@ -17,26 +17,13 @@ struct Open {
     id: EntryId,
     /// The name the edit started from: an unchanged name renames nothing.
     original: String,
-    /// The entry's name in the listing when the edit first saw it there: a change means the
-    /// entry was renamed elsewhere.
     listed: Option<String>,
 }
 
-/// The rename editor's state, held by the host and given to [`RenameEditor`] by accessor.
-/// One per window: at most one edit is open.
-///
-/// The host calls [`RenameState::tick`] on every poll, with the listing and collection of
-/// the edit's scope. Each call returns a [`Polled`]: build the view again when it changed,
-/// and act on its intents.
-///
-/// Used by: hosts (C2, C3, C4, Strata).
-///
-/// [`RenameEditor`]: super::RenameEditor
+/// The rename editor's state, held by the host and given to `RenameEditor` by accessor.
 #[derive(Debug, Default)]
 pub struct RenameState {
-    /// The field's model. Always present, so a Rune accessor never finds nothing, even for a
-    /// field just removed (upstream #180); while no edit is open it is an empty spare. Read it,
-    /// but end edits through the methods.
+    /// The field's model.
     pub edit: TextEdit,
     open: Option<Open>,
     error: Option<String>,
@@ -53,9 +40,6 @@ pub struct RenameState {
 enum Hold {
     #[default]
     None,
-    /// The host opened a menu, which hasn't been seen to take the keyboard yet. A menu that
-    /// takes it (rune-kit's, C21's) has it by the first `tick` after: it opens and takes it in
-    /// the commit of the press or key that asked for it, which runs before the next poll.
     Opened,
     /// The menu has the keyboard.
     Lost,
@@ -67,12 +51,7 @@ impl RenameState {
         Self::default()
     }
 
-    /// Opens the editor on entry `id` of the collection keyed `scope`, with `name` in the
-    /// field, its stem (or all of it) selected, and the keyboard asked for. An edit already
-    /// open is cancelled first ([`By::Host`]).
-    ///
-    /// The host reveals the row (`CollectionState::reveal`), which also works for a row not
-    /// mounted yet.
+    /// Opens the editor on entry `id` of the collection keyed `scope`, with `name` in the field.
     pub fn begin(
         &mut self,
         scope: &str,
@@ -100,8 +79,7 @@ impl RenameState {
         out
     }
 
-    /// The entry being renamed in the collection keyed `scope`: what C1e's
-    /// `Collection::rename` reads.
+    /// The entry being renamed in the collection keyed `scope`: what `Collection::rename` reads.
     pub fn renaming_in(&self, scope: &str) -> Option<EntryId> {
         self.open
             .as_ref()
@@ -109,8 +87,7 @@ impl RenameState {
             .map(|o| o.id)
     }
 
-    /// The key of the collection the edit is in: the one whose listing and state
-    /// [`RenameState::tick`] takes.
+    /// The key of the collection the edit is in: the one whose listing and state `RenameState::tick` takes.
     pub fn scope(&self) -> Option<&str> {
         self.open.as_ref().map(|o| o.scope.as_str())
     }
@@ -125,9 +102,7 @@ impl RenameState {
         self.open.is_some()
     }
 
-    /// Whether the field has the keyboard. While it does, the host leaves alone the keys
-    /// the field passes on: its view shortcuts (Ctrl+1–3) and its rename keys (F2, Ctrl+R),
-    /// as Strata's do.
+    /// Whether the field has the keyboard.
     pub fn has_keyboard(&self) -> bool {
         self.open.is_some() && self.edit.focused
     }
@@ -182,15 +157,7 @@ impl RenameState {
         }
     }
 
-    /// One poll, with the key, listing and collection of the edit's scope
-    /// ([`RenameState::scope`]). It ends an edit whose entry left the listing or was renamed
-    /// elsewhere ([`By::Listing`]), whose row scrolled out of the viewport after it had shown
-    /// there ([`By::Scrolled`], as Strata's editor ends when its row unmaps), or whose field
-    /// lost the keyboard ([`By::Blur`], a commit: Rune has no focus-change hook, upstream
-    /// #106).
-    ///
-    /// Passing another collection's state would judge the row against the wrong viewport: a
-    /// debug build panics when `scope` isn't the edit's.
+    /// One poll, with the key, listing and collection of the edit's scope (`RenameState::scope`).
     pub fn tick(
         &mut self,
         scope: &str,
@@ -213,14 +180,6 @@ impl RenameState {
             Some(seen) if seen != listed => return self.cancel(By::Listing),
             Some(_) => {}
         }
-        // Rune keeps a focused row mounted out of view, so the field may still have the
-        // keyboard: the viewport decides, read two ways, each of which goes stale for a frame
-        // on its own. The range Rune reported lags a frame, so an entry listed above pushes the
-        // row's index past its end (lgse/strata#2277). The row's place by the last layout,
-        // against the scroll now, is off after the lines flow anew (a tile size) until the
-        // cursor's reveal lands. The row has left only when both say so, which ends a real
-        // scroll-out a frame later at most. The check comes before the blur's, as the row also
-        // loses the keyboard once Rune unmounts it.
         let shown = coll.shows_entry(index, source.len()) || coll.visible_range().contains(&index);
         if shown {
             self.seen_shown = true;
@@ -229,9 +188,6 @@ impl RenameState {
         }
         if self.edit.focused {
             self.seen_focus = true;
-            // Either the menu gave the keyboard back (closed, whether or not the host said
-            // so), or it never took it (it isn't one that takes it, or the host opened none):
-            // either way, nothing holds the edit any more.
             self.hold = Hold::None;
         } else if self.seen_focus {
             if self.hold == Hold::None {
@@ -242,19 +198,14 @@ impl RenameState {
         Polled::default()
     }
 
-    /// The host opened a field menu for a [`RenameIntent::FieldMenu`], one that takes the
-    /// keyboard (rune-kit's, C21's): until [`RenameState::menu_closed`], the field losing the
-    /// keyboard to it ends nothing. Call it from the intent's handler, so the menu opens in the
-    /// same commit. The hold also ends on any [`RenameState::tick`] that finds the field with
-    /// the keyboard: the menu gave it back, or never took it.
+    /// The host opened a field menu for a `RenameIntent::FieldMenu`, one that takes the keyboard.
     pub fn menu_opened(&mut self) {
         if self.open.is_some() {
             self.hold = Hold::Opened;
         }
     }
 
-    /// The field menu closed: the field asks for the keyboard back if the menu didn't
-    /// return it. A fallback: Rune's modal restore normally gives it back first.
+    /// The field menu closed: the field asks for the keyboard back if the menu didn't return it.
     pub fn menu_closed(&mut self) -> Polled {
         if std::mem::take(&mut self.hold) == Hold::None || self.open.is_none() {
             return Polled::default();
@@ -266,17 +217,6 @@ impl RenameState {
         Polled::default()
     }
 
-    /// A key in the field, before its editor: Enter and Shift+Enter commit, Escape and
-    /// Shift+Escape cancel (Shift changes neither, as it changes neither in Strata's entry),
-    /// Tab and Shift+Tab commit toward the next or previous entry, and Page Up and Page Down
-    /// (with or without Shift) do nothing. `None` passes the key on. Keys an input method is
-    /// composing with stay the field's (Rune already gives Enter and Escape to the
-    /// composition).
-    ///
-    /// The page keys stay in the field, as Up, Down, Home and End already do (its editor
-    /// takes those): passed on, Rune would page the listing (`runtime/input/keys.rs`,
-    /// `page_scroll`), the row would leave the viewport and the edit would end, dropping the
-    /// typed name.
     pub(super) fn key(&mut self, ev: &KeyEvent, repeat: bool) -> Option<Polled> {
         if self.open.is_none() || self.edit.is_composing() {
             return None;
@@ -296,8 +236,6 @@ impl RenameState {
             }
             _ => return None,
         };
-        // A held Enter or Escape ends one edit; Tab repeats walk the editor along, as
-        // Strata's do.
         if repeat && matches!(by, By::Enter | By::Escape) {
             return Some(Polled::default());
         }
@@ -307,9 +245,7 @@ impl RenameState {
         })
     }
 
-    /// The validator's answer for the text in the field: the editor calls it as the text
-    /// changes; a host that changes the text itself calls it too. An empty field is never an
-    /// error, as Strata's isn't. True when the answer changed.
+    /// The validator's answer for the text in the field: the editor calls it as the text changes.
     pub fn validated(&mut self, error: Option<String>) -> bool {
         let error = error.filter(|_| !self.edit.text.is_empty());
         if self.error == error {
@@ -336,8 +272,6 @@ impl RenameState {
         self.seen_focus = false;
         self.seen_shown = false;
         self.hold = Hold::None;
-        // A fresh spare: the old text and its history go, and Rune's focus sync for the
-        // removed field lands here (#180).
         self.edit = TextEdit::new("");
     }
 }

@@ -1,24 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`RowDrag`]: a row dragged to a new place in its block (the built-in places or the pins),
-//! in the full sidebar and the rail alike.
-//!
-//! Where it lands is Strata's rule, and the host hears it as Strata's sidebar takes a drop
-//! ([`Landing`]): on the row under the pointer, before or after it by which half of it the
-//! pointer is in (the middle itself is after), or in a gap between two rows, or in the gap
-//! before the first row or after the last (`ReorderSlot` and `sidebar_reorder_feedback` in
-//! Strata's `src/ui/window/sidebar_reorder.rs`). Anywhere else (past the gaps at either end,
-//! over the other block, or off the sidebar's side) is no drop at all: [`landing`]. The host
-//! turns a landing into a move as Strata does, which differs from row to row where its order
-//! holds rows the sidebar does not show. rune-kit's `Reorder`, which the sidebar used before,
-//! rounded the rows passed instead, and clamped to the list's ends, with its drag's offset
-//! private, so the sidebar could not correct it (Rune packet entry 102).
-//!
-//! It is drawn as rune-kit draws its reorder: the dragged row follows the pointer, raised and
-//! elevated on an opaque fill, and the rows between its place and its landing step a row toward
-//! the place it left. The move is reported when the button comes up, with the handler's `Tx`:
-//! nothing is parked for a later press (U21).
-
 use rune::{Anim, Drag, El, Phase, Tx};
 use strata_kit::look::Look;
 
@@ -27,18 +8,12 @@ use super::data::ItemId;
 use super::intent::SidebarIntent;
 use super::state::SidebarState;
 
-/// Points the pointer travels along either axis before a press on a row becomes a drag: GTK's
-/// drag threshold, 8 pixels by default (`gtk-dnd-drag-threshold`), which Strata's sidebar rows
-/// take, passed when either axis goes past it (`gtk_drag_check_threshold_double`).
 const SLOP: f32 = 8.0;
 
-/// Whether a press that has travelled `dx` and `dy` is a drag, by GTK's threshold.
 pub(crate) fn past_threshold(dx: f32, dy: f32) -> bool {
     dx.abs().max(dy.abs()) > SLOP
 }
 
-/// A block's drag to reorder, held in [`super::SidebarState`]. Rows are taken to share one
-/// height.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct RowDrag {
     lift: Option<Lift>,
@@ -50,16 +25,12 @@ enum Lift {
     Pressed {
         index: usize,
     },
-    /// Carried from `from` to where it would land now, if anywhere, `dy` from where it was
-    /// pressed, rows `pitch` apart.
     Dragging {
         from: usize,
         landing: Option<Landing>,
         dy: f32,
         pitch: f32,
     },
-    /// The block was listed again under a held row, as Strata's sidebar rebuilds its rows:
-    /// the release is a drop that lands nowhere.
     LetGo {
         from: usize,
     },
@@ -69,15 +40,14 @@ enum Lift {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Landing {
     /// On row `index`, before it or after it.
-    Row { index: usize, after: bool },
-    /// In the gap before row `index`: `0` above the first row, the block's length below the
-    /// last.
+    Row {
+        index: usize,
+        after: bool,
+    },
     Gap(usize),
 }
 
 impl Landing {
-    /// The place in the block the row would take, by the indices before it moves: what the
-    /// rows step aside for.
     pub fn place(self, from: usize, count: usize) -> usize {
         let insertion = match self {
             Landing::Row { index, after } => index + usize::from(after),
@@ -92,17 +62,12 @@ impl Landing {
     }
 }
 
-/// The rows of a block as the drag measures them: how tall a row is, and how far one row's
-/// middle is from the next one's.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rows {
     pub height: f32,
     pub pitch: f32,
 }
 
-/// Where a drop of row `from`, one of `count`, lands with the pointer `along` points past the
-/// row's own middle (negative toward the start), or None where Strata's sidebar takes no drop:
-/// past the gap before the first row or after the last.
 pub fn landing(from: usize, count: usize, along: f32, rows: Rows) -> Option<Landing> {
     if count == 0 || rows.pitch <= 0.0 {
         return None;
@@ -156,8 +121,6 @@ impl RowDrag {
         }
     }
 
-    /// Lets go of a held row without a move: the block it was in changed under it. The release
-    /// that follows moves nothing and opens nothing, as a press on a row Strata rebuilt does.
     pub fn cancel(&mut self) {
         self.lift = match self.lift {
             Some(Lift::Pressed { index }) => Some(Lift::LetGo { from: index }),
@@ -166,8 +129,6 @@ impl RowDrag {
         };
     }
 
-    /// How far row `index` sits from its place: the dragged row with the pointer, and the rows
-    /// between its place and its landing a row toward the place it left.
     pub fn shift(&self, index: usize, count: usize) -> f32 {
         let Some(Lift::Dragging {
             from,
@@ -190,8 +151,6 @@ impl RowDrag {
         }
     }
 
-    /// The primary button went down on row `index`. A drag whose release was lost ends here,
-    /// moving nothing.
     pub(crate) fn press(&mut self, index: usize) {
         self.lift = Some(Lift::Pressed { index });
     }
@@ -220,8 +179,6 @@ impl RowDrag {
         });
     }
 
-    /// The button came up. A drag that was not cancelled is a drop, the row it carried and where
-    /// it lands, if anywhere; a cancel or a press that never became a drag is none.
     pub(crate) fn end(&mut self, cancelled: bool) -> Option<(usize, Option<Landing>)> {
         match self.lift.take()? {
             Lift::Dragging { from, landing, .. } if !cancelled => Some((from, landing)),
@@ -259,10 +216,6 @@ pub(crate) struct AttachSpec<'a, S> {
     pub intent: std::rc::Rc<dyn Fn(usize, Landing) -> SidebarIntent>,
 }
 
-/// Makes `el`, row `index` of `count` in its block, draggable to a new place: drawn where the
-/// drag puts it, and `spec.intent` emitted with the handler's `Tx` when a drop lands somewhere.
-/// Every drop keeps the row as the sidebar's last dropped one, so the press Rune sends on the
-/// same release (U21) opens nothing, as Strata's drag source claims its gesture.
 pub(crate) fn attach<S: 'static>(el: El, spec: AttachSpec<'_, S>) -> El {
     let AttachSpec {
         look,
@@ -278,8 +231,6 @@ pub(crate) fn attach<S: 'static>(el: El, spec: AttachSpec<'_, S>) -> El {
     let c = &look.kit.c;
     let mut el = el.offset(0.0, state.shift(index, count));
     if state.dragging() == Some(index) {
-        // Follows the pointer exactly; the rest of the block springs around it. Opaque, on the
-        // window's deep background, so the rows it passes don't show through.
         let lifted = el
             .raise()
             .offset_motion(Anim::INSTANT)

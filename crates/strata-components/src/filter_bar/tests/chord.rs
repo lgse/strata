@@ -35,9 +35,6 @@ fn typed(c: &str, shift: bool) -> KeyEvent {
     }
 }
 
-// integration/10xer-mode: "The panel lists each valid second key… and closes when the chord
-// completes or Esc cancels it"; places: "any other unknown second key cancels it with
-// `Unknown chord`". A modifier alone keeps it armed, and the case of a letter counts.
 #[test]
 fn the_next_key_completes_cancels_or_passes() {
     let tx = Tx::default();

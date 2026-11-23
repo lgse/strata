@@ -161,8 +161,6 @@ fn an_ambiguous_rename_failure_is_resolved_by_identity() -> Result<(), Box<dyn E
     Ok(())
 }
 
-/// What a placement over a placeholder ends as when the reply to the
-/// rename over it is lost, if it was `performed`, or it failed.
 fn lost_reply_outcome(
     numbers: InodeNumbers,
     performed: bool,
@@ -229,9 +227,6 @@ fn check_lost_placeholder_reply(
 #[test]
 fn a_lost_reply_over_a_placeholder_removes_only_one_proven_untouched() -> Result<(), Box<dyn Error>>
 {
-    // Stable inode numbers tell an untouched placeholder from the moved item,
-    // which libfuse without `use_ino` and vboxsf number as the placeholder it
-    // replaced.
     let vboxsf = || Quirks {
         lost_renames_keep_inodes: true,
         ..Quirks::vboxsf()

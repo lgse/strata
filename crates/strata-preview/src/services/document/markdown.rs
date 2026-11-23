@@ -15,8 +15,6 @@ use crate::sandbox::Cancellation;
 pub(super) struct MarkdownProfile {
     /// Tables, math, block quotes and image loading; only file previews.
     document_features: bool,
-    /// Drop HTML comments instead of showing them as inert text. GitHub's
-    /// generated release notes start with one; previews keep them visible.
     hide_html_comments: bool,
 }
 

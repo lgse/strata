@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Background Jobs dashboard adapter (`src/ui/jobs.rs`) over `strata_fs::services::JobService`
-//! and C16's `strata_components::progress_dock::jobs::Jobs`.
-
 use std::{path::Path, rc::Rc, time::Duration};
 
 use rune::{El, Tx};
@@ -105,10 +102,6 @@ fn handle_intent(app: &mut App, intent: JobsIntent, tx: &mut Tx) {
     close_when_emptied(app, tx);
 }
 
-/// GTK hides the Jobs button, and with it the open dashboard, once nothing is left to show
-/// (`refresh_indicator` in `src/ui/jobs.rs`). C16 keeps an emptied list open on "No background
-/// jobs.", so the adapter closes it and hands focus to the view, which GTK loses (finding
-/// lgse/strata#2554).
 fn close_when_emptied(app: &mut App, tx: &mut Tx) {
     let state = &mut app.custom_actions.jobs_state;
     if !state.is_open() || !app.custom_actions.job_rows.is_empty() {
@@ -226,7 +219,6 @@ fn snapshot_to_row(snapshot: &JobSnapshot, clock: f64) -> JobRow {
     }
 }
 
-/// `RowWidgets::update` in `src/ui/jobs.rs`: shown only once the job reported something.
 fn created_line(created: usize) -> Option<String> {
     (created > 0).then(|| {
         rust_i18n::t!(

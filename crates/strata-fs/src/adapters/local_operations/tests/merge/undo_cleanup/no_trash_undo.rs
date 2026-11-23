@@ -2,9 +2,6 @@
 
 use super::*;
 
-/// What happened to the created `new.txt` and `sub` after the merge,
-/// whether undo has Trash, and whether the mount places folders or copies
-/// them in place.
 #[derive(Clone, Copy)]
 struct Created {
     change: &'static str,
@@ -85,8 +82,6 @@ fn trashed_locations(events: &[OperationEvent]) -> Vec<Location> {
     trashed
 }
 
-/// Undo kept what `kept` names, reporting each, and deleted the rest of
-/// the created `items`.
 fn assert_kept_reported(events: &[OperationEvent], items: [&Path; 2], kept: &[&Path], row: &str) {
     let Some(OperationEvent::CompletedWithErrors {
         deleted_locations,
@@ -210,8 +205,6 @@ fn a_merge_undo_without_trash_deletes_only_what_the_merge_created_unchanged()
     Ok(())
 }
 
-/// Racers that replace, or edit in place, the copied `notes.txt` and
-/// `plain/a.txt` as soon as they are published.
 fn arrivals_before_recording(
     root: &Path,
     destination: &Path,

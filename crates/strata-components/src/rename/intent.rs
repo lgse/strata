@@ -4,15 +4,11 @@
 
 use crate::contract::{EntryId, Point};
 
-/// What the editor asks of its host. Renaming, moving and the conflicts that come of them
-/// are the host's: the editor never touches the entry.
-///
-/// Used by: hosts (C2, C3, C4, Strata).
+/// What the editor asks of its host.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum RenameIntent {
-    /// The edit closed on a valid name that differs from the old one and holds no `/`:
-    /// rename entry `id` to `name`.
+    /// The edit closed on a valid name that differs from the old one and holds no `/`: rename entry `id` to `name`.
     Rename {
         /// The entry.
         id: EntryId,
@@ -21,8 +17,7 @@ pub enum RenameIntent {
         /// What closed the edit.
         by: By,
     },
-    /// The edit closed on a valid name holding a `/`, which the host's validator accepted: a
-    /// typed path (`operations/rename/typed-paths`), the host's to resolve and place.
+    /// The edit closed on a valid name holding a `/`, which the host's validator accepted.
     Move {
         /// The entry.
         id: EntryId,
@@ -40,9 +35,7 @@ pub enum RenameIntent {
         /// What closed the edit.
         by: By,
     },
-    /// A right-click, the Menu key or Shift+F10 on the field: the host's field menu (C21),
-    /// at `at` in window points. The edit stays open; call
-    /// [`RenameState::menu_opened`](super::RenameState::menu_opened) if a menu opens.
+    /// A right-click, the Menu key or Shift+F10 on the field: the host's field menu, at `at` in window points.
     FieldMenu {
         /// The entry.
         id: EntryId,
@@ -72,8 +65,6 @@ impl RenameIntent {
 }
 
 /// What closed an edit.
-///
-/// Used by: hosts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum By {
@@ -81,28 +72,22 @@ pub enum By {
     Enter,
     /// Escape.
     Escape,
-    /// The field lost the keyboard: a press elsewhere, another field, C24's autoscroll
-    /// shield.
+    /// The field lost the keyboard: a press elsewhere, another field, autoscroll shield.
     Blur,
     /// Tab: the host moves the editor to the next entry, unless this one is the last.
     Next,
-    /// Shift+Tab: the host moves the editor to the previous entry, unless this one is the
-    /// first.
+    /// Shift+Tab: the host moves the editor to the previous entry, unless this one is the first.
     Previous,
-    /// The host: [`RenameState::commit`](super::RenameState::commit),
-    /// [`cancel`](super::RenameState::cancel), or a [`begin`](super::RenameState::begin) while
-    /// an edit was open.
+    /// The host: `RenameState::commit`, `cancel`, or a `begin` while an edit was open.
     Host,
-    /// The listing changed under the edit: the entry left it, or its name changed (renamed
-    /// elsewhere).
+    /// The listing changed under the edit: the entry left it, or its name changed (renamed elsewhere).
     Listing,
     /// The row scrolled out of the viewport.
     Scrolled,
 }
 
 impl By {
-    /// Whether this ending moves the editor on to a neighbour: [`By::Next`] (`1`) or
-    /// [`By::Previous`] (`-1`).
+    /// Whether this ending moves the editor on to a neighbour: `By::Next` (`1`) or `By::Previous` (`-1`).
     pub fn step(self) -> Option<isize> {
         match self {
             Self::Next => Some(1),
@@ -113,8 +98,6 @@ impl By {
 }
 
 /// Why an edit kept the old name.
-///
-/// Used by: hosts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Kept {
@@ -128,10 +111,7 @@ pub enum Kept {
     Invalid,
 }
 
-/// What a call into [`RenameState`](super::RenameState) did: whether the view must be built
-/// again, and the intents for the host.
-///
-/// Used by: hosts.
+/// What a call into `RenameState` did: whether the view must be built again, and the intents for the host.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[must_use]
 pub struct Polled {

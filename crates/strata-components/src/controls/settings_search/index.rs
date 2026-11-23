@@ -2,18 +2,11 @@
 
 //! The search index: the settings window's pages and rows, as data.
 
-/// Every page and row a settings search can find. The host builds it (titles translated,
-/// keywords in the current language plus English), leaves out rows and pages this
-/// installation doesn't have, and bumps [`SearchIndex::revision`] whenever it changes (a
-/// language switch, an action renamed, a key rebound). A row on a page it leaves out is never
-/// found, nor is a group member on one or of a group on one.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SearchIndex {
     pub revision: u64,
     /// In navigation order. The first is where a cleared search with no results goes back to.
     pub pages: Vec<IndexPage>,
-    /// In page order. A tie between two rows goes to the one listed first, so list settings
-    /// before group members (Strata lists its settings before the Keyboard rows).
     pub rows: Vec<IndexRow>,
 }
 
@@ -24,8 +17,6 @@ pub struct IndexPage {
     pub key: String,
     /// Its shown, translated title, which every row on it can be found by.
     pub title: String,
-    /// More words every row on the page can be found by: Strata adds "settings" and its
-    /// translation.
     pub keywords: String,
 }
 
@@ -53,17 +44,10 @@ pub struct IndexRow {
     pub page: String,
     /// The section heading it sits under, shown while any row under it is.
     pub section: Option<String>,
-    /// Its shown, translated title, which counts in full and gets the matched text. A row
-    /// without one (a Keyboard row, found by its action's names) is found by its keywords only.
     pub title: Option<String>,
     /// Its English title, which counts in full too. `None` when the title is English.
     pub source_title: Option<String>,
-    /// Words that also find it, at half a title word's weight: aliases, the current language's
-    /// keywords, an action's names, a shortcut's key labels ("Ctrl+R").
     pub keywords: String,
-    /// The key of a row this one belongs to (Strata's Keyboard shortcuts). A query that finds
-    /// the group row shows every member, and a member that matches also shows the group row
-    /// (so a table switch on it stays up) and counts for the group's page.
     pub group: Option<String>,
 }
 
@@ -81,8 +65,6 @@ impl IndexRow {
         }
     }
 
-    /// A member of `group`, found by `names` (an action's title and the names of what runs
-    /// it) and its keywords only.
     pub fn member(
         key: impl Into<String>,
         page: impl Into<String>,

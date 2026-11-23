@@ -1,21 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf: the palette at 100 (Strata's cap), 1,000 and 10,000 results.
-//!
-//! ```text
-//! cargo test --profile perf -p strata-components --lib search_palette::tests::perf \
-//!     -- --ignored --nocapture
-//! ```
-//!
-//! A 960 × 640 window at scale 2 with the palette open on a typed query. For each size: the
-//! frame that lands the first answer (with the palette taking it), a stream of ten batches growing to the full list (each
-//! a frame that lands one), 60 arrow steps, and 30 keystrokes (each asking for a new query
-//! while the old results stay). The list is built by index (`virtual_rows`), so only the
-//! mounted rows build. Each figure is the best of three runs.
-//!
-//! The bars, held at 1,000 and 10,000: an arrow step within 4 ms at p95; a delivery, a batch
-//! and a keystroke within 8 ms at p95.
-
 use std::time::Instant;
 
 use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime};

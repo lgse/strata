@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! BackSpace from the listing goes up a folder in every view, as GTK's `navigate_up` does,
-//! and outside the listing it is left alone.
-
 use rune::{Key, KeyEvent, Mods};
 use strata_core::model::Location;
 
@@ -86,9 +83,6 @@ fn backspace_away_from_the_listing_goes_nowhere() {
 /// Longer than the Columns mirror's wait, three times over: what shows then stays.
 const REST: std::time::Duration = std::time::Duration::from_millis(300);
 
-/// In Columns, from a later column, BackSpace closes that column and the keyboard is back on
-/// the folder it listed, whose column stays closed: the column the keyboard is in reaches the
-/// browser before the command reads it.
 #[test]
 fn backspace_in_a_later_column_closes_it() {
     hosted_in(
@@ -120,8 +114,6 @@ fn backspace_in_a_later_column_closes_it() {
                 host.run_until(REST, |_| false);
             }
             assert!(on_documents(&host), "documents' column under the cursor");
-            // Right and BackSpace in one turn, as two quick presses: no publish between them
-            // tells the browser the keyboard moved, so the command has to.
             let key = |key| KeyEvent {
                 key,
                 mods: Mods::default(),

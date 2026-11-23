@@ -1,19 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! The document C11 draws: Strata's laid-out document (`DocumentLayout` in
-//! `src/services/document.rs`), as data. Strata parses Markdown, HTML, RTF, DOCX and ODT,
-//! lays the result out into units, and converts those into this model; nothing here parses.
-//!
-//! It mirrors Strata's `DocumentUnit` field for field, with one change: span ranges are byte
-//! ranges into the unit's text (Rune's text APIs are bytes), where Strata's are character
-//! ranges. [`Unit::from_char_spans`] converts Strata's.
-
 use std::ops::Range;
 use std::sync::Arc;
 
-/// A laid-out document: its units in reading order, and the notices to show above them
-/// (Strata's warnings, already translated: "Unsupported or active HTML content was omitted.",
-/// the size-budget notice).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Document {
     pub units: Vec<Unit>,
@@ -34,16 +23,11 @@ impl Document {
     }
 }
 
-/// One unit: a block, or a part of one (Strata splits blocks over about 32 KiB, and lines
-/// over 2 KiB, into several units). Each unit is one row of the view.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Unit {
     pub kind: UnitKind,
     /// What it shows. A list item's marker ("•", "3.") leads it, with an `Accent` span.
     pub text: String,
-    /// What copying the whole unit takes: the text with a newline where the block (or its
-    /// line) ends, a table's tab-separated rows, an image's `[Image: alt]`, an equation's
-    /// `$source$`.
     pub copy_text: String,
     pub spans: Vec<Span>,
     /// False when the unit starts or ends inside a line (a line split at 2 KiB).
@@ -86,8 +70,6 @@ impl Unit {
         self
     }
 
-    /// Strata's spans, in character ranges of `text`, as byte ranges. A range past the text
-    /// ends at it.
     pub fn from_char_spans(
         mut self,
         spans: impl IntoIterator<Item = (Range<usize>, SpanStyle)>,
@@ -118,8 +100,6 @@ pub fn char_spans(
         .collect()
 }
 
-/// What a unit is. List depths count from 0; `list_depth` is `Some` for a block inside a
-/// list item.
 #[derive(Clone, Debug, PartialEq)]
 pub enum UnitKind {
     /// Levels 1 to 6.
@@ -134,8 +114,6 @@ pub enum UnitKind {
         kind: ListChildKind,
     },
     Quote,
-    /// A code block, or a part of one. `language` is Strata's normalised id (`rust`,
-    /// `python3`, `c-sharp`…), or a fence's token.
     Code {
         list_depth: Option<usize>,
         language: Option<String>,
@@ -143,15 +121,10 @@ pub enum UnitKind {
     Rule {
         list_depth: Option<usize>,
     },
-    /// A table: rows of cells, the first row usually the header. Its `text` is empty; its
-    /// `copy_text` is its rows, tab-separated.
     Table {
         list_depth: Option<usize>,
         rows: Vec<Vec<Cell>>,
     },
-    /// An image, a diagram or a display equation, drawn from pixels the host supplies
-    /// ([`DocumentState::set_media`](super::DocumentState::set_media)). Its `text` is the
-    /// image's alt text, shown while it can't be drawn.
     Media {
         list_depth: Option<usize>,
         media: Media,
@@ -234,8 +207,6 @@ pub enum SpanStyle {
     Strike,
     Mono,
     Underline,
-    /// A link to `uri`. Strata keeps only `http` and `https` links; clicking one asks the host
-    /// to open it ([`DocumentIntent::OpenLink`](super::DocumentIntent::OpenLink)).
     Link(Arc<str>),
     /// An inline equation: its range is one U+FFFC placeholder, and this is its source.
     Math(Arc<str>),

@@ -1,43 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! New Folder, New File, and New Folder with Selection: the browser creates the item under a
-//! free name, moves any grouped selection into it, and opens the rename editor on it
-//! (`src/ui/browser/inline_edit/new_entry.rs`).
-//!
-//! - **Asking.** Ctrl+Shift+N at the dispatcher's `file_commands` stage, in the column the
-//!   keyboard is in (`create_new_folder` in `src/ui/browser/view_edit.rs`), Ctrl+Alt+N outside
-//!   the preview drawer (`create_new_folder_for_selection`, falling back to a plain New Folder
-//!   when nothing is selected), and the menus' New Folder, New File, and New Folder with
-//!   Selection rows, in the column the menu was opened on. Nothing is created in the Trash or
-//!   in Recent, and New Folder with Selection declines while search results show.
-//! - **Waiting.** The browser says where it created the item (`BrowserEvent::EntryCreated`).
-//!   Once the item is listed it is selected, any grouped selection moves into it through
-//!   [`crate::transfer::move_into_group_folder`], and on a later poll (once any grouped
-//!   sources have left the folder's listing) the editor opens on it with `Naming::NewItem` or
-//!   `Naming::Single` ([`crate::rename::begin_new_item`]), as GTK's `created_entry_tick`
-//!   does a frame apart. The wait ends after 5 s, or when its folder leaves its column, a
-//!   new listing replaces the columns or an operation fails.
-//! - **Escape** before the editor opens gives up the naming, and the item keeps its free
-//!   name (`inline_editing` in `src/ui/window/keyboard/commands.rs`).
-//!
-//! Left out, with what brings each back:
-//!
-//! - **F2 on the created item itself while it waits** (`begin_rename`): GTK takes the naming
-//!   over and opens the editor with `Naming::NewItem`; here the naming is given up and a plain
-//!   rename opens. F2 or the menu's Rename on any other entry gives the naming up, as on GTK.
-//! - **A pointer press or a scroll anywhere in the window gives up the naming on GTK**
-//!   (`install_inline_edit_dismissal` in `src/ui/browser/inline_edit.rs`). Parts have no
-//!   pointer hook, so here a click elsewhere during the wait is overridden by the next poll,
-//!   which opens the editor; a hook is a `contract` change, which would also let a renamed
-//!   row's reveal yield to a scroll (`rename/shown.rs`).
-//! - **Scrolling the item into view** before the editor opens: the editor shows its row
-//!   when it begins.
-//!
-//! The column of Ctrl+Shift+N and Ctrl+Alt+N is the browser's active one. GTK takes the focused
-//! column first, so a resting pointer cannot redirect it (`new_folder_destination_depth`); here
-//! the active column is the one the view's keyboard and selection are in, never the pointer's,
-//! so the two are the same.
-
 use std::time::{Duration, Instant};
 
 use rune::Tx;
@@ -196,8 +158,6 @@ fn cancelled(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     }
 }
 
-/// Gives up a naming that waits (`cancel_new_entry`), as a rename that begins elsewhere
-/// does. False when none did.
 pub(crate) fn cancel(app: &mut App) -> bool {
     let Some(pending) = app.new_item.pending.take() else {
         return false;
@@ -208,8 +168,6 @@ pub(crate) fn cancel(app: &mut App) -> bool {
     true
 }
 
-/// The column a new item goes in: the menu's, or the browser's active one, or the last
-/// (`new_entry_parent` and `new_folder_destination_depth` in `src/ui/browser.rs`).
 fn column(app: &App, on: &On) -> Option<usize> {
     match *on {
         On::Row((depth, _)) | On::Column(depth) => Some(depth),
@@ -232,16 +190,12 @@ pub(crate) fn may_create_in(location: &Location) -> bool {
     !trash && !location.is_recent_location()
 }
 
-/// `BrowserView::new_entry_parent` for 10xer's `a` (`create ›`): the focused column's folder (or
-/// the active/last column's), when items can be created there.
 pub(crate) fn focused_create_parent(app: &App) -> Option<(usize, Location)> {
     let depth = crate::tenxer::focused_listing_depth(app).or_else(|| column(app, &On::Focus))?;
     let parent = app.browser.location_at(depth).filter(may_create_in)?;
     Some((depth, parent))
 }
 
-/// `begin_new_entry`: an edit or a naming already open gives way, and the browser creates
-/// the item. The key is taken wherever the folder is, as GTK takes it.
 fn begin(app: &mut App, on: &On, directory: bool, tx: &mut Tx) -> Outcome {
     let Some((depth, parent)) =
         column(app, on).and_then(|depth| Some((depth, app.browser.location_at(depth)?)))
@@ -261,9 +215,6 @@ fn begin(app: &mut App, on: &On, directory: bool, tx: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// `create_new_folder_for_selection` in `src/ui/browser/file_commands.rs`: groups the
-/// active column's committed selection when one exists, else returns false so `Ctrl+Alt+N`
-/// falls back to a plain New Folder.
 fn create_for_selection(app: &mut App, tx: &mut Tx) -> bool {
     if filter::targets::selected(app).is_some() {
         return false;
@@ -276,7 +227,6 @@ fn create_for_selection(app: &mut App, tx: &mut Tx) -> bool {
     !entries.is_empty() && begin_group(app, depth, &entries, tx)
 }
 
-/// `new_folder_with_selection` in `src/ui/browser/inline_edit/new_entry.rs`.
 fn begin_group(app: &mut App, depth: usize, entries: &[FileEntry], tx: &mut Tx) -> bool {
     let Some(parent) = app.browser.location_at(depth).filter(may_create_in) else {
         return false;
@@ -310,8 +260,6 @@ fn start_pending(app: &mut App, depth: usize, entry: NewEntry, tx: &mut Tx) {
     }
     cancel(app);
     rename::cancel(app, tx);
-    // GTK empties the column's filter first, so the new row is not hidden
-    // (`begin_new_entry_inner` in `src/ui/browser/inline_edit/new_entry.rs`).
     filter::clear_for_new_item(app, depth, tx);
     let naming = if move_sources.is_empty() {
         Naming::NewItem
@@ -368,8 +316,6 @@ fn in_columns(app: &App) -> bool {
     shell::shown_view(app).is_some_and(|view| (view.shows)("columns"))
 }
 
-/// `select_created_entry`. In Columns the browser shows the item as a click would, which can
-/// cut the columns back: the naming's wait outlives what that tells it.
 fn select(app: &mut App, depth: usize, position: usize, tx: &mut Tx) {
     if !in_columns(app) {
         app.browser.select(depth, position);

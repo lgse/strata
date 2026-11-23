@@ -18,23 +18,16 @@ use super::{Browser, BrowserEvent};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SortOrigin {
-    /// Chosen in this column: saved for its folder, or as the default when
-    /// sorts are not remembered per folder.
     Chosen,
     /// Follows a saved sort, the default, or a column load; saves nothing.
     Followed,
 }
 
-/// Columns re-sort one at a time through the debounced sort path, which keeps
-/// a single pending sort; each finished sort wakes the next.
 #[derive(Default)]
 pub(super) struct SortResync {
     pending: Cell<bool>,
     first: Cell<Option<usize>>,
     scheduled: Cell<bool>,
-    /// Followed sorts that ran during this pass, so one that cannot reach its
-    /// target, such as one abandoned for missing metadata, is not retried. A
-    /// sort superseded before it ran is not recorded and is retried.
     attempted: RefCell<Vec<(usize, ViewPreferences)>>,
     media_changes: RefCell<HashMap<usize, (RequestId, RequestId)>>,
 }
@@ -72,8 +65,6 @@ impl SortResync {
 }
 
 impl Browser {
-    /// `Some` remembers sorts per folder: sorting a column then changes only its
-    /// folder, and columns follow their folder's saved sort or the default.
     pub fn set_folder_sorts(self: &Rc<Self>, resolver: Option<FolderSortResolver>) {
         self.state.borrow_mut().set_folder_sorts(resolver);
         self.resync_column_sorts();
@@ -125,8 +116,6 @@ impl Browser {
         }
     }
 
-    /// Re-sorts from an idle callback, never inside the sort or preference
-    /// callback that requested it.
     pub(super) fn resync_column_sorts_from(self: &Rc<Self>, first: Option<usize>) {
         if first.is_some() {
             self.sort_resync.first.set(first);
@@ -167,8 +156,6 @@ impl Browser {
         });
     }
 
-    /// A sort that has not applied, or is still publishing its rows, would be
-    /// superseded by the next one.
     fn sort_in_flight(&self) -> bool {
         self.pending_sort.get().is_some_and(|(_, depth)| {
             !self.pending_sort_applied.get() || self.publishing_sort(depth)
@@ -193,8 +180,6 @@ impl Browser {
         });
     }
 
-    /// Also hands loading columns with nothing listed their new preferences,
-    /// applied when the load finishes.
     fn next_resync_column(&self) -> Option<(usize, ViewPreferences)> {
         let mut state = self.state.borrow_mut();
         let first = self
@@ -233,8 +218,6 @@ impl Browser {
         None
     }
 
-    /// Without per-folder sorts a chosen sort becomes the default; with them,
-    /// only the column's folder is reported.
     pub(super) fn record_sort(&self, depth: usize) {
         let (location, sorted, remembered) = {
             let state = self.state.borrow();

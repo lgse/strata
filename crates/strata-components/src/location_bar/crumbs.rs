@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The crumb strip: ancestors as buttons, the current folder with its Copy path button, in a
-//! sideways scroll viewport with edge fades and an overflow bar in its own row underneath. As
-//! GTK's are (`src/ui/browser/location/breadcrumbs.rs`), the crumbs are plain buttons in a box
-//! inside a scroll pane, which assistive technology meets as such.
-
 use rune::{
     Anim, Cursor, Curve, Easing, El, Key, KeyEvent, Mods, PointerEvent, Tx, WheelEvent, col, el,
     icon, row, text,
@@ -18,8 +13,6 @@ use super::intent::{LocationIntent, Via};
 use super::state::COPIED_FOR;
 use crate::contract::dnd::DropHover;
 
-/// A crumb's drop ring and keyboard focus ring, in points: Strata's 1 px inset accent ring (a
-/// hairline the Look has no token for, as C8's drop outline).
 const RING: f32 = 1.0;
 
 /// The Copy path button's reveal and hide fade: Strata's `transition: opacity 160ms ease-out`.
@@ -74,9 +67,6 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
             .a11y_hidden()
             .on_press_tx(opens_the_entry(cx)),
     );
-    // Each navigation mounts a new row (keyed by its count), and so does the strip coming back
-    // from the entry, so its first layout scrolls the strip to its end: the current crumb shows
-    // after a navigation, a submit or a cancel.
     let access = cx.access;
     let reveal_key = viewport.clone();
     content = content.on_layout_tx(move |s: &mut S, _, tx: &mut Tx| {
@@ -91,8 +81,6 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
     let menu_bottom = cx.menu_bottom();
     let strip = row()
         .key(viewport.clone())
-        // GTK's strip shows a text cursor, as a press on it opens the entry; its buttons a
-        // pointer (`view_setup.rs`, `breadcrumbs.rs`).
         .cursor(Cursor::Text)
         .w_full()
         .h(cx.row())
@@ -102,8 +90,6 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
             feed.set(p);
             bar.follow(p);
         })
-        // Rune scrolls a sideways viewport only with sideways deltas; a mouse wheel turns it
-        // here, as GTK's breadcrumbs do (Rune draft U-C6-5).
         .on_wheel(move |_: &mut S, ev: WheelEvent, tx: &mut Tx| {
             let p = wheel_feed.get();
             if ev.dy.abs() <= ev.dx.abs() || p.max[0] <= 0.0 {
@@ -116,8 +102,6 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
             tx.live_only();
             true
         })
-        // The hierarchy menu opens under the whole bar at the press's x, so it never covers the
-        // crumbs it lists.
         .on_secondary_press_local(move |s: &mut S, p: PointerEvent, _: &mut Tx| {
             access(s).open_menu(p.window_x, p.window_y - p.y + menu_bottom);
         })
@@ -127,11 +111,6 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
         cx.state
             .bar
             .build::<S>(&format!("{}-crumbs-bar", cx.key), &viewport, cx.bar_look());
-    // The bar lays itself along its viewport's bottom edge; hung from the viewport's origin
-    // moved down by the bar's row, it sits in that row, under the labels, without adding to the
-    // bar's layout height (which would push the crumbs above the header's vertical centre). (A
-    // zero-size anchor, not a frame over the crumbs: a frame there is what a system drag's hit
-    // test, P1's, would find over them.)
     let bar_row = crate::scroll::anchor(0.0, cx.band(), bar_el);
     let column = col()
         .w_full()
@@ -142,8 +121,6 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
     cx.state.bar.area(column)
 }
 
-/// The space between two of the strip's children, in place of a row gap, so that a press there
-/// opens the entry, as a press anywhere on GTK's strip but a crumb does.
 fn gap<S: 'static>(cx: &Ctx<'_, S>, name: String) -> El {
     el().key(format!("{}-{name}", cx.key))
         .w(cx.look.space.xxs)
@@ -152,9 +129,6 @@ fn gap<S: 'static>(cx: &Ctx<'_, S>, name: String) -> El {
         .on_press_tx(opens_the_entry(cx))
 }
 
-/// A press that opens the entry: on a separator, a gap, the current crumb or the empty space.
-/// Attached to those slices rather than the scroll viewport so ancestor crumbs keep their own
-/// presses cleanly.
 fn opens_the_entry<S: 'static>(cx: &Ctx<'_, S>) -> impl Fn(&mut S, &mut Tx) + 'static {
     let (access, emit, text) = (cx.access, cx.emit.clone(), cx.trail.text.clone());
     move |s: &mut S, tx: &mut Tx| {
@@ -163,8 +137,6 @@ fn opens_the_entry<S: 'static>(cx: &Ctx<'_, S>) -> impl Fn(&mut S, &mut Tx) + 's
     }
 }
 
-/// An ancestor: a button that opens its folder, a new tab or window on a middle click, and a
-/// drop zone.
 fn ancestor<S: 'static>(cx: &Ctx<'_, S>, i: usize, crumb: &Crumb) -> El {
     let look = cx.look;
     let k = &look.kit;
@@ -232,8 +204,6 @@ fn ancestor_handlers<S: 'static>(cx: &Ctx<'_, S>, button: El, i: usize, id: &str
                 tx,
             );
         })
-        // Return presses a focused crumb, as GTK's buttons take it (Rune gives a focused
-        // button's Return to the default button).
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
             if is_plain_return(ev) {
                 key_emit(
@@ -266,9 +236,6 @@ fn ancestor_handlers<S: 'static>(cx: &Ctx<'_, S>, button: El, i: usize, id: &str
         .drop_zone_keyed(button, crumb_key(cx.key, i), drops::zone(cx, i, id))
 }
 
-/// Return presses a focused button as Space does, as GTK's buttons take both (finding
-/// lgse/strata#2310): Rune gives a focused button's Return to the default button. A held Return
-/// presses it once.
 fn return_as_space<S: 'static>(_: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if ev.key != Key::Enter || ev.mods != Mods::default() {
         return false;
@@ -282,9 +249,6 @@ fn return_as_space<S: 'static>(_: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
     true
 }
 
-/// The current crumb's Copy path button: hidden at rest, revealed when the pointer hovers the
-/// current crumb or the button, when keyboard focus reaches it, or while the 2 s "Path copied"
-/// confirmation shows (Strata's `.copy-path`, `src/style.css`).
 fn copy_path_button<S: 'static>(cx: &Ctx<'_, S>, fade: Anim) -> El {
     let look = cx.look;
     let k = &look.kit;

@@ -155,8 +155,6 @@ impl Browser {
         );
     }
 
-    /// Converge with the authoritative model before mutations that assume all
-    /// rows are visible; unlike an idle tail, draining is not chunk-limited.
     pub(super) fn drain_publish(self: &Rc<Self>, depth: usize) {
         let staged = self.staged_publishes.borrow_mut().remove(&depth);
         let Some(staged) = staged else {
@@ -182,8 +180,6 @@ impl Browser {
             .is_some_and(StagedPublish::finishes_sorting)
     }
 
-    /// An applied sort finishes when its rows publish, so dropping them
-    /// before the last ends the sort.
     pub(super) fn drop_staged_publish(&self, depth: usize) {
         let staged = self.staged_publishes.borrow_mut().remove(&depth);
         if staged.as_ref().is_some_and(StagedPublish::finishes_sorting)

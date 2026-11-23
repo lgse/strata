@@ -8,14 +8,8 @@ use rune::{Color, Span};
 
 use super::engine::Token;
 
-/// Rune numbers a text element's spans with `Ink(i as u16 + 1)` (`rune/src/text.rs`, where
-/// `Ink(0)` is the element's own colour), so the 65,536th span overflows: a panic in a debug
-/// build, and in a release one it and every later span take another span's colour. No more
-/// than this many go to one element.
 pub const MAX_SPANS: usize = u16::MAX as usize;
 
-/// `tokens`' coloured runs, moved `offset` bytes on, appended to `out`. Tokens in the default
-/// colour are left out, and touching runs of one colour join.
 pub(crate) fn colored(
     tokens: &[Token],
     palette: &[Option<Color>],

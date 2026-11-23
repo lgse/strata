@@ -1,33 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C24's scroll extras on the c24 page, in process: what scripts can't see (scroll offsets,
-//! cursors, opacities, wake-ups, a held Alt) and what no golden shows (motion over time). Each
-//! test names the feature-map bullets it checks; a partial check says which half. The scripts
-//! in `tests/scripts/c24/` check the rest, and two tests here run them through the gallery
-//! binary: one for Rune's perf warnings (debug builds), one under `RUNE_COMMIT_BUDGET_MS=8`
-//! (`--profile perf`).
-//!
-//! The scripts, and which half of a bullet each checks where it checks one half:
-//!
-//! | Script | Checks |
-//! | --- | --- |
-//! | `autoscroll-start` | a middle click in the list's margin starts it (the shield, "Autoscroll") |
-//! | `autoscroll-row` | a middle click on a folder row opens it in a new tab, starts nothing |
-//! | `autoscroll-move`, `-long`, `-reduced` | it scrolls toward the pointer (rows scroll away); `-move` also checks Escape stops it (the Escape half of the stop bullet) |
-//! | `autoscroll-click` | a click outside the list stops it (the click half of the stop bullet) |
-//! | `autoscroll-click-row` | the click on a row that stops it opens and selects nothing |
-//! | `autoscroll-fits` | a list that fits starts none |
-//! | `autoscroll-rename` | a middle click on C5's rename field inside the listing starts none, and opens nothing (not the paste half, Rune draft U-C24b-3) |
-//! | `autoscroll-margin-fits` | in a list that fits, a middle click on a row's margin starts none and opens nothing |
-//! | `panel-wheel-outside` | a tick outside the stand-in Sort by panel closes it and scrolls the list under the pointer |
-//! | `panel-wheel-inside` | a tick inside it keeps it open and scrolls nothing under it |
-//! | `panel-wheel-chrome` | a tick over the sidebar only closes it |
-//! | `history-back`, `history-forward` | buttons 8 and 9 reach the host |
-//! | `autoscroll-navigate` | another folder stops it (the navigating half; hiding is in process) |
-//! | `bar-drag` | a thumb drag scrolls and starts no band (Alt held: in process) |
-//! | `bar-press` | a trough press is the bar's: it jumps, no band (the scroll-bar half of the bullet) |
-//! | `nested-wheel` | a vertical wheel over a column scrolls only it (the vertical half; Shift + wheel can't be sent headless, U-C24-7) |
-
 #[expect(
     dead_code,
     reason = "these tests use only the gallery command and the scripts folder"
@@ -182,8 +154,6 @@ mod c24 {
 
     #[test]
     fn a_middle_click_on_the_bar_starts_nothing() {
-        // browser/scrolling: Middle-clicking the empty background or gutter of a scrollable Columns, Icons, or List listing starts autoscroll. A round anchor marks the press point.
-        // (The other half: a scroll bar isn't background, as in Strata's `is_background`.)
         let mut rt = mount("c24-ten-k-bar-light");
         let [x, y, w, h] = element(&rt, BAR).expect("the bar").visible;
         press(&mut rt, x + w / 2.0, y + h / 2.0, PointerButton::Middle);
@@ -207,10 +177,6 @@ mod c24 {
 
     #[test]
     fn a_middle_click_on_a_text_field_inside_the_list_starts_no_autoscroll() {
-        // browser/scrolling: Middle-clicking a text field, such as the filter field, pastes as usual and starts no autoscroll.
-        // (Half: no autoscroll, and nothing else, for a field inside the listing: C5's rename
-        // editor on a folder's row. The paste is Rune's to add: it has no middle-click paste,
-        // draft U-C24b-3. Review 2 SF1: the old stand-in field let the press reach the row.)
         let mut rt = mount("c24-rename-light");
         assert!(rt.state.c24.rename.has_keyboard());
         let [x, y, w, h] = element(&rt, "rename-field")
@@ -223,8 +189,6 @@ mod c24 {
             "the row under it opened nothing"
         );
         assert!(rt.state.c24.rename.has_keyboard(), "the edit goes on");
-        // Not vacuous: on the same row, the margin starts autoscroll, so the field is what
-        // keeps its press from the listing.
         let [rx, ry, _, rh] = element(&rt, "row-11").expect("row 11").visible;
         press(&mut rt, rx + 2.0, ry + rh / 2.0, PointerButton::Middle);
         assert!(running(&rt), "the row's margin is background");
@@ -232,9 +196,6 @@ mod c24 {
 
     #[test]
     fn after_autoscroll_stops_the_keyboard_is_back_in_the_list() {
-        // browser/scrolling: Escape, or another click with any button anywhere in the window, stops autoscroll.
-        // (Deviation, review 2 SF3: the shield, a modal, takes the keyboard while it runs; Rune
-        // gives it back to the list as it goes, so keys move the cursor again.)
         let mut rt = mount("c24-ten-k-light");
         let [x, y, _, h] = element(&rt, "row-3").expect("row 3").visible;
         press(&mut rt, x + 120.0, y + h / 2.0, PointerButton::Primary);
@@ -305,8 +266,6 @@ mod c24 {
 
     #[test]
     fn within_12_points_of_the_anchor_nothing_scrolls_and_nothing_wakes() {
-        // browser/scrolling: The pointer must move more than 12 px from the anchor before scrolling starts; speed reaches 32 px per 16 ms frame at 232 px.
-        // (Half: the dead zone. The top speed is the next test's.)
         let mut rt = mount("c24-ten-k-light");
         let (x, y) = start(&mut rt);
         rt.pointer_move(x + 6.0, y + 10.0);
@@ -321,8 +280,6 @@ mod c24 {
 
     #[test]
     fn far_from_the_anchor_the_list_scrolls_32_points_a_16_ms_frame() {
-        // browser/scrolling: The pointer must move more than 12 px from the anchor before scrolling starts; speed reaches 32 px per 16 ms frame at 232 px.
-        // (Half: the top speed, 2,000 pt/s, within 5 %.)
         let speed = travel("c24-ten-k-light", 280.0, 1.0);
         assert!((speed - 2000.0).abs() < 100.0, "{speed} pt/s");
     }
@@ -336,8 +293,6 @@ mod c24 {
 
     #[test]
     fn the_pointer_over_the_list_shows_the_scroll_cursor_while_autoscroll_runs() {
-        // browser/scrolling: While autoscroll runs, the pointer over that listing shows the all-scroll cursor.
-        // (Partial: Rune has no all-scroll cursor; it shows Cursor::Move, U-C24-5.)
         let mut rt = mount("c24-ten-k-light");
         let (x, y) = start(&mut rt);
         rt.pointer_move(x + 300.0, y + 4.0);
@@ -357,8 +312,6 @@ mod c24 {
 
     #[test]
     fn a_press_of_any_button_anywhere_stops_autoscroll_where_it_is() {
-        // browser/scrolling: Escape, or another click with any button anywhere in the window, stops autoscroll.
-        // (Half: a click with each button, outside the list. Escape is the next test's.)
         for button in [
             PointerButton::Primary,
             PointerButton::Secondary,
@@ -387,8 +340,6 @@ mod c24 {
 
     #[test]
     fn escape_stops_only_the_autoscroll_and_cancels_the_armed_chord() {
-        // browser/scrolling: Escape while autoscroll runs stops only the autoscroll and cancels an armed 10xer chord.
-        // (The chord is the page's stand-in: C18/C19 own the real one. Also checks the Escape half of "Escape, or another click with any button anywhere in the window, stops autoscroll.")
         let mut rt = mount("c24-ten-k-light");
         let [x, y, _, h] = element(&rt, "row-3").expect("row 3").visible;
         press(&mut rt, x + 120.0, y + h / 2.0, PointerButton::Primary);
@@ -443,8 +394,6 @@ mod c24 {
 
     #[test]
     fn leaving_or_hiding_the_list_stops_its_autoscroll_and_hides_the_anchor() {
-        // browser/scrolling: Navigating away from, hiding, or closing a listing while it autoscrolls stops the autoscroll and hides the anchor.
-        // (Navigating away and hiding; closing is the host's, which calls the same `stop_gone`.)
         let alt_left = KeyEvent {
             key: Key::Left,
             mods: Mods {
@@ -502,8 +451,6 @@ mod c24 {
 
     #[test]
     fn the_bar_is_hidden_at_rest_and_shows_while_the_list_scrolls_or_the_pointer_moves_over_it() {
-        // browser/scrolling: Scrollbars fade in on hover or scrolling and stay hidden at rest; the trough strengthens on hover and while dragging.
-        // (Half: showing and hiding. The trough is the next test's.)
         let mut rt = mount("c24-ten-k-light");
         assert_eq!(opacity(&rt), 0.0, "hidden at rest");
         let v = viewport(&rt);
@@ -521,8 +468,6 @@ mod c24 {
 
     #[test]
     fn the_trough_strengthens_under_the_pointer_and_while_dragged() {
-        // browser/scrolling: Scrollbars fade in on hover or scrolling and stay hidden at rest; the trough strengthens on hover and while dragging.
-        // (Half: the trough.)
         let alpha = |rt: &Runtime<Gallery>| under(rt, BAR, "trough").map_or(0.0, |e| e.fill.a);
         let mut rt = mount("c24-ten-k-bar-light");
         let rest = alpha(&rt);
@@ -582,8 +527,6 @@ mod c24 {
 
     #[test]
     fn a_press_or_drag_on_the_bar_leaves_the_keyboard_focus_where_it_was() {
-        // browser/selection/marquee: A press on a button, text entry, label, image, slider, scrollbar, or sidebar place keeps that control's own behavior and starts no marquee.
-        // (Review round 1: the scroll bar's own behaviour takes no focus, as GTK's scrollbar doesn't.)
         let mut rt = mount("c24-ten-k-bar-light");
         let [fx, fy, _, fh] = element(&rt, "c24-filter").expect("the field").visible;
         press(&mut rt, fx + 5.0, fy + fh / 2.0, PointerButton::Primary);
@@ -614,8 +557,6 @@ mod c24 {
 
     #[test]
     fn a_secondary_press_on_the_bar_does_nothing() {
-        // browser/selection/marquee: A press on a button, text entry, label, image, slider, scrollbar, or sidebar place keeps that control's own behavior and starts no marquee.
-        // (Review round 1: a secondary press on the bar reaches no row: no menu, no selection.)
         let mut rt = mount("c24-ten-k-bar-light");
         let [x, y, w, h] = element(&rt, BAR).expect("the bar").visible;
         press(&mut rt, x + w / 2.0, y + h / 2.0, PointerButton::Secondary);
@@ -625,18 +566,12 @@ mod c24 {
 
     #[test]
     fn an_escape_in_the_dead_zone_is_over_at_once_and_the_next_click_reaches_the_row() {
-        // browser/scrolling: Escape, or another click with any button anywhere in the window, stops autoscroll.
-        // (Review round 1: an Escape with nothing moving stops at once, so the next click isn't taken as a stop.)
         let mut rt = mount("c24-ten-k-light");
         start(&mut rt);
         rt.key(KeyEvent {
             key: Key::Escape,
             mods: Mods::default(),
         });
-        // One frame: the shield goes, and with nothing moving the autoscroll is over in the
-        // same frame, with no further frame needed (a resting window may run none): what the
-        // view drew then says so. (A click in the same frame as the Escape still lands on the
-        // shield: a known gap, in the module docs.)
         rt.frame(FRAME);
         assert!(element(&rt, ANCHOR).is_none());
         assert!(!running(&rt), "idle, not stopping");
@@ -655,8 +590,6 @@ mod c24 {
 
     #[test]
     fn a_press_on_the_trough_jumps_there_and_starts_no_marquee() {
-        // browser/selection/marquee: A press on a button, text entry, label, image, slider, scrollbar, or sidebar place keeps that control's own behavior and starts no marquee.
-        // (Half: the scroll bar.)
         let mut rt = mount("c24-ten-k-bar-light");
         let [x, y, w, h] = element(&rt, BAR).expect("the bar").visible;
         let before = offset(&rt);
@@ -691,8 +624,6 @@ mod c24 {
 
     #[test]
     fn a_vertical_wheel_over_a_column_scrolls_only_that_column() {
-        // browser/view-modes/columns: Shift+wheel over a listing scrolls the column strip horizontally; vertical wheel ticks scroll only the listing.
-        // (Half: vertical ticks. Rune turns Shift+wheel sideways in its window host only, so headless can't send it: U-C24-7.)
         let mut rt = mount("c24-nested-light");
         let (x, y) = column_point(&rt, 1);
         rt.wheel_xy(x, y, 0.0, -120.0);
@@ -704,8 +635,6 @@ mod c24 {
 
     #[test]
     fn a_sideways_swipe_over_a_column_scrolls_the_strip() {
-        // browser/scrolling: A two-finger horizontal touchpad swipe over Columns scrolls the column strip.
-        // Also: browser/view-modes/columns: Horizontal touchpad gestures over a listing scroll the column strip.
         let mut rt = mount("c24-nested-light");
         let (x, y) = column_point(&rt, 0);
         rt.wheel_event(
@@ -757,8 +686,6 @@ mod c24 {
 
     #[test]
     fn one_autoscroll_runs_for_the_window_across_columns() {
-        // browser/scrolling: Middle-clicking the empty background or gutter of a scrollable Columns, Icons, or List listing starts autoscroll. A round anchor marks the press point.
-        // (The Columns case: a column's own collection starts it; a second middle click elsewhere stops it rather than starting another.)
         let mut rt = mount("c24-nested-light");
         let v = rt.state.c24.columns[1].coll.viewport();
         let (x, y) = (v.x + 2.0, v.y + v.h / 2.0);
@@ -775,8 +702,6 @@ mod c24 {
 
     // Rune's perf meters, through the gallery binary.
 
-    /// Runs script `name` from `tests/scripts/c24/` through the gallery binary with `env`;
-    /// its stderr.
     fn gallery_run(name: &str, env: &[(&str, &str)]) -> String {
         let script = support::scripts_dir("c24").join(format!("{name}.json"));
         let spec: serde_json::Value =
@@ -809,10 +734,6 @@ mod c24 {
             .collect()
     }
 
-    /// Rune's debug builds warn, on stderr, when one source commits through most of a scroll,
-    /// when an app steps a viewport with instant scrolls on committing frames, and when a
-    /// resting window keeps waking. None may fire for an autoscroll (gliding, or stepping with
-    /// animations off) or a press on the trough.
     #[test]
     #[cfg_attr(not(debug_assertions), ignore = "Rune's perf warnings are debug-only")]
     fn the_autoscroll_scripts_keep_runes_perf_warnings_silent() {
@@ -832,11 +753,6 @@ mod c24 {
         }
     }
 
-    /// A thumb dragged over 10,000 rows moves the list past its mounted rows on every frame,
-    /// and Rune then commits about 4 times and runs the view about 3 times a frame (a wheel
-    /// moving as far runs it none), so its "stepping its own glide" warning fires, as it does
-    /// for rune-kit's own `ScrollBar` (Rune draft U-C24-8). That one warning, on the list's
-    /// viewport, is the only one allowed.
     #[test]
     #[cfg_attr(not(debug_assertions), ignore = "Rune's perf warnings are debug-only")]
     fn a_thumb_drag_trips_only_runes_instant_scroll_warning() {
@@ -850,11 +766,6 @@ mod c24 {
         assert!(others.is_empty(), "bar-drag: {}", others.join("\n"));
     }
 
-    /// Five seconds of full-speed autoscroll over 10,000 rows, then a thumb drag, under
-    /// `RUNE_COMMIT_BUDGET_MS=8`: no commit over 8 ms once the scene is mounted.
-    ///
-    /// Release-build commits only: `cargo test --profile perf -p strata-gallery --test c24
-    /// budget`.
     #[test]
     #[cfg_attr(debug_assertions, ignore = "perf: run with --profile perf")]
     fn autoscroll_and_thumb_drags_over_ten_thousand_rows_stay_under_the_commit_budget() {
@@ -875,8 +786,6 @@ mod c24 {
             );
         }
     }
-
-    // The stand-in Sort by panel and C24's OutsideWheel.
 
     use strata_gallery::scenes::c24::{PANEL, SIDEBAR};
 
@@ -907,8 +816,6 @@ mod c24 {
 
     #[test]
     fn a_wheel_tick_outside_the_panel_closes_it_and_scrolls_the_list_under_the_pointer() {
-        // browser/scrolling: A wheel tick outside an open Sort by, Appearance, or Icons Thumbnail size panel closes it.
-        // browser/scrolling: The tick that closes a panel also scrolls the listing under the pointer, and no other; over the sidebar or chrome it only closes the panel.
         let mut rt = mount("c24-panel-light");
         assert!(panel_open(&rt));
         let (x, y) = over_list(&rt);
@@ -946,8 +853,6 @@ mod c24 {
 
     #[test]
     fn a_press_outside_the_panel_closes_it_and_selects_nothing_under_it() {
-        // Review round 1, SF3: the scrim is the panel's outside press too, in place of the
-        // popover's own: a press there over a row closes the panel and leaves the row alone.
         use strata_gallery::scenes::c24::PANEL_SCRIM;
         let mut rt = mount("c24-panel-light");
         assert!(element(&rt, PANEL_SCRIM).is_some());

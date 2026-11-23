@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Context-menu MIME lookup (`src/ui/browser/context_menu/open_with.rs`) and keyboard
-//! `open-with` target resolution (`src/ui/browser/file_commands.rs`).
-
 use std::{cell::Cell, rc::Rc};
 
 use rune::Tx;
@@ -244,8 +241,6 @@ fn update_menu_open_with(
     app.menu.state.update_model(model);
 }
 
-/// Launches the shared default application when `Open` is chosen on a multi-selection context
-/// menu (`open_with_default_app` in `src/ui/browser/context_menu/item_menu.rs`).
 pub(crate) fn open_selection_default(app: &mut App, depth: usize, id: EntryId) -> bool {
     let Some((_, entries)) = menus::context_entries(app, depth, id) else {
         return false;
@@ -370,9 +365,6 @@ fn open_folder_menu(app: &mut App, depth: usize) {
 
 pub(crate) type RefusalReport = Rc<dyn Fn(&mut App, &str, &mut Tx)>;
 
-/// Resolves the current focus targets (`command_targets`) and opens the Open With chooser
-/// (`BrowserView::open_targets_with`). `report` receives untranslated refusal reasons when a
-/// caller such as 10xer displays shortcut feedback.
 pub(crate) fn open_targets(app: &mut App, tx: &mut Tx, report: Option<RefusalReport>) -> bool {
     let entries = focus_entries(app);
     if entries.is_empty() {

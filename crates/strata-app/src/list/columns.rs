@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The List table's eight columns, as GTK's List view has them
-//! (`src/ui/browser_modes/list_columns.rs` and `list_headings.rs`): Name, Mode, Size, Type and
-//! Modified shown by default, and optional Duration, Dimensions and Created hidden by default,
-//! with GTK's default widths and minimums, the order and visibility saved as
-//! `list_column_order`, `list_hidden_columns` and `list_shown_columns`, and the widths as
-//! `browser_list_columns` / `chooser_list_columns`.
-//! Cells read the row's facts ([`crate::details`]), as GTK's `list_metadata_label` shows
-//! them: left-aligned, in the text colour. The Type cell is read only for the rows drawn, as
-//! GTK binds it.
-
 use std::{
     collections::HashSet,
     hash::{DefaultHasher, Hash, Hasher},
@@ -50,10 +40,6 @@ fn saved(id: &ColumnId) -> Option<ListColumnId> {
         .find(|column| self::id(*column) == *id)
 }
 
-/// Whether `column` is visible under `settings` (`is_list_column_visible` in
-/// `src/ui/preferences/layout_settings.rs`): Name is always visible, optional columns require
-/// an opt-in in `list_shown_columns`, and standard columns stay visible unless listed in
-/// `list_hidden_columns`.
 pub(crate) fn is_visible(settings: &Preferences, column: ListColumnId) -> bool {
     if column == ListColumnId::Name {
         return true;
@@ -65,9 +51,6 @@ pub(crate) fn is_visible(settings: &Preferences, column: ListColumnId) -> bool {
     }
 }
 
-/// The metadata detail level the List view asks for: media details for all rows while Duration
-/// or Dimensions is visible (`ListRow::has_media_column` in `list_factory.rs`), otherwise
-/// folder item counts only.
 pub(super) fn fill_details(layout: &ColumnLayout) -> Details {
     let media = ListColumnId::ALL.into_iter().any(|column| {
         column
@@ -86,8 +69,6 @@ pub(super) fn fill_details(layout: &ColumnLayout) -> Details {
 /// The headings, translated once: the language changes only on restart.
 pub(super) struct Headings([String; ListColumnId::ALL.len()]);
 
-/// The columns menu's and its button's words, translated (`column_options.rs` and
-/// `append_columns_menu` in `src/ui/browser_modes`).
 pub(super) fn menu_labels() -> ListTableLabels {
     let mut labels = ListTableLabels::default();
     labels.button = tr("Columns");
@@ -150,9 +131,6 @@ fn created(app: &App, rcx: &RowCx<'_>) -> Cell {
     Cell::text(text.unwrap_or_default())
 }
 
-/// Moves with what a row's cells read beyond its entry, so only the rows whose facts or date
-/// format changed build again; and, while dates are relative, every 30 s, when they read the
-/// clock again.
 pub(super) fn cells_version(app: &App, rcx: &RowCx<'_>) -> u64 {
     let mut hasher = DefaultHasher::new();
     row(app, rcx).map(Row::facts).hash(&mut hasher);
@@ -163,9 +141,6 @@ pub(super) fn cells_version(app: &App, rcx: &RowCx<'_>) -> u64 {
     hasher.finish()
 }
 
-/// Hover tooltip for a List row's primary (Name) cell: omits the modified date while the
-/// Modified column is visible (showing `"{name}"` only when truncated), and includes
-/// `"{name}\n{date}"` when the Modified column is hidden.
 pub(super) fn row_tooltip(
     app: &App,
     rcx: &RowCx<'_>,
@@ -204,8 +179,6 @@ fn build_column(column: ListColumnId, title: String) -> TableColumn<App> {
     }
 }
 
-/// All eight columns in their default order. Every column except Mode sorts through
-/// `sort::headings`.
 pub(super) fn columns(headings: &Headings) -> Vec<TableColumn<App>> {
     ListColumnId::ALL
         .into_iter()
@@ -214,7 +187,6 @@ pub(super) fn columns(headings: &Headings) -> Vec<TableColumn<App>> {
         .collect()
 }
 
-/// The saved order and visibility, made whole as GTK loads them (`ColumnLayout::normalize`).
 pub(super) fn layout(settings: &Preferences) -> ColumnLayout {
     layout_of(
         &settings.list_column_order,
@@ -250,9 +222,6 @@ fn layout_of(
     )
 }
 
-/// The saved widths (`browser_list_columns`), in base points, the unit C4 keeps and GTK saves
-/// (`ListColumnLayout::remember` divides by the interface scale, root font px over 13): Name
-/// only once resized by hand.
 pub(super) fn widths(settings: &Preferences) -> ColumnWidths {
     settings
         .browser_list_columns
@@ -280,8 +249,6 @@ fn widths_of(saved: &ListColumns) -> ColumnWidths {
         })
 }
 
-/// The widths as GTK's `remember` saves them: every metadata column in whole points, and Name
-/// only once resized by hand.
 fn saved_widths(widths: &ColumnWidths) -> ListColumns {
     #[expect(
         clippy::cast_possible_truncation,
@@ -303,8 +270,6 @@ fn saved_widths(widths: &ColumnWidths) -> ListColumns {
         .collect()
 }
 
-/// Updates a saved column-visibility list (`list_hidden_columns` or `list_shown_columns`),
-/// preserving the saved order of retained entries and appending newly added ones.
 fn updated_set(
     saved: &[ListColumnId],
     belongs: impl Fn(ListColumnId) -> bool,
@@ -318,9 +283,6 @@ fn updated_set(
         .collect()
 }
 
-/// The person reordered, showed, hid or reset the columns: the settings save it through the
-/// rules GTK's setters apply (`set_list_column_order`, `set_list_column_visible`,
-/// `reset_list_columns`), and the window keeps what a restart would read back.
 pub(super) fn keep_layout(app: &mut App, change: LayoutChange) {
     let (order, hidden, shown) = if change.why == LayoutWhy::Reset {
         (default_list_column_order(), Vec::new(), Vec::new())
@@ -354,9 +316,6 @@ pub(super) fn keep_layout(app: &mut App, change: LayoutChange) {
     });
 }
 
-/// The person resized a column: the settings save every width, as GTK saves
-/// `browser_list_columns` / `chooser_list_columns`, keeping only valid ones, and the window
-/// keeps what a restart would read back.
 pub(super) fn keep_widths(app: &mut App, widths: ColumnWidths) {
     let chooser = app.browser.is_chooser_mode();
     let saved = Some(saved_widths(&widths)).filter(ListColumns::is_valid);

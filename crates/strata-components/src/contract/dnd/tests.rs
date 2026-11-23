@@ -38,8 +38,6 @@ fn with((ctrl, shift): (bool, bool)) -> Mods {
     mods(ctrl, shift)
 }
 
-// operations/drag-and-drop/copy-or-move: "A plain drop onto a folder on the same filesystem
-// moves the items."
 #[test]
 fn a_plain_drop_on_the_same_volume_moves() {
     for cross in [CrossDevice::Copy, CrossDevice::Move, CrossDevice::Ask] {
@@ -100,8 +98,6 @@ fn a_modifier_for_an_action_not_offered_falls_back_to_the_plain_rule() {
     );
 }
 
-// "Settings → … offers Always copy, Always move, and Always ask"; "With Always ask, a plain
-// drop onto another device transfers nothing until the prompt is answered."
 #[test]
 fn a_plain_drop_onto_another_device_follows_the_setting() {
     let table = [
@@ -267,11 +263,6 @@ fn a_payload_becomes_a_rune_drag_item() {
     assert!(drag_item(&DragPayload::new(vec![EntryId::new(1)], Vec::new())).is_none());
 }
 
-/// A pane background (`outer`, 400 by 300) around two rows of 100-point cells. The first: a
-/// folder row that follows moves (`row`), a zone that takes only PNG and says so (`refuse`),
-/// one that takes only PNG and passes other drags on (`pass`), and one attached through
-/// [`Dnd::none`] (`none`). The second: zones whose `action` refuses every drag, one with an
-/// `on_reject` (`veto`) and one without (`quiet-veto`). Below them, bare background.
 #[derive(Default)]
 struct Pane {
     log: Vec<String>,
@@ -534,8 +525,6 @@ fn a_drag_moving_to_another_zone_never_reuses_an_earlier_drags_serial() {
 // ---- Keyed binders (W1e) ----
 
 thread_local! {
-    /// What the keyed binder heard, in the order the view attached it: zone or source, the
-    /// key and the scope.
     static HEARD: std::cell::RefCell<Vec<(&'static str, String, Option<String>)>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }
@@ -568,8 +557,6 @@ fn source() -> DragSource<Pane> {
     DragSource::new(|_: &Pane| None)
 }
 
-/// Elements given no key of their own, attached with keys: the zone binder, the source binder,
-/// and both without a key (which a keyed binder hears nothing of).
 fn keyed_view(_: &Pane, _: &mut Cx<Pane>) -> El {
     let dnd = recording();
     let cell = || el().size(100.0, 100.0);
@@ -683,10 +670,6 @@ fn rune_and_unkeyed_custom_binders_take_keyed_zones_as_before() {
     assert_eq!(count.get(), 11);
 }
 
-/// The cases of P1's test of the same name (`strata-platform`, `transfer::mime::tests`), whose
-/// `names` this one copies: a type listed without parameters names its forms with
-/// parameters, one listed with parameters names only itself, and a longer type is no form of
-/// a shorter one.
 #[test]
 fn a_type_without_parameters_names_its_forms_with_parameters() {
     let cases = [

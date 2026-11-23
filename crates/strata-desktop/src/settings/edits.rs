@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Setter and start-up repair rules on [`Preferences`] shared between the GTK and Rune
-//! interfaces.
-
 use std::time::Duration;
 
 use crate::{
@@ -30,8 +27,6 @@ pub struct ThemeAvailability {
 }
 
 impl Preferences {
-    /// Repairs loaded theme and mode choices against the themes and modes available in
-    /// this session.
     pub fn normalize_theme_selection(
         &mut self,
         theme_is_known: impl Fn(&str) -> bool,
@@ -60,8 +55,6 @@ impl Preferences {
             .unwrap_or_default()
     }
 
-    /// Records `variant` for `active_theme`, removing the entry when it equals the
-    /// default. Returns whether the stored choice changed.
     pub fn set_omarchy_variant(&mut self, active_theme: &str, variant: OmarchyVariant) -> bool {
         if self.omarchy_variant(Some(active_theme)) == variant {
             return false;
@@ -75,8 +68,6 @@ impl Preferences {
         true
     }
 
-    /// Trims `theme`, migrates any legacy global contrast choice into `omarchy_variants`
-    /// under it, and returns the trimmed theme name.
     pub fn migrate_active_omarchy_theme(&mut self, theme: &str) -> String {
         let theme = theme.trim().to_owned();
         // Older versions always saved "original", so only a contrast choice was deliberate.
@@ -92,8 +83,6 @@ impl Preferences {
         self.hardware_accelerated_video_previews = Some(enabled);
     }
 
-    /// Stores `backend` when it is one of the hardware choices. `Software` is controlled
-    /// by `hardware_accelerated_video_previews` and returns `false` without mutating.
     pub fn set_video_preview_backend(&mut self, backend: MediaPreviewBackend) -> bool {
         let backend = match backend {
             MediaPreviewBackend::Automatic => "automatic",
@@ -135,8 +124,6 @@ impl Preferences {
         }
     }
 
-    /// Adopts the default sort and icon size saved by another Strata process. Returns
-    /// whether any of the five fields changed.
     pub fn adopt_defaults(&mut self, saved: Self) -> bool {
         let size = saved
             .icons_thumbnail_size

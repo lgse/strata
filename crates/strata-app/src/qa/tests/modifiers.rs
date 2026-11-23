@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The modifiers the shell holds as held down, as the offscreen host feeds them in the
-//! steps' place of Rune's `on_modifiers` hook (packet entry 107). The windowed host's hook
-//! needs a real window and cannot run headless.
-
 use rune::Mods;
 use serde_json::json;
 use strata_qa::Remembered;

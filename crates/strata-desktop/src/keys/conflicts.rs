@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Checks keymap entries against their table: keys another command already
-//! takes there, keys a chord, GTK, a text field or an input method claims, and
-//! keys that never fire. Findings are data for Settings and the load-time log
-//! to render. See `docs/keyboard-shortcuts.md`.
-
 use super::{
     Binding, CUSTOM_ACTIONS, Command, CommandKind, DIRECT_IN_TENXER, Digits, Group, Key, Keymap,
     Map, Modifiers, SHORTCUT_MODIFIERS, alias,
@@ -35,15 +30,11 @@ use super::{
 /// What the checker cannot read from the table.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Policy {
-    /// Type-to-search is on, so the default map's file list types plain
-    /// printable keys.
     pub type_to_search: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Severity {
-    /// The key never fires where it is bound, or fires and stops another key
-    /// or a fixed role from working; Settings refuses it.
     Error,
     /// The key is saved but works only in some places.
     Warning,
@@ -51,36 +42,19 @@ pub enum Severity {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
-    /// Another command the same surface matches holds the key. Chord steps
-    /// count only against steps of their group and the keys an armed chord
-    /// reads before its steps.
     Duplicate(Command),
-    /// A top-level key equal to a 10xer chord trigger, so one of them never
-    /// acts.
     ShadowsChordGroup(Group),
     /// A Sort step with Shift, which reverses a step.
     ShiftedSortStep,
-    /// A Sort step on a digit or a symbol that Shift types, which Shift cannot
-    /// reverse.
     SortStepCannotReverse,
     /// A plain printable key in the default map while type-to-search types it.
     TypeToSearchShadowed,
-    /// A key that text fields keep from a command that also acts in them: a
-    /// plain printable key, or for Escape, Enter, Tab and the arrows another
-    /// key a field binds itself.
     TextFieldLimit(FieldLimit),
-    /// Both commands take the key in some state, and the stage that sees the
-    /// key first decides.
     ContextOverlap(Command),
-    /// A key GTK list views own: the selection toggle and Shift extension.
     ReservedByGtk,
     /// A key an input method needs while a text field has focus.
     InputMethodKey,
-    /// Alt with a letter, which the file chooser's accept button may take as
-    /// its mnemonic.
     ChooserMnemonic,
-    /// A key a fixed role holds where the command acts, so one of them never
-    /// does.
     FixedKey(Fixed),
     /// No press reaches the command with the binding where it acts.
     NeverMatches,
@@ -93,13 +67,9 @@ pub enum Kind {
 pub enum Fixed {
     /// Space selects the item under the 10xer cursor.
     SelectionToggle,
-    /// Space plays and pauses a media preview, and the page keys, Home and
-    /// End seek it, before its later keys.
     MediaKeys,
     /// Backspace opens the parent folder and deletes in text fields.
     Backspace,
-    /// A digit range: pins after Go, actions after the Action chord, tabs
-    /// after the Tabs chord or with Ctrl+Shift.
     Digits(Digits),
 }
 
@@ -148,8 +118,6 @@ impl Finding {
         }
     }
 
-    /// Whether the binding never fires in the state checked, so a row shows
-    /// it inactive.
     pub fn inactive(self) -> bool {
         matches!(
             self.kind,
@@ -158,8 +126,6 @@ impl Finding {
     }
 }
 
-/// Findings for adding `candidate`, in its saved form, to `map`'s entry for
-/// `command`.
 pub fn check(
     keymap: &Keymap,
     map: Map,
@@ -238,8 +204,6 @@ fn top_level_findings(mine: Side, scope: Scope, policy: Policy, findings: &mut F
     }
 }
 
-/// Focused fields keep plain printable keys from structural aliases and from
-/// keys a user adds; shipped keys of other commands still act there.
 fn text_field_limit(mine: Side, in_text_fields: bool, shipped: bool) -> Option<FieldLimit> {
     let typed_in_fields = mine.binding.is_typed() && in_text_fields;
     let added = mine.is_alias() || !shipped;
@@ -276,8 +240,6 @@ pub fn audit(keymap: &Keymap, map: Map, policy: Policy) -> Vec<(Command, Finding
     audit_where(keymap, map, policy, |_, _| true)
 }
 
-/// The findings for the keys `map`'s entries hold beyond their shipped ones,
-/// as a hand-edited settings file adds them.
 pub fn audit_added(keymap: &Keymap, map: Map, policy: Policy) -> Vec<(Command, Finding)> {
     audit_where(keymap, map, policy, |command, binding| {
         !command.defaults(map).contains(&binding)
@@ -305,10 +267,6 @@ fn audit_where(
     findings
 }
 
-/// Whether `binding` in `map`'s entry for `command` never fires, so labels
-/// leave it out: no press reaches the command with it, or, while `typing`
-/// (type-to-search is active), it is a plain printable key a user added to the
-/// default map.
 pub fn never_fires(map: Map, command: Command, binding: Binding, typing: bool) -> bool {
     let binding = binding.normalized();
     let side = Side {
@@ -437,12 +395,8 @@ const MEDIA: [Command; 9] = [
     MEDIA_VOLUME_STEP_DOWN,
 ];
 
-/// Preview commands the 10xer listing also runs while a media preview is
-/// open, passing the key on otherwise.
 const LISTING_TOO: [Command; 2] = [TENXER_MEDIA_PREVIOUS, TENXER_MEDIA_NEXT];
 
-/// Text size runs before every surface's own keys and before an armed chord,
-/// after only a focused document's zoom reset.
 const EVERY_SURFACE: [Command; 3] = [TEXT_LARGER, TEXT_SMALLER, TEXT_RESET];
 
 /// What a tabbed window's tab strip takes before its panes see the key.
@@ -456,8 +410,6 @@ const TAB_STRIP: [Command; 7] = [
     TAB_MOVE_RIGHT,
 ];
 
-/// Whether the tab strip reads keys before `place`: every surface but the
-/// file chooser, which has no tabs, and modal dialogs, which block the strip.
 fn under_tab_strip(place: Place) -> bool {
     !matches!(
         place,
@@ -465,8 +417,6 @@ fn under_tab_strip(place: Place) -> bool {
     )
 }
 
-/// What the file chooser's own handler reads before `choose_folder`, each
-/// stopping there.
 const CHOOSER_FIRST: &[(Command, Tables)] = &[
     (TENXER_MODE, Tables::Both),
     (CONTEXT_MENU, Tables::Both),
@@ -479,9 +429,6 @@ const CHOOSER_FIRST: &[(Command, Tables)] = &[
     (SIDEBAR, Tables::Both),
 ];
 
-/// What else the chooser's handler reads: before `choose_folder` only in some
-/// states, or after it, so the folder accept takes their key in folder
-/// requests. In 10xer mode the 10xer stage also reads its table first.
 const CHOOSER_SHARED: &[(Command, Tables)] = &[
     (THUMBNAILS_LARGER, Tables::Default),
     (THUMBNAILS_SMALLER, Tables::Default),
@@ -502,21 +449,13 @@ const CHOOSER_SHARED: &[(Command, Tables)] = &[
     (HOME_FOLDER, Tables::Both),
 ];
 
-/// Listing commands the 10xer stage passes on in a chooser, which has no
-/// tabs or windows to open and runs neither the item commands nor the direct
-/// ones.
 fn chooser_declines(command: Command) -> bool {
     [OPEN_IN_NEW_TAB, OPEN_IN_NEW_WINDOW, COPY_PATH].contains(&command)
         || DIRECT_IN_TENXER.contains(&command)
 }
 
-/// Commands the 10xer stage passes on in a window but refuses in a chooser,
-/// taking their keys there.
 const CHOOSER_REFUSES: [Command; 3] = [COPY, CUT, PASTE];
 
-/// What else the 10xer stage leaves to later stages: the window's default-map
-/// stages, or the file chooser's handler. It claims every other key of its
-/// table first.
 const TENXER_PASSES: &[Command] = &[
     LOCATION,
     SIDEBAR,
@@ -560,8 +499,6 @@ const TENXER_PASSES: &[Command] = &[
     MEDIA_NEXT,
 ];
 
-/// Pairs that share a key by design, each acting where the other does not.
-/// Ctrl with the page keys pages where no tab strip takes them first.
 const KNOWN_OVERLAPS: &[(Command, Command)] = &[(PAGE_UP, TAB_PREVIOUS), (PAGE_DOWN, TAB_NEXT)];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -584,8 +521,6 @@ const DELETE_HELD: Modifiers = Modifiers::CONTROL_MASK
     .union(Modifiers::ALT_MASK)
     .union(SUPER);
 
-/// Modifiers some surface also accepts held with a command's own, from the
-/// `ignoring(..)` matchers that run it. Structural alternates tolerate any.
 const TOLERATED: &[(Command, Modifiers, Tables)] = &[
     (REFRESH, SHORTCUT_MODIFIERS, Tables::Both),
     (REFERENCE, SHORTCUT_MODIFIERS, Tables::Default),
@@ -650,8 +585,6 @@ const IN_TEXT_FIELDS: &[Command] = &[
     ARROW_SCOPE,
 ];
 
-/// Commands a text field stage matches only from the default table, most in
-/// both modes. 10xer runs its terminal key from the file list and sidebar only.
 const IN_DEFAULT_TEXT_FIELDS: &[Command] = &[
     TERMINAL,
     RENAME,
@@ -663,11 +596,8 @@ const IN_DEFAULT_TEXT_FIELDS: &[Command] = &[
     PREVIEW,
 ];
 
-/// Commands a map ships no key for that a stage of that map still reads,
-/// besides the direct ones.
 const READ_UNBOUND: &[(Command, Map)] = &[(COPY_PATH, Map::Tenxer)];
 
-/// Keys GTK list views act on once the dispatcher yields them.
 const GTK_OWNED: [Binding; 9] = [
     SELECTION_TOGGLE,
     EXTEND_UP,
@@ -680,7 +610,6 @@ const GTK_OWNED: [Binding; 9] = [
     EXTEND_TO_LAST,
 ];
 
-/// Keys `gtk::Text` binds to its own editing actions.
 const TEXT_FIELD_KEYS: [Binding; 14] = [
     Binding::ctrl(Key::a),
     Binding::ctrl_shift(Key::a),
@@ -698,8 +627,6 @@ const TEXT_FIELD_KEYS: [Binding; 14] = [
     Binding::shift(Key::Insert),
 ];
 
-/// fcitx5 and IBus switch input methods with these. Strata's capture stage
-/// sees them before a field's GTK input method module does.
 const IM_SWITCH_KEYS: [Binding; 2] = [Binding::ctrl(Key::space), Binding::new(Key::space, SUPER)];
 
 /// One binding of one command, in the table being checked.
@@ -732,8 +659,6 @@ impl Side {
             .ignoring(tolerated.difference(self.binding.modifiers()))
     }
 
-    /// Whether a structural command's matcher reads this binding with any
-    /// modifiers held.
     fn tolerates_any_modifiers(self) -> bool {
         let untyped_alias = self.is_alias() && !self.binding.is_typed();
         // `ESCAPE_ANY` reads physical Escape with any modifiers.
@@ -751,8 +676,6 @@ impl Side {
     }
 }
 
-/// Entries that cannot fire in the map, such as a saved key for a command the
-/// map has no path to, hold nothing.
 fn compare_with_table(keymap: &Keymap, mine: Side, findings: &mut Findings) {
     for other in registry().filter(|other| *other != mine.command && !no_path(*other, mine.map)) {
         let place = Place::of(other, mine.map);
@@ -773,8 +696,6 @@ fn compare_with_table(keymap: &Keymap, mine: Side, findings: &mut Findings) {
     }
 }
 
-/// `command`'s bindings in `map`, with the physical Escape that always
-/// matches `escape`.
 fn entry(keymap: &Keymap, map: Map, command: Command) -> Vec<Binding> {
     let mut bindings = keymap.bindings(map, command).to_vec();
     if command != alias::FALLBACK {
@@ -810,8 +731,6 @@ fn conflict(mine: Side, theirs: Side) -> Option<Kind> {
     }
 }
 
-/// Two bindings one press can match, `exact` when they match as bound rather
-/// than only with tolerated modifiers.
 #[derive(Clone, Copy)]
 struct Clash {
     mine: Side,
@@ -886,9 +805,6 @@ fn step_against(exact: bool, group: Group, top: Command, other: Command) -> Opti
     }
 }
 
-/// Keys read before an armed chord's steps: the tab strip, text size, the
-/// reference and 10xer mode in earlier stages, then the chord's own Settings
-/// and Escape.
 fn reads_before_steps(command: Command) -> bool {
     TAB_STRIP.contains(&command)
         || EVERY_SURFACE.contains(&command)
@@ -910,8 +826,6 @@ fn reads_on_every_surface(first: Command, second: Command, second_place: Place) 
     text_size || tab_strip
 }
 
-/// The reference toggles, and Escape closes it, before its own keys and a
-/// media preview's.
 fn reference_reads_first(first: Command, second: Command, second_place: Place) -> bool {
     let reference = second_place == Place::Top(Scope::Reference);
     if first == REFERENCE {
@@ -973,10 +887,6 @@ fn known_overlap(first: Command, second: Command) -> bool {
         .any(|pair| *pair == (first, second) || *pair == (second, first))
 }
 
-/// Whether `map` ships no key for `command` and none of its stages reads one:
-/// a 10xer verb or chord step in the default map, or a default-map command in
-/// 10xer, that the direct stage does not run either. The direct stage also
-/// runs the default map's custom action slots.
 pub fn no_path(command: Command, map: Map) -> bool {
     command.defaults(map).is_empty()
         && !is_trigger(command)
@@ -997,10 +907,6 @@ fn never_matches(side: Side) -> bool {
     side.place == Place::Inert || shift_is_consumed(side.binding) || typed_past_tenxer_stage
 }
 
-/// The fixed role holding a key where `side` acts. The tab strip reads its
-/// digits first and an armed chord its steps before its digits; the other
-/// roles share a surface with the command. Only the key as bound counts: a
-/// variant a surface tolerates loses to the fixed role, which keeps working.
 fn fixed_key(side: Side) -> Option<Fixed> {
     if under_tab_strip(side.place) && in_digits(side.binding, TAB_NUMBERS) {
         return Some(Fixed::Digits(TAB_NUMBERS));
@@ -1038,8 +944,6 @@ fn fixed_top_level_key(side: Side, scope: Scope) -> Option<Fixed> {
     }
 }
 
-/// Whether a media preview's own Space, page, Home or End key takes the
-/// binding before the media command reads it.
 fn media_key_first(side: Side) -> bool {
     let seeks_after = |commands: &[Command]| commands.contains(&side.command);
     overlaps(side.binding, SPACE)
@@ -1055,9 +959,6 @@ fn media_key_first(side: Side) -> bool {
         || (side.binding == END_KEY && seeks_after(&[MEDIA_VOLUME_STEP_UP, MEDIA_VOLUME_STEP_DOWN]))
 }
 
-/// Whether `first` takes the binding before a 10xer media preview's `media`
-/// command: the preview's own exits and scrolling, then volume on the up and
-/// down keys and seeking on left and right, as pressed rather than typed.
 fn media_reads_first(first: Side, media: Command) -> bool {
     if first.map != Map::Tenxer || !MEDIA.contains(&media) {
         return false;
@@ -1099,8 +1000,6 @@ fn in_digits(binding: Binding, digits: Digits) -> bool {
         && binding.modifiers & compared == digits.modifiers() & compared
 }
 
-/// GDK reports the Shift that types a symbol as consumed, so a symbol never
-/// matches with Shift: `<Shift>exclam` is never pressed.
 fn shift_is_consumed(binding: Binding) -> bool {
     binding.modifiers().contains(SHIFT) && is_symbol(binding.key())
 }
@@ -1111,8 +1010,6 @@ fn is_symbol(key: Key) -> bool {
     })
 }
 
-/// Shift with a Sort step reverses it, which a Shifted step, a digit that
-/// already accepts Shift, or a symbol that Shift turns into another cannot.
 fn sort_step(binding: Binding) -> Option<Kind> {
     if binding.modifiers().contains(SHIFT) {
         Some(Kind::ShiftedSortStep)
@@ -1155,8 +1052,6 @@ fn is_mnemonic(binding: Binding) -> bool {
             .is_some_and(|character| character.is_ascii_alphabetic())
 }
 
-/// Whether one press can match both bindings: the same key, or digit
-/// position, with modifiers that agree wherever both compare them.
 fn overlaps(first: Binding, second: Binding) -> bool {
     let same_key = match (digit_value(first.key), digit_value(second.key)) {
         (Some(first), Some(second)) => first == second,

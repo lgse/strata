@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Active chooser request state, selection resolution and filename auto-fill
-//! (`src/ui/chooser/state.rs`).
-
 use std::{
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
@@ -162,8 +159,6 @@ impl ActiveChooser {
         self.error = None;
     }
 
-    /// Whether Open or Save may run now: the request waits for an answer, and no destination
-    /// check or download is under way.
     pub(crate) fn can_accept(&self) -> bool {
         self.completion.is_some() && !self.destination_check && !self.download_in_progress()
     }

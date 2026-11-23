@@ -1,27 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for K1 Theme mapping: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `k1-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/K1-theme-mapping.md`.
-//!
-//! The page shows one theme's look: its fourteen colours down the left, and on the right a
-//! specimen drawn only from the look's tokens: a window's header, tabs, sidebar and file
-//! rows (rest, hover, selected, drop target), a menu, a dialog with the element glow,
-//! rune-kit controls, the danger and info roles, and highlighted code. Every look is the
-//! theme's at Strata's default shape, density and type.
-//!
-//! Under the colours, a searchable list of every bundled theme, with Neutral (rune-kit's
-//! fallback kit) first, picks the theme the whole gallery wears ([`Gallery::theme`]): the
-//! index and every page draw in it until another is picked. Up and Down step to the previous
-//! or next bundled theme (or, on an Omarchy scene, the previous or next variant), animating
-//! the switch. The `k1-theme-*` review scenes open on `STRATA_K1_THEME=<id>`, for a `--snap`
-//! of any theme by name:
-//!
-//! ```text
-//! STRATA_K1_THEME=dracula mise run gallery -- --snap out.png --scene k1-theme-dark
-//! ```
-
 use rune::{
     Color, Cursor, Cx, El, Key, KeyEvent, ScrollSpec, TextEdit, Tx, col, el, icon, rich, row, text,
 };
@@ -44,8 +22,6 @@ pub enum Shown {
     Omarchy { light: bool, variant: Variant },
 }
 
-/// K1's demo state, held in `Gallery::k1`. The theme it shows is the gallery's,
-/// [`Gallery::theme`].
 #[derive(Default)]
 pub struct Demo {
     /// The theme list's search.
@@ -115,8 +91,6 @@ fn open(g: &mut Gallery, dark: bool, shown: Shown) {
     g.dark = g.look.kit.dark;
 }
 
-/// Makes `shown` the gallery's theme (`None`: Neutral), animating the colours. Neutral keeps
-/// the current appearance, light or dark.
 fn show(g: &mut Gallery, shown: Option<Shown>, tx: &mut Tx) {
     g.theme = shown;
     let next = g.theme_look(&LookParams::default());
@@ -145,10 +119,6 @@ fn omarchy_scene(g: &mut Gallery, dark: bool, variant: Variant) {
     open(g, dark, shown);
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("k1", dark)`, then fills in `g.k1`. Three representative pairs (owner ruling
-/// Q12): Catppuccin, whose Mocha surface sits below its background; Gruvbox, a warm Base16
-/// palette; and Strata's own Omarchy Light and Azure Glow.
 pub const SCENES: &[Scene] = &[
     ("k1-catppuccin-light", |g| {
         bundled_scene(g, false, "catppuccin-latte")
@@ -168,8 +138,6 @@ pub const SCENES: &[Scene] = &[
     ("k1-curated-dark", |g| bundled_scene(g, true, "azure-glow")),
 ];
 
-/// Scenes for review with `--scene` only, kept out of the goldens: any bundled theme by
-/// name, and the Omarchy variants on a light and a dark Quattro palette.
 pub const REVIEW: &[Scene] = &[
     ("k1-theme-light", |g| {
         let shown = named("omarchy-light");
@@ -292,8 +260,6 @@ fn pick_key(shown: Option<Shown>) -> Option<String> {
     }
 }
 
-/// The searchable list of bundled themes, Neutral first, filling the panel's height and
-/// scrolling on its own. A press makes that theme the gallery's.
 fn picker(g: &Gallery, look: &Look) -> El {
     let kit = &look.kit;
     let query = g.k1.query.text.to_lowercase();
@@ -376,8 +342,6 @@ fn picker(g: &Gallery, look: &Look) -> El {
         )
 }
 
-/// Up and Down step through the bundled themes, or an Omarchy scene's variants, animating
-/// the switch. From Neutral, Down goes to the first theme and Up to the last.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     let delta: i64 = match key.key {
         Key::Down => 1,
@@ -408,8 +372,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     true
 }
 
-/// Scrolls the theme list to the gallery's theme whenever it changes: a pick, a key, or the
-/// page opening on a theme picked before.
 pub fn poll(g: &mut Gallery, _t: f64, tx: &mut Tx) -> bool {
     if g.k1.revealed == Some(g.theme) {
         return false;
@@ -762,8 +724,6 @@ fn tally(dir: &Path) -> io::Result<Tally> {
     Ok(t)
 }";
 
-/// Rust coloured by rune-kit's built-in scanner and the theme's syntax colours, on the
-/// surface as Strata's code previews sit.
 fn code(look: &Look) -> El {
     let kit = &look.kit;
     let found = rune_kit::syntax::highlight(Some("rust"), CODE);

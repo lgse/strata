@@ -4,10 +4,6 @@ use strata_core::model::Location;
 
 use super::{Sync, Synced};
 
-/// What a poll tells the store of a column: the rows its view reported, else the step that
-/// changed, else its last rows again when its listing changed or another folder took it. No
-/// rows reported of a listing that has entries is Rune's report of a list at no height, not
-/// rows shown.
 #[test]
 fn a_poll_tells_the_store_what_changed_in_a_column() {
     let (a, b) = (Location::local("/a"), Location::local("/b"));

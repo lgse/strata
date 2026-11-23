@@ -17,8 +17,6 @@ fn settle(hosts: &mut [&mut Offscreen]) {
     }
 }
 
-/// GTK's one cache of 64 MiB per process: the open windows split it, and a window that goes
-/// gives its share back to the others.
 #[test]
 fn the_windows_split_the_process_s_thumbnail_budget() {
     in_own_process(

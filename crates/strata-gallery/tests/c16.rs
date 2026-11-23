@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C16's page in process: the dock's and the dashboard's timers stepped from wake to wake (no
-//! frames between, animations on and off), the live fill and labels moving without commits,
-//! and how many commits twenty running cards cost. The scripts in `tests/scripts/c16/` check
-//! the rest. Each test names the bullets it covers.
-
 mod c16 {
     use std::time::Instant;
 
@@ -72,9 +67,6 @@ mod c16 {
         rt.frame(FRAME);
     }
 
-    /// Steps a still window for at most `limit` seconds: a frame only at each wake the page
-    /// asked for, or for queued input, none in between and none for motion. Stops at the first
-    /// frame after which `done` holds, and returns the page clock it stopped at.
     fn wake_until(rt: &mut Runtime<Gallery>, limit: f64, done: impl Fn(&Gallery) -> bool) -> f64 {
         let start = rt.state.c16.now;
         for _ in 0..2000 {
@@ -101,8 +93,6 @@ mod c16 {
         g.c16.dock.op(id).map(|o| o.title().to_owned())
     }
 
-    /// Runs a fresh copy (op 1) to its end with ordinary frames: the worker reports every
-    /// frame, as a real one does.
     fn completed_copy(change: impl FnOnce(&mut Gallery)) -> Runtime<Gallery> {
         let mut rt = mount_with("c16-idle-light", change);
         tap(&mut rt, "c16-start-copy");
@@ -116,8 +106,6 @@ mod c16 {
         rt
     }
 
-    // operations/progress/dock: "A completed card counts down 5 seconds with a shrinking bar
-    // and 'closing in' text, then fades out and closes."
     #[test]
     fn a_completed_card_closes_after_five_seconds_in_a_resting_window() {
         for animations in [true, false] {
@@ -148,9 +136,6 @@ mod c16 {
         }
     }
 
-    // operations/progress/dock: "Hovering or focusing a completed card pauses its countdown
-    // and shows 'paused'; leaving resumes the remaining time." (the hover half: Rune can't
-    // tell a card that focus came in, see the module docs)
     #[test]
     fn hover_pauses_the_countdown_and_leaving_resumes_the_rest() {
         for animations in [true, false] {
@@ -197,9 +182,6 @@ mod c16 {
         }
     }
 
-    // operations/progress/dock: "Hovering … a completed card pauses its countdown": a card
-    // that finishes under a resting pointer hears no new enter (Rune fires on_hover_change on
-    // changes only), so it starts its countdown paused, as Strata's does (review 1, B1).
     #[test]
     fn a_card_that_finishes_under_a_resting_pointer_stays_paused() {
         for animations in [true, false] {
@@ -239,8 +221,6 @@ mod c16 {
         }
     }
 
-    // operations/progress/dock: "The pin button, 'Keep notification', keeps a completed card
-    // open and shows 'pinned' until it is dismissed."
     #[test]
     fn a_pinned_card_stays_until_dismissed() {
         let mut rt = completed_copy(|_| {});
@@ -252,9 +232,6 @@ mod c16 {
         assert_eq!(rt.state.c16.heard, "Dismissed 1");
     }
 
-    // operations/progress/dock: "The pin button, 'Keep notification', keeps a completed card
-    // open … until it is dismissed": unpinning, by assistive technology so no hover pauses it,
-    // resumes the countdown in a resting window from the pin's own wake (review 2, SF3).
     #[test]
     fn unpinning_resumes_the_countdown_in_a_resting_window() {
         let mut rt = completed_copy(|_| {});
@@ -278,9 +255,6 @@ mod c16 {
         assert!(end - start < 5.0 + 0.18 + 0.05, "{:.3} s", end - start);
     }
 
-    // The pointer crossing a card changes nothing the view draws (a running card has no
-    // countdown, and a finished card's words follow at the tick): the hover is live-only
-    // (review 2, nit).
     #[test]
     fn the_pointer_crossing_a_card_commits_nothing() {
         let mut rt = mount("c16-cancelling-light");
@@ -294,8 +268,6 @@ mod c16 {
             rt.frame(FRAME);
             rune::commit_generation() - c0
         };
-        // Debug builds re-run the view after a live-only event to check nothing it draws
-        // changed: no warning means the hover was truly live-only.
         cross(&mut rt);
         assert!(
             rt.live_only_warnings().is_empty(),
@@ -306,8 +278,6 @@ mod c16 {
         assert_eq!(cross(&mut rt), 0);
     }
 
-    // operations/progress: "An operation on fewer than 16 items shows no progress dialog for
-    // its first 350 ms, and none at all if it finishes sooner."
     #[test]
     fn a_small_operation_shows_after_350_ms_from_its_own_wake_and_a_fast_one_never() {
         let mut rt = mount("c16-idle-light");
@@ -332,9 +302,6 @@ mod c16 {
         );
     }
 
-    // operations/progress: "If the transfer has not stopped 8 seconds after Cancel, the title
-    // becomes 'Device not responding'…": Cancel from the dialog, whose C15 buttons carry no
-    // Tx, still stalls on time.
     #[test]
     fn a_stalled_cancel_in_the_dialog_reads_device_not_responding_after_8_s() {
         for animations in [true, false] {
@@ -361,9 +328,6 @@ mod c16 {
         }
     }
 
-    // The same stall reached by Escape with animations off, where no press motion keeps
-    // frames coming: the poll after the cancel's commit stamps it (review 1, should-fix 3,
-    // which removed the wake beacon no test needed).
     #[test]
     fn escape_in_a_still_dialog_stalls_from_its_own_wake() {
         let mut rt = mount_with("c16-idle-light", still);
@@ -385,9 +349,6 @@ mod c16 {
         );
     }
 
-    /// A blocking move whose subtitle already reads the cancel's words and whose worker has
-    /// gone quiet, in a resting window: a cancel then moves no layout and starts no motion of
-    /// its own (review 2, SF1's repro).
     fn quiet_dialog_move(change: impl FnOnce(&mut Gallery)) -> Runtime<Gallery> {
         use strata_components::progress_dock::{OpSpec, Placement, Progress, Sample, Transfer};
         use strata_kit::icons::IconName;
@@ -420,11 +381,6 @@ mod c16 {
         rt
     }
 
-    // operations/progress: "If the transfer has not stopped 8 seconds after Cancel, the title
-    // becomes 'Device not responding'": a cancel from the dialog (Escape, or Return on the
-    // focused Cancel) that moves no layout still stalls on time, stepping only wakes and
-    // input, with animations on and off and with the host's clock frozen (time_scale 0). C15's
-    // handlers carry no Tx; the dock's wake beacon asks for the poll that stamps the cancel.
     #[test]
     fn a_cancel_that_moves_no_layout_still_stalls_on_time() {
         type Case = (&'static str, fn(&mut Gallery));
@@ -459,8 +415,6 @@ mod c16 {
         }
     }
 
-    // operations/progress/dock: "When a notice expires and the dock holds no other row, the
-    // dock closes."
     #[test]
     fn a_notice_expires_from_its_own_wake_and_the_dock_closes() {
         let mut rt = mount("c16-idle-light");
@@ -473,8 +427,6 @@ mod c16 {
         assert!(element(&rt, "c16-dock").is_none());
     }
 
-    // operations/progress/jobs: "A row shows … a status with elapsed time ('Running for',
-    // …)": the open list moves each second, from wake to wake, and asks nothing once hidden.
     #[test]
     fn the_jobs_list_ticks_each_second_while_open_and_stops_when_hidden() {
         let mut rt = mount("c16-jobs-light");
@@ -509,10 +461,6 @@ mod c16 {
         );
     }
 
-    // operations/progress/jobs: "Dismiss removes one finished job; Clear finished removes every
-    // finished job": clearing a list of finished jobs leaves it open on "No background jobs.",
-    // closing it sends focus to the host's fallback (the cursor row: the button goes with
-    // the last job), and a later job doesn't pop the list open (review 1, should-fix 1).
     #[test]
     fn clearing_every_job_leaves_a_note_then_focus_on_the_fallback_and_the_list_shut() {
         let mut rt = mount_with("c16-jobs-light", |g| {
@@ -561,9 +509,6 @@ mod c16 {
         );
     }
 
-    // operations/progress: "During a copy or move with a known byte total, the bar advances
-    // as bytes are written, not only after each item.": the fill and the labels follow every
-    // sample through Live values, with no commit between the throttled ones.
     #[test]
     fn the_fill_and_labels_move_every_frame_and_commits_stay_throttled() {
         let mut rt = mount("c16-card-light");
@@ -586,8 +531,6 @@ mod c16 {
         assert_eq!(percent.as_deref(), Some(&*live.percent.get()));
     }
 
-    // Scrolling the dock moves every track, and on_layout reports each move: a counting card
-    // must not commit for one that didn't change its size (review 1, should-fix 2).
     #[test]
     fn scrolling_the_dock_past_counting_cards_commits_only_for_their_seconds() {
         let mut rt = mount_with("c16-complete-light", |g| {
@@ -610,13 +553,9 @@ mod c16 {
             rt.frame(FRAME);
         }
         let commits = rune::commit_generation() - c0;
-        // One for the countdowns' next second, and two Rune makes as the wheel gesture starts
-        // and turns (they stay with every card pinned). Before the fix: 29.
         assert!(commits <= 3, "{commits} commits over 30 wheel frames");
     }
 
-    /// Perf: twenty cards whose byte counters move every frame. Prints the commit rate and the
-    /// frame cost; asserts the commit rate stays at the throttle's.
     #[test]
     fn twenty_cards_updating_every_frame_commit_at_most_four_times_a_second() {
         let mut rt = mount_with("c16-idle-light", |g| {
@@ -634,8 +573,6 @@ mod c16 {
         });
         run(&mut rt, 1.0);
         let seconds = 10.0;
-        // Each frame's cost, with the page committing only when the dock flushes, then with a
-        // commit forced every frame (what a byte counter in committed text would cost).
         let measure = |rt: &mut Runtime<Gallery>, force: bool| {
             let c0 = rune::commit_generation();
             let mut times = Vec::new();

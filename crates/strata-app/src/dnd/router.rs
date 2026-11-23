@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Dual-mode drag-and-drop router: delegates to `strata_platform::dnd::Dnd` when attached to a
-//! native window (`host::windowed`), and drives an in-window keyed `DropZone` hit-test session
-//! on the headless offscreen host (`host::offscreen`) as well as for in-window sidebar row drags.
-
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
@@ -167,8 +163,6 @@ impl Wiring {
             .on_drag(move |app: &mut App, d: &mut Drag, tx: &mut Tx| offscreen.on_drag(app, d, tx))
     }
 
-    /// A gesture on a source that starts its drag itself ([`Wiring::start`]). Returns whether
-    /// the router took the event.
     pub(crate) fn drag_phase(&self, app: &mut App, gesture: Gesture<'_>, tx: &mut Tx) -> bool {
         let d = gesture.drag;
         if self.0.windowed.get() && self.0.p1.borrow().owns(d) {
@@ -204,8 +198,6 @@ impl Wiring {
         *self.0.phase.borrow_mut() = Some((*gesture.drag, gesture.source.to_owned()));
     }
 
-    /// The button went up: a release Escape swallowed, or the drag's drop. Returns whether
-    /// either took it.
     fn release(&self, app: &mut App, d: &Drag, tx: &mut Tx) -> bool {
         if self.0.swallow_until_up.replace(false) {
             return true;
@@ -238,8 +230,6 @@ impl Wiring {
         Ok(())
     }
 
-    /// Starts the drag through P1. `Ok(false)` when no window is attached, so it runs in the
-    /// window instead.
     fn start_p1(
         &self,
         gesture: Gesture<'_>,
@@ -461,8 +451,6 @@ impl Wiring {
         self.0.registry.borrow().zone(key)
     }
 
-    /// Where the drag `hit` names lands now, recorded on it. The drag stays only shared-borrowed
-    /// while the zones are asked: they read whether a drag runs.
     fn reland(&self, app: &App, hit: Hit<'_>) -> Option<Change> {
         let change = {
             let slot = self.0.in_window.borrow();
@@ -583,9 +571,6 @@ impl Wiring {
         Dropped::new(drag.offer, data, mods).point(point)
     }
 
-    /// Steps the drag's stand-in ([`StandIn`]) once a frame, before the view is built: due
-    /// when the source has left, mounted in the next frame, which it wakes. True when the view
-    /// has to be built again to mount it.
     pub(crate) fn poll_stand_in(&self, app: &App, tx: &mut Tx) -> bool {
         let shown_tab = shell::tabs::shown_tab(app);
         let mut slot = self.0.in_window.borrow_mut();
@@ -596,8 +581,6 @@ impl Wiring {
         let (next, rebuild) = drag.stand_in.step(needed);
         drag.stand_in = next;
         if next == StandIn::Due {
-            // The source's subtree unmounts at once rather than fading out, so its scene entry
-            // is gone when the stand-in, which Rune gives the source's id, mounts next frame.
             tx.instant();
             tx.wake_after(Duration::ZERO);
         }
@@ -632,8 +615,6 @@ impl Wiring {
     }
 }
 
-/// A drag source on the offscreen host: it starts an in-window drag once the pointer has moved
-/// past the slop from where it went down.
 struct OffscreenSource {
     wiring: Wiring,
     key: String,

@@ -60,12 +60,6 @@ pub struct Scroll {
     pub scrollable: bool,
 }
 
-/// One toolkit's side of the QA mode. A `Node` is a live element of the interface: a
-/// `gtk::Widget`, or a Rune accessibility node.
-///
-/// The methods answer for one node at a time and decide nothing: which node a target means,
-/// what a predicate holds and how a step waits are the engine's, so two backends cannot
-/// come to mean different things by `selected` or "the entry named X".
 #[expect(
     async_fn_in_trait,
     reason = "the engine runs on the toolkit's own thread, so no future has to be Send"
@@ -77,18 +71,10 @@ pub trait Backend {
 
     /// Waits until the application can take steps: its window is up and input can reach it.
     async fn ready(&self) -> Result<(), String>;
-    /// Ends the application. The session calls it when stdin closes or a reply cannot be
-    /// written.
     fn quit(&self);
-    /// True for a host that takes steps before it has a window, as the portal chooser does:
-    /// `app` is then the empty state and not null.
     fn windowless(&self) -> bool {
         false
     }
-    /// True for a toolkit that draws a dialog inside another, the inner one on top: Rune
-    /// draws a message inside Settings, where GTK lays every modal layer beside the others. The
-    /// open dialog, which `app.dialog` names and `dialog` and `dialog_button` search, is then
-    /// the one on top (`open_dialog`).
     fn nests_dialogs(&self) -> bool {
         false
     }
@@ -119,8 +105,6 @@ pub trait Backend {
     fn description(&self, node: &Self::Node) -> String;
     fn mark(&self, node: &Self::Node) -> Option<Mark>;
     fn states(&self, node: &Self::Node) -> States;
-    /// The direction a box, a separator or a scroll bar runs in. Asked only of a node a step
-    /// tests for it: GTK logs a critical when some widgets are asked.
     fn orientation(&self, node: &Self::Node) -> Option<Orientation>;
     /// The text a label shows or a field holds.
     fn text(&self, node: &Self::Node) -> Option<String>;
@@ -129,8 +113,6 @@ pub trait Backend {
     /// The number a slider or another ranged control stands at.
     fn value(&self, node: &Self::Node) -> Option<f64>;
 
-    /// The node's box inside the surface it is drawn on; `None` while it is not drawn. This
-    /// must be cheap: the snapshot asks it of every node.
     fn frame(&self, node: &Self::Node) -> Option<Rect>;
     /// Where the corner of that surface is on the screen. A popup is a surface of its own.
     fn origin(&self, node: &Self::Node) -> Result<(f64, f64), String>;
@@ -154,8 +136,6 @@ pub trait Backend {
         })
     }
 
-    /// The entries an entry container lists, in any order. A toolkit that recycles rows
-    /// answers this itself, to leave out a row that still shows its previous entry.
     fn entries(&self, container: &Self::Node) -> Vec<EntryRow<Self::Node>> {
         crate::presented(self, container)
             .iter()
@@ -185,9 +165,6 @@ pub trait Backend {
     }
     /// Makes `window` the one later steps act on.
     fn adopt(&self, window: &Self::Node);
-    /// `activate_window`: raises `window` and gives it the keyboard, waiting until it is active
-    /// or `deadline` passes, which answers `Ok(false)`. A target that cannot switch windows
-    /// refuses, and the step fails with its reason.
     async fn activate_window(
         &self,
         _window: &Self::Node,
@@ -203,8 +180,6 @@ pub trait Backend {
         height: Option<u16>,
     ) -> Result<(), String>;
 
-    /// Presses and releases a key with its modifiers held, leaving the application the time
-    /// it needs between the events. `window` is the one whose frames are waited for.
     async fn chord(&self, window: &Self::Node, chord: &Chord) -> Result<(), String>;
     /// Types one character, whether or not the keyboard layout has a key for it.
     async fn text_input(&self, window: &Self::Node, character: char) -> Result<(), String>;
@@ -218,14 +193,10 @@ pub trait Backend {
     /// Sends one pointer motion to a point on the screen and waits for nothing.
     async fn pointer_move(&self, x: i16, y: i16) -> Result<(), String>;
     fn pointer_position(&self) -> Result<(i16, i16), String>;
-    /// Sends one button event and waits for nothing. Buttons 4 and 5 are one wheel click up
-    /// and down, as X numbers them.
     async fn button(&self, number: u8, pressed: bool) -> Result<(), String>;
     /// Runs the node's default action; false when it has none.
     fn activate(&self, node: &Self::Node) -> bool;
 
-    /// A step only this toolkit can run. `None` when it cannot, and the reply then says the
-    /// step is not supported.
     async fn command(&self, _scope: &Scope<'_, Self>, _command: &Command) -> Option<Outcome>
     where
         Self: Sized,
@@ -233,8 +204,6 @@ pub trait Backend {
         None
     }
 
-    /// A predicate only this toolkit can answer: one that reads screen pixels, say. `None`
-    /// when it cannot, and the reply then says the predicate is not supported.
     fn check(&self, _scope: &Scope<'_, Self>, _predicate: &Predicate) -> Option<Verdict>
     where
         Self: Sized,

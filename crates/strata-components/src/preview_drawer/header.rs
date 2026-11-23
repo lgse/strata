@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The header: the previewed item (icon, name, details, badges), then the controls the hosted
-//! view supports, in Strata's order: the Rendered/Source switch, Find, the busy spinner, Open,
-//! Wrap and Close. There is never a Print button.
-
 use rune::{El, Tx, col, el, icon, row, text};
 use rune_kit::Spinner;
 use strata_kit::icons::IconName;
@@ -11,11 +7,8 @@ use strata_kit::look::Look;
 
 use super::{DocumentView, DrawerIntent, DrawerState, Parts, Shared, find};
 
-/// Strata's `.preview-header-action` corner radius at 100 % roundness (`src/style.css`).
 const ACTION_RADIUS: f32 = 5.0;
-/// Strata's `.preview-header-action:disabled` opacity (`src/style.css`).
 const DISABLED_OPACITY: f32 = 0.46;
-/// Strata's `.preview-header-action:focus-visible` ring opacity (`src/style.css`).
 const FOCUS_RING_OPACITY: f32 = 0.52;
 
 /// Configuration for a preview header or find bar icon button (`.preview-header-action`).
@@ -27,9 +20,6 @@ pub(super) struct Action<'a> {
     pub disabled: bool,
 }
 
-/// An accented ghost icon button matching GTK's `.preview-header-action`: `icon_accent` at rest
-/// and hover, `pressed` fill when active/checked, `look.round(5.0)` corners, and muted dimmed
-/// ink when disabled.
 pub(super) fn action_button<S: 'static>(
     spec: Action<'_>,
     look: &Look,
@@ -85,8 +75,6 @@ pub(super) fn header<S: 'static>(
     let controls = header_controls(shared, st, parts, look);
     let handle = header_handle(parts, &labels.detail_descriptions, look);
 
-    // Sized like the window's header bar, as Strata's `.preview-header` is: the bar's height
-    // and its Frame-density inset, no vertical padding, 8 points before and 6 after.
     let mut bar = row()
         .key("preview-header")
         .w_full()

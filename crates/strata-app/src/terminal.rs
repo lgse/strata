@@ -1,27 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Opening a folder in a terminal emulator (`launch_terminal`, `open_terminal`, and
-//! `open_focused_folder_terminal` under `src/ui/browser/`, backed by `src/ui/terminal.rs`).
-//!
-//! - **Asking.** The `terminal` command: `Ctrl+Alt+T` (`TERMINAL` at `Stage::FileCommands`,
-//!   and at `Stage::AfterYield` outside `tenxer_mode` and an open context menu, matching
-//!   `WINDOW_ACTIONS` in `src/ui/window/keyboard.rs`), the folder menu's "Open in Terminal" row (`On::Column`), a
-//!   folder entry's "Open in Terminal" row (`On::Row`), or `On::Place`. In `Map::Default`, a
-//!   user binding on `ACTIONS_TERMINAL` (`Stage::DirectCommands`) opens the focused listing's
-//!   folder ([`open_focused_folder`], which 10xer's `;` -> `t` chord also calls).
-//! - **Which folder `Ctrl+Alt+T` opens** (`BrowserView::open_terminal` in
-//!   `src/ui/browser/view_edit.rs`). A single selected folder in the active column wins.
-//!   Otherwise single-pane views open the active column's folder, while Columns opens an open
-//!   context menu's column or else the targeted pane's folder (`Columns::targeted`, GTK's
-//!   `destination_depth`) unless a click in that pane just opened its lone selected folder as
-//!   the active child column beside it, in which case that child folder wins
-//!   (`columns-terminal-parent-pane-folder`).
-//! - **Starting and reaping.** [`Emulator::resolve`] walks `$TERMINAL` and `$PATH` off the UI
-//!   thread inside [`spawn_reaped`], starts the emulator detached from stdio with the launch
-//!   environment restored, and waits on the child so launcher scripts never linger as zombies
-//!   (`terminal-launchers-reaped`). Missing or unstartable emulators, Trash, and non-local
-//!   locations report "Unable to open terminal" through [`crate::error_dialog`].
-
 mod launcher;
 #[cfg(test)]
 mod tests;
@@ -72,11 +50,6 @@ impl Part for Terminal {
                     Stage::FileCommands,
                     &[TERMINAL.ignoring(Modifiers::empty())],
                 ),
-                // `WINDOW_ACTIONS` in `src/ui/window/keyboard.rs`: runs under the location
-                // bar, is swallowed under a modal or inline edit (`Reach::Taken`), and is
-                // skipped in 10xer mode (`keyboard.rs:550`). An open context menu is a
-                // `GtkPopoverMenu`, its own surface, whose keys never reach the window's
-                // controller, so the key does nothing there.
                 Keys::at(Stage::AfterYield, &[TERMINAL.ignoring(Modifiers::empty())])
                     .when(|app, _| reaches_window_actions(app)),
             ]),
@@ -94,13 +67,10 @@ fn reaches_window_actions(app: &App) -> bool {
     !shell::preferences(app).tenxer_mode && !app.menu.state.is_open()
 }
 
-/// `can_open_terminal` (`src/ui/browser/desktop.rs`): local folders outside Trash.
 pub(crate) fn can_open(location: &Location) -> bool {
     location.native_path().is_some() && !paths::is_trash(location)
 }
 
-/// `open_focused_folder_terminal` (`src/ui/browser/file_commands.rs`): opens a terminal in the
-/// focused listing's folder when supported; returns `false` when refused.
 pub(crate) fn open_focused_folder(app: &mut App) -> bool {
     let Some(location) = focused_listing_depth(app)
         .and_then(|depth| app.browser.location_at(depth))
@@ -169,7 +139,6 @@ fn selected_terminal_location(entries: &[FileEntry]) -> Option<Location> {
     entry.is_directory().then(|| entry.location.clone())
 }
 
-/// `BrowserView::open_terminal` (`src/ui/browser/view_edit.rs`).
 fn focus_terminal_location(app: &App) -> Option<Location> {
     let selected = app.browser.selected_entries();
     selected_terminal_location(&selected).or_else(|| {
@@ -185,8 +154,6 @@ fn focus_terminal_location(app: &App) -> Option<Location> {
             .filter(|depth| app.browser.location_at(*depth).is_some())
             .unwrap_or_else(|| app.columns.targeted());
         let directory = app.browser.location_at(depth);
-        // A click opens the folder as the active column while the pointer can
-        // leave its parent as the destination; prefer the folder it opened.
         let opened = app.browser.location_at(depth + 1);
         let selected_in_destination: Vec<_> = app
             .browser
@@ -206,7 +173,6 @@ fn focus_terminal_location(app: &App) -> Option<Location> {
     })
 }
 
-/// `launch_terminal` (`src/ui/browser/desktop.rs`).
 pub(crate) fn launch_at(app: &mut App, location: &Location) {
     let Some(path) = location.native_path() else {
         failed(app, tr("This location is not a local folder"));

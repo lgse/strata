@@ -97,8 +97,6 @@ impl PcmRing {
         self.len == 0 && self.rewind.is_empty()
     }
 
-    /// Appends `bytes` if there is enough room in the bounded ring. Returns `false` without
-    /// modifying the buffer if `bytes.len() > self.free()`.
     pub(super) fn push(&mut self, bytes: &[u8]) -> bool {
         if bytes.len() > self.free() {
             return false;
@@ -124,8 +122,6 @@ impl PcmRing {
         }
     }
 
-    /// Pops up to `dst.len()` bytes (always aligned to `frame_bytes`), reading any rewound prefix
-    /// before the main ring.
     pub(super) fn pop_into(&mut self, dst: &mut [u8], frame_bytes: usize) -> usize {
         let frame = frame_bytes.max(1);
         let max_bytes = (dst.len().min(self.len()) / frame) * frame;
@@ -166,8 +162,6 @@ impl PcmRing {
     }
 }
 
-/// Rolling history of the most recently written unscaled PCM bytes so pausing can restore frames
-/// that were buffered in the audio server when the device was flushed.
 pub(super) struct UnheardTail {
     bytes: VecDeque<u8>,
     max_bytes: usize,

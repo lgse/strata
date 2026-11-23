@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The port against the catalog, as GTK's `every_listed_binding_has_its_own_row_in_its_maps`
-//! (`src/ui/keys/tests/catalog.rs`) holds GTK's tables to it: each command the catalog lists
-//! in a map has a row of its own in some view's sections of that map. Both sides answer to the
-//! same catalog, so a command added there fails here until the port has its row.
-
 use strata_desktop::keys::{
     Binding, CUSTOM_ACTIONS, CommandKind as Kind, Digits, Key, Keymap, Keys, Letters, Map,
     Modifiers, Shown,
@@ -15,8 +10,6 @@ use strata_desktop::keys::{
 use super::{Mention, Mode, Shortcut, default_sections};
 use crate::shortcuts::tenxer::tenxer_sections;
 
-/// What a row shows for a listed constant: its bindings, the chord key they follow, or its
-/// digit or letter range (GTK's `Wanted`).
 #[derive(PartialEq)]
 enum Wanted {
     Keys(Vec<Binding>, Option<Binding>),
@@ -44,7 +37,6 @@ fn wanted(constant: &Listed, map: Map) -> Wanted {
     }
 }
 
-/// GTK's `shows`, in `map`.
 fn shows(keys: &Keys, wanted: &Wanted, map: Map) -> bool {
     let primary = |shown: &Shown| shown.bindings(map).first().copied();
     match (keys, wanted) {
@@ -88,8 +80,6 @@ fn shows(keys: &Keys, wanted: &Wanted, map: Map) -> bool {
     }
 }
 
-/// 10xer's constants only the portal chooser's sections list (`chooser_requests`,
-/// `chooser_files`), which are A20's to port.
 const CHOOSER_ONLY: &[&str] = &["CHOOSE_FOLDER"];
 
 /// Custom action slots ship no key, so bind each to find its row.
@@ -122,8 +112,6 @@ fn sections_of(map: Map, mode: Mode) -> Vec<super::Section> {
     }
 }
 
-/// Every view's rows in `map`, each once, with the keys its action names (GTK's
-/// `reference_rows`).
 fn rows(map: Map) -> Vec<Vec<Keys>> {
     let mut rows: Vec<Shortcut> = Vec::new();
     let every = [Mode::Columns, Mode::Icons, Mode::List]

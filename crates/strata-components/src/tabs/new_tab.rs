@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The New tab button: the strip's trailing action, or, with one tab and no strip, a header
-//! action (`browser/tabs`: "With one tab the strip stays hidden during these drags; dropping
-//! on the header's New tab button opens the tab").
-
 use std::borrow::Cow;
 use std::rc::Rc;
 
@@ -39,9 +35,6 @@ impl Default for TabsLabels {
     }
 }
 
-/// The New tab button on its own, for a header that holds it while the strip is hidden. It
-/// reports [`TabsIntent::New`], and as a drop zone keyed [`new_tab_key`] (or [`NewTabButton::key`])
-/// it opens a drag the host says opens tabs at the end of `len` tabs ([`TabsIntent::OpenTabs`]).
 pub struct NewTabButton<'a, S: 'static> {
     state: &'a BrowserTabsState,
     access: Access<S>,
@@ -67,8 +60,6 @@ impl<'a, S: 'static> NewTabButton<'a, S> {
         }
     }
 
-    /// Overrides the element and drop-zone key (default [`new_tab_key`] of `state.key()`), for a
-    /// host header whose focus navigation reads its own prefix.
     pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = Some(key.into());
         self
@@ -135,8 +126,6 @@ pub(super) struct ButtonSpec<'a, S> {
     pub key: String,
 }
 
-/// The button, accented to match GTK's `header-action` chrome icon and lit while a drag that opens
-/// tabs is over it or runs in the window.
 pub(super) fn button<S: 'static>(
     cx: &Ctx<S>,
     state: &BrowserTabsState,

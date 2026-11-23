@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Move to Trash on the window the crate registers, in temporary folders: by Delete, and by
-//! the entry menu's row on a folder whose column is open. What `delete-to-trash` and
-//! `trashing-open-folder-opens-next` do.
-
 use rune::{Key, KeyEvent, Mods};
 use strata_core::model::Location;
 
@@ -46,8 +42,6 @@ fn trashed_count() -> usize {
     std::fs::read_dir(files).map_or(0, Iterator::count)
 }
 
-/// `delete-to-trash`: Delete moves the selected file to the Trash, with no dialog, and
-/// Ctrl+Z brings it back. In a text field Delete is the field's.
 #[test]
 fn delete_moves_the_selected_file_to_the_trash() {
     hosted(
@@ -81,8 +75,6 @@ fn delete_moves_the_selected_file_to_the_trash() {
     );
 }
 
-/// `trashing-open-folder-opens-next`: the menu's row on a folder whose column is open moves
-/// it to the Trash, and the keyboard goes on to the folder now in its place.
 #[test]
 fn trashing_an_open_folder_from_its_row_moves_on_to_the_next() {
     hosted(
@@ -135,9 +127,6 @@ fn trashing_an_open_folder_from_its_row_moves_on_to_the_next() {
     );
 }
 
-/// `confirm_delete` outside Columns: Delete acts on the selection, or the folder the
-/// keyboard entered, and never on the cursor's entry alone. After Escape clears the
-/// selection in List, Delete trashes nothing.
 #[test]
 fn outside_columns_delete_with_nothing_selected_trashes_nothing() {
     hosted_after(
@@ -206,8 +195,6 @@ fn wait_for_no_dialog(host: &mut Offscreen) {
     assert!(closed, "the dialog stayed: {:?}", dialog(host));
 }
 
-/// `permanent-delete-symlinked-parent`'s keys: Shift+Delete asks, with the delete focused;
-/// Escape keeps the file; asked again, Return deletes it for good, past the Trash.
 #[test]
 fn shift_delete_asks_and_deletes_for_good_only_when_confirmed() {
     hosted(
@@ -236,9 +223,6 @@ fn shift_delete_asks_and_deletes_for_good_only_when_confirmed() {
     );
 }
 
-/// `report_partial_failure`: a trash the location could not do for some items, with nothing
-/// else failed, asks to delete those for good, with Cancel focused since the user asked for
-/// the Trash.
 #[test]
 fn a_trash_the_location_refused_asks_to_delete_for_good() {
     hosted(
@@ -294,10 +278,6 @@ fn shift() -> Mods {
     }
 }
 
-/// `activate_focused_button`: Return presses the focused button only, so the delete is no
-/// default button that Return would press with the keyboard elsewhere. (Rune's modal gives
-/// the keyboard back to the dialog's first focus when it is dropped, so "nothing focused"
-/// cannot be reached to press Return in; the role is what tells.)
 #[test]
 fn the_delete_is_no_default_button() {
     hosted(MODULE, "the_delete_is_no_default_button", |mut host| {
@@ -321,9 +301,6 @@ fn the_delete_is_no_default_button() {
     });
 }
 
-/// A confirmation asked while another is open waits for it, with its own first focus: a
-/// partial failure's retry, which focuses Cancel, never takes the open dialog's place under
-/// its focused delete. A confirm that races the event still deletes what it asked about.
 #[test]
 fn a_confirmation_asked_while_one_is_open_waits_for_it() {
     hosted(
@@ -383,8 +360,6 @@ fn a_confirmation_asked_while_one_is_open_waits_for_it() {
     );
 }
 
-/// `remember_modal_focus_for_listing`: the keyboard goes back to the listing when the
-/// confirmation closes, by Cancel and by the delete.
 #[test]
 fn closing_the_confirmation_gives_the_keyboard_back_to_the_listing() {
     hosted(
@@ -446,8 +421,6 @@ fn click_menu_row(host: &mut Offscreen, name: &str) {
     while host.turn() {}
 }
 
-/// Opened from the entry menu, whose row is gone by the time the confirmation closes, the
-/// keyboard still goes back to the listing (`remember_modal_focus_for_listing`).
 #[test]
 fn a_confirmation_from_the_menu_gives_the_keyboard_back_to_the_listing() {
     hosted(
@@ -478,8 +451,6 @@ fn a_confirmation_from_the_menu_gives_the_keyboard_back_to_the_listing() {
     );
 }
 
-/// A retry asked while a confirmation is open, for the same items that confirmation then
-/// deletes, has nothing left to ask about and does not open.
 #[test]
 fn a_waiting_retry_for_what_was_just_deleted_does_not_open() {
     hosted(
@@ -521,10 +492,6 @@ fn home() -> std::path::PathBuf {
     std::path::PathBuf::from(std::env::var_os("HOME").expect("the test's home"))
 }
 
-/// A Trash of the test's own, holding `items` files and an empty folder, and the Trash root
-/// pointed at it: a hosted test has no gvfs to list `trash:///` with. The folder is empty
-/// because a plain folder refuses to delete a folder with something in it, where gvfs's Trash
-/// deletes a whole trashed item.
 fn seeded_trash(items: usize) -> std::path::PathBuf {
     let trash = home().join("seeded-trash");
     std::fs::create_dir_all(&trash).expect("the Trash");
@@ -549,8 +516,6 @@ fn empty_trash(host: &mut Offscreen) {
     while host.turn() {}
 }
 
-/// `confirm_empty_trash`: the Trash is measured, then "Empty Trash?" asks with Empty Trash
-/// focused; Escape keeps everything, and only the confirmation's Empty Trash empties it.
 #[test]
 fn empty_trash_asks_and_empties_only_when_confirmed() {
     hosted_after(
@@ -596,8 +561,6 @@ fn empty_trash_asks_and_empties_only_when_confirmed() {
     );
 }
 
-/// A press of Empty Trash that does not come from the confirmation on show empties nothing:
-/// not while the Trash is still being measured, and not once the dialog has closed.
 #[test]
 fn only_the_open_confirmation_empties_the_trash() {
     hosted_after(

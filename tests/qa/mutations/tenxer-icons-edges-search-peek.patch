@@ -1,9 +1,9 @@
 diff --git a/crates/strata-app/src/single/mod.rs b/crates/strata-app/src/single/mod.rs
 --- a/crates/strata-app/src/single/mod.rs
 +++ b/crates/strata-app/src/single/mod.rs
-@@ -564,7 +564,7 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
-         // any row in List); only that Left reaches here. 10xer's keep it in the view, as GTK's
-         // native arrows there stop at the edge (`move_icon_cursor`).
+@@ -502,7 +502,7 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
+         Intent::OpenInNew { id, window } => open_in_new::<V>(app, (depth, id), window, tx),
+         Intent::Reveal { id } => reveal::<V>(app, (depth, id), tx),
          Intent::Edge(Direction::Left) => {
 -            if !shell::preferences(app).tenxer_mode {
 +            if !shell::preferences(app).tenxer_mode || true {

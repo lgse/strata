@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the preview follows when the view moves the keyboard or the target without the
-//! browser's cursor moving: a view switch, a folder click, Left into the parent column and a
-//! filter closing (found by the `preview` fuzz alphabet's smoke tier).
-
 use rune::{Key, Mods, Tx};
 use strata_core::model::Location;
 
@@ -70,8 +66,6 @@ enum Button {
     Secondary,
 }
 
-/// Clicks the row named `name`, as a scenario's `click` step does (`button: 3` for
-/// [`Button::Secondary`]).
 fn click_row(host: &mut Offscreen, name: &str, button: Button) {
     let (x, y) = row_centre(host, name);
     host.runtime().pointer_move(x, y);
@@ -87,8 +81,6 @@ fn click_row(host: &mut Offscreen, name: &str, button: Button) {
     while host.turn() {}
 }
 
-/// GTK's `view_mode_changed` hides the panel only when it is neither enabled nor reserved; the
-/// placeholder of the folder selected at launch, shown in Icons, stays when Columns shows.
 #[test]
 fn a_view_switch_keeps_the_placeholder_of_an_enabled_preview() {
     hosted(
@@ -121,8 +113,6 @@ fn a_view_switch_keeps_the_placeholder_of_an_enabled_preview() {
     );
 }
 
-/// A folder a click opens becomes the focused column, so the preview keeps its slot
-/// (`lend_slot_to_child`'s `pointer_opens` in `src/ui/preview/lifecycle.rs`).
 #[test]
 fn clicking_a_folder_in_columns_keeps_the_slot_for_the_placeholder() {
     hosted(
@@ -145,8 +135,6 @@ fn clicking_a_folder_in_columns_keeps_the_slot_for_the_placeholder() {
     );
 }
 
-/// Left into the parent column raises `FocusChanged` on GTK (`Browser::focus_parent`): the
-/// preview follows the parent's open folder and yields the slot to its column.
 #[test]
 fn left_into_the_parent_column_follows_its_open_folder() {
     hosted(
@@ -183,8 +171,6 @@ fn left_into_the_parent_column_follows_its_open_folder() {
     );
 }
 
-/// Closing a filter whose result the preview shows puts the listing's cursor back, and the
-/// preview follows it as GTK's does.
 #[test]
 fn closing_a_filter_previews_the_restored_cursor() {
     hosted(
@@ -223,8 +209,6 @@ fn closing_a_filter_previews_the_restored_cursor() {
     );
 }
 
-/// A row's context menu selects it, and an enabled preview follows the selection there as it
-/// does a click, even while its slot is lent to a folder's column.
 #[test]
 fn a_context_menu_on_a_child_column_file_previews_it() {
     hosted(

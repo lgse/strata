@@ -31,8 +31,6 @@ type Worker = fn(&Sender<Check>);
 
 const RAW_TOOLS: [&str; 4] = ["magick", "convert", "dcraw", "simple_dcraw"];
 
-/// Runs the background checks on worker threads, sending each result as it
-/// completes. The receiver disconnects once every worker has finished.
 pub(super) fn spawn(sender: Sender<Check>) {
     let workers: [(&str, Worker); 3] = [
         ("strata-diagnostics-previews", preview_checks),

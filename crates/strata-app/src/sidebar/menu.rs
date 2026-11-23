@@ -1,25 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The sidebar's context menus, as the GTK sidebar attaches them to its rows
-//! (`attach_place_context_menu_with` in `src/ui/window/sidebar_context_menu.rs`,
-//! `build_trash_menu` in `src/ui/window/sidebar_trash.rs`, `attach_device_menu` in
-//! `src/ui/window/device_menu.rs`, and `append_network_share` in
-//! `src/ui/window/sidebar_devices.rs`), drawn by strata-components' C21.
-//!
-//! - **Opening.** A right-click on a row opens its menu under the pointer, centred on it, as
-//!   GTK's popover points at a 1×1 rectangle at the click (`open_on_secondary_click`); the
-//!   Menu key and Shift+F10 on a focused row open it under the row, centred on it, as GTK
-//!   pops the row's popover up pointing at the row (`open_sidebar_context_menu`). Rune reports
-//!   both as the row's secondary press (`El::on_secondary_press`), the keyboard's at the row's
-//!   bottom-left, and `Tx::by_keys` tells them apart; C8 keeps each row's box.
-//! - **Places & pins:** "Open in New Tab" and a separator, then "Connect to server…" on Network,
-//!   "Unpin", "Customize…" on a folder with a local path, and "Properties"; the Trash's menu has
-//!   "Unpin" and "Properties" after the separator, and "Empty Trash…" in a section of its own
-//!   while the Trash is known to hold something ([`super::trash`]).
-//! - **Devices:** "Open in New Tab" (when mounted outside chooser mode), "Unlock" / "Lock" on
-//!   encrypted volumes, "Eject" / "Unmount" when releasable, "Mount" on unmounted non-locked
-//!   volumes, "Properties" on mounted devices, and "Disconnect" (danger) on network shares.
-
 use std::rc::Rc;
 
 use rune::{El, PointerPress, Tx};
@@ -48,7 +28,6 @@ use crate::{
 /// The menu's key: its surface is `sidebar-menu-menu`, its rows `sidebar-menu-item<n>`.
 const KEY: &str = "sidebar-menu";
 
-/// Matches GTK's sidebar context-menu width floor (`.folder-context-menu` in `src/style.css`).
 const MIN_WIDTH: f32 = 230.0;
 
 fn min_width(look: &strata_kit::look::Look) -> f32 {
@@ -56,8 +35,6 @@ fn min_width(look: &strata_kit::look::Look) -> f32 {
     (MIN_WIDTH * scale).round()
 }
 
-/// One row: its id, its label in the catalogs, its leading icon, and whether it destroys
-/// something.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct MenuRow {
     pub(super) id: &'static str,
@@ -110,8 +87,6 @@ fn is_trash(item: &ItemId) -> bool {
     matches!(item, ItemId::Place(id) if id == "trash")
 }
 
-/// The rows the menu of `row` shows, by section, with what the Trash holds: Empty Trash only
-/// once it is known to hold something (`trash_menu_visibility`).
 pub(super) fn rows(row: &Row, trash: Contents) -> Vec<Vec<MenuRow>> {
     if is_trash(&row.item) {
         let mut sections = vec![vec![OPEN_IN_TAB], vec![UNPIN, PROPERTIES]];
@@ -132,8 +107,6 @@ pub(super) fn rows(row: &Row, trash: Contents) -> Vec<Vec<MenuRow>> {
     vec![vec![OPEN_IN_TAB], actions]
 }
 
-/// The rows a device row's context menu shows, by section (`device_menu.rs` and
-/// `append_network_share` in `sidebar_devices.rs`).
 pub(super) fn device_rows(info: &DeviceMenuInfo, chooser: bool) -> Vec<Vec<MenuRow>> {
     if info.pending {
         return Vec::new();
@@ -196,9 +169,6 @@ enum Target {
     Device { id: String, root: Option<Location> },
 }
 
-/// A row asked for its menu, at `point` in window points. Focus moves to the row before the
-/// menu opens so closing the menu — or cancelling a modal dialog opened from one of its rows —
-/// returns focus to that sidebar row, as GTK's `popover.set_parent(row)` does.
 pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress, tx: &mut Tx) {
     let (model, target, opens_trash) = match item {
         ItemId::Device(id) => {
@@ -233,7 +203,6 @@ pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress, tx: &mut T
         }
     };
     let by_keys = tx.by_keys();
-    // GTK's popover points at the row from the keyboard, and at the click from the pointer.
     let keyboard = by_keys.then(|| app.sidebar.state.row_box(item)).flatten();
     let pointed = keyboard.unwrap_or([point.x, point.y, 0.0, 0.0]);
     let at = under(
@@ -244,14 +213,11 @@ pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress, tx: &mut T
     app.sidebar
         .menu
         .open(MenuTarget::Other(Rc::new(target)), at, model);
-    // GTK probes the Trash again as its menu shows.
     if opens_trash {
         trash::refresh(app);
     }
 }
 
-/// Where a menu `width` wide opens to sit under `rect`, centred on it, as a GTK popover in its
-/// bottom position sits under what it points at: a row, or the point of a click.
 fn under([x, y, w, h]: [f32; 4], width: f32) -> Point {
     Point::new(x + (w - width) / 2.0, y + h)
 }
@@ -281,7 +247,6 @@ pub(super) fn element(app: &App, layer: &mut Vec<El>) -> El {
         |app: &App| &app.sidebar.menu,
         |app: &mut App| &mut app.sidebar.menu,
     )
-    // GTK's menu box has no name of its own.
     .name(String::new())
     .min_width(min_width(&app.look))
     .on_intent(chosen)
@@ -330,11 +295,6 @@ fn chosen_device(app: &mut App, (id, root): (&str, Option<&Location>), action: &
     }
 }
 
-/// GTK's Unpin: a built-in place is hidden, a pin leaves the bookmarks file. The menu gives the
-/// keyboard back to the row it was opened on ([`open`]), which a hidden place takes away: the
-/// sidebar's first row takes it, as GTK's rebuilt list draws its ring there, whichever row went
-/// (driven on GTK in F4's round 3, by a right-click and by the Menu key; finding
-/// lgse/strata#2406's Unpin case).
 fn unpin(app: &mut App, item: &ItemId, location: &Location, tx: &mut Tx) {
     match item {
         ItemId::Place(id) => {
@@ -368,8 +328,6 @@ fn hide_place(settings: &mut Preferences, id: &str) {
     *shown = false;
 }
 
-/// Takes every line for `location` out of the bookmarks file (`remove_pinned_place`); the
-/// sidebar hears the change from the store.
 fn unpin_location(location: Location) {
     let edit = move |contents: &[u8]| {
         let mut places = bookmarks::parse_pinned_places(contents);

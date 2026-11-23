@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the strip tells C9's drawer about itself in Columns ([`ColumnsFit`]).
-
 use strata_kit::look::Look;
 
 use super::sources::ColumnSources;
@@ -9,10 +7,6 @@ use super::state::ColumnsState;
 use super::width;
 use crate::preview_drawer::{ColumnsFit, DrawerRules};
 
-/// The strip's fit for the drawer's rules: the columns from the root through the active one,
-/// the width that keeps the active one whole (at most one standard column for the
-/// narrow-window test), and the columns after it, which borrow the empty slot's width; one
-/// standard column at the text size.
 pub(super) fn columns_fit(st: &ColumnsState, look: &Look, rules: &DrawerRules) -> ColumnsFit {
     let spans = st.spans(look);
     let standard = width::drawn(width::STANDARD, width::scale(look));
@@ -27,10 +21,6 @@ pub(super) fn columns_fit(st: &ColumnsState, look: &Look, rules: &DrawerRules) -
         .standard_column(standard)
 }
 
-/// How wide column `depth`'s content is drawn, in points: the widest of its header's title
-/// and the rows on screen (Strata measures its bound rows' natural widths). A row is its
-/// insets, its icon and its name; the badge sits over the name, as Strata's overlay does, so
-/// it adds nothing. The host's header actions are elements and can't be measured.
 pub(super) fn content_width(
     sources: &dyn ColumnSources,
     st: &ColumnsState,

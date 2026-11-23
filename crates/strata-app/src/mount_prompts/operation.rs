@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Safe GIO [`gio::MountOperation`] binding onto C26's mount prompts
-//! (`src/ui/browser/location/mounting.rs` and `dialogs.rs`).
-
 use std::{
     cell::{Cell, RefCell},
     fmt,
@@ -19,9 +16,6 @@ use strata_core::i18n::{list, tr};
 use super::{PromptTicket, next_id, open_prompt, withdraw_prompt};
 use crate::{App, slots::WeakLater};
 
-/// Credentials submitted from a mount authentication prompt or supplied for a retry.
-///
-/// The password is redacted from [`fmt::Debug`] and overwritten in [`Drop`].
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct MountCredentials {
     pub(crate) anonymous: bool,
@@ -62,8 +56,6 @@ fn wipe_string(secret: &mut String) {
     secret.clear();
 }
 
-/// Non-secret defaults retained after an attempt so an authentication-failure retry pre-fills
-/// username and domain without retaining any plaintext password in memory.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct RetryDefaults {
     pub(crate) username: String,
@@ -117,8 +109,6 @@ impl MountCredentials {
     }
 }
 
-/// What GIO last asked for in `ask-password`, preserved so authentication failures can reopen
-/// the prompt with the same flags and previous username/domain.
 #[derive(Clone, Debug)]
 pub(crate) struct MountPromptDetails {
     pub(crate) message: String,
@@ -182,9 +172,6 @@ pub(crate) struct OperationOptions {
     pub(crate) on_unmount_progress: Option<ProgressHandler>,
 }
 
-/// A bound [`gio::MountOperation`] whose signals are routed through [`super::MountPromptsPart`]
-/// via a [`WeakLater`]. If the initiating window closes, queued or subsequent prompts abort
-/// immediately so GIO's async future never hangs.
 pub(crate) struct BoundOperation {
     operation: gio::MountOperation,
     later: WeakLater<App>,
@@ -407,8 +394,6 @@ fn withdraw_all(later: &WeakLater<App>, pending: &PendingPrompts) {
     }
 }
 
-/// Opens a standalone retry prompt (after GIO reported an authentication failure), returning the
-/// chosen credentials to `on_submit` or calling `on_cancel`.
 pub(crate) fn show_retry_prompt(
     app: &mut App,
     details: &MountPromptDetails,
@@ -455,7 +440,6 @@ fn remember_to_gio(remember: Remember) -> gio::PasswordSave {
     }
 }
 
-/// Localized retry text matching GTK's `authentication_retry_message`.
 pub(crate) fn authentication_retry_message(
     flags: gio::AskPasswordFlags,
     _message: &str,

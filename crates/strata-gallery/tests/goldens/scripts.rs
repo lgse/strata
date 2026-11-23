@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The script runner: each `tests/scripts/<id>/<name>.json` runs headless through the gallery
-//! (`--scene <scene> --script <file> --tree <out>`). It fails when the script is malformed or
-//! names no feature-map bullets, when Rune rejects it or reports key warnings, when an
-//! `expect` entry doesn't hold, or when the accessibility tree it ends on differs from
-//! `tests/golden/scripts/<id>/<name>.json`. `docs/rune/testing.md` describes the format.
-
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
@@ -120,8 +114,6 @@ fn check_expect_shape(e: &Value) -> Result<(), String> {
 pub fn run(script: &Path, scene: &str, tree_out: &Path) -> Result<Value, String> {
     std::fs::create_dir_all(tree_out.parent().expect("tree directory")).expect("tree directory");
     let mut cmd = support::gallery();
-    // Scripts run at scale 2, Rune's headless default, named so a change of default can't
-    // move what a script's expectations (a zoom level, a drawn size) see.
     cmd.args(["--scene", scene, "--theme", support::theme_of(scene)])
         .args(["--scale", "2"])
         .arg("--script")
@@ -267,8 +259,6 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-/// The runner end to end, on the gallery's own navigation: pressing an index row opens its
-/// page, and Escape returns to the index.
 #[test]
 fn a_script_drives_the_gallery_and_its_expectations_are_checked() {
     let tree_out = support::fresh_dir("scripts-run", "fixtures").join("index-escape.tree.json");

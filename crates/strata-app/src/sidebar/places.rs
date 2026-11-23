@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the sidebar lists: the built-in places in the saved order, then the pins, as the GTK
-//! sidebar decides them (`src/ui/window/places.rs`, `append_ordered_place` and
-//! `append_pinned_places` in `src/ui/window/sidebar_places.rs`). A fix there has to be
-//! carried here until the GTK sidebar is deleted.
-
 use std::path::{Path, PathBuf};
 
 use gio::prelude::*;
@@ -39,8 +34,6 @@ pub(super) const STANDARD_PLACE_IDS: &[&str] = &[
     "videos",
 ];
 
-/// How a row opens its location (`PlaceNavigation` in `src/ui/window/sidebar.rs`): a place
-/// whose destination is known opens at once, and the others are checked first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Navigation {
     Direct,
@@ -55,8 +48,6 @@ pub(super) struct Row {
     pub(super) navigation: Navigation,
 }
 
-/// What the sidebar shows: the component's places and pins, and every row's location in
-/// the order the rows are drawn.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct Listed {
     pub(super) places: Vec<Place>,
@@ -64,8 +55,6 @@ pub(super) struct Listed {
     pub(super) rows: Vec<Row>,
 }
 
-/// What the places depend on beside the settings: the home folder, the user's folders and
-/// whether Recent can be opened.
 pub(super) struct Environment {
     pub(super) home: PathBuf,
     pub(super) special: fn(UserDirectory) -> Option<PathBuf>,
@@ -108,14 +97,10 @@ impl Environment {
     }
 }
 
-/// `home_directory` in `src/ui/window/launch.rs`.
 fn home_directory() -> PathBuf {
     std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from)
 }
 
-/// `RecentAvailability` in `src/ui/window/sidebar_places.rs`: GIO's VFS opens `recent:` URIs.
-/// GTK also asks its `gtk-recent-files-enabled` setting, which this interface does not read,
-/// so it counts as on, its default.
 fn recent_available() -> bool {
     gio::Vfs::default()
         .supported_uri_schemes()
@@ -123,8 +108,6 @@ fn recent_available() -> bool {
         .any(|scheme| scheme.as_str().eq_ignore_ascii_case("recent"))
 }
 
-/// The saved order with every built-in place in it once (`resolve_place_order`). A place the
-/// saved order lacks goes after the nearest place before it in the default order.
 pub(super) fn resolve_place_order(persisted: &[String]) -> Vec<&'static str> {
     let mut order: Vec<&'static str> = Vec::new();
     for id in persisted {

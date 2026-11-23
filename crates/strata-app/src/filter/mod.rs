@@ -1,49 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The filter (A10): C18's [`FilterBar`] in a band under a Columns column's header (C2's
-//! `header_band`), and under the pane's header in Icons and List ([`pane`]), as GTK's pane
-//! filter (`filter_controls` in
-//! `src/ui/browser_modes/filter.rs`, the column's in `src/ui/browser/columns/append/header.rs`
-//! and `query.rs`).
-//!
-//! - **Where it opens.** Ctrl+F, the header's filter toggle, and a key typed in the listing
-//!   (type-to-search) open it in the pane, or in the column the pointer or the keys last
-//!   targeted (GTK's `destination_depth`), closing it in any other. Its keys are read where
-//!   GTK's dispatcher reads them: Ctrl+F and Escape from its results in
-//!   `filter_and_location_commands`, type-to-search in `text_input`
-//!   (`src/ui/window/keyboard/commands.rs`). While its field has the keyboard it is the
-//!   window's filter owner ([`Holds::Filter`]).
-//! - **What it shows.** In a local folder the query runs strata-fs's index of the folder,
-//!   with its subfolders when "Include subfolders" is on ([`session`]), and the results take
-//!   the place of the column's rows (GTK's `search_recursively`); the column's selection
-//!   then is the results', which the browser never holds. In Icons and List they show in a
-//!   collection of their own in the listing's place ([`pane`]). Clearing the query or closing
-//!   the filter gives the rows back with the selection they had. Each edit waits GTK's 40 ms
-//!   before it asks (`FILTER_DEBOUNCE_DELAY`).
-//! - **Opening a result:** Enter in the field (its Enter target, C18's), a click or Return on
-//!   it: a folder is navigated to, a file opened (`activate_recursive_search_result`).
-//! - **A `/` typed into the field over a query** enters the first match's folder and leaves
-//!   the filter open there, empty ([`descent`]), as GTK's `connect_path_separator` does.
-//! - **Up from the first result** gives the field the keyboard back.
-//! - **A view switch keeps it** in the folder shown, with its query, its results and their
-//!   selection, and the keyboard where it was, field or results (GTK's `ActivePaneFilter` in
-//!   `set_view_mode`, `restore_view_switch_focus`).
-//! - **It closes** with Escape, from its field or its results, when its column shows
-//!   another folder or goes, and in Columns when focus leaves the filtered column for another
-//!   column or chrome ([`blur`], GTK's `close_filter_after_blur`); a new item in its column
-//!   empties it first ([`clear_for_new_item`]).
-//!   The keyboard goes back to the view, on the entry the listing had. "Group by file type"
-//!   closes it in List and leaves the keyboard where it is ([`close_for_regroup`]).
-//! - **A result's path** shows under its name while the filter searches the subfolders: in
-//!   Columns its whole path, as C2's detail line, in Icons and List the path under
-//!   the folder ([`pane`]).
-//! - **A renamed result** keeps the cursor and the selection under its new name
-//!   ([`renamed`], GTK's `RenamedResult`).
-//!
-//! Not yet: a folder that is not local, which GTK narrows in place, the results' thumbnails,
-//! and the field's own menu.
-//! `docs/rune/parity/packages/A10.md` keeps the list.
-
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
@@ -108,11 +64,8 @@ pub(crate) use typing::reads as is_typing_key;
 #[cfg(test)]
 mod tests;
 
-/// The start of the bar's key. Each column the filter opens in keys it anew, so a column
-/// leaving with the field in its header never holds the key of the one that shows it now.
 const KEY: &str = "filter";
 
-/// GTK's `FILTER_DEBOUNCE_DELAY`: how long an edit waits before it asks for results.
 const DEBOUNCE: Duration = Duration::from_millis(40);
 
 /// The view and the column the filter is open in, and that column's folder.
@@ -162,8 +115,6 @@ pub(crate) struct Filter {
     typed: String,
     /// The query a `/` was typed over, until its results settle and its first match opens.
     descent: Option<String>,
-    /// A `/` opened a folder, or an unlisted tab came back with the keyboard in the field: the
-    /// field takes the keyboard back once its column is listed.
     refocus_field: bool,
     /// The field had the keyboard when the tab was hidden.
     back_to_field: bool,
@@ -175,12 +126,9 @@ pub(crate) struct Filter {
     saved_filter: Option<String>,
     /// Opened by 10xer's `f` or `s` prompt (cleared on leaving 10xer mode).
     tenxer_owned: bool,
-    /// A 10xer commit waits for its results to take the cursor (GTK's `focus_on_arrival`).
     focus_on_arrival: bool,
     /// Counts the columns the filter opened in, for the bar's key.
     serial: u64,
-    /// Counts the edits waiting for the debounce and the stops: a wait that ends after a later
-    /// one began, or after the filter stopped, searches nothing.
     edits: u64,
     debounce: Rc<RefCell<Option<glib::SourceId>>>,
     later: Later<App>,
@@ -189,8 +137,6 @@ pub(crate) struct Filter {
     nothing: (ListSource, Selection),
 }
 
-/// `filter_controls`' name for the toggle and the field: the default map's key, as GTK's
-/// 10xer mode hides the button.
 fn named(message: &str, keyless: &str) -> String {
     let keys = label_in_map(
         &rust_i18n::locale(),
@@ -249,8 +195,6 @@ fn bar(app: &App) -> FilterBar<App> {
     })
     .results(results)
     .previews(|app: &App| targets::preview_result(app).is_some())
-    // The part moves the keyboard itself: a `focus_return` would take it back to the view
-    // from a field still in the header of a column that is leaving (after a `/`).
     .tab_to_results(false)
     .on_intent(heard)
 }
@@ -303,8 +247,6 @@ fn prepare_open(app: &mut App, opening: OpenIn, tx: &mut Tx) {
     app.filter.open_in = Some(opening);
 }
 
-/// Opens the filter in the pane or the targeted column, empty or on `query`: Ctrl+F, the
-/// toggle, a key typed in the listing. False where there is no column to open it in.
 fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
     let Some(opening) = opening_in(app) else {
         return false;
@@ -356,7 +298,6 @@ fn heard(app: &mut App, intent: FilterIntent, tx: &mut Tx) {
             }
         }
         FilterIntent::Preview => preview_from_field(app, tx),
-        // The field's own menu is C21's.
         _ => {}
     }
 }
@@ -373,10 +314,6 @@ fn preview_from_field(app: &mut App, tx: &mut Tx) {
     }
 }
 
-/// The filter closes: the keyboard goes back to the view from the field, as GTK's
-/// `dismiss_focused_filter` focuses the pane, and from a pane's results, whose collection
-/// leaves the tree with the keyboard in it, to the listing that takes its place (finding
-/// lgse/strata#2421). A Columns column's results are its own rows, which keep it.
 fn refocus_on_close(app: &App, tx: &mut Tx) {
     let Some(place) = app.filter.open_in.as_ref().map(|open| open.place) else {
         return;
@@ -389,8 +326,6 @@ fn refocus_on_close(app: &App, tx: &mut Tx) {
     }
 }
 
-/// The field's text changed to `text`: a `/` typed over a query enters its first match, and
-/// any other edit asks for its results once the typing pauses.
 fn queried(app: &mut App, text: String, tx: &mut Tx) {
     let before = std::mem::replace(&mut app.filter.typed, text.clone());
     if !app.filter.state.tenxer()
@@ -409,10 +344,6 @@ fn queried(app: &mut App, text: String, tx: &mut Tx) {
     schedule(app, text);
 }
 
-/// A query starts over the open column's rows: its results take their place at once, empty
-/// until the first batch, as GTK's column swaps to its hits model when the search starts
-/// (`search_recursively`). GTK swaps after the 40 ms wait; here the rows go as the query is
-/// typed, so nothing of the listing is read as a result meanwhile.
 fn searching(app: &mut App, tx: &mut Tx) {
     let Some(open) = app.filter.open_in.clone() else {
         return;
@@ -425,12 +356,10 @@ fn searching(app: &mut App, tx: &mut Tx) {
     open.show_hits(app, HitsUpdate::plain(hits, true), tx);
 }
 
-/// Asks for `text`'s results after GTK's debounce, dropping an earlier edit's wait.
 fn schedule(app: &mut App, text: String) {
     if let Some(earlier) = app.filter.debounce.borrow_mut().take() {
         earlier.remove();
     }
-    // A batch for an older text is no answer from now on, as GTK's `expect_query` makes it.
     app.filter.session.expect(&text);
     app.filter.edits += 1;
     let edit = app.filter.edits;
@@ -512,9 +441,6 @@ fn search(app: &mut App, text: &str) {
         });
 }
 
-/// Hidden files were shown or hidden: an open filter searches again with the new setting, as
-/// GTK's `on_hidden_toggled` hands it to each column's search session (`set_show_hidden`), so
-/// its results take the hidden entries in or leave them out (lgse/strata#2697).
 fn hidden_toggled(app: &mut App, _: &mut Tx) -> bool {
     refresh_source_filter(app);
     app.filter.state.is_open()
@@ -527,7 +453,6 @@ pub(crate) fn refresh_source_filter(app: &mut App) {
     }
 }
 
-/// `search_limits` in `src/ui/preferences/input_settings.rs`: zero is no limit.
 pub(crate) fn limits(preferences: &strata_desktop::settings::Preferences) -> SearchLimits {
     SearchLimits {
         time_budget: (preferences.search_time_limit != 0)
@@ -571,8 +496,6 @@ fn hits_for_batch(
     }
 }
 
-/// A batch of results came: they show in the open column, the first time with nothing
-/// selected, and a `/` waiting for them goes on.
 fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
     let (Some(open), true) = (app.filter.open_in.clone(), app.filter.state.is_open()) else {
         return false;
@@ -597,7 +520,6 @@ fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
     true
 }
 
-/// The top result to keep in view now that results came, once (C18's `take_reveal`).
 fn take_reveal(app: &mut App) -> Option<usize> {
     let filter = &mut app.filter;
     let place = filter.open_in.as_ref().map(|open| (open.place, open.depth));
@@ -610,8 +532,6 @@ fn take_reveal(app: &mut App) -> Option<usize> {
     filter.state.take_reveal(Results { source, selection })
 }
 
-/// GTK's `eligible_results`: what the browser lets the window show, up to the cap, asking
-/// the worker for more candidates when the checks left too few.
 fn eligible(app: &App, batch: &Batch) -> Vec<SearchItem> {
     let items: Vec<SearchItem> = batch
         .items
@@ -641,8 +561,6 @@ fn stop(app: &mut App) {
     app.filter.descent = None;
 }
 
-/// Probes currently shown search results and removes any proven absent (`prune_stale_search_results`
-/// in `src/ui/browser/events/reveal.rs`).
 fn prune_stale_results(app: &mut App, _: &mut Tx) -> bool {
     if !shows_live_results(&app.filter) {
         return false;
@@ -713,9 +631,6 @@ fn apply_pruned_results(app: &mut App, gone: &HashSet<PathBuf>, tx: &mut Tx) -> 
     true
 }
 
-/// Tells the filter's results to follow a rename of `from` to `to` (`None` when moved to
-/// another folder), while results currently show `from` (`follow_renamed_result` in
-/// `src/ui/browser/inline_edit.rs`).
 pub(crate) fn follow_renamed(app: &mut App, from: &Location, to: Option<&Location>) {
     let Some(open) = app.filter.open_in.as_ref() else {
         return;
@@ -737,8 +652,6 @@ pub(crate) fn follow_renamed(app: &mut App, from: &Location, to: Option<&Locatio
     app.filter.renamed.expect(from_path, to_path);
 }
 
-/// Forgets the pending rename of `from` to `to` after it was abandoned or refused, leaving a
-/// newer rename's record (`forget_renamed_result` in `src/ui/browser/inline_edit.rs`).
 pub(crate) fn forget_renamed(app: &mut App, from: &Location, to: Option<&Location>) {
     let Some(from_path) = from.native_path() else {
         return;
@@ -761,7 +674,6 @@ fn closed(app: &mut App) {
     app.columns.hold_header(None);
 }
 
-/// What the open column says in place of results it has none of: GTK's status line.
 pub(crate) fn status(app: &App) -> Option<String> {
     let open = app.filter.open_in.as_ref()?;
     if open.place.shows_hits(app, open.depth) && results(app).source.is_empty() {
@@ -773,8 +685,6 @@ pub(crate) fn status(app: &App) -> Option<String> {
     None
 }
 
-/// [`status`], said as C18 says a status, and drawn at the column's top as the column's
-/// own status is (`surface::drawn`), so its empty space stays the column's.
 pub(crate) fn status_element(app: &App) -> Option<El> {
     let said = status(app)?;
     let look = &app.look;
@@ -795,15 +705,12 @@ pub(crate) fn status_element(app: &App) -> Option<El> {
     )
 }
 
-/// The result the filter's Enter would open, while it is outlined (C18's `outlined`): what the
-/// QA backend reads as an entry's `marked` state.
 #[cfg(feature = "qa")]
 pub(crate) fn outlined(app: &App) -> Option<EntryId> {
     app.filter.open_in.as_ref()?;
     app.filter.state.outlined(results(app))
 }
 
-/// C18's Enter target among column `depth`'s results.
 pub(crate) fn marks(app: &App, depth: usize, id: EntryId) -> RowMarks {
     let outlined = app
         .filter
@@ -822,8 +729,6 @@ pub(crate) fn picked(app: &mut App) {
     crate::preview::follow_filter_pick(app);
 }
 
-/// Opens result `id` of column `depth`: a folder is navigated to, a file opened
-/// (`activate_recursive_search_result`).
 pub(crate) fn open_hit(app: &mut App, depth: usize, id: EntryId) {
     let open = app.filter.open_in.as_ref();
     if open.is_none_or(|open| open.depth != depth) {
@@ -839,8 +744,6 @@ pub(crate) fn open_hit(app: &mut App, depth: usize, id: EntryId) {
     }
 }
 
-/// Whether Up from the first result gives the keyboard back to the field: 10xer's filter has
-/// its field in the footer prompt, which has closed by then.
 fn up_returns_to_field(app: &App) -> bool {
     app.filter.state.is_open() && !app.filter.state.tenxer()
 }
@@ -864,11 +767,6 @@ pub(crate) fn hit_intent(
             open_hit(app, depth, *id);
             true
         }
-        // One click opens a folder among the results whatever the click settings, as GTK's
-        // "filtered folders keep one-click open" (`filtered_click_kind`); a file previews when
-        // single-click previews are enabled and two clicks open files (`RecursivePreview`).
-        // A click closes no column. A slow second click renames as on any row, the rename
-        // finding the result through [`targets`].
         Intent::Clicked { id } => {
             if let Some(entry) = app.filter.found.get(id).cloned() {
                 if entry.is_directory() {
@@ -886,8 +784,6 @@ pub(crate) fn hit_intent(
     }
 }
 
-/// The column header's filter: its toggle. The field is in the band under the header
-/// ([`column_band`]).
 pub(crate) fn column_actions(app: &App, depth: usize) -> Vec<El> {
     let look = &app.look;
     let open_here = app
@@ -905,15 +801,11 @@ pub(crate) fn column_actions(app: &App, depth: usize) -> Vec<El> {
     .build(&look.accent_icon_kit())
     .checked(open_here)
     .key(format!("columns-filter-{depth}"))
-    // Not a focus stop, as every column header's action (C2's slot).
     .focusable(false)
     .no_focus_ring();
     vec![toggle]
 }
 
-/// The band under column `depth`'s header: the field, while the filter is open there, across
-/// the column, as GTK's revealer under the header (`column_header` in
-/// `src/ui/browser/columns/append/header.rs`).
 pub(crate) fn column_band(app: &App, depth: usize) -> Option<El> {
     if shell::preferences(app).tenxer_mode {
         return None;
@@ -942,14 +834,10 @@ fn toggled(app: &mut App, depth: usize, tx: &mut Tx) {
     open(app, None, tx);
 }
 
-/// A new item in column `depth`: GTK empties the column's filter first, so the new row is
-/// not hidden (`begin_new_entry_inner`).
 pub(crate) fn clear_for_new_item(app: &mut App, depth: usize, tx: &mut Tx) {
     empty_at(app, depth, tx);
 }
 
-/// A reveal in column `depth`, such as the search palette's: GTK empties the column's filter
-/// first, so the revealed entry shows (`prepare_reveal` in `src/ui/browser/events/reveal.rs`).
 pub(crate) fn clear_for_reveal(app: &mut App, depth: usize, tx: &mut Tx) {
     empty_at(app, depth, tx);
 }
@@ -969,11 +857,6 @@ fn empty_at(app: &mut App, depth: usize, tx: &mut Tx) {
     route(app, polled, tx);
 }
 
-/// "Group by file type" changed: in a view that groups, the filter closes with its query and
-/// its results, as GTK's `set_group_by_type` rebuilds the List pane and its filter with it
-/// (`rebuild_list` in `src/ui/browser_modes/rebuild.rs`; finding lgse/strata#2460). The
-/// keyboard stays where it is. In a view that does not group, GTK rebuilds nothing and the
-/// filter stays.
 pub(crate) fn close_for_regroup(app: &mut App, tx: &mut Tx) {
     let groups = shell::shown_view(app).is_some_and(|view| view.supports_type_grouping);
     if !groups || app.filter.open_in.is_none() {
@@ -983,8 +866,6 @@ pub(crate) fn close_for_regroup(app: &mut App, tx: &mut Tx) {
     route(app, polled, tx);
 }
 
-/// The browser's columns changed: the filter closes when its column went or shows another
-/// folder, as GTK's goes with the column it was built in.
 fn follow_columns(app: &mut App, tx: &mut Tx) -> bool {
     let Some(open) = app.filter.open_in.clone() else {
         return false;
@@ -997,9 +878,6 @@ fn follow_columns(app: &mut App, tx: &mut Tx) -> bool {
     true
 }
 
-/// After a `/` opened a folder (or an unlisted tab returned to its filter), the field takes the
-/// keyboard from its new listing once listed, as GTK's `show_filter_with_query("")` gives it;
-/// `Tx::focus_when_shown` waits if the band's field mounts on a subsequent commit.
 fn refocus(app: &mut App, tx: &mut Tx) -> bool {
     if !app.filter.refocus_field {
         return false;
@@ -1032,8 +910,6 @@ fn ctrl_f(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     }
 }
 
-/// Escape on the filter's results closes it (`dismiss_focused_filter`): its field takes its
-/// own Escape. An empty filter has no results, so Escape on its rows is theirs.
 fn dismiss(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     let polled = app.filter.state.close();
     route(app, polled, tx);
@@ -1047,10 +923,6 @@ fn on_results(app: &App, at: &Situation) -> bool {
     at.in_view() && open.place.shows_hits(app, open.depth) && !app.filter.state.text().is_empty()
 }
 
-/// `search_result_keys` in `src/ui/window/keyboard.rs`: while search results hold focus,
-/// directory commands (`Ctrl+.`, `Ctrl+Shift+N`, `Alt+Up`, `Backspace`, type-to-search) do not
-/// act on the hidden directory selection; Undo/Redo, Trash/Delete, and clipboard shortcuts pass
-/// through, and the view's own result keys and `after_yield` (`F5`) still run.
 fn search_rows_own_key(press: &KeyPress) -> bool {
     !press.is_any(&[COPY, CUT, PASTE, UNDO, REDO])
         && !press.is(MOVE_TO_TRASH
@@ -1062,8 +934,6 @@ fn leave_result_key(_: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Left
 }
 
-/// A key typed in the listing (`type_to_search_query`): `/` opens the filter empty, a
-/// character opens it on that character.
 fn typed(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     let Some(query) = call.press.and_then(typing::query) else {
         return Outcome::Declined;
@@ -1084,8 +954,6 @@ fn types_to_search(app: &App, at: &Situation) -> bool {
 }
 
 impl Part for Filter {
-    // The filter draws in its column's header (`pane_header::actions`), or under the pane's
-    // ([`pane::band`]), and nowhere else.
     const PLACE: Place<App> = Place::Overlays(|_, _| None);
 
     fn new(setup: &Setup<'_>) -> Self {
@@ -1159,8 +1027,6 @@ impl Part for Filter {
         blurred | changed | refocused
     }
 
-    // `filter_and_location_commands` and `text_input` in
-    // `src/ui/window/keyboard/commands.rs`.
     const COMMANDS: &'static [Action<App>] = &[
         Action::new("filter", ctrl_f)
             .command(FILTER)

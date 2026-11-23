@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The keys Strata names in code, each with its XKB keysym.
-//!
-//! A constant is added here when code first names the key: a catalog binding, a table of the
-//! reader, or a key an interface delivers by name. The names are X's keysym names, with a
-//! leading underscore where one starts with a digit, which is also how gdk4 spells them. The
-//! values are those of `xkbcommon-keysyms.h`.
-//!
-//! The list is a macro so that the GTK application's tests can hold every constant to
-//! `gdk::Key`'s of the same name.
-
 /// Calls `$with!` with every key constant as `name = keysym,`.
 #[macro_export]
 macro_rules! key_constants {

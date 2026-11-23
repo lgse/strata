@@ -155,8 +155,6 @@ impl NavigationState {
         self.install_snapshot_with_uniqueness(request_id, entries, None)
     }
 
-    /// Installs a pre-sorted snapshot, optionally carrying an off-thread proof of whether
-    /// every entry has a distinct location.
     pub(crate) fn install_snapshot_with_uniqueness(
         &mut self,
         request_id: RequestId,
@@ -185,8 +183,6 @@ impl NavigationState {
         })
     }
 
-    /// Returns the finished depth and whether completing the listing moved the cursor,
-    /// which batch loads have not published yet.
     pub fn finish(
         &mut self,
         request_id: RequestId,
@@ -289,8 +285,6 @@ impl ColumnState {
         self.reload_cursor = None;
     }
 
-    /// Selects `position` as a load's automatic choice: cursor, single selection and
-    /// anchor, marked so a later cursor move does not carry it along.
     pub(super) fn select_loaded_entry(&mut self, position: usize) {
         let location = self.entries[position].location.clone();
         self.selected = Some(position);
@@ -308,8 +302,6 @@ impl ColumnState {
         }
     }
 
-    /// An explicit target, or a selection the load already restored, wins over the
-    /// preferred entry.
     pub(super) fn resolve_preferred_on_load(&mut self) {
         if !self.pending_reveal.is_empty() || self.selected.is_some() {
             return;
@@ -330,8 +322,6 @@ impl ColumnState {
         self.select_loaded_entry(position);
     }
 
-    /// Unlike the preferred entry, the open folder has no fallback: a cursor on
-    /// another entry would make file commands act on it.
     fn resolve_open_child_on_load(&mut self) {
         if !self.pending_reveal.is_empty() || self.selected.is_some() {
             return;
@@ -351,9 +341,6 @@ impl ColumnState {
         place_committed_cursor(self, position);
     }
 
-    /// Picks that need the complete listing: the first row shown for a grouped first
-    /// visit or a preferred entry that never arrived, and a cursor-only neighbour for a
-    /// reloaded cursor whose entry is gone. Returns whether the cursor moved.
     pub(super) fn complete_load_selection(&mut self) -> bool {
         let before = self.selected;
         self.open_child_on_load = None;

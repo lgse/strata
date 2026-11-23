@@ -6,9 +6,6 @@ use strata_kit::icons::IconName;
 use super::jobs::{self, JobRow, JobStatus, JobsWords, strip_terminal_sequences};
 use super::*;
 
-/// Ticks `dock` from wake to wake until `limit` seconds after `start`, as a resting window
-/// polls: only at the wakes it asked for. Returns the clock it ended at, and whether any tick
-/// changed something.
 fn wake_to_wake(dock: &mut Dock, start: f64, limit: f64) -> f64 {
     let mut now = start;
     for _ in 0..1000 {
@@ -151,8 +148,6 @@ fn a_transfer_card_shows_percentage_speed_and_time_left_and_counts_files() {
         &mut tx,
     );
     let op = dock.op(1).unwrap();
-    // Zero bytes start nothing; 4 MB at 1 s starts the clock and 12 MB at 2 s measures
-    // 8 MB/s; 28 MB left is 3.5 s, rounded up.
     assert_eq!(&*op.live.meta.get(), "8 MB/s · 4s left");
     assert_eq!(&*op.live.percent.get(), "30%");
     assert_eq!(&*op.live.count.get(), "3/10");

@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C16 ProgressDock: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c16-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-2-composites/C16-progress-dock.md`.
-//!
-//! The page draws a stand-in window: a header, a listing with a focusable cursor row, buttons
-//! that start fake operations and notices, a probe button that proves the window stays usable
-//! while cards show, and a stand-in footer with the Jobs button (C19's `Footer` takes its
-//! place once C19 merges). Fake operations are workers on the virtual clock: each poll turns
-//! the time since they started into a progress sample, so goldens and scripts see the same
-//! numbers every run.
-
 use rune::{Cx, El, KeyEvent, Tx, col, el, icon, row, text};
 use rune_kit::Button;
 use strata_components::dialog::{Focus, StrataDialog};
@@ -28,8 +16,6 @@ use crate::{Gallery, Scene};
 /// How long a fake operation takes to stop after Cancel.
 const STOP_AFTER: f64 = 0.5;
 
-/// How long a fake job takes to stop after Cancel: long enough for a script's final tree,
-/// a second after its last event, to see it "Cancelling…".
 const JOB_STOP_AFTER: f64 = 2.0;
 
 /// What the page does when a cancelled operation has stopped.
@@ -67,7 +53,6 @@ pub struct Fake {
     pub hold: Option<f64>,
 }
 
-/// C16's demo state, held in `Gallery::c16`.
 #[derive(Default)]
 pub struct Demo {
     pub dock: Dock,
@@ -324,8 +309,6 @@ fn sample(kind: &Kind, elapsed: f64, hold: Option<f64>) -> (Sample, bool) {
     }
 }
 
-/// The jobs the dashboard scenes list: one running per item, one queued, two done (one with
-/// output, one without), one failed.
 fn sample_jobs() -> Vec<JobRow> {
     let mut resize = JobRow::new(4, "Resize images", JobStatus::Running, -12.4);
     resize.icon = IconName::Pictures;
@@ -452,8 +435,6 @@ fn jobs_closed(g: &mut Gallery) {
 
 fn idle(_g: &mut Gallery) {}
 
-/// Eight cards that differ: copies, compressions and deletes, each started 0.6 s before the
-/// next, so each shows its own progress.
 fn many(g: &mut Gallery) {
     let d = demo(g);
     for i in 0..8 {
@@ -513,8 +494,6 @@ fn reduced(g: &mut Gallery) {
     g.c16.dock.set_animations(false);
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c16", dark)`, then fills in `g.c16`.
 pub const SCENES: &[Scene] = &[
     pair!("c16-card", card),
     pair!("c16-card", card, dark),
@@ -532,8 +511,6 @@ pub const SCENES: &[Scene] = &[
     pair!("c16-jobs", jobs, dark),
 ];
 
-/// Scenes for review with `--scene` only, kept out of the goldens. Scripts start from these
-/// too: an idle window with the openers, and the jobs button with its list closed.
 pub const REVIEW: &[Scene] = &[
     pair!("c16-idle", idle),
     pair!("c16-idle", idle, dark),
@@ -729,7 +706,6 @@ fn window(g: &Gallery, look: &Look, jobs: Option<El>) -> El {
         .font(k.ty.small)
         .color(k.c.text_muted)
         .px(space.lg);
-    // C19's footer, until it merges: its height (frame.control + 2·space.xs) and its fill.
     let footer = row()
         .key("c16-footer")
         .w_full()
@@ -764,14 +740,10 @@ fn window(g: &Gallery, look: &Look, jobs: Option<El>) -> El {
         .child(footer)
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds: the
-/// fake workers report, then the dock's and the dashboard's timers run.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     let d = demo(g);
     d.now = t;

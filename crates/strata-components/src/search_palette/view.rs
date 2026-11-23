@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`SearchPalette`]: the builder that puts the palette in C15's modal shell: the search bar,
-//! the body (results or a status) and the footer.
-
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Range;
 use std::rc::Rc;
@@ -60,13 +57,6 @@ pub(super) struct Ctx<S> {
     pub middle_opens: bool,
 }
 
-/// The palette: Ctrl+K search, Ctrl+Shift+K folder jump, or any other [`PaletteMode`], over
-/// C15's modal shell. See the module docs for hosting it.
-///
-/// Keys: `{key}-dialog` (role `dialog`, named by the mode's title), `{key}-combobox` (the
-/// group around the field), [`field_key`](super::field_key), `{key}-busy` (the spinner), [`results_key`] (the
-/// listbox), [`option_key`](super::option_key) (each row, by place), `{key}-status` (the status, a polite live region,
-/// hidden while results show, when it says their count), `{key}-partial`, `{key}-footer`.
 pub struct SearchPalette<S> {
     key: String,
     get: fn(&S) -> &PaletteState,
@@ -82,9 +72,6 @@ pub struct SearchPalette<S> {
 }
 
 impl<S: 'static> SearchPalette<S> {
-    /// The palette keyed `key` over the state `get` and `access` reach. Opening a result
-    /// takes Enter, and opening it in a new tab Ctrl+Enter ([`Self::new_tab_keys`]); its
-    /// folder, Alt+Enter ([`Self::reveal_keys`]).
     pub fn new(
         key: impl Into<String>,
         get: fn(&S) -> &PaletteState,
@@ -105,51 +92,36 @@ impl<S: 'static> SearchPalette<S> {
         }
     }
 
-    /// The chords that open the highlighted result in a new tab: the host's `open_in_new_tab`
-    /// binding (Strata's default, Ctrl+Enter). Shift held too still matches, as in Strata.
     pub fn new_tab_keys(mut self, chords: Vec<Chord>) -> Self {
         self.new_tab = chords;
         self
     }
 
-    /// The chords that open the highlighted result's folder: the host's
-    /// `open_containing_folder` binding (Alt+Enter). Super held too still matches.
     pub fn reveal_keys(mut self, chords: Vec<Chord>) -> Self {
         self.reveal = chords;
         self
     }
 
-    /// Draws each result's thumbnail ([`PaletteItem::thumb`]) from `store`, at `step` (see
-    /// [`Step::for_tile`] with [`PALETTE_THUMB`]), over its icon. Folders-only modes draw icons.
     pub fn thumbnails(mut self, store: fn(&S) -> &ThumbnailStore, step: Step) -> Self {
         self.thumbs = Some((store, step));
         self
     }
 
-    /// Called with the rows visible in the list (Rune's `on_visible_rows`): sync a
-    /// [`ThumbnailStore`] viewer here. True when it changed state the view reads.
     pub fn on_visible(mut self, f: impl Fn(&mut S, Range<usize>) -> bool + 'static) -> Self {
         self.on_visible = Some(Rc::new(f));
         self
     }
 
-    /// On opening a result, focus goes to the element keyed `key` (the revealed item's view)
-    /// instead of back to the palette's opener, as Strata hands it to the browser. Escape,
-    /// the toggle and a click outside still return it to the opener.
     pub fn return_focus_on_open(mut self, key: impl Into<String>) -> Self {
         self.return_focus_on_open = Some(key.into());
         self
     }
 
-    /// Whether a middle click on a result opens it in a new tab (the default). Off, a middle
-    /// click does nothing and the palette stays open with its query and highlight, as
-    /// Strata's palette, whose rows take no middle click.
     pub fn middle_click_opens(mut self, opens: bool) -> Self {
         self.middle_opens = opens;
         self
     }
 
-    /// Opens and closes at once while true: pass `cx.is_reduced_motion()` (C15's rule).
     pub fn reduced_motion(mut self, reduced: bool) -> Self {
         self.reduced_motion = reduced;
         self
@@ -227,8 +199,6 @@ fn bar<S: 'static>(
     editable: bool,
 ) -> El {
     let k = &look.kit;
-    // A text input is always a text box to Rune's accessibility (U-C6-1), so the combobox is
-    // the group around it, expanded while results show.
     let combobox = row()
         .key(format!("{}-combobox", cx.key))
         .role("combobox")
@@ -292,8 +262,6 @@ fn body<S: 'static>(
         .min_h(0.0);
     let status_key = format!("{}-status", cx.key);
     let Some(words) = phase.text() else {
-        // The count assistive technology hears: hidden, as Strata shows none, and polite.
-        // Nothing until the query's first answer: the stale list's size isn't its count.
         let heard = state.announced().map(mode.count).unwrap_or_default();
         let count = el()
             .key(status_key)
@@ -374,10 +342,6 @@ fn results<S: 'static>(
             move |_: &S, i| option_key(&key_rows.key, i).into(),
             move |s: &S, i| build_rows.row(s, i),
         )
-        // Keyed by place (see `option_key`), so the keys never change for a given count. How
-        // the list scrolls as answers land is `PaletteState::deliver`'s; arrows reveal their
-        // row from the field's key handler. (`reveal_selected` does nothing for rows built by
-        // index at Rune 631e8a67: Rune draft U-C17-4.)
         .virtual_rows_version(cx.key.as_str());
     if let Some(f) = on_visible {
         list = list.on_visible_rows(move |s: &mut S, r| f(s, r));
@@ -476,8 +440,6 @@ fn row_actions<S: 'static>(
     let middle = {
         let (slot, open_id) = (handler.clone(), id.to_owned());
         Rc::new(move |s: &mut S, tx: &mut Tx| {
-            // Taking the middle button even when `middle_opens` is off keeps Rune's built-in
-            // middle-click viewport autoscroll from starting on a result row.
             if !middle_opens {
                 return;
             }
@@ -573,8 +535,6 @@ fn row_content<S>(
     content
 }
 
-/// One result: the icon or thumbnail, the name over the full path, matches in the accent. The
-/// name and the path are labels in the option, as GTK's row's two labels are.
 fn result_row<S: 'static>(
     rows: &Rows<S>,
     item: &PaletteItem,
@@ -586,11 +546,6 @@ fn result_row<S: 'static>(
     super::tests::ROW_BUILDS.with(|n| n.set(n.get() + 1));
     let look = &rows.look;
     let k = &look.kit;
-    // The press handlers sit on an inner element keyed by the result, inside the row keyed by
-    // place. Rune resolves a release by the pressed element's path and drops it when that path
-    // is gone, so a press held while a batch moves another result into the row (the row's key
-    // stays, the inner key changes) opens nothing and asks for no menu, for every button, as
-    // GTK's ListBox activates only when press and release land on the same row.
     let actions = row_actions(rows, &item.id, handler);
     let (press_box, press_opt) = (actions.press.clone(), actions.press);
     let (menu_box, menu_opt) = (actions.menu.clone(), actions.menu);
@@ -601,8 +556,6 @@ fn result_row<S: 'static>(
         .role("none")
         .w_full()
         .h_full()
-        // A tint only: the pointer never moves the keyboard's highlight. Rune reports a hover
-        // when a row scrolls under a still pointer (C6's review round 1, B1).
         .hover(k.c.hover)
         .preserve_focus_on_press(true)
         .on_background_press_tx(move |s, tx| press_box(s, tx))
@@ -618,15 +571,11 @@ fn result_row<S: 'static>(
         .w_full()
         .h(look.row.palette)
         .preserve_focus_on_press(true)
-        // Assistive technology's click and menu actions reach the option, not the inner box;
-        // the pointer reaches the inner box first.
         .on_press_tx(move |s, tx| press_opt(s, tx))
         .on_secondary_press(move |s, p, tx| menu_opt(s, p, tx))
         .child(pressable)
 }
 
-/// `id` made safe as a key segment: Rune reads `/` in a key as a key path, so `/` and `%`
-/// (to keep keys apart) are escaped.
 fn escape(id: &str) -> String {
     let mut out = String::with_capacity(id.len());
     for c in id.chars() {

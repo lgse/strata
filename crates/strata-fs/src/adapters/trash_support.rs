@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! GIO reports `access::can-trash` on any writable FUSE root, so many FUSE
-//! mounts only reveal missing Trash support when a trash attempt fails partway.
-
 #[cfg(test)]
 pub(super) mod tests;
 
@@ -112,8 +109,6 @@ impl TrashEnvironment for SystemTrash {
     }
 }
 
-/// Trashes one item, records a mount that turned out to lack Trash, and
-/// removes the empty trash folders a failed attempt left behind.
 pub(crate) async fn trash_with_cleanup(
     file: &gio::File,
     cancellable: &gio::Cancellable,
@@ -282,8 +277,6 @@ impl FuseFacts {
     }
 }
 
-/// FUSE mounts without `default_permissions` often answer `access()` with
-/// success regardless (sshfs only checks `X_OK`), so read the mode bits too.
 fn may_remove_from(parent: &std::fs::Metadata, item: &std::fs::Metadata) -> bool {
     let uid = rustix::process::geteuid().as_raw();
     let gid = rustix::process::getegid().as_raw();
@@ -397,14 +390,10 @@ pub(super) fn unsupported_reason_in(
     Some((mount, reason))
 }
 
-/// Lets Reload retry Trash on mounts the user may have fixed. Clears every
-/// mount so it never has to resolve a possibly hung folder first.
 pub fn forget_all() {
     unsupported_mounts().clear();
 }
 
-/// Watches the FUSE mounts a batch trashes on and, when every attempt on a
-/// mount was unsupported, removes the trash folders that weren't there before.
 pub(crate) struct LeftoverWatch {
     parents: HashMap<PathBuf, MountKey>,
     watched: HashMap<MountKey, WatchedMount>,
@@ -506,8 +495,6 @@ impl LeftoverWatch {
     }
 }
 
-/// The two folders GIO may create at a mount root: `.Trash-$uid`, or
-/// `.Trash/$uid` when a sticky `.Trash` exists.
 fn trash_dir_candidates() -> [(Option<&'static str>, OsString); 2] {
     let uid = rustix::process::getuid().as_raw().to_string();
     [

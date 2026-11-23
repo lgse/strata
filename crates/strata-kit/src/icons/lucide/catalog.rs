@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The icons `build.rs` generates from `crates/strata-kit/icons/`: [`LUCIDE`], [`MOCHA`] and
-//! [`LATTE`], each sorted by `Icon::name`, and each icon's [`index`] in all three.
-
 use std::sync::OnceLock;
 
 use rune::Icon;
@@ -11,9 +8,6 @@ use super::super::IconName;
 
 include!(concat!(env!("OUT_DIR"), "/catalog.rs"));
 
-/// The icon `key` names in `all`: its `Icon::name`, else an [`IconName::id`], which finds
-/// `semantic(name)`. A binary search, then one over the ids, so rows can look icons up while
-/// they draw.
 pub(in crate::icons) fn find(
     all: &'static [Icon],
     key: &str,

@@ -1,20 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf on the sheets Strata's budget lets through: 100,000 rows of four columns (more values
-//! than the budget's 100,000, as rune-kit's Table measures), 390 rows of 256 columns (the most
-//! columns at that budget) and an 18,000-row sheet arriving. `#[ignore]`d; run with the `perf`
-//! profile, and Rune's commit budget to hear slow commits:
-//!
-//! ```sh
-//! RUNE_COMMIT_BUDGET_MS=8 cargo test --profile perf -p strata-components --lib \
-//!     sheet_grid::tests::perf -- --ignored --test-threads=1 --nocapture
-//! ```
-//!
-//! Each claim prints one line: open (hand-over and first frame), the wheel (600 frames at
-//! 120 Hz, 48 pt each), Ctrl+End and Ctrl+Home, a cell click, sorts (a text column, its flip,
-//! a number column), Ctrl+C of every row, a held range drag's autoscroll, and on the wide sheet
-//! the wheel down and sideways.
-
 use std::cell::Cell as StdCell;
 use std::time::Instant;
 

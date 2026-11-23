@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The transfer the floating Copy to or Move to chooser starts (`crate::chooser::floating`),
-//! and where the browser goes once it finishes (`finish_copy_move_to` and
-//! `complete_transfer_ui` in `src/ui/browser/transfer/destination_dialog.rs` and
-//! `src/ui/browser/events/reveal.rs`).
-//!
-//! The transfer reveals what it placed, which shows the destination; GTK also keeps the
-//! destination to go to when the transfer completes. Its reveal comes first and clears it, so
-//! the browser goes there only when nothing was revealed: a navigation since, say.
-
 use strata_core::model::Location;
 
 use super::begin_transfer;

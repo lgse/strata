@@ -17,12 +17,8 @@ use crate::scroll::{Bar, ScrollFeed};
 /// How long the Copy path button says "Path copied" (Strata's 2 s).
 pub const COPIED_FOR: f64 = 2.0;
 
-/// How long a file drag rests on an ancestor crumb before it opens (Strata's 750 ms):
-/// [`super::LocationBar::spring_delay`]'s default.
 pub const SPRING_DELAY: f64 = 0.75;
 
-/// What a call into the bar changed, and the intents it raised for the host to route as it
-/// routes the bar's own. Every host-facing call that can raise one returns this.
 #[must_use = "route the intents as the bar's own"]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Polled {
@@ -56,24 +52,12 @@ struct Spring {
     index: usize,
     id: String,
     delay: f64,
-    /// When it arrived, on `Tx::clock`, or `None` until the next `tick` when armed from a pick
-    /// callback whose `Tx::clock` is `0.0` (packet entry 108).
     since: Option<f64>,
 }
 
-/// The location bar's state: crumbs or the entry, the entry's text, the suggestions, the
-/// hierarchy menu, the drag over the crumbs and the copy feedback. The host keeps one per bar
-/// (per tab) and hands the bar an accessor to it.
-///
-/// The host calls, from its poll, [`LocationBarState::tick`] every frame (the bar's timers and
-/// a press that took focus away from the entry), and [`LocationBarState::deliver`] with each
-/// answer to a [`LocationIntent::Complete`]. It forwards its window's activation with
-/// [`LocationBarState::set_window_focused`] (Rune draft U-C6-6).
 #[derive(Debug)]
 pub struct LocationBarState {
     editing: bool,
-    /// The entry's text, caret and focus. The entry binds it; a host reads it, and changes it
-    /// only through the methods here.
     pub edit: TextEdit,
     completion: Completion,
     window_focused: bool,
@@ -94,10 +78,6 @@ pub struct LocationBarState {
     pub(crate) handler: HandlerSlot,
 }
 
-/// The bar's intent handler as the latest view built it. Suggestion rows are memoised, so a
-/// row kept since its list came would otherwise call the handler from the view that first
-/// built it; they read it from here when pressed instead. Type-erased, as the state isn't
-/// generic over the app's.
 #[derive(Clone, Default)]
 pub(crate) struct HandlerSlot(Rc<RefCell<Option<Rc<dyn Any>>>>);
 
@@ -149,8 +129,6 @@ impl LocationBarState {
         self.editing
     }
 
-    /// Whether the entry has the keyboard: the host's key dispatch leaves the view's shortcuts
-    /// alone then (Ctrl+K, Ctrl+1–3), as Strata's does.
     pub fn entry_focused(&self) -> bool {
         self.editing && self.edit.focused
     }
@@ -212,14 +190,10 @@ impl LocationBarState {
         };
     }
 
-    /// Opens the entry on `text` (the folder the bar names), all of it selected, with the
-    /// keyboard: Ctrl+L, or a press on the crumbs' empty space. Asks for suggestions.
     pub fn begin_edit(&mut self, text: &str) -> Polled {
         let mut out = Polled::changed();
         self.menu = None;
         if self.editing {
-            // Ctrl+L again keeps what was typed, selects it, and lists it afresh, as Strata's
-            // `begin_location_edit` does.
             self.edit.set_selection(0, self.edit.text.len());
             self.edit.break_history_group();
             self.edit.focused = true;
@@ -238,8 +212,6 @@ impl LocationBarState {
         out
     }
 
-    /// Back to the crumbs without a [`LocationIntent::Cancelled`]: the host's own call, after a
-    /// location that can't be opened, say, or when it hides the bar.
     pub fn end_edit(&mut self) -> Polled {
         let mut out = Polled::default();
         if self.editing {
@@ -251,8 +223,6 @@ impl LocationBarState {
         out
     }
 
-    /// Keeps the entry open on `text` with the keyboard, the caret at its end: a submitted
-    /// location that mounts first, which Strata shows without its password.
     pub fn resume_edit(&mut self, text: &str) {
         self.editing = true;
         self.seen_focus = false;
@@ -261,8 +231,6 @@ impl LocationBarState {
         self.edit.focused = true;
     }
 
-    /// The host opened another folder. An entry the user is typing in stays open with its text
-    /// (a new tab's first load); otherwise the crumbs show, scrolled to the current one.
     pub fn navigated(&mut self) -> Polled {
         self.reveal = true;
         self.trail_generation = self.trail_generation.wrapping_add(1);
@@ -278,8 +246,6 @@ impl LocationBarState {
         out
     }
 
-    /// An answer to a [`LocationIntent::Complete`]. A stale one (an older generation, text
-    /// that changed since, the crumbs showing, or the window unfocused) is dropped.
     pub fn deliver(&mut self, answer: Completions) -> Polled {
         if !self.editing || !self.window_focused {
             return Polled::default();
@@ -298,9 +264,6 @@ impl LocationBarState {
         }
     }
 
-    /// The window was activated or deactivated (the root's `on_window_focus`). Losing it closes
-    /// the suggestions and drops a listing in flight; the entry and its text stay. Regaining it
-    /// shows nothing until the text changes again.
     pub fn set_window_focused(&mut self, focused: bool) -> Polled {
         if self.window_focused == focused {
             return Polled::default();
@@ -313,8 +276,6 @@ impl LocationBarState {
         out
     }
 
-    /// Closes the suggestions and drops a listing in flight: the host hid the entry (a tab
-    /// switch) without ending the edit.
     pub fn dismiss_completion(&mut self) -> Polled {
         let mut out = Polled::changed();
         if self.completion.dismiss() {
@@ -323,17 +284,12 @@ impl LocationBarState {
         out
     }
 
-    /// One frame at `now` seconds on the window's clock (the poll's, as `Tx::clock`): ends an edit
-    /// whose entry lost the keyboard to a press elsewhere (U-C6-3), springs a crumb a drag rested
-    /// on, and ends the copy feedback.
     pub fn tick(&mut self, now: f64, tx: &mut Tx) -> Polled {
         let mut out = Polled::default();
         if self.editing {
             if self.edit.focused {
                 self.seen_focus = true;
             } else if self.seen_focus {
-                // A press outside the entry took the keyboard: cancel, and let the press do
-                // what it does.
                 out.changed = true;
                 if self.close() {
                     out.push(LocationIntent::CancelCompletion);
@@ -401,9 +357,6 @@ impl LocationBarState {
         out
     }
 
-    /// A suggestion chosen with the pointer.
-    /// Taken at once, even while keys wait for a listing (Strata's `row_activated`): the keys and
-    /// the listing are dropped.
     pub(crate) fn choose(&mut self, i: usize) -> Polled {
         match self.completion.choose(i) {
             Some(out) => self.apply(out),
@@ -411,15 +364,10 @@ impl LocationBarState {
         }
     }
 
-    /// Shows "Path copied" for [`COPIED_FOR`] from `now` (`Tx::clock`): the Copy path button
-    /// does this itself; a scene, or a host restoring a tab, may too. The host's next tick asks
-    /// for the wake that ends it.
     pub fn show_copied(&mut self, now: f64) {
         self.copied = Some(now);
     }
 
-    /// A drag the crumb `index` (`id`) accepts arrived or left at `now` (`Tx::clock`). `delay`
-    /// is the spring delay.
     pub(crate) fn drag_over(
         &mut self,
         index: usize,
@@ -430,8 +378,6 @@ impl LocationBarState {
     ) {
         self.set_drop_hover(index, hover);
         match (hover, delay) {
-            // A binder may report the same hover again (X2's on each motion): the spring keeps
-            // its start, as Strata's `schedule_spring_load_navigation` does.
             (DropHover::Accepting, Some(_))
                 if self
                     .spring

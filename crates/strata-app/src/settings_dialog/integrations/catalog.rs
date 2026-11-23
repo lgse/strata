@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Catalog section, category filter chips, responsive card grid, and expandable requirements
-//! with copyable/runnable dependency install commands for Settings -> Integrations.
-
 use std::rc::Rc;
 
 use rune::{Color, Cursor, El, col, el, icon, row, text};

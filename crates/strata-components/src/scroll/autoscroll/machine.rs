@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The autoscroll state machine: idle, running from an anchor, or stopping. Plain data with no
-//! Rune runtime; what it asks of Rune goes through [`Out`].
-
 use rune::{PointerButton, Spring, Tx};
 
 use super::speed::{AutoscrollSettings, speed};
@@ -10,9 +7,6 @@ use crate::collection::marquee::glide_lead;
 use crate::contract::{Point, Rect};
 use crate::scroll::ScrollFeed;
 
-/// Why an autoscroll stopped, as the host hears it.
-///
-/// Used by: hosts (an Escape also cancels an armed 10xer chord).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Stop {
@@ -24,10 +18,6 @@ pub enum Stop {
     Gone,
 }
 
-/// A viewport autoscroll moves, the axes it moves it on, and where it reads the viewport's
-/// position from.
-///
-/// Used by: C24's collection adapter, C4 (its sideways viewport), hosts.
 #[derive(Clone, Debug)]
 pub struct Target {
     pub(crate) path: String,
@@ -68,18 +58,11 @@ impl Target {
     }
 }
 
-/// What starts an autoscroll.
-///
-/// Used by: C24's collection adapter, hosts with a plain viewport.
 #[derive(Clone, Debug)]
 pub struct Start {
-    /// Who started it: the collection's key, say. [`super::Autoscroll::stop_gone`] stops only
-    /// its owner's.
     pub owner: String,
     /// The press, in window points: where the anchor shows.
     pub anchor: Point,
-    /// The viewport's rect in window points: the anchor is clipped to it and the pointer
-    /// shows the scroll cursor over it.
     pub viewport: Rect,
     /// The viewports to move. Autoscroll starts only if one of them can scroll.
     pub targets: Vec<Target>,
@@ -121,8 +104,6 @@ pub(super) struct Run {
     last: Option<f64>,
     /// The last step moved a viewport (and asked for the next frame).
     moving: bool,
-    /// Which targets the last step moved, one per target: a target that stopped (at its end, or
-    /// in the dead zone on its axes) is stopped once, not on every frame another moves.
     moved: Vec<bool>,
 }
 
@@ -131,8 +112,6 @@ pub(super) enum State {
     #[default]
     Idle,
     Running(Run),
-    /// A stop that has no transaction yet (Escape, through the modal's dismiss): the next step
-    /// stops the viewports where they are.
     Stopping(Run),
 }
 
@@ -143,8 +122,6 @@ pub(crate) struct Machine {
 }
 
 impl Machine {
-    /// Starts from `start`, unless one is running or nothing it names can scroll: a listing
-    /// that fits keeps the press for other handlers. True when it started.
     pub(crate) fn start(&mut self, start: Start, settings: AutoscrollSettings) -> bool {
         if !matches!(self.state, State::Idle) || !start.targets.iter().any(Target::scrollable) {
             return false;
@@ -185,8 +162,6 @@ impl Machine {
         }
     }
 
-    /// The pointer moved to `p` (window points). True when the machine sleeps and should wake:
-    /// the pointer left the dead zone, or turned back from an end it had reached.
     pub(crate) fn track(&mut self, p: Point) -> bool {
         let State::Running(run) = &mut self.state else {
             return false;
@@ -195,8 +170,6 @@ impl Machine {
         !run.moving && run.speeds().iter().any(|v| v.0 != 0.0 || v.1 != 0.0)
     }
 
-    /// Stops. With nothing moving it is idle at once; else it stops at the next
-    /// [`Self::step`], which has the transaction to stop the glide with.
     pub(crate) fn request_stop(&mut self) {
         match std::mem::take(&mut self.state) {
             State::Running(run) if run.moving => self.state = State::Stopping(run),
@@ -216,8 +189,6 @@ impl Machine {
         }
     }
 
-    /// Stops without moving anything (the listing went, or another scroll request replaces the
-    /// glide). `owner` limits it to that owner's; `None` stops any. True when one stopped.
     pub(crate) fn stop_gone(&mut self, owner: Option<&str>) -> bool {
         if self.owner().is_none_or(|o| owner.is_some_and(|w| w != o)) {
             return false;
@@ -226,8 +197,6 @@ impl Machine {
         true
     }
 
-    /// One frame at `now` (seconds): glides each viewport toward the pointer, or steps it
-    /// when animations are off. True when what the host draws changed (a stop finished).
     pub(crate) fn step(&mut self, now: f64, animations: bool, out: &mut dyn Out) -> bool {
         match &mut self.state {
             State::Idle => false,
@@ -241,8 +210,6 @@ impl Machine {
 }
 
 impl Run {
-    /// Each target's speed on its axes, (x, y) in points a second: zero on an axis it doesn't
-    /// move, and toward an end it has reached.
     fn speeds(&self) -> Vec<(f32, f32)> {
         let dx = speed(self.pointer.x - self.anchor.x, &self.settings);
         let dy = speed(self.pointer.y - self.anchor.y, &self.settings);
@@ -275,8 +242,6 @@ impl Run {
             let p = t.feed.get();
             let [ox, oy] = p.offset;
             if vx == 0.0 && vy == 0.0 {
-                // Into the dead zone or at an end: stop the glide where the view is, as
-                // Strata's step does nothing then; once, as it stops.
                 if std::mem::take(was) {
                     out.jump(&t.path, ox, oy);
                 }
@@ -286,7 +251,6 @@ impl Run {
             moved = true;
             let to = |o: f32, v: f32, max: f32| {
                 let ahead = if animations {
-                    // A glide aimed this far ahead each frame settles at `v` (C1d's probe).
                     glide_lead(v, spring, std::time::Duration::from_secs_f32(dt))
                 } else {
                     // Rune lands a glide at once with motion off: aim one frame's travel ahead.
@@ -306,8 +270,6 @@ impl Run {
             self.last = Some(now);
             out.wake();
         } else {
-            // Asleep: the pointer's next move out of the dead zone wakes it, and its first step
-            // then assumes one frame rather than the time it slept.
             self.last = None;
         }
     }

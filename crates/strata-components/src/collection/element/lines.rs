@@ -1,33 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! How entries pack into Rune's virtual lines, and the header lines of groups.
-//!
-//! Rune virtualizes vertical rows only, so a grid (C3) packs several entries into each virtual
-//! line. The list and each Columns column put one entry on each line ([`OnePerLine`]).
-//!
-//! # Group header lines
-//!
-//! ListTable's grouped mode (C4's file-type groups) puts a header line above each group's
-//! entries ([`Groups`], `CollectionState::set_groups`). Groups are listing data, so they live
-//! in the collection's state beside the selection, set with each listing, rather than in the
-//! [`Lines`] rule: the element's builds and handlers and the state's own restores and reveals
-//! all read the same value. The element maps lines to entries through prefix sums over the groups:
-//! O(log groups) a lookup and nothing per entry. Header lines are keyed `head-{key}`
-//! (`keys::header_key`), hold no entry, and the geometry ([`GroupedRows`]) gives presses, the
-//! marquee and Page Up and Down the same lines.
-//!
-//! Every line, header lines included, is the row height tall: Rune's virtual list has one
-//! height estimate, and rows it hasn't laid out take it, so a header of any other height would
-//! put rows where the index geometry doesn't (Rune draft [U-C1f-1]).
-//!
-//! The header of the group at the top of the viewport sticks there while its group scrolls,
-//! and the next group's header pushes it out. Rune keeps a sticky element only inside its own
-//! virtual row, which would put a whole group in one row, so the stuck header is the element's
-//! own overlay: a live value moves it as the view scrolls, and the view builds again to
-//! relabel it when the top group changes (see the element's Decisions).
-//!
-//! [U-C1f-1]: crate::collection::element#rune-drafts-not-filed
-
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::rc::Rc;
@@ -44,27 +16,16 @@ use crate::contract::{
 mod tests;
 
 /// How many entries each virtual line holds, and the geometry they make.
-///
-/// Every line is the element's row height tall, so the geometry's rects must match what the
-/// element draws: line `l` spans `[l·h, (l+1)·h)`, and its entries share the width equally,
-/// in index order, inside the line's [`Lines::inset`] on each side.
-///
-/// Used by: C1e ([`OnePerLine`]), C3 (a grid of N per line).
 pub trait Lines {
-    /// How many entries each line holds in a viewport `width` points wide: at least 1, the
-    /// same for every line. The first build has no width yet (0): return 1 or a guess; the
-    /// element builds again once the viewport's width gives another count.
+    /// How many entries each line holds in a viewport `width` points wide: at least 1, the same for every line.
     fn per_line(&self, width: f32) -> usize;
 
-    /// The space left and right of a line holding several entries, in points: the entries
-    /// share the width inside it, and the geometry must put them there too. 0 by default, and
-    /// for lines of one entry, which keep the row's own inset.
+    /// The space left and right of a line holding several entries, in points.
     fn inset(&self) -> f32 {
         0.0
     }
 
-    /// The geometry of `len` entries in lines `row_height` tall, in a viewport `width` by
-    /// `viewport_height` points, in content coordinates.
+    /// The geometry of `len` entries in lines `row_height` tall, in a viewport `width` by `viewport_height` points.
     fn geometry(
         &self,
         len: usize,
@@ -99,14 +60,11 @@ pub(super) fn line_count(len: usize, per_line: usize) -> usize {
     len.div_ceil(per_line.max(1))
 }
 
-/// One run of entries under a header line: C4's file-type group ("Images").
-///
-/// Used by: C4, hosts.
+/// One run of entries under a header line: file-type group ("Images").
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct Group {
-    /// Names the header line (`head-{key}`): unique in the collection, and the same across
-    /// regroups for the same group.
+    /// Names the header line (`head-{key}`): unique in the collection, and the same across regroups for the same group.
     pub key: u64,
     /// What the header says, and what assistive technology reads.
     pub label: Arc<str>,
@@ -125,15 +83,7 @@ impl Group {
     }
 }
 
-/// The groups a collection draws its entries in, in display order: each a header line, then
-/// its entries.
-///
-/// Build it once per regroup (O(groups)) and give it to the collection's state with the
-/// listing (`CollectionState::set_groups`, before `enter` or `sync`); the element reads it at
-/// O(log groups) a lookup and nothing per entry. Empty groups are dropped. Groups that don't
-/// cover the source exactly (their lengths don't add up to its length) draw it ungrouped.
-///
-/// Used by: C4, hosts.
+/// The groups a collection draws its entries in, in display order: each a header line, then its entries.
 #[derive(Clone, Debug, Default)]
 pub struct Groups {
     groups: Rc<[Group]>,
@@ -250,8 +200,6 @@ impl Groups {
         start..self.entry_from(lines.end).max(start)
     }
 
-    /// How far down from content y `offset` the stuck header covers the content, in lines
-    /// `h` tall: a line's height, less what the next group's header has pushed it out by.
     fn stuck_extent(&self, offset: f32, h: f32) -> f32 {
         if self.is_empty() || h <= 0.0 || !h.is_finite() {
             return 0.0;
@@ -280,8 +228,6 @@ pub(super) enum Line {
     Entries(Range<usize>),
 }
 
-/// How the element's lines map to entries, as one build laid them out: packed `per` to a line,
-/// or grouped under header lines (one entry a line).
 #[derive(Clone, Debug)]
 pub(super) enum LineMap {
     Packed(usize),
@@ -289,8 +235,6 @@ pub(super) enum LineMap {
 }
 
 impl LineMap {
-    /// The map for `len` entries packed `per` to a line, grouped by `groups` when they cover
-    /// them and there is one entry a line.
     pub fn new(per: usize, groups: Option<&Groups>, len: usize) -> Self {
         match groups {
             Some(g) if per <= 1 && !g.is_empty() && g.len() == len => Self::Grouped(g.clone()),
@@ -354,8 +298,6 @@ impl LineMap {
         }
     }
 
-    /// Line `line`'s key: its first entry's (`row-{id}`, or `line-{id}` packed), or its
-    /// group's header's.
     pub fn line_key(&self, source: &dyn EntrySource, line: usize) -> String {
         match self.line(line, source.len()) {
             Line::Header(g) => {
@@ -365,8 +307,6 @@ impl LineMap {
         }
     }
 
-    /// The key of the line before entry `index`'s, when grouped: what a reveal shows first, so
-    /// the entry lands clear of the stuck header. None packed, or for the first line.
     pub fn key_above(&self, source: &dyn EntrySource, index: usize) -> Option<String> {
         let line = self.line_of(index).checked_sub(1)?;
         self.groups()?;
@@ -393,15 +333,7 @@ impl LineMap {
     }
 }
 
-/// Grouped entries, one to a line, each group's header line above them, every line
-/// `row_height` tall.
-///
-/// Header lines hold no entry: [`CollectionGeometry::index_at`] there is `None`,
-/// [`CollectionGeometry::range_in`] skips them, and Up and Down step over them. Left and Right
-/// have no neighbours. [`CollectionGeometry::page_step`] is the whole rows that fit below the
-/// stuck header, minus one so a row of overlap stays in view, and at least 1.
-///
-/// Used by: C1e (a grouped collection's geometry), C4, C21.
+/// Grouped entries, one to a line, each group's header line above them, every line `row_height` tall.
 #[derive(Clone, Debug)]
 pub struct GroupedRows {
     groups: Groups,
@@ -544,11 +476,7 @@ impl CollectionGeometry for GroupedRows {
     }
 }
 
-/// How header lines and the stuck header draw: the label's font and colour, the divider
-/// under it, the stuck header's fill (it covers rows, so it must be opaque), and where the
-/// label sits: inset from the left, and above the bottom edge.
-///
-/// Used by: C4 (its tokens), hosts.
+/// How header lines and the stuck header draw.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct GroupStyle {
@@ -567,10 +495,7 @@ pub struct GroupStyle {
 }
 
 impl GroupStyle {
-    /// From the look, after Strata's `.type-group-heading` (`src/style.css`, `upstream/main`
-    /// 35ee677ab): small medium text in the muted colour, low in its line over a muted
-    /// hairline, at the row content's left edge; the stuck header filled with the base
-    /// background.
+    /// From the look, after Strata's `.type-group-heading` (`src/style.css`, `upstream/main` 35ee677ab).
     pub fn from_look(look: &Look) -> Self {
         let kit = &look.kit;
         Self {

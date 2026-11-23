@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Transport controls: play, previous and next, the elapsed and total times, mute and the
-//! volume slider (Strata's `components.rs` `navigation_row`, `media_controls.rs`).
-
 use rune::{Cursor, Drag, El, KeyEvent, Phase, Tx, col, el, row, text};
 use rune_kit::{IconButton, IconButtonVariant};
 use strata_kit::icons::IconName;
@@ -26,8 +23,6 @@ fn keys_for(st: &MediaState, command: MediaCommand) -> Option<String> {
     st.keys().label(KeyScope::Window, command)
 }
 
-/// The play button: "Play or pause", tooltip "Play/Pause (Ctrl+Alt+Space)". The plain bar's
-/// takes the tooltip as its name too (`media_controls.rs`, `append_play_toggle`).
 pub(crate) fn play<S: 'static>(
     st: &MediaState,
     access: fn(&mut S) -> &mut MediaState,
@@ -108,8 +103,6 @@ pub(crate) fn step<S: 'static>(
     .key(format!("{key}-{}", if next { "next" } else { "previous" }))
 }
 
-/// The time labels' text: the elapsed (the pointer's while it is over the timeline) and the
-/// total (`sync_time`).
 fn times(st: &MediaState) -> (String, String) {
     let total = st
         .duration()
@@ -126,8 +119,6 @@ fn time_label(key: String, s: String, target: bool, look: &Look) -> El {
     })
 }
 
-/// The transport row: elapsed on the left, previous, play and next in the middle, the total
-/// on the right (`navigation_row` with start and end widgets).
 pub(crate) fn transport<S: 'static>(
     st: &MediaState,
     access: fn(&mut S) -> &mut MediaState,
@@ -163,8 +154,6 @@ pub(crate) fn transport<S: 'static>(
         )))
 }
 
-/// The plain bar: play, "0:05/1:20", the seek slider, mute and volume
-/// (`append_media_controls`).
 pub(crate) fn plain_bar<S: 'static>(
     st: &MediaState,
     access: fn(&mut S) -> &mut MediaState,

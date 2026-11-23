@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C20b ColorPicker: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `c20b-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C20b-color-picker.md`.
-//!
-//! The page lays the picker out as Strata uses GTK's: inline as the custom folder colour
-//! editor (Strata's seven presets as the theme row, recent colours under them, and a folder
-//! icon that recolours live), and as the theme editor's colour buttons, each opening the
-//! picker in a popover. The translucent scene swaps the inline picker for one with alpha. What
-//! each change reports shows in the log line (`c20b-log`), so scripts can tell a live drag from
-//! a commit.
-
 use rune::{Cx, El, KeyEvent, Tx, col, icon, row, text};
 use strata_components::context_menu::{FieldMenu, FieldMenuState};
 use strata_components::contract::Point;
@@ -83,7 +71,6 @@ pub const PRESETS: [(&str, Srgba); 7] = [
     ("Gray", Srgba::rgb(0x8b, 0x8d, 0x98)),
 ];
 
-/// C20b's demo state, held in `Gallery::c20b`.
 pub struct Demo {
     pub folder: ColorPickerState,
     pub glass: ColorPickerState,
@@ -102,8 +89,6 @@ pub struct Demo {
     pub log: String,
     /// Every change reported, oldest first (the page's tests read it).
     pub heard: Vec<String>,
-    /// What the host saved, oldest first: each Commit's colour and each Cancel's, as Strata's
-    /// theme editor would write them.
     pub saved: Vec<(Pick, Srgba)>,
 }
 
@@ -160,8 +145,6 @@ impl Demo {
     }
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c20b", dark)`, then fills in `g.c20b`.
 pub const SCENES: &[Scene] = &[
     ("c20b-opaque-light", |g| g.open("c20b", false)),
     ("c20b-opaque-dark", |g| g.open("c20b", true)),
@@ -263,7 +246,6 @@ fn field_edit(g: &Gallery, p: Pick) -> Option<&rune::TextEdit> {
     (!g.c20b.disabled).then(|| g.c20b.state(p).edit())
 }
 
-/// C21's text menu on the pickers' hex fields.
 fn field_menu() -> FieldMenu<Gallery, Pick> {
     FieldMenu::new(
         "c20b-field-menu",
@@ -355,8 +337,6 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
         );
     }
 
-    // Built after the popovers, so its layer sits over theirs: an open popover's modal keeps
-    // what comes after it in the tree, the field menu its hex field opens included.
     let menu = field_menu().build(g, look, &mut layer);
 
     let log = text(if g.c20b.log.is_empty() {
@@ -396,16 +376,10 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
     )
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Commits a hex field that lost the keyboard, reports a popover a press outside closed,
-/// closes a disabled picker's popover, and closes the field menu if its field went. True when
-/// state changed.
 pub fn poll(g: &mut Gallery, _t: f64, tx: &mut Tx) -> bool {
     let mut changed = false;
     for p in ALL {

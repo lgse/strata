@@ -1,8 +1,8 @@
 diff --git a/crates/strata-app/src/terminal.rs b/crates/strata-app/src/terminal.rs
-index 9e9a37937..08b187907 100644
 --- a/crates/strata-app/src/terminal.rs
 +++ b/crates/strata-app/src/terminal.rs
-@@ -172,30 +172,5 @@ fn focus_terminal_location(app: &App) -> Option<Location> {
+@@ -146,28 +146,5 @@ fn focus_terminal_location(app: &App) -> Option<Location> {
+             let depth = app.browser.active_depth()?;
              return app.browser.location_at(depth);
          }
 -        let depth = app
@@ -13,8 +13,6 @@ index 9e9a37937..08b187907 100644
 -            .filter(|depth| app.browser.location_at(*depth).is_some())
 -            .unwrap_or_else(|| app.columns.targeted());
 -        let directory = app.browser.location_at(depth);
--        // A click opens the folder as the active column while the pointer can
--        // leave its parent as the destination; prefer the folder it opened.
 -        let opened = app.browser.location_at(depth + 1);
 -        let selected_in_destination: Vec<_> = app
 -            .browser

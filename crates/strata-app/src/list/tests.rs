@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The List view's file-type groups on the offscreen host, over a real folder, read from the
-//! accessibility tree as the QA harness reads it: what only a view that groups does. What the
-//! List view shares with the Icons view is tested once for both, in `single::tests`.
-
 use std::time::Duration;
 
 use rune::{Key, Mods};
@@ -59,9 +55,6 @@ fn grouped() -> String {
     GROUPED.to_owned()
 }
 
-/// The first and last rows the grouped table shows are the browser's first and last rows
-/// shown (`first_displayed_entry`, `last_displayed_entry`, through what is public: the cursor
-/// a first visit places, and a step from no cursor), under the saved sort `saved`.
 fn ends_agree(saved: &str, name: &str) {
     let more = format!("{GROUPED}{saved}");
     hosted_with(MODULE, "list", more, name, |mut host| {
@@ -149,8 +142,6 @@ fn ends_agree_by_type_descending_with_folders_mixed() {
     );
 }
 
-/// Shift and an arrow from the last row of a group extend over its boundary to the first
-/// row of the next, in the order shown, and the browser holds both.
 #[test]
 fn a_shift_range_crosses_a_group_boundary_in_the_order_shown() {
     let name = "a_shift_range_crosses_a_group_boundary_in_the_order_shown";
@@ -174,8 +165,6 @@ fn a_shift_range_crosses_a_group_boundary_in_the_order_shown() {
     });
 }
 
-/// Tab in a rename on the last row of a group carries the edit to the first row of the
-/// next, in the order shown (`advance_rename`).
 #[test]
 fn tab_carries_a_rename_over_a_group_boundary_in_the_order_shown() {
     let name = "tab_carries_a_rename_over_a_group_boundary_in_the_order_shown";

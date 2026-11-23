@@ -1,23 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Perf: the suggestion list at 50 (Strata's cap), 1,000 and 10,000 candidates.
-//!
-//! ```text
-//! cargo test --profile perf -p strata-components --lib location_bar::tests::perf \
-//!     -- --ignored --nocapture
-//! ```
-//!
-//! A 900 pt window at scale 2 with the bar in its header and the entry open. For each size: the
-//! frame that lands a delivery (the list's first draw), 60 arrow steps (each a commit moving the
-//! highlight), and 30 keystrokes with the list open (each a commit that asks for a new listing
-//! while the old list stays). Rune builds every row's element on each commit (its README:
-//! "View construction still visits every row"), so the cost grows with the list; only the
-//! mounted rows lay out and shape text. Tab's common prefix over the list is timed apart. Each
-//! figure is the best of three runs.
-//!
-//! The bar at 1,000 candidates: an arrow step commits within 4 ms at p95; a delivery and a
-//! keystroke within 8 ms at p95; the common prefix within 1 ms. 10,000 is reported, not held.
-
 use std::time::Instant;
 
 use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, Tx, col, row};

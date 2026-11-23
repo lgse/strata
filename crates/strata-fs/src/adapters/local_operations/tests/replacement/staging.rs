@@ -204,9 +204,6 @@ fn cancelling_as_the_replacement_is_staged_keeps_the_destination() -> Result<(),
     fs::write(&source, b"replacement")?;
     fs::write(&target, b"original")?;
     let cancellable = gio::Cancellable::new();
-    // The staged file's last step is its close: once linked, an unnamed
-    // file's close names it by its inode. Without Trash, nothing after
-    // staging checks the cancellation.
     let _scope = FsQuirks::install(
         root.path(),
         without_trash(

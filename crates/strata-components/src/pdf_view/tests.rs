@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Unit tests for C12: the text layer's geometry, the selection, the request queue and find.
-//! The view's routing (presses, keys, wheels, focus, what assistive technology hears) is
-//! tested through the gallery (`crates/strata-gallery/tests/c12.rs` and the scripts).
-
 use std::rc::Rc;
 
 use super::PdfView;
@@ -21,8 +17,6 @@ use strata_kit::look::Look;
 mod identity;
 mod perf;
 
-/// A layer of `lines`, each character a 10 × 16 box on a 20-point line, from (10, 10), every
-/// line ending in a break with an empty box.
 pub(super) fn layer_of(lines: &[&str]) -> TextLayer {
     let mut text = String::new();
     let mut glyphs = Vec::new();
@@ -82,8 +76,6 @@ fn a_word_is_a_run_of_non_blanks_and_a_line_leaves_its_break_out() {
     assert_eq!(l.text_of(0, 13), "copy the text");
 }
 
-// preview/preview-panel/pdf: "Highlight bands cover each line's box, but stop short below the
-// baseline on runs without descender glyphs."
 #[test]
 fn bands_stop_short_on_runs_without_descenders() {
     let l = Layer::new(layer_of(&["mmm", "ggg"]));
@@ -242,8 +234,6 @@ fn the_renderer_caps_the_width_asked() {
     assert!(r.box_px[0] as u64 * (r.box_px[0] as u64 * 4 / 3) <= caps.max_pixels);
 }
 
-// preview/preview-panel/pdf: "Queued PDF pages that leave the view are cancelled before
-// rendering."
 #[test]
 fn pages_that_leave_the_view_are_never_asked_and_their_requests_are_cancelled() {
     let d = doc(100);
@@ -318,7 +308,6 @@ fn a_sharper_image_lands_in_place_and_a_text_only_reply_never_replaces_an_image(
     assert_eq!(q.slots[0].held.map(|h| h.width), Some(900));
 }
 
-// The work package: "zoom triggers re-render requests for visible pages only".
 #[test]
 fn a_rested_zoom_asks_again_for_visible_pages_only() {
     let mut d = doc(10);
@@ -437,8 +426,6 @@ fn rendered(n: usize, d: &mut PdfDocument) -> Queue {
     q
 }
 
-// B1: a page whose layer the text budget dropped while it kept its image asks again once it's
-// back in view, with a `Page` render, so its layer comes with the image it draws on.
 #[test]
 fn a_page_back_in_view_without_its_layer_asks_again() {
     let mut d = doc(10);
@@ -557,8 +544,6 @@ fn the_budgets_never_drop_the_visible_pages_or_the_margin() {
     assert!(q.slots[2].held.is_none() && q.slots[7].held.is_none());
 }
 
-// Strata's `select_all` leaves the anchor: a Shift-click after Ctrl+A extends from the last
-// press, not from the document's start.
 #[test]
 fn select_all_keeps_the_anchor() {
     let ls = layers(3);
@@ -597,8 +582,6 @@ fn answer_all_as_scans(st: &mut PdfState, limit: usize) -> usize {
     n
 }
 
-// Review 2's B1: with find open, a page the renderer says has no text (a scan) is asked once,
-// not again for each query, nor again and again for one.
 #[test]
 fn find_asks_a_page_without_text_once() {
     let mut st = state(3);
@@ -655,9 +638,6 @@ fn a_zoom_asked_before_an_open_is_dropped() {
     assert_eq!(st.level(), 1.0);
 }
 
-// PageReply::Text populates a page's text layer for find without storing an image or altering
-// page dimensions, marks scans known so they are not re-requested, and upgrades cleanly when a
-// full RenderKind::Page reply arrives later.
 #[test]
 fn text_only_reply_feeds_find_without_storing_image_and_upgrades_on_page_render() {
     let mut st = state(4);
@@ -889,8 +869,6 @@ fn page_texts_index_finds_unrendered_pages_without_text_only_and_upgrades_on_pag
     assert_eq!(st.reveal.map(|r| r.page), Some(4));
     assert!(st.flush(&mut Tx::default()));
 
-    // Step back to page 3, scroll it into view, and complete its full Page render:
-    // the glyph layer upgrades the hit, highlights the matched text, and refines scroll reveal.
     st.find_step(false);
     assert!(st.flush(&mut Tx::default()));
     st.set_visible(3..4);

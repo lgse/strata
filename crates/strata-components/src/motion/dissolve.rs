@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The permanent-delete dissolve: rows break into fragments that scatter and fade (Strata's
-//! `dissolve_delete.rs`, its budget, tiles, curves and seeded motion).
-//!
-//! Each fragment is a clipped piece of a ghost of its row (the host's look for that entry,
-//! [`MotionLayer::ghost`](super::MotionLayer::ghost)), moved by its own `Live` offset and
-//! opacity, which [`Effects::tick`](super::Effects::tick) sets each frame: nothing commits
-//! while it plays. With no ghost, fragments are flat shards drawn with `canvas`.
-
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -19,14 +11,10 @@ use super::model::{EffectId, Event};
 /// How long a dissolve plays (Strata's `DURATION`).
 pub const DURATION: f64 = 0.56;
 const MIN_FRAGMENT_BUDGET: usize = 80;
-/// The top of the fragment budget (Strata's `MAX_FRAGMENT_BUDGET`): tiles are sized for it,
-/// and rounding each row up to whole tiles can add a few more (15 rows make 225).
 pub const MAX_FRAGMENTS: usize = 192;
 const FRAGMENTS_PER_ROW: usize = 48;
 const SEED: u64 = 0x9E37_79B9_7F4A_7C15;
 
-/// A dissolve to start with [`Effects::dissolve`](super::Effects::dissolve): the rows by key
-/// (C1e's `row_path`), each with a token the host's ghost builder hears.
 #[derive(Clone, Debug, Default)]
 pub struct Dissolve {
     pub(super) rows: Vec<(String, u64)>,
@@ -42,8 +30,6 @@ impl Dissolve {
         }
     }
 
-    /// The scroll viewport the rows show in (C1e's `viewport_path`): only rows that show in
-    /// it break up, and their fragments are clipped to it.
     pub fn within(mut self, viewport: impl Into<String>) -> Self {
         self.within = Some(viewport.into());
         self
@@ -66,8 +52,6 @@ pub(super) struct DissolveRun {
     pub rows: Vec<(String, u64)>,
     pub within: Option<String>,
     pub phase: Phase,
-    /// Planned by the first view that runs (a view reads layout and the tick doesn't); the
-    /// tick then moves its fragments.
     pub plan: RefCell<Option<Rc<Plan>>>,
     /// How many plans the views have made: the fragments' memo version.
     pub plans: Cell<u64>,
@@ -105,8 +89,6 @@ impl DissolveRun {
         }
     }
 
-    /// One tick at `now`: pushes the run's events, lowers `next` to its next deadline, and says
-    /// whether it plays on.
     pub fn step(&mut self, now: f64, events: &mut Vec<Event>, next: &mut Option<f64>) -> bool {
         let due = |next: &mut Option<f64>, at: f64| *next = Some(next.map_or(at, |n| n.min(at)));
         match self.phase {
@@ -163,9 +145,6 @@ impl Piece {
     }
 }
 
-/// Plans the fragments of the rows at `rects` (each a row index and its window rect), in a
-/// clip rect if any: Strata's budget of 48 a row between 80 and 192, square tiles sized to
-/// it, and seeded motion that sweeps from the left and rises.
 pub(super) fn plan(rects: Vec<(usize, [f32; 4])>, clip: Option<[f32; 4]>) -> Plan {
     let mut pieces = Vec::new();
     if !rects.is_empty() {
@@ -238,8 +217,6 @@ impl Random {
     }
 }
 
-/// Fragment `i` of `plan`, at `origin` (where the clip's top-left sits in the layer), showing
-/// a piece of `ghost`, or a flat shard when there is none.
 pub(super) fn piece(
     plan: &Plan,
     i: usize,
@@ -270,8 +247,6 @@ pub(super) fn piece(
     }
 }
 
-/// A shard's colour: mostly the selection fill the deleted rows wear, with some in the text's
-/// and the icon's colours.
 fn shard_color(look: &Look, i: usize) -> Color {
     let c = &look.kit.c;
     match i % 7 {
@@ -281,8 +256,6 @@ fn shard_color(look: &Look, i: usize) -> Color {
     }
 }
 
-/// A four-sided shard filling most of a `w` by `h` tile, its corners pulled in by seeded
-/// amounts so no two match.
 fn shard(i: usize, w: f32, h: f32, color: Color) -> Shape {
     let mut random = Random(SEED ^ (i as u64).wrapping_mul(0x2545_F491_4F6C_DD1D));
     let mut j = || (random.next() as f32) * 0.25 * w.min(h);

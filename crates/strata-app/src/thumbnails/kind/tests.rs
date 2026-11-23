@@ -6,8 +6,6 @@ use strata_preview::services::ModelFormat;
 
 use super::{Kind, of};
 
-/// GTK's `thumbnail_kind` names its kinds by extension, ignoring case; a file it names none
-/// for gets no thumbnail.
 #[test]
 fn a_file_gets_the_renderer_its_extension_names() {
     for (name, kind) in [

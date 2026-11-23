@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The registry over the window the crate registers: what a key, a menu row and a button
-//! reach, and what the catalog reads of the saved settings.
-
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_components::contract::Rect;
 use strata_core::model::Location;
@@ -23,9 +20,6 @@ use crate::{
 
 const MODULE: &str = "commands::tests";
 
-/// Declares a test of `$run` in each view from one list, and a test that the list has every
-/// registered view: a view registered without a line fails
-/// `every_registered_view_has_this_test` in the module that calls it.
 macro_rules! in_each_view {
     ($run:ident: $($mode:literal => $test:ident,)*) => {
         $(
@@ -50,8 +44,6 @@ mod routing;
 mod views;
 mod wake;
 
-/// Each registered view answers to exactly one of `modes`, the saved `browser_mode`s a set
-/// of tests runs in, and each of those is a view.
 fn assert_each_view_answers_to_one_of(modes: &[&str]) {
     let views: Vec<_> = crate::PARTS.iter().filter_map(Entry::view).collect();
     let tests_of = |view: &&View<App>| modes.iter().filter(|mode| (view.shows)(mode)).count();
@@ -85,8 +77,6 @@ fn act<T>(host: &mut Offscreen, act: impl FnOnce(&mut App, &mut Tx) -> T) -> T {
     said.expect("the update ran")
 }
 
-/// `browser_commands` in `src/ui/window/keyboard/commands.rs` reads refresh with any
-/// modifiers held, which the window's own chords, matched as Rune spells them, did not.
 #[test]
 fn refresh_is_read_with_any_modifiers_held_as_the_gtk_stage_reads_it() {
     hosted(
@@ -110,8 +100,6 @@ fn refresh_is_read_with_any_modifiers_held_as_the_gtk_stage_reads_it() {
     );
 }
 
-/// The catalog resolves a command through the map the settings select, read at each press
-/// as the GTK application reads its preference manager.
 #[test]
 fn the_catalogs_map_follows_the_saved_10xer_mode() {
     hosted_after(
@@ -137,9 +125,6 @@ fn the_catalogs_map_follows_the_saved_10xer_mode() {
     );
 }
 
-/// A saved keymap's entry replaces a command's keys from the start, and a saved change to
-/// the keymap applies from the next press, as on GTK (`PreferenceManager::keymap` and
-/// `edit_keymap`).
 #[test]
 fn a_saved_keymap_rebinds_a_command_and_a_change_to_it_applies() {
     hosted_after(
@@ -175,8 +160,6 @@ fn a_saved_keymap_rebinds_a_command_and_a_change_to_it_applies() {
     );
 }
 
-/// A menu row and a key end in one command: the pane menu's row for the hidden files does
-/// what Ctrl+H does, on the column the menu was for. A name no part registered runs nothing.
 #[test]
 fn a_command_runs_by_its_name_as_it_does_by_its_key() {
     hosted(
@@ -204,9 +187,6 @@ fn a_command_runs_by_its_name_as_it_does_by_its_key() {
     );
 }
 
-/// `input_owner` gives a menu every key, so the chain's commands wait under one; what follows
-/// a key the chain left still runs there, and refresh is one of those window actions
-/// (`input_owner.rs:21`, `keyboard.rs:147`).
 #[test]
 fn under_an_open_menu_the_chains_commands_wait_and_refresh_still_runs() {
     hosted(
@@ -242,8 +222,6 @@ fn under_an_open_menu_the_chains_commands_wait_and_refresh_still_runs() {
     );
 }
 
-/// What each of the header's five buttons does comes from the registry. None has a command
-/// until the part that owns it registers one, and the list shrinks as those parts land.
 #[test]
 fn the_headers_buttons_wait_for_the_parts_that_own_their_commands() {
     hosted(
@@ -258,8 +236,6 @@ fn the_headers_buttons_wait_for_the_parts_that_own_their_commands() {
     );
 }
 
-/// What lists keys reads them from the registry: every matcher of a command's keys is the
-/// catalog command the action says it is, at the stage GTK reads it.
 #[test]
 fn the_keys_a_command_answers_are_listed_with_their_catalog_command_and_stage() {
     hosted(

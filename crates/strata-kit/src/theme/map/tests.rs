@@ -53,9 +53,6 @@ fn set(names: &[&'static str]) -> BTreeSet<&'static str> {
     names.iter().copied().collect()
 }
 
-/// Each role a theme file sets lands on exactly the tokens `map.rs` documents. Background,
-/// text and accent seed `Kit::from_palette`, whose derived tokens move too, so for those three
-/// the documented tokens are a subset.
 #[test]
 fn each_role_reaches_the_tokens_the_map_lists() {
     let exact: [(Key, &[&str]); 11] = [
@@ -192,8 +189,6 @@ fn each_role_reaches_the_tokens_the_map_lists() {
     assert!(!reach(Key::Text).contains("fill.highlight"));
 }
 
-/// A theme sets colours only: with the same parameters, every length, number and flag
-/// matches the fallback's, so K2's tokens survive a theme change.
 #[test]
 fn a_theme_changes_only_colours() {
     let params = LookParams {
@@ -217,8 +212,6 @@ fn a_theme_changes_only_colours() {
     }
 }
 
-/// The WP's test: "Every bundled theme parses and maps, with no missing token." Every
-/// colour token reads a real colour, and the appearance agrees with Strata's own dark rule.
 #[test]
 fn every_bundled_theme_maps_in_its_own_appearance() {
     for theme in bundled() {
@@ -237,8 +230,6 @@ fn every_bundled_theme_maps_in_its_own_appearance() {
     }
 }
 
-/// A translucent theme colour keeps its opacity in the tokens drawn from it: the stylesheet's
-/// `alpha(@strata_border, 0.6)` is 60 % of the border's own alpha, as GTK multiplies.
 #[test]
 fn a_translucent_theme_colour_scales_its_own_opacity() {
     let src = r##"name = "Glass"

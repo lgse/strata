@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Behavioral regressions for preview text polish:
-//! - UI-33: right-click context menu (`Copy`, `Select All`) across `CodeView`, `DocumentView`
-//!   (prose and embedded tables), and `PdfView`, preserving selection and restoring focus;
-//! - UI-38: 10xer `Right` / `l` into preview scrolling with `Down`/`Up`/`PageDown`/`PageUp`/
-//!   `j`/`k`/`Ctrl+D`/`Ctrl+U`/`Home`/`End`/`G`/`g g` and returning via `Left`/`h`, while the
-//!   find bar keeps typing and arrow keys.
-
 use std::sync::Arc;
 
 use rune::{Key, Mods, Tx, clipboard::MemoryClipboard};
@@ -397,8 +390,6 @@ fn stale_preview_context_menu_ignores_switched_or_closed_preview() {
             });
             while host.turn() {}
 
-            // Dismissing via Escape must not panic, apply stale selection bytes, or leave
-            // owns_focus stuck true after the stale menu closes.
             press(&mut host, Key::Escape, Mods::default());
             assert!(!host.app().menu.state.is_open());
             assert_eq!(
@@ -414,8 +405,6 @@ fn stale_preview_context_menu_ignores_switched_or_closed_preview() {
                 "stale preview text menu dismissal must clear owns_focus"
             );
 
-            // Re-open menu, then close preview while menu is open: clicking Select All must not
-            // re-arm owns_focus on the closed drawer.
             secondary_click_at(&mut host, cx, cy);
             assert!(host.app().menu.state.is_open());
             host.runtime().update(|app: &mut App, tx: &mut Tx| {
@@ -805,8 +794,6 @@ fn document_preview_context_menu_keeps_drawer_focused_and_selection_visible() {
             assert!(live_selected_text(&mut host).is_some());
             assert!(trace.iter().all(|&on| on), "focus dropped: {trace:?}");
 
-            // 2. Multi-paragraph drag selection stays visible while open, copies whole, and
-            //    dismisses cleanly on secondary scrim click.
             let p2 = find_text_rect(&mut host, "Second paragraph");
             drag_select(
                 &mut host,
@@ -981,8 +968,6 @@ fn suspended_or_cancelled_preview_load_clears_armed_focus_handoff() {
                 "suspending drawer during an armed handoff must clear owns_focus"
             );
 
-            // Even if a load is cancelled without suspend while viewer stays Empty, handoff must
-            // expire rather than wedging owns_focus indefinitely.
             host.runtime().update(|app: &mut App, tx: &mut Tx| {
                 super::super::arm_focus_handoff(app, tx);
             });

@@ -1,18 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! Per-column sorting for embedded document tables, matching Strata's `TableState`
-//! (`src/ui/table_view.rs`) and `SheetGrid` (`sheet_grid/sort.rs`): finite numbers before
-//! case-insensitive text before empty cells, stable ties, dense/sparse per-column keys, and
-//! an ascending -> descending -> unsorted cycle on the primary header.
-
 use std::cmp::Ordering;
 
 use rune_kit::SortDir;
 
 use super::super::model::Cell;
 
-/// One cell's sort key: a finite number, else its trimmed text lowercased, else empty.
-/// Ascending puts numbers first, then text, then empty cells.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum SortKey {
     Number(f64),
@@ -45,8 +38,6 @@ impl SortKey {
 
 const EMPTY: SortKey = SortKey::Empty;
 
-/// One column's sort keys over the table's body rows. Sparse columns in ragged tables keep
-/// only the rows that hold a cell in this column.
 #[derive(Debug)]
 pub(crate) enum ColumnKeys {
     Dense(Vec<SortKey>),
@@ -89,10 +80,6 @@ impl ColumnKeys {
     }
 }
 
-/// Plain click on `column`:
-/// - Primary ascending -> primary descending (keeping secondary tie-breakers).
-/// - Primary descending -> unsorted (returns to original document order).
-/// - Any other column -> becomes primary ascending, keeping prior columns as tie-breakers.
 pub(crate) fn clicked(spec: &[(usize, SortDir)], column: usize) -> Vec<(usize, SortDir)> {
     match spec.first() {
         Some(&(c, SortDir::Ascending)) if c == column => {
@@ -107,8 +94,6 @@ pub(crate) fn clicked(spec: &[(usize, SortDir)], column: usize) -> Vec<(usize, S
     }
 }
 
-/// Shift-click on `column`: appends `column` ascending as a secondary tie-breaker, or cycles
-/// an existing key (`Ascending -> Descending -> removed`).
 pub(crate) fn shift_clicked(spec: &[(usize, SortDir)], column: usize) -> Vec<(usize, SortDir)> {
     let mut out = spec.to_vec();
     if let Some(pos) = out.iter().position(|&(c, _)| c == column) {

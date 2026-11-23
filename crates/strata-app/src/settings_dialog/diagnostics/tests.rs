@@ -146,8 +146,6 @@ fn run_populates_rows_copies_report_and_replaces_results_on_rerun() {
             assert!(!has_state(copy, "disabled"), "Copy report is enabled");
             assert_eq!(view::text(copy, "name"), tr("Copy report"));
 
-            // Simulate >1.5s idle before activating Copy via keyboard (before poll runs) so a
-            // stale cached poll clock would expire immediately on the very next turn.
             host.runtime()
                 .update(|_, tx| tx.focus("settings-diagnostics-copy", true));
             idle(&mut host);

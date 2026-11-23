@@ -47,8 +47,6 @@ impl Shared {
         self.asked.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Blocks until the interface thread asks for a wait, and returns it with its number.
-    /// `None` once the loop ends.
     fn next_wait(&self) -> Option<(Wait, u64)> {
         let mut asked = self.lock();
         loop {
@@ -149,8 +147,6 @@ fn run(shared: &Shared, mut interrupted: UnixStream, notify: &dyn Fn()) {
     }
 }
 
-/// Polls for `wait`, the one numbered `serving`, until it comes, a newer one replaces it, or
-/// the loop ends.
 fn serve(shared: &Shared, mut wait: Wait, serving: u64, interrupted: &mut UnixStream) -> Served {
     let deadline = u64::try_from(wait.timeout)
         .ok()
@@ -179,8 +175,6 @@ fn drain(interrupted: &mut UnixStream) {
     while matches!(interrupted.read(&mut bytes), Ok(read) if read > 0) {}
 }
 
-/// Blocks until `deadline` or until one of `fds` is ready. Returns whether what the context
-/// waits for came: its deadline, or any descriptor but the last, which is the interruption.
 #[expect(
     unsafe_code,
     reason = "the descriptors come from g_main_context_query as GPollFD records, which only \

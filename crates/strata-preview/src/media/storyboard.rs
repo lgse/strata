@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Storyboard stream: a sheet header, then RGBA cells in subdivision order,
-//! then an explicit end. Cells a decoder could not produce are simply absent.
-
 use std::io::{self, Read, Write};
 
 use super::{MAX_DURATION_US, invalid, u32_at, u64_at};
@@ -82,8 +79,6 @@ pub fn cell_count(duration_us: u64) -> u32 {
     ((duration_us / 1_000_000 / SECONDS_PER_CELL) as u32).clamp(MIN_CELLS, MAX_CELLS)
 }
 
-/// Middle first, then quarters, eighths and so on, so a partial board already
-/// covers the whole timeline.
 pub fn subdivision_order(count: u32) -> Vec<u32> {
     let mut order = Vec::with_capacity(count as usize);
     let mut ranges = std::collections::VecDeque::from([(0, count)]);

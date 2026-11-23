@@ -52,8 +52,6 @@ fn a_silent_writer_times_out() {
 fn writing_to_a_reader_that_left_reports_it() {
     let (r, w) = pipe().expect("pipe");
     drop(r);
-    // Without SIGPIPE ignored this would kill the test binary; Rust ignores it, and the
-    // write sees EPIPE.
     assert_eq!(
         write_all(w, &[0; 1024], Duration::from_secs(1)),
         Err(WriteError::ReaderLeft)

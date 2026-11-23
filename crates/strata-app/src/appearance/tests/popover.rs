@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Appearance popover on the offscreen host: the header's toggle opens it on its first
-//! row, its rows are named and checked as GTK's, a view row shows its view and closes it, it
-//! keeps the window's keys while it is open and Escape closes it, its stepper changes the text
-//! size and stays open, and Group by file type and Hidden files act and close it.
-
 use rune::{Key, KeyEvent, Mods, Tx};
 use serde_json::Value;
 
@@ -108,9 +103,6 @@ fn open_in_columns(host: &mut Offscreen, folder: &std::path::Path) {
     idle(host);
 }
 
-/// The header's Appearance button is a toggle, pressed while the popover is open; the
-/// popover opens with the keyboard on its first row, and its rows are named, checked and
-/// sensitive as GTK's are in Columns.
 #[test]
 fn the_button_opens_the_popover_on_its_first_row_named_as_gtks() {
     in_columns(
@@ -189,8 +181,6 @@ fn the_button_opens_the_popover_on_its_first_row_named_as_gtks() {
     );
 }
 
-/// A view row shows its view as Ctrl+3 does, saves it, closes the popover and gives the view
-/// the keyboard, and the Appearance header button's icon follows the active view.
 #[test]
 fn a_view_row_shows_its_view_and_closes_the_popover() {
     in_columns(
@@ -225,8 +215,6 @@ fn a_view_row_shows_its_view_and_closes_the_popover() {
     );
 }
 
-/// While the popover is open it keeps the window's keys, as GTK's plain popover does: Ctrl+3
-/// shows nothing else. Escape closes it and gives the button the keyboard back.
 #[test]
 fn the_popover_keeps_the_windows_keys_and_escape_closes_it() {
     in_columns(
@@ -247,8 +235,6 @@ fn the_popover_keeps_the_windows_keys_and_escape_closes_it() {
     );
 }
 
-/// The stepper steps the text size and shows it, and the popover stays open; the size's
-/// button resets it.
 #[test]
 fn the_stepper_changes_the_text_size_and_stays_open() {
     in_columns(
@@ -286,10 +272,6 @@ fn the_stepper_changes_the_text_size_and_stays_open() {
     );
 }
 
-/// In List, Group by file type is sensitive: it saves the setting, the List view groups the
-/// folder shown with the cursor where it was, and the popover closes with the keyboard on its
-/// button (finding lgse/strata#2410). Hidden files shows them, checked, and closes it the same
-/// way.
 #[test]
 fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
     hosted_with(
@@ -350,10 +332,6 @@ fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
     );
 }
 
-/// Group by file type with a typed query showing in List closes the filter, its field and its
-/// results, and the List view shows the whole folder, grouped, with the keyboard left on the
-/// Appearance button: GTK's regroup rebuilds the List pane and its filter with it (driven;
-/// finding lgse/strata#2460).
 #[test]
 fn group_by_file_type_closes_a_typed_query_in_the_list() {
     hosted_with(
@@ -403,9 +381,6 @@ fn group_by_file_type_closes_a_typed_query_in_the_list() {
     );
 }
 
-/// "Customize columns…" shows in List alone: it closes the popover and opens the List table's
-/// columns menu, with the keyboard in it, as the header's Columns button does. In Columns the
-/// row is not there.
 #[test]
 fn customize_columns_opens_the_list_columns_menu() {
     hosted_with(
@@ -461,8 +436,6 @@ fn customize_columns_opens_the_list_columns_menu() {
     );
 }
 
-/// The words the size badges show now in the Columns view: a badge drawn at no opacity (a
-/// row not hovered, selected or on the open path) shows nothing.
 fn badges(host: &Offscreen) -> Vec<String> {
     host.elements()
         .into_iter()
@@ -472,9 +445,6 @@ fn badges(host: &Offscreen) -> Vec<String> {
         .collect()
 }
 
-/// "Show sizes in Columns view" shows in Columns alone, checked while the setting is on: it
-/// saves the setting, the selected folder's badge shows its count, which the column asks for
-/// once sizes show, and pressed again it hides the badges. It closes the popover each time.
 #[test]
 fn show_sizes_saves_the_setting_and_the_columns_follow() {
     hosted_with(

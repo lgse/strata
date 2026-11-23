@@ -14,8 +14,6 @@ fn the_fake_files_apply_and_the_broken_one_reports_its_row() {
     );
 }
 
-// settings/themes: "Changes to the file less than 75 ms apart trigger one reload, 75 ms after
-// the last."
 #[test]
 fn changes_less_than_the_settle_apart_read_once_after_the_last() {
     let mut d = Debounce::default();

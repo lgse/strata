@@ -61,8 +61,6 @@ fn replace_reporting(
     (result, replaced.into_inner())
 }
 
-/// Replaces while a progress tracker collects every item the report says was kept or
-/// skipped.
 fn replace_collecting<T: Clone + 'static>(
     source: &Path,
     target: &Path,

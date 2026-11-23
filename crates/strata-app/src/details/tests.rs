@@ -13,7 +13,6 @@ use super::{
 };
 use crate::listing::Facts;
 
-/// GTK's `format_duration`: minutes and seconds under an hour, hours on from one.
 #[test]
 fn a_duration_reads_as_a_clock() {
     for (seconds, expected) in [
@@ -30,8 +29,6 @@ fn a_duration_reads_as_a_clock() {
     }
 }
 
-/// GTK's `entry_icons_item_info`: a folder shows its item count only; a file the first the
-/// browser knows of its duration, its dimensions and its size.
 #[test]
 fn the_icons_line_shows_the_first_fact_known() {
     let everything = Facts {
@@ -96,7 +93,6 @@ fn the_icons_line_shows_the_first_fact_known() {
     }
 }
 
-/// GTK's `format_permissions`: the kind, nine bits as letters, then the octal mode.
 #[test]
 fn permissions_read_as_the_list_views_mode_column_shows_them() {
     for (mode, expected) in [
@@ -109,8 +105,6 @@ fn permissions_read_as_the_list_views_mode_column_shows_them() {
     }
 }
 
-/// GTK's `entry_size` and `entry_mode`: a folder shows its item count, a file its size, and
-/// what the browser does not know shows nothing.
 #[test]
 fn the_size_and_mode_cells_show_what_the_browser_knows() {
     let file = Facts {
@@ -147,9 +141,6 @@ fn the_size_and_mode_cells_show_what_the_browser_knows() {
     }
 }
 
-/// `strata_core::util::modified_date`: a dash for a date the browser does not know, else the
-/// date in the saved format, here ISO 8601 for a fixed output (in the local time zone, so
-/// only the day can differ).
 #[test]
 fn the_modified_cell_shows_the_date_in_the_saved_format() {
     assert_eq!(modified_cell(&Facts::default()), "—");
@@ -169,8 +160,6 @@ fn the_modified_cell_shows_the_date_in_the_saved_format() {
     assert_eq!(created_cell(&known), shown);
 }
 
-/// Optional Duration and Dimensions cells show formatted media facts for files only, and stay
-/// blank for folders or unknown values (`list_cell_text`).
 #[test]
 fn the_optional_media_cells_format_files_and_leave_folders_or_unknowns_blank() {
     let media = Facts {
@@ -203,9 +192,6 @@ fn the_optional_media_cells_format_files_and_leave_folders_or_unknowns_blank() {
     }
 }
 
-/// GTK's `entry_type`: a folder, a broken link and an entry of no known kind read their kind's
-/// name from the catalogs; a file the MIME table knows reads its description, as strata-fs's
-/// `entry_type` gives it for the same entry.
 #[test]
 fn the_type_cell_names_a_kind_from_the_catalogs_and_a_file_by_its_mime_type() {
     let folder = Location::local("/root");
@@ -229,9 +215,6 @@ fn the_type_cell_names_a_kind_from_the_catalogs_and_a_file_by_its_mime_type() {
     );
 }
 
-/// GTK's `src/ui/entry_tooltip/tests.rs::name_text_shows_truncated_names_and_dates`:
-/// shows `"{name}\n{date}"` when a non-empty date is included, `"{name}"` when truncated
-/// without a date, and `None` when not truncated without a date or when the name is empty.
 #[test]
 fn entry_tooltip_text_shows_truncated_names_and_dates() {
     for (name, truncated, date, expected) in [
@@ -262,8 +245,6 @@ fn entry_tooltip_text_shows_truncated_names_and_dates() {
     }
 }
 
-/// `entry_tooltip` omits truncation measurement whenever a modified date is included and
-/// known, and follows the active `DateFormat`.
 #[test]
 fn entry_tooltip_evaluates_truncation_lazily_and_follows_date_format() {
     set_date_format(DateFormat::Iso8601);

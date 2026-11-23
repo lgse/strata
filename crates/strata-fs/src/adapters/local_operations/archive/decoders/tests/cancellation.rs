@@ -26,8 +26,6 @@ impl Seek for CancelAfterMembers<'_> {
     }
 }
 
-/// Members of the mixed fixture in archive order: a directory, a streamless file, two
-/// duplicates and a later file with streams, then an empty directory and a zero-byte file.
 const MIXED_MEMBERS: [&str; 7] = [
     "folder",
     "folder/same.txt",

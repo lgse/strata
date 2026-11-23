@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! C10b's page: what the code view and the script editor do in process, beside their goldens
-//! and scripts. Each test that checks a feature-map Behavior bullet names it, as a script
-//! would, where a script can't: positions in the middle of a drag or a scroll, values that
-//! assistive technology sets, and the editor's keys and colours.
-
 mod c10 {
     use std::time::{Duration, Instant};
 
@@ -155,8 +150,6 @@ mod c10 {
         rt.frame(DT);
     }
 
-    /// Frames, sleeping between them, until `done` holds or 60 s pass: the highlighter
-    /// thread answers in real time.
     fn until(rt: &mut Runtime<Gallery>, done: impl Fn(&Gallery) -> bool) {
         let start = Instant::now();
         while !done(&rt.state) {
@@ -167,9 +160,6 @@ mod c10 {
         rt.frame(DT);
     }
 
-    // Sanctioned exception to "no geometry assertions" (AGENTS.md), by the coordinator's
-    // ruling for C10b: the work package's claim is that nothing moves when colours land, and
-    // the offset and the top row's place are that claim.
     #[test]
     fn colours_landing_move_nothing() {
         // The text draws plain (no highlighter yet), scrolled into its middle.
@@ -216,8 +206,6 @@ mod c10 {
         assert_eq!(after, y, "the top row stays put");
     }
 
-    /// The list's widths while scrolling, wrap off, through six 200-character ASCII rows, then
-    /// `wide` at lines 406 on, then short lines.
     fn widths_while_scrolling(wide: &[String]) -> Vec<f32> {
         use std::fmt::Write as _;
         let mut rt = scene("c10-wrap-off-light");
@@ -252,9 +240,6 @@ mod c10 {
         seen
     }
 
-    /// With wrap off the list is as wide as its widest row before that row scrolls into
-    /// view, so it neither widens nor narrows as rows mount (review 1's repro: a CJK row and
-    /// an emoji row, each shorter in characters than the six longest rows, draw wider).
     #[test]
     fn the_unwrapped_width_holds_while_scrolling() {
         let seen = widths_while_scrolling(&["漢".repeat(150), "😀".repeat(150)]);
@@ -265,8 +250,6 @@ mod c10 {
         );
     }
 
-    /// The same for characters `unicode-width` rates one column that a fallback face draws
-    /// wider (review 2's repro): a dingbat and an Indic script.
     #[test]
     fn the_unwrapped_width_holds_for_narrow_rated_wide_glyphs() {
         for wide in ["❤".repeat(190), "क".repeat(190)] {
@@ -275,14 +258,6 @@ mod c10 {
         }
     }
 
-    // The position-bar tests below read the thumb's and the bar's drawn places. Like
-    // `colours_landing_move_nothing`, that is a sanctioned exception to "no geometry
-    // assertions" (AGENTS.md): each bullet they check is a claim about where the thumb or
-    // the bar is (named in each test's doc comment), and the place is the claim.
-
-    /// preview/preview-panel/documents/scrollbar: "Wheel or touchpad scrolling forward over
-    /// the content never moves the thumb backward; scrolling backward never moves it forward;
-    /// stopping leaves it still."
     #[test]
     fn the_wheel_never_moves_the_thumb_against_it() {
         let mut rt = scene("c10-large-light");
@@ -309,12 +284,6 @@ mod c10 {
         }
     }
 
-    /// preview/preview-panel/documents/scrollbar: "In a rendered document or a large
-    /// plain-text Source preview, holding the scrollbar thumb still keeps the content at one
-    /// position", "Dragging the thumb downward never moves the content backward, and the
-    /// content passes through interior positions on the way", "Releasing the thumb, even
-    /// with the pointer over the content, leaves the content in place. The next wheel input
-    /// scrolls it and the thumb follows."
     #[test]
     fn a_thumb_drag_moves_forward_holds_and_lets_go() {
         let mut rt = scene("c10-large-light");
@@ -351,8 +320,6 @@ mod c10 {
             held,
             "holding the thumb keeps the content still"
         );
-        // The pointer drifts over the content, still level with the thumb, and lets go
-        // there: the content stays.
         let vp = info(&rt, "code-scroll").expect("the viewport").rect;
         drag_to(&mut rt, vp[0] + 40.0, y);
         settle(&mut rt, 10);
@@ -367,10 +334,6 @@ mod c10 {
         assert!(thumb(&rt).0 > t, "and the thumb follows");
     }
 
-    /// preview/preview-panel/documents/scrollbar: "Dragging the thumb to the top or bottom of
-    /// the track shows the document's first or last line, even while new rows are measured."
-    /// and "With the first row's top in view, the thumb sits at the top of the track. With
-    /// the last row's end in view, it sits at the bottom."
     #[test]
     fn the_thumb_at_either_end_shows_that_end() {
         let mut rt = scene("c10-large-light");
@@ -405,9 +368,6 @@ mod c10 {
         assert!(shown_rows(&rt).contains(&0), "the first line shows");
     }
 
-    /// preview/preview-panel/documents/scrollbar: "Setting the scrollbar to its minimum or
-    /// maximum from the keyboard or an accessibility tool shows the document's exact start or
-    /// end."
     #[test]
     fn the_bar_s_ends_from_the_keyboard_and_assistive_technology() {
         let mut rt = scene("c10-large-light");
@@ -450,8 +410,6 @@ mod c10 {
         assert_eq!(value, "Line 2 of 50000");
     }
 
-    /// preview/preview-panel/documents/scrollbar: "The vertical scrollbar sits beside the
-    /// content instead of overlaying it, and hides when the whole document fits."
     #[test]
     fn the_bar_sits_beside_the_text_and_hides_when_it_fits() {
         let rt = scene("c10-rust-light");
@@ -468,8 +426,6 @@ mod c10 {
         );
     }
 
-    /// preview/preview-panel/documents/scrollbar: "Closing the preview while holding the
-    /// thumb ends the drag; after reopening, the thumb follows scrolling again."
     #[test]
     fn closing_mid_drag_then_reopening_follows_the_scroll() {
         let mut rt = scene("c10-large-light");
@@ -533,8 +489,6 @@ mod c10 {
         assert_eq!(bar_line(&rt), 1);
     }
 
-    /// A press on the thumb holds it where it was caught: a move of a point moves the
-    /// content a point's worth of rows, not by the thumb jumping to centre on the pointer.
     #[test]
     fn a_thumb_press_holds_it_where_caught() {
         let mut rt = scene("c10-large-light");
@@ -550,7 +504,6 @@ mod c10 {
         release(&mut rt, x, top + len - 2.0);
     }
 
-    /// A press on the trough away from the thumb puts the thumb's middle there (GTK's warp).
     #[test]
     fn a_trough_press_warps_the_thumb() {
         let mut rt = scene("c10-large-light");
@@ -584,8 +537,6 @@ mod c10 {
         assert_eq!(first, Some(1000));
     }
 
-    /// With wrap off the line numbers stay at the left while the code scrolls sideways
-    /// (`sticky_left`). The number's drawn place is the claim, as for the bar.
     #[test]
     fn the_numbers_stay_while_the_code_scrolls_sideways() {
         let mut rt = scene("c10-wrap-off-light");
@@ -618,8 +569,6 @@ mod c10 {
         );
     }
 
-    /// Ctrl+A is the plain chord only: with Shift it selects nothing (Rune's rule, and
-    /// Strata's: Ctrl+Shift+A isn't select-all).
     #[test]
     fn ctrl_shift_a_selects_nothing() {
         let mut rt = scene("c10-rust-light");
@@ -639,9 +588,6 @@ mod c10 {
         assert!(!rt.state.c10.code.copy_all().is_empty());
     }
 
-    /// preview/preview-panel/documents: "With focus in a rendered or large source document,
-    /// Ctrl+A selects the whole loaded document." Ctrl+C after it copies all 50,000 lines,
-    /// past Rune's 10,000-row collection cap.
     #[test]
     fn select_all_copies_the_whole_large_text() {
         let mut rt = scene("c10-large-light");
@@ -656,8 +602,6 @@ mod c10 {
         assert_eq!(clip.text().map(|t| t.len()), Some(want));
     }
 
-    /// preview/preview-panel/find: "Find searches small source buffers, large virtualized
-    /// source, …" A match near the end of 50,000 lines is counted, selected and revealed.
     #[test]
     fn find_reaches_the_end_of_a_large_text() {
         let mut rt = scene("c10-large-light");
@@ -719,9 +663,6 @@ mod c10 {
         );
     }
 
-    /// Tab types spaces to the next four-column stop; over lines it indents each, and
-    /// Shift+Tab takes the indent off (Strata's `tab_width(4)`,
-    /// `insert_spaces_instead_of_tabs(true)`, GtkSourceView's `indent-on-tab`).
     #[test]
     fn tab_and_shift_tab_indent_by_four_columns() {
         let mut rt = editor();
@@ -764,9 +705,6 @@ mod c10 {
             .and_then(|e| e.key)
     }
 
-    /// Ctrl+Tab and Ctrl+Shift+Tab leave the editor, forward and back, as they leave a
-    /// GtkTextView, whose Tab types: the text stays as it was. The page's stops are the
-    /// runtime button, the script, then the Library button.
     #[test]
     fn ctrl_tab_leaves_the_editor() {
         let mut rt = editor();
@@ -844,8 +782,6 @@ mod c10 {
         assert!(script(&rt).contains("\n Rename"));
     }
 
-    /// The editor colours the lines it shows wherever it is scrolled: its span window moves
-    /// with the viewport.
     #[test]
     fn the_editor_colours_the_lines_in_view_as_it_scrolls() {
         use std::fmt::Write as _;
@@ -910,7 +846,6 @@ mod c10 {
         assert!(tops[3] > 1000, "far from the start: {tops:?}");
     }
 
-    /// The field's right-click opens C21's field menu (Rune's own is empty on Linux).
     #[test]
     fn the_field_menu_opens_on_a_right_click() {
         let mut rt = editor();

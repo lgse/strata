@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Scope-stack classes and their colours.
-//!
-//! Every token's colour is a function of its scope stack alone (syntect's
-//! `Highlighter::style_for_stack` is the same computation `HighlightState` makes one push at a
-//! time), so the highlighter keeps no `HighlightState`. Each distinct stack becomes a class,
-//! and a theme turns the classes into a palette. A theme switch re-resolves the palette, a few
-//! thousand stacks at most, and never re-parses.
-
 use std::collections::HashMap;
 
 use rune::Color;
@@ -18,8 +10,6 @@ use syntect::parsing::Scope;
 /// A distinct scope stack, by index into its interner. Class 0 is the empty stack.
 pub(crate) type Class = u32;
 
-/// Interns scope stacks as classes. A push from a class is cached as a transition and a pop
-/// follows parent links, so tokenizing a line hashes a scope at most once per push.
 pub(crate) struct Interner {
     by_stack: HashMap<Vec<Scope>, Class>,
     push: HashMap<(Class, Scope), Class>,
@@ -80,8 +70,6 @@ impl Interner {
     }
 }
 
-/// Each stack's foreground under `theme`, or `None` where it is the theme's default
-/// foreground: those tokens draw in the host's own text colour and get no span.
 pub(crate) fn resolve(theme: &Theme, stacks: &[Vec<Scope>]) -> Vec<Option<Color>> {
     let hl = Highlighter::new(theme);
     let default = hl.get_default().foreground;

@@ -1,21 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The document-position scroll bar (`preview/preview-panel/documents/scrollbar`): a thumb
-//! that follows where the reader is in the rows, not Rune's estimate of the content's height,
-//! which moves as rows are measured. Strata's rule (`scrollbar/position.rs` in
-//! `src/ui/virtual_preview`):
-//!
-//! - the position is the row at the viewport's top plus how far into it the top is, and the
-//!   end the same at the bottom; progress is start over (rows - visible rows);
-//! - at the first row's top it is 0 and with the last row's end in view 1;
-//! - otherwise it never moves backward while the content moves forward, never forward while
-//!   it moves back, and holds while the content holds, so a row measured below the viewport
-//!   can't nudge the thumb.
-//!
-//! A drag moves the content to the row and fraction the thumb stands for, and either end of
-//! the track to the exact first or last line. The rows report where they are drawn
-//! (`on_layout_tx`, live only), so scrolling never runs the view for the bar.
-
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -59,13 +43,9 @@ struct Inner {
     grab: Cell<f32>,
     /// A drag's target, as a row position, waiting for its row to mount.
     pending: Cell<Option<f64>>,
-    /// The row the bar's accessible value last said: steps from assistive technology count
-    /// from it.
     said: Cell<f64>,
     /// The maximum the bar's accessible range last said.
     said_max: Cell<f64>,
-    /// A step from the keyboard or assistive technology moved the content: the bar's value
-    /// should say where it went.
     stepped: Cell<bool>,
 }
 
@@ -173,8 +153,6 @@ impl Position {
         self.publish(Ordering::Equal);
     }
 
-    /// Whether a step moved the content since the bar last said its value, so the view should
-    /// run to say the new one.
     pub fn moved_by_step(&self) -> bool {
         let i = &self.0;
         if i.stepped.get() && self.start().round() != i.said.get() {
@@ -194,8 +172,6 @@ impl Position {
         self.0.viewport.get()
     }
 
-    /// The display row directly under window `y`, or `None` when `y` falls outside any row
-    /// (for example in blank space below the last line of a short file).
     pub fn hit_row(&self, y: f32) -> Option<usize> {
         let i = &self.0;
         let n = i.rows.get();
@@ -214,8 +190,6 @@ impl Position {
         self.mounted_row_hit(y, n)
     }
 
-    /// The display row to extend a gutter drag to at window `y`, clamping above the top edge
-    /// and below the bottom edge to the visible boundary or document ends.
     pub fn drag_row(&self, y: f32) -> Option<usize> {
         let i = &self.0;
         let n = i.rows.get();
@@ -402,8 +376,6 @@ impl Position {
             return None;
         }
         let shown = self.span() as f32;
-        // The thumb's length is the share of rows shown; `thumb` takes it as a viewport over
-        // the rest.
         let (_, len) = thumb(0.0, (n - shown).max(0.0), shown, track, look.min_length);
         let start = (track - len) * self.progress() as f32;
         Some((start + look.ends, len, track))
@@ -420,8 +392,6 @@ impl Position {
         i.thumb.snap([inset, start, look.thumb_width, len]);
     }
 
-    /// Ends a drag the bar's element can no longer end: it was removed, so no Up comes. The
-    /// trough goes back to rest at once.
     pub fn end_drag(&self) {
         let i = &self.0;
         if i.dragging.replace(false) | i.over.replace(false) {
@@ -447,9 +417,6 @@ impl Position {
         }
     }
 
-    /// A drag on the bar at `y` from its top: a press on the thumb holds it where it was
-    /// caught; one on the trough puts the thumb's middle there (GTK's warp), and the drag goes
-    /// on from it.
     pub fn drag(&self, phase: rune::Phase, y: f32, tx: &mut Tx) {
         let i = &self.0;
         if phase == rune::Phase::Up {
@@ -479,9 +446,6 @@ impl Position {
         self.go(progress * range, tx);
     }
 
-    /// Moves the content so row position `at` sits at the viewport's top: the ends exactly,
-    /// a mounted row by its own place (`Tx::scroll_key_to`, from the layout this commit
-    /// makes), any other once Rune has mounted it.
     pub fn go(&self, at: f64, tx: &mut Tx) {
         let i = &self.0;
         let range = (i.rows.get() as f64 - self.span()).max(0.0);
@@ -505,9 +469,6 @@ impl Position {
                 i.pending.set(None);
                 self.place(at, tx);
             } else {
-                // Rune reveals the row (at the viewport's bottom, coming from above), then
-                // it reports its place and lands on top. Coming from above, the reveal is
-                // short of the target, so the content never moves back.
                 tx.scroll_into_view_in(keys.list, format!("{}{r}", keys.row_prefix));
                 i.pending.set(Some(at));
             }
@@ -530,8 +491,6 @@ impl Position {
         self.0.said_max.set(max);
     }
 
-    /// A step from assistive technology (or Left and Right): `delta` rows from the value it
-    /// last read, so setting the minimum or maximum lands on the exact end.
     pub fn step_said(&self, delta: f64, tx: &mut Tx) {
         self.0.stepped.set(true);
         let range = (self.0.rows.get() as f64 - self.span()).max(0.0);
@@ -540,8 +499,6 @@ impl Position {
         self.go(if end { f64::INFINITY } else { at.max(0.0) }, tx);
     }
 
-    /// Jumps to row position `at` in response to an explicit keyboard or assistive-technology
-    /// navigation command, marking the accessible value for immediate update.
     pub fn go_step(&self, at: f64, tx: &mut Tx) {
         self.0.stepped.set(true);
         self.go(at, tx);

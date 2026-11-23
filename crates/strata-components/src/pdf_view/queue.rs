@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The pages the view holds (an image, a text layer, a request in flight) and the requests it
-//! asks the host for, under two byte budgets.
-//!
-//! The host pulls: it pops a request whenever its renderer is free, so Strata's one page at a
-//! time across previews is the host's to keep. A request is ranked when popped, from where the
-//! view stands then, so a page that has left the view by the time the renderer is free is never
-//! asked for: Strata's "queued pages that leave the view are cancelled before rendering". A
-//! request already handed out for a page no longer wanted goes to
-//! [`Queue::take_cancelled`].
-
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -58,16 +48,12 @@ pub(crate) struct Slot {
     pub text_known: bool,
     pub inflight: Option<Inflight>,
     pub failed: bool,
-    /// A failed page that has since left the view: it asks once more when it comes back, as
-    /// Strata's rows ask again when bound again.
     pub failed_away: bool,
     /// The find run ([`Want::search`]) that has counted this page's text.
     pub searched: u64,
 }
 
 impl Slot {
-    /// An image the page shows, with no text layer to select on: the budget dropped it. The
-    /// page asks for a `Page` render again, so its layer comes with the image it draws on.
     fn lost_text(&self) -> bool {
         self.held.is_some() && self.layer.is_none() && !self.text_known
     }
@@ -139,8 +125,6 @@ impl Default for Queue {
 }
 
 impl Queue {
-    /// Starts over for a document of `pages` pages: every ticket handed out before is stale,
-    /// and every one still in flight is cancelled.
     pub fn reset(&mut self, pages: usize) {
         for s in &self.slots {
             if let Some(f) = s.inflight {
@@ -202,9 +186,6 @@ impl Queue {
         }
     }
 
-    /// The pages wanted now, best first: the visible pages from the centre out, then the
-    /// margin page, then (with find open) the pages whose text isn't known, from the centre
-    /// out.
     fn ranked(&self, doc: &PdfDocument, want: &Want) -> Vec<(usize, u32, RenderKind)> {
         let n = self.slots.len();
         let mut out = Vec::new();
@@ -242,8 +223,6 @@ impl Queue {
                     .filter(|&p| p < n)
                 {
                     let s = &self.slots[p];
-                    // A page whose text is known (a scan: the renderer sends no layer) has
-                    // nothing to count; one whose layer the budget dropped is asked again.
                     if s.layer.is_none()
                         && !s.text_known
                         && s.searched != want.search
@@ -258,9 +237,6 @@ impl Queue {
         out
     }
 
-    /// Cancels requests in flight for pages no longer wanted: off the view and its margin
-    /// (and not asked for their text), or asked at a width the rested zoom no longer wants;
-    /// and lets a failed page back in view ask once more. True when either happened.
     pub fn reconcile(&mut self, doc: &PdfDocument, want: &Want) -> bool {
         let n = self.slots.len();
         let vis = want.visible.start.min(n)..want.visible.end.min(n);
@@ -332,8 +308,6 @@ impl Queue {
         !self.ranked(doc, want).is_empty()
     }
 
-    /// Takes a reply. A reply for an earlier document, or older than the image the page holds,
-    /// is dropped; a text-only reply never replaces an image.
     pub fn complete(&mut self, doc: &mut PdfDocument, ticket: Ticket, reply: PageReply) -> Landed {
         let page = ticket.page as usize;
         if ticket.generation != self.generation || page >= self.slots.len() {
@@ -347,8 +321,6 @@ impl Queue {
         let text_only = ticket.kind == RenderKind::TextOnly;
         match reply {
             PageReply::Failed => {
-                // A render the view no longer wanted (cancelled, or asked again since) says
-                // nothing about the page: a host may report a stopped render as a failure.
                 if !wanted || slot.held.is_some_and(|h| h.ticket > ticket) {
                     return Landed::Dropped;
                 }
@@ -405,8 +377,6 @@ impl Queue {
                     shown |= !had;
                     shown |= doc.set_size(page, [width as f32, height as f32]);
                 }
-                // A layer comes with the image it was rendered with; a text-only render's,
-                // or an older render's, only fills a page that has none.
                 if take_image || self.slots[page].layer.is_none() {
                     shown |= self.set_layer(page, text, take_image);
                 }
@@ -438,12 +408,6 @@ impl Queue {
         changed
     }
 
-    /// Drops what's over budget, farthest from the centre first, never the visible pages or
-    /// the margin, never a layer `keep_layer` keeps (a selected page's). True when a mounted
-    /// page has to show its placeholder again.
-    ///
-    /// Find's count outlives a dropped layer: its matches stay counted, and the page isn't asked
-    /// for its text again while the same query runs ([`Slot::searched`]).
     pub fn enforce(&mut self, want: &Want, keep_layer: impl Fn(usize) -> bool) -> bool {
         let n = self.slots.len();
         let vis = want.visible.start.min(n)..want.visible.end.min(n);

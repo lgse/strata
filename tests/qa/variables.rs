@@ -145,8 +145,6 @@ pub(crate) fn substitute(value: &Value, variables: &[(String, String)]) -> Value
     }
 }
 
-/// `$name` is a whole token. `$$` stays for [`unescape`], so a later pass cannot read
-/// `$$E` as `$E`.
 pub(crate) fn substitute_text(text: &str, variables: &[(String, String)]) -> String {
     let identifier = |character: char| character.is_ascii_alphanumeric() || character == '_';
     let mut output = String::with_capacity(text.len());

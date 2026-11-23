@@ -1,63 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The archive preview (`operations/archives/preview`): an archive's member tree, browsed like
-//! a read-only folder, on C1e's collection element in read-only mode (no rename, no drops, no
-//! drag out). Crumbs from "Contents" over a count line and the rows; a password prompt
-//! ([`ArchivePrompt`]) for an encrypted archive.
-//!
-//! ```ignore
-//! let tree = ArchiveTree::new(root, || ids.next());   // W1's EntryId rules: see `new`
-//! s.archive = ArchiveState::new("archive", tree);     // passive: nothing highlighted
-//! ArchiveView::new(|s: &App| &s.archive, |s: &mut App| &mut s.archive, |s: &App| &s.look)
-//!     .letters(!s.type_to_search)
-//!     .on_leave(|s: &mut App, _tx| s.focus_listing())
-//!     .build(s)
-//! ```
-//!
-//! # What it does
-//!
-//! - **Listing.** Folder rows end in "/" and show a chevron; file rows show their size, which
-//!   assistive technology reads as the row's description, after its name (C1e's
-//!   [`Describe`]). An empty folder says "This folder is empty". The order is the host's tree.
-//! - **Crumbs.** "Contents" and the folders down to the one shown; inside a folder, a back arrow
-//!   named "Go up one level" first. A crumb returns to its level.
-//! - **Keys** (C1c with [`controllers::key_map`]): Up and Down (and Home, End, the page keys)
-//!   move the highlight; Right or Enter opens a folder and does nothing on a file; Left goes to
-//!   the parent. At the root Left reaches the host's [`ArchiveView::on_leave`] (Strata returns
-//!   focus to the listing), and the tree takes the key; with no `on_leave`, it goes on past the
-//!   tree to the host's key handling ([`controllers::LeftPasses`]). With Type to search off,
-//!   `h j k l` act as the arrows ([`ArchiveView::letters`]). Edges are taken, so the keys never
-//!   move focus out of the tree; only the cursor's member is outlined. Space isn't taken: it
-//!   goes on to the host, which closes the preview.
-//! - **Pointer** ([`controllers::ArchivePointer`]): a click highlights a member on its release,
-//!   and opens a folder; modifiers act as a plain click; a double click opens one level. Hover
-//!   tints a row and moves neither the highlight nor the cursor (C1e).
-//! - **Passive until entered.** A new state highlights nothing ([`ArchiveState::passive`]), as
-//!   when the cursor moves onto an archive with the preview open. [`ArchiveState::enter`]
-//!   highlights the first member: Space opening the preview, Right from the listing, Enter in
-//!   Columns, an Unlock.
-//!
-//! What stays in Strata: listing the archive (in its sandbox), the order, the limits and their
-//! messages, and the routing around the tree: which keys enter it from the listing, Escape and
-//! Space closing the preview, and where focus goes.
-//!
-//! The list's scroll bar (C24's, C24b) has no reset hook: Rune tells an element removed under a
-//! drag nothing (Rune draft R-C4-2, in C4's docs), so a thumb drag cut off by the preview
-//! closing leaves the bar held. If the host keeps the [`ArchiveState`] and shows it again, the
-//! overlay bar shows until a later press on it ends; a fresh state starts clear.
-//!
-//! # Focus
-//!
-//! [`ArchiveState::enter`] highlights the first member; focus is the host's, for Strata's
-//! "first member highlighted and focused": the list is the collection keyed
-//! [`ArchiveState::scope`], one focus stop, so `tx.focus(archive.scope(), ring)` moves the
-//! keyboard into it, as C9's
-//! [`DrawerState::focus_content`](crate::preview_drawer::DrawerState::focus_content) does from
-//! the listing. Activating the Up button or a folder crumb moves focus back to
-//! [`ArchiveState::scope`], where the folder left behind is highlighted, rather than leaving
-//! focus on an earlier crumb when the pressed control unmounts. The prompt's field can be
-//! focused: it is a text field ([`PromptState::focus`]).
-
 pub mod controllers;
 mod prompt;
 mod tree;
@@ -82,8 +24,6 @@ use crate::scroll::{Bar, BarLook, BarMode, ScrollFeed};
 pub use prompt::{ArchivePrompt, PromptLabels, PromptState};
 pub use tree::{ArchiveDir, ArchiveItem, ArchiveListing, ArchiveTree};
 
-/// The words the archive preview shows and reads. Strata passes translated text; the defaults
-/// are Strata's English.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct ArchiveLabels {
@@ -127,9 +67,6 @@ impl Default for ArchiveLabels {
     }
 }
 
-/// A member row's trailing element: a file's size, or a folder's chevron. The size is the row's
-/// description: heard there, not as a stray label inside the option. It is keyed as a row's
-/// badge, so a host's tooling reads it as the row's second label, as GTK's row holds one.
 fn member_trailing(size: Option<String>, look: &Look) -> El {
     let k = &look.kit;
     match size {
@@ -169,8 +106,6 @@ pub fn file_size(bytes: u64) -> String {
     }
 }
 
-/// The archive preview's state: the member tree, the folder shown, and the collection's state
-/// over it.
 #[derive(Debug)]
 pub struct ArchiveState {
     scope: Rc<str>,
@@ -178,14 +113,11 @@ pub struct ArchiveState {
     pub coll: CollectionState,
     labels: ArchiveLabels,
     version: u64,
-    /// The list's scroll bar (C24) and where the list stands.
     bar: Bar,
     feed: ScrollFeed,
 }
 
 impl ArchiveState {
-    /// The tree, at its root, passive. `scope` is the collection's key, which its rows' keys
-    /// start with.
     pub fn new(scope: impl Into<Rc<str>>, tree: ArchiveTree) -> ArchiveState {
         let mut coll = CollectionState::new();
         coll.controllers.pointer = Some(Box::new(controllers::ArchivePointer::default()));
@@ -238,8 +170,6 @@ impl ArchiveState {
         self.coll.selection.is_empty()
     }
 
-    /// Entered: the first member is highlighted, with the cursor outline. Focus is the host's
-    /// (module docs).
     pub fn enter(&mut self) {
         if self.listing.is_empty() {
             return;
@@ -273,8 +203,6 @@ impl ArchiveState {
         }
     }
 
-    /// Goes to the folder `depth` levels below the root, on the way to the one shown (a
-    /// crumb), with the folder it came through highlighted.
     pub fn go_to(&mut self, depth: usize, tx: &mut Tx) {
         if let Some(cursor) = self.listing.go_to(depth) {
             self.show(Some(cursor), tx);
@@ -450,7 +378,6 @@ impl<S: 'static> ArchiveView<S> {
         .name(a.labels.list.clone())
     }
 
-    /// Runs the collection's controller timeouts (C1e's `tick`); call it from the host's poll.
     pub fn tick(self, s: &mut S, tx: &mut Tx) -> bool {
         self.collection(s).tick(s, tx)
     }

@@ -1,18 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! "Choose Emoji…": GTK's `EmojiChooser` in `customization/icon_picker.rs`, on C20d's
-//! [`IconPicker`].
-//!
-//! The popover sits over the Customize dialog, opens on Recently used once an emoji has been
-//! picked in this window (else Smileys & Emotion), and marks the item's saved emoji as
-//! Current. Picking an emoji saves `emoji:<glyph>` at once, remembers it in the recent tab,
-//! updates the button to "Emoji  <glyph>", and closes the popover with focus back on the
-//! button. Escape closes only the popover; a second Escape closes Customize.
-//!
-//! C20d's bundled emoji keep their English CLDR names and keywords, as GTK's chooser searches
-//! English keywords under a non-English locale; the picker's chrome and its nine category tabs
-//! take their words from the thirteen catalogs.
-
 use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
 use rune::{El, Tx};
@@ -190,8 +177,6 @@ fn base_source() -> &'static PickerSource {
 }
 
 thread_local! {
-    /// One [`PickerSource`] per UI language, sharing C20d's English emoji items while naming
-    /// the nine category tabs from the catalogs.
     static SOURCES: RefCell<Vec<(String, Rc<PickerSource>)>> = const { RefCell::new(Vec::new()) };
 }
 

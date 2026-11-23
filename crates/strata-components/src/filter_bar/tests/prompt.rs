@@ -62,8 +62,6 @@ fn submit(p: &Polled<P>) -> Option<(String, Option<String>, bool, bool)> {
     })
 }
 
-// integration/10xer-mode/places: "The entry is cleared on… a replacing prompt": opening a
-// prompt over another closes it, and none of its text reaches the new kind.
 #[test]
 fn a_new_prompt_replaces_the_open_one_without_its_text() {
     let mut st = PromptState::new();
@@ -80,8 +78,6 @@ fn a_new_prompt_replaces_the_open_one_without_its_text() {
     assert_eq!(st.text(), "");
 }
 
-// integration/10xer-mode/search: "Pressing `f` again pre-fills the current filter query", with
-// the caret after it, unselected, so typing extends it.
 #[test]
 fn a_prefilled_prompt_keeps_its_text_unselected() {
     let mut st = PromptState::new();
@@ -103,8 +99,6 @@ fn rename_opens_with_the_range_the_host_names_selected() {
     assert_eq!(st.edit.range(), (0, 12));
 }
 
-// integration/10xer-mode/search: "In the /, ?, f, and s prompts, Up and Down move the listing
-// cursor while the prompt keeps focus"; rename's Up and Down do nothing.
 #[test]
 fn up_and_down_step_the_listing_choose_a_candidate_or_do_nothing() {
     let mut st = PromptState::new();
@@ -138,8 +132,6 @@ fn up_and_down_step_the_listing_choose_a_candidate_or_do_nothing() {
     assert_eq!(out, Polled::default());
 }
 
-// integration/10xer-mode/places: "Up and Down choose a candidate, and results that arrive
-// later keep that choice"; without a choice, the first follows the ranking.
 #[test]
 fn a_chosen_candidate_survives_later_batches_and_a_stale_answer_is_dropped() {
     let mut st = PromptState::new();
@@ -186,8 +178,6 @@ fn a_chosen_candidate_survives_later_batches_and_a_stale_answer_is_dropped() {
     );
 }
 
-// integration/10xer-mode/places: "Tab writes the chosen folder into the prompt…, and never
-// acts on it." It is an edit, so a new listing follows.
 #[test]
 fn tab_writes_the_chosen_candidate_and_lists_again() {
     let mut st = PromptState::new();
@@ -209,9 +199,6 @@ fn tab_writes_the_chosen_candidate_and_lists_again() {
     assert!(query(&out) > g);
 }
 
-// integration/10xer-mode/places: "Enter on a typed path that exists acts on it at once;
-// otherwise Enter waits for the search to finish." The host asks the prompt to wait; an edit
-// drops the waiting submit.
 #[test]
 fn a_submit_can_wait_for_the_listing_to_finish() {
     let mut st = PromptState::new();
@@ -249,8 +236,6 @@ fn a_submit_can_wait_for_the_listing_to_finish() {
     assert!(st.text() == "~/do");
 }
 
-// integration/10xer-mode: "A `create ›` or `rename ›` name check still running when the prompt
-// is dismissed or edited creates or renames nothing": its answer names an older serial.
 #[test]
 fn a_check_answer_after_an_edit_or_a_dismissal_is_dropped() {
     let mut st = PromptState::new();
@@ -280,8 +265,6 @@ fn a_prompt_without_undo_swallows_the_undo_keys() {
     assert_eq!(st.key(&ctrl('z'), false), None, "the editor undoes");
 }
 
-// integration/10xer-mode/file-verbs: "Esc, a clicked row, another prompt, or leaving the mode
-// discards a `create ›` or `rename ›` entry": a field that lost the keyboard closes.
 #[test]
 fn losing_the_keyboard_dismisses_the_prompt() {
     let mut st = PromptState::new();
@@ -310,8 +293,6 @@ fn repeats_of_enter_and_escape_do_nothing() {
     assert!(st.is_open());
 }
 
-// Review round 1, B1: a listing asked for by a prompt that has since closed must not land in a
-// later prompt. Without candidates, `rename ›` would submit a stale folder as its choice.
 #[test]
 fn a_stale_batch_never_lands_in_a_later_prompt() {
     let mut st = PromptState::new();
@@ -347,9 +328,6 @@ fn a_stale_batch_never_lands_in_a_later_prompt() {
     );
 }
 
-// Review round 1, B2: Strata forgets the user's choice on every change of the text, Tab's
-// write included (`forget_candidate_step`), so an Enter before the next batch never sends the
-// typed text to a folder chosen for other text.
 #[test]
 fn an_edit_or_a_tab_forgets_the_choice() {
     let mut st = PromptState::new();
@@ -381,7 +359,6 @@ fn an_edit_or_a_tab_forgets_the_choice() {
     assert!(!st.stepped(), "Tab's write is a change too");
 }
 
-// GTK's Shift+Tab moves focus back; it completes nothing.
 #[test]
 fn shift_tab_completes_nothing() {
     let mut st = PromptState::new();
@@ -416,8 +393,6 @@ fn a_hint_for_older_text_is_dropped() {
     assert_eq!(st.hint(), Some("Searching…"));
 }
 
-// An edit drops a submit waiting for the listing: the listing that finishes then submits
-// nothing.
 #[test]
 fn an_edit_drops_a_waiting_submit() {
     let mut st = PromptState::new();
@@ -436,9 +411,6 @@ fn an_edit_drops_a_waiting_submit() {
     );
 }
 
-// Review round 1: Strata keeps a footer prompt open while the shortcut reference has the
-// keyboard (F1 from the prompt), and closes it if the keyboard is elsewhere once the
-// reference lets go.
 #[test]
 fn a_held_prompt_survives_losing_the_keyboard_until_released() {
     let mut st = PromptState::new();
@@ -467,8 +439,6 @@ fn a_held_prompt_survives_losing_the_keyboard_until_released() {
     assert!(!st.is_open());
 }
 
-// Review round 2: closing a prompt drops the host's hold, so the next prompt closes on a blur
-// even if the host never released it (a menu closed with its prompt).
 #[test]
 fn closing_a_prompt_drops_its_hold() {
     let mut st = PromptState::new();

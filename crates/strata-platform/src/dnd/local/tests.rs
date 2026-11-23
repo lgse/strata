@@ -2,8 +2,6 @@
 
 use super::*;
 
-/// The owner's ruling (review round 3): the token names no process, only the drag: a counter
-/// and a nonce, which other clients may see.
 #[test]
 fn each_drag_gets_its_own_token_with_no_process_id() {
     let (a, b) = (new_token(), new_token());

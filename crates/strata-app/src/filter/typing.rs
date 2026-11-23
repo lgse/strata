@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Type-to-search: what a key typed in the listing opens the filter with,
-//! `type_to_search_query` in `src/ui/window/key_routing.rs`.
-
 use strata_desktop::keys::{
     KeyPress, Modifiers,
     bindings::{FILTER_SLASH, SPACE},
@@ -17,8 +14,6 @@ pub(super) enum Query {
     Character(char),
 }
 
-/// What `press` opens the filter on, if anything. Space belongs to the quick preview, and a
-/// letter that reads as `/` only through the layout fallback is typed.
 pub(super) fn query(press: &KeyPress) -> Option<Query> {
     if press.is(SPACE.ignoring(Modifiers::SHIFT_MASK)) {
         return None;

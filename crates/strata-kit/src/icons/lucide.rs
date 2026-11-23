@@ -1,21 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Lucide catalog: Strata's Theme colors. Every icon is single-colour and takes the
-//! element's colour (a component tints it with Kit's icon roles, the accent by default),
-//! including Catppuccin's file-type icons, which also get Strata's 15 % fill. Licences: ISC
-//! (Lucide, with Feather's MIT) and MIT (Catppuccin), `crates/strata-kit/icons/README.md`.
-//!
-//! Work package: K3, `docs/rune/work/phase-1-leaves/K3-icon-catalogs.md`.
-//!
-//! All three catalogs hold the same icons under the same names: Strata's Lucide interface and
-//! generic file-type icons (`strata-folder`), its Catppuccin icons for code and config files
-//! (`strata-ctp-rust`), and the few this repository adds (`strata-kit-ellipsis`). They differ
-//! only in how a Catppuccin icon is coloured; [`super::catppuccin`] has the brand colours.
-//! Every [`IconName`] maps to the same Lucide icon in each ([`semantic`]).
-//!
-//! `build.rs` generates the icons from `crates/strata-kit/icons/` ([`catalog`]), by the rules
-//! in `lucide/generate.rs`.
-
 use rune::Icon;
 
 use super::{IconName, IconSet};

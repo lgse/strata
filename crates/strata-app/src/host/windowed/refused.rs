@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! A close the window manager asked for, refused by hand ([`super`], "Refused closes"). The
-//! workaround retires with Rune packet entry 110, a close request a window can refuse.
-
 use strata_platform::csd::{Backend, Csd, Policy};
 
 use super::{Start, UI, is_last_window, next_key, window};
 use crate::{App, shell, shell::close_guard};
 
-/// Keeps window `app` open when a close guard refuses its close: its state moves into a window
-/// opened in its place, which says why, and the closing window keeps a stand-in. True when it
-/// did, and the rest of the close is not to run.
 pub(super) fn keep_open(app: &mut App) -> bool {
     let last = is_last_window(shell::window_id(app));
     let Some(refusal) = close_guard::refusal(app, last) else {

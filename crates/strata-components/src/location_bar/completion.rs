@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The completion model: which suggestions show, which is highlighted, the listing in flight,
-//! and the keys that wait for it. A port of Strata's `PathCompletion`
-//! (`src/ui/browser/location/completion.rs`), without the listing, which is the host's.
-//!
-//! It knows no Rune: the state layer turns its [`Out`] into text edits and intents.
-
 use super::data::{Candidate, CompletionQuery};
 
 #[cfg(test)]
@@ -96,8 +90,6 @@ impl Completion {
         self.pending.is_some()
     }
 
-    /// Ask for suggestions for `text`. The list stays as it is until they land, with nothing
-    /// highlighted; an earlier listing still in flight is superseded.
     pub fn request(&mut self, text: &str) -> CompletionQuery {
         self.generation = self.generation.wrapping_add(1);
         self.highlighted = None;
@@ -131,9 +123,6 @@ impl Completion {
         self.cancel()
     }
 
-    /// An answer landed for `generation`, with the entry holding `text`. A stale answer (another
-    /// generation, or text that changed since) is dropped and returns `None`. Otherwise the list
-    /// shows it, and the keys that waited for it run in order.
     pub fn arrive(
         &mut self,
         generation: u64,
@@ -181,10 +170,6 @@ impl Completion {
         self.shown = candidates;
     }
 
-    /// A key with the entry holding `text`. `relist` says the text changed since the list was
-    /// asked for, so a hidden list must be asked for again. Returns what to do, and whether the
-    /// key goes on (Enter with nothing highlighted submits the typed text; Up and the paging keys
-    /// with no list move nothing).
     pub fn press(&mut self, command: Command, relist: bool, text: &str) -> (Out, bool) {
         let mut out = Out::default();
         if self.defer(command) {
@@ -225,8 +210,6 @@ impl Completion {
         (out, false)
     }
 
-    /// Suggestion `i` chosen with the pointer: its replacement, submitted at once. The listing in
-    /// flight and the keys waiting for it are dropped. `None` when there is no such suggestion.
     pub fn choose(&mut self, i: usize) -> Option<Out> {
         let replacement = self.shown.get(i)?.replacement.clone();
         let cancelled = self.dismiss();
@@ -238,8 +221,6 @@ impl Completion {
         })
     }
 
-    /// Whether `command` waits for the listing in flight: Tab always does, Down, Up and the
-    /// paging keys do while the list shows, and Enter does behind any of those.
     fn defer(&mut self, command: Command) -> bool {
         let visible = self.is_open();
         let Some(pending) = self.pending.as_mut() else {
@@ -257,8 +238,6 @@ impl Completion {
         waits
     }
 
-    /// Tab: the highlighted suggestion, the only one, or a longer common prefix, else the next
-    /// suggestion highlighted.
     fn complete(&mut self, text: &str) -> Out {
         let mut out = Out::default();
         if self.shown.is_empty() {
@@ -283,8 +262,6 @@ impl Completion {
         out
     }
 
-    /// Moves the highlight by `delta`, wrapping at the ends. With nothing highlighted, a step
-    /// forward lands on the first row and a step back on the last.
     fn step(&mut self, delta: i32) {
         let count = self.shown.len();
         if count == 0 {
@@ -300,8 +277,6 @@ impl Completion {
     }
 }
 
-/// The longest prefix every string shares, cut at a character boundary; `None` when there are
-/// no strings or they share nothing.
 pub(crate) fn longest_common_prefix<'a>(
     mut strings: impl Iterator<Item = &'a str>,
 ) -> Option<&'a str> {

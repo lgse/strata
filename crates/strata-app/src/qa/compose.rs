@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Dead keys, as a Rune window hears them. Rune's window host takes its keys from winit,
-//! which runs every press through xkbcommon's compose state, built from the Compose table of
-//! the process's locale. The key that starts a sequence reaches no handler, the key that
-//! completes it arrives as the composed text, and a key that breaks it off is still
-//! delivered when it is a named key: Escape after a dead key is an Escape press. The GTK
-//! application composes in its input method, where that Escape only ends the sequence.
-
 use std::ffi::OsString;
 
 use xkbcommon::xkb::{self, compose};
@@ -26,10 +19,6 @@ pub(super) enum Composed {
 
 pub(super) struct Compose(compose::State);
 
-/// The locale whose Compose table a window composes with: winit's order of the environment.
-/// A process with none set runs in the C locale, whose table composes Latin-1 only; no
-/// desktop session starts a window so, and the QA runner sets none, so that case reads the
-/// UTF-8 table every UTF-8 locale shares.
 fn locale() -> OsString {
     let set = ["LC_ALL", "LC_CTYPE", "LANG"]
         .into_iter()
@@ -42,8 +31,6 @@ fn locale() -> OsString {
 }
 
 impl Compose {
-    /// `None` where the system has no Compose table for the locale: keys then type as they
-    /// do without one.
     pub(super) fn of_session() -> Option<Self> {
         let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
         let table =

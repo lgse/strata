@@ -1,24 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Opening files with desktop applications and the Open With chooser (`src/ui/open_with/` and
-//! `src/ui/browser/desktop.rs`), built on C15's [`StrataDialog`](strata_components::dialog::StrataDialog).
-//!
-//! - **`BrowserEvent::OpenRequested`** ([`launch::open_location_at`]): refuses Trash and
-//!   administrator locations with `"Unable to open item"`, launches `.desktop` web links via
-//!   `gio::AppInfo::launch_default_for_uri_future`, launches registered default handlers via
-//!   [`launch::launch_at`], hands local executable files with no registered default to
-//!   [`crate::run::confirm`], and falls back to the Open With chooser otherwise.
-//! - **Context menus** ([`menu::prepare_menu`], [`menu::open_selection_default`]): starts
-//!   `"Open With…"` insensitive with `"Looking for compatible applications…"`, fills common
-//!   handlers off the UI thread, reveals `"Open"` on multi-selections when a shared default
-//!   exists, and loads folder recent-app history on background menus.
-//! - **The chooser** ([`view`]): search field with live filtering, `Up`/`Down` selection
-//!   stepping from search without moving the caret, `Escape` clearing a non-empty search before
-//!   dismissing, Tab order (`Search` -> selected row -> `Always use…` -> `Cancel` -> `Open` ->
-//!   `Close dialog`), `"Recently Used"` / `"Recommended Applications"` / `"Other Applications"`
-//!   sections, default association saving (`gio::AppInfo::set_as_default_for_type`), and error
-//!   reporting (`"Unable to open file"`).
-
 mod apps;
 pub(crate) mod launch;
 mod menu;

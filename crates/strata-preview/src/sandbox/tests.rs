@@ -25,8 +25,6 @@ const PDF_PREVIEW: ParseOperation = ParseOperation::PreviewPdf(PdfRenderSize {
     height: 800,
 });
 
-/// The arguments of one `sandbox_command` call, defaulting to a software
-/// helper at `/tmp/strata` writing to `/tmp/private-output`.
 struct Sandbox<'a> {
     executable: &'a str,
     input: &'a str,

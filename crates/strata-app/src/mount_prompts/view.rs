@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Rendering C26's mount prompts and the encrypted-volume/release modals on C15's [`StrataDialog`].
-
 use rune::El;
 use strata_components::{
     dialog::{Focus, MESSAGE_WIDTH, StrataDialog, Tone},

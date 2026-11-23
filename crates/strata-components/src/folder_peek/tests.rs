@@ -16,8 +16,6 @@ fn tile(x: f32) -> Rect {
     Rect::new(x, 100.0, 120.0, 96.0)
 }
 
-// preview/quick-preview/folder-peek: "The 256 px popover opens 8 px right of the hovered item
-// and slides right; when that side lacks room it opens on the left and slides left."
 #[test]
 fn the_card_opens_right_of_the_item_and_else_left_of_it() {
     let p = place(tile(200.0), VIEWPORT).unwrap();
@@ -38,8 +36,6 @@ fn the_right_side_needs_rune_s_margin_inside_the_viewport() {
     assert_eq!(place(tile(x), VIEWPORT).unwrap().side, Side::Right);
 }
 
-// preview/quick-preview/folder-peek: "When neither side fits, the popover overlays the
-// viewport's trailing edge."
 #[test]
 fn with_no_room_either_side_the_card_covers_the_trailing_edge() {
     let row = Rect::new(200.0, 100.0, 600.0, 24.0);
@@ -112,8 +108,6 @@ fn resting_on_another_folder_replaces_the_peek_with_a_new_serial() {
     assert_eq!(st.row_rest(&report(1, false)), Change::None);
 }
 
-// preview/quick-preview/folder-peek: "Turning Folder peeking off closes an open peek and
-// cancels a pending one." (The pending wait ends with the rows' delays: see c22's tests.)
 #[test]
 fn peeking_off_closes_the_peek_and_hears_no_reports() {
     let mut st = on();
@@ -135,10 +129,6 @@ fn peeking_off_closes_the_peek_and_hears_no_reports() {
     );
 }
 
-// integration/10xer-mode: "In Icons and List, `i` on a directory toggles the folder peek
-// without moving focus." (The key and the folder check are Strata's.) And "An open folder
-// peek closes before any filter, search, highlight, range, or preview step": `close` says
-// whether there was one.
 #[test]
 fn the_keyboard_peek_toggles_ignores_the_pointer_leaving_and_closes_first_on_escape() {
     let mut st = on();
@@ -159,7 +149,6 @@ fn the_keyboard_peek_toggles_ignores_the_pointer_leaving_and_closes_first_on_esc
     assert!(!st.close(), "nothing left: the next step runs");
 }
 
-// Review round 1, B2: rows under the host's overlays (a menu's scrim, a popover, a dialog).
 #[test]
 fn a_covered_collection_closes_its_peek_and_opens_none() {
     let mut st = on();
@@ -171,7 +160,6 @@ fn a_covered_collection_closes_its_peek_and_opens_none() {
     assert_eq!(st.row_rest(&report(2, true)), Change::Opened);
 }
 
-// Review round 1, SF3: a peek whose folder leaves the view closes, a keyboard one too.
 #[test]
 fn a_peek_whose_folder_leaves_the_view_closes() {
     let view = |collection: &str, ids: &[u64]| RestView {
@@ -195,7 +183,6 @@ fn a_peek_whose_folder_leaves_the_view_closes() {
     assert_eq!(st.target(), None);
 }
 
-// Review round 2, B1-r2: a peek whose folder's row was drawn moved sideways closes.
 #[test]
 fn a_peek_whose_anchor_moved_sideways_closes() {
     let mut st = on();

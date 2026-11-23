@@ -42,8 +42,6 @@ fn debug_blocks(blocks: &[DocumentBlock]) -> String {
     format!("{blocks:?}")
 }
 
-/// Asserts the debug rendering of parsed blocks keeps every `kept` fragment
-/// and none of the `omitted` ones.
 fn assert_debug_mentions(debug: &str, kept: &[&str], omitted: &[&str]) {
     for fragment in kept {
         assert!(debug.contains(fragment), "must keep {fragment}: {debug}");

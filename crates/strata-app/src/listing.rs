@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The listings a view reads: for each of the browser's columns, a copy of what its rows show.
-//! They belong to the contract ([`crate::slots`]), with the reader that fills them
-//! ([`crate::events`]): every view shows the same rows, so no view's package owns them.
-//!
-//! `EntrySource::entry` lends names, and `Browser` keeps its entries behind a `RefCell`, so
-//! the view cannot read them in place. A column here holds one [`Row`] for each of the
-//! browser's entries, at the browser's position, and a list of the positions it shows: the
-//! browser's column holds hidden entries too, which the views leave out
-//! (`entry_matches` in `src/ui/browser/entry.rs`).
-
 use std::{
     collections::HashMap,
     ffi::{OsStr, OsString},
@@ -54,8 +44,6 @@ impl Hasher for EntryIdHasher {
 
 type EntryIdMap<V> = HashMap<EntryId, V, BuildHasherDefault<EntryIdHasher>>;
 
-/// What a row is, as assistive technology hears it: `entry_kind_name` in
-/// `src/ui/accessibility.rs`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Described {
     Folder,
@@ -113,8 +101,6 @@ fn kinds(entry: &FileEntry) -> (EntryKind, Described) {
     }
 }
 
-/// One translation for each thing a row can be described as: the language changes only on
-/// restart, and a view asks for a row's description on every build.
 pub(crate) struct Words([String; 8]);
 
 impl Words {
@@ -123,9 +109,6 @@ impl Words {
     }
 }
 
-/// What the browser knows of an entry beyond its name, as the views show it: the details line
-/// under an Icons tile, the List view's size column. Each is `None` until the browser knows it
-/// (a metadata fill) and for an entry that has none. [`crate::details`] makes the text.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct Facts {
     /// A file's size in bytes.
@@ -144,8 +127,6 @@ pub(crate) struct Facts {
     pub(crate) mode: Option<u32>,
 }
 
-/// The two facts a thumbnail key depends on (`modified` and `size`), stored compactly on
-/// [`Row`] instead of duplicating all six [`Facts`] fields.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct KeyedFacts {
     modified: Option<i64>,
@@ -208,37 +189,17 @@ pub(crate) struct Row {
     icon: &'static str,
     described: Described,
     hidden: bool,
-    /// The key of the entry's thumbnail, for a file that gets one ([`crate::thumbnails`]): a
-    /// hash, so a row holds eight bytes for it and no path. A view finds the file again
-    /// through the browser.
     thumbnail: Option<ThumbKey>,
     /// Whether `thumbnail` is an STL model gated by `stl_thumbnails`.
     rendered_model: bool,
     /// The browser's kind of entry: what its file type is read from with its name.
     entry_kind: Kind,
-    /// Its file type, as the List view groups by it: read only while its folder is grouped
-    /// ([`Column::group`]), as a MIME lookup for every row would cost every view.
     group: Option<TypeGroup>,
     facts: Facts,
-    /// The time and size the thumbnail key was made under, with any learnt since while it was
-    /// kept: what a later row is compared against, so a change across a reload that listed
-    /// them unknown is still seen.
     keyed: KeyedFacts,
 }
 
 impl Row {
-    /// Keeps `previous`'s thumbnail key when this is the same entry read again, both rows
-    /// have a key (a file replaced by a folder of its name has none), and no time or size
-    /// known in both differs. A metadata fill that only makes them known, or a reload that
-    /// lists them unknown again, is then the same file: a new key would ask for its thumbnail
-    /// again and cancel the request out. GTK's key changes on the first fill too; GTK does not
-    /// ask again because a slot already showing a thumbnail of that path is not asked
-    /// (`displayed_thumbnail_matches`), nor a key already requested (`already_requested`).
-    ///
-    /// The window it leaves: a thumbnail rendered while the time and size were both unknown,
-    /// of a file then replaced, stays while every later row brings only newly known facts,
-    /// until a known time or size changes. GTK's window is wider: a slot showing a thumbnail
-    /// of that path is not asked again until it is bound anew.
     fn keep_key_of(&mut self, previous: &Row) {
         if self.same_file_as(previous) {
             self.thumbnail = previous.thumbnail;
@@ -246,9 +207,6 @@ impl Row {
         }
     }
 
-    /// Whether this row is `previous`'s file read again, as far as its facts tell: the same
-    /// entry, both with a thumbnail key, and no time or size known now differing from the last
-    /// known under `previous`'s key.
     fn same_file_as(&self, previous: &Row) -> bool {
         let keyed = previous.thumbnail.is_some() && self.thumbnail.is_some();
         let same_entry = self.id == previous.id;
@@ -296,8 +254,6 @@ impl Row {
         self.entry_kind
     }
 
-    /// What this row carries across a rename to reuse its thumbnail in the window's store,
-    /// matching GTK's `preserve_renamed_thumbnail` (`src/ui/thumbnail/cache.rs`).
     pub(crate) fn thumb_origin(&self) -> Option<ThumbOrigin> {
         Some(ThumbOrigin {
             key: self.thumbnail?,
@@ -307,8 +263,6 @@ impl Row {
         })
     }
 
-    /// The `(from, to)` thumbnail keys to relocate when `self` replaced `origin` by a rename,
-    /// provided the entry kept its kind, extension, and compatible modification time and size.
     pub(crate) fn relocated_thumbnail(&self, origin: &ThumbOrigin) -> Option<(ThumbKey, ThumbKey)> {
         let to = self.thumbnail?;
         let same_ext = Path::new(&self.name).extension() == origin.extension.as_deref();
@@ -329,16 +283,12 @@ pub(crate) struct ThumbOrigin {
     keyed: KeyedFacts,
 }
 
-/// A change to a column's rows, as the browser's event described it. Positions are the
-/// browser's.
 #[derive(Debug)]
 pub(crate) enum Edit {
     /// These are all the rows now.
     Replace(Vec<Row>),
     /// Rows put in at a position, each insertion counted after the ones before it.
     Insert(Vec<(usize, Vec<Row>)>),
-    /// `removed` rows at a position give way to these, each splice counted after the ones
-    /// before it.
     Splice(Vec<(usize, usize, Vec<Row>)>),
     /// Rows that stay where they are and show something new.
     Refill(Vec<(usize, Row)>),
@@ -357,20 +307,13 @@ pub(crate) struct Column {
     title: String,
     /// The browser's entries, each at the browser's position.
     rows: Vec<Row>,
-    /// The positions the view shows, in order: a view index is an index into this. In the
-    /// browser's order, or in file-type groups while [`Column::grouping`] says so.
     shown: Vec<usize>,
-    /// While the rows are grouped, the view index of each position the view shows
-    /// (`usize::MAX` for one it does not). Empty otherwise, when `shown` is in the browser's
-    /// order and a binary search finds an index.
     back: Vec<usize>,
     grouped: GroupedBuckets,
     positions: EntryIdMap<usize>,
     show_hidden: bool,
     /// Moves on every edit to the column's rows (including metadata refills).
     version: u64,
-    /// Moves only when the shown row keys or their order change: passed to Rune's
-    /// `virtual_rows_version` so metadata refills never trigger an O(N) row-key rescan.
     key_version: u64,
     /// Moves when row keys, order, or any row's thumbnail key/model kind changes.
     thumb_version: u64,
@@ -379,8 +322,6 @@ pub(crate) struct Column {
     busy: bool,
     /// The row of the column before this one whose folder this is.
     from: Option<EntryId>,
-    /// The browser's preferences for this folder when it groups its rows by file type
-    /// (`Browser::shows_type_groups`), and nothing when it does not.
     grouping: Option<ViewPreferences>,
     /// The window's saved item colours and icons, indexed by [`EntryId`].
     worn: Rc<Worn>,
@@ -389,7 +330,6 @@ pub(crate) struct Column {
 impl Column {
     pub(crate) fn new(location: Location, show_hidden: bool, from: Option<EntryId>) -> Self {
         Self {
-            // `src/ui/browser/columns/append.rs` gives the GTK pane the same name.
             title: location.display_name(),
             location,
             rows: Vec::new(),
@@ -433,14 +373,10 @@ impl Column {
         &self.location
     }
 
-    /// Whether the browser groups this folder's rows by file type, and under which
-    /// preferences: what a view that groups orders them by.
     pub(crate) fn grouping(&self) -> Option<ViewPreferences> {
         self.grouping
     }
 
-    /// The browser now groups this folder's rows under `grouping`, or does not. True when the
-    /// order the view shows changed.
     pub(crate) fn set_grouping(&mut self, grouping: Option<ViewPreferences>) -> bool {
         if self.grouping == grouping {
             return false;
@@ -499,8 +435,6 @@ impl Column {
         }
     }
 
-    /// Rows on the end join the index as they are, which is how a folder still loading
-    /// publishes them; rows anywhere else move the ones after them.
     fn insert(&mut self, position: usize, rows: Vec<Row>) {
         if position < self.rows.len() {
             self.rows.splice(position..position, rows);
@@ -527,8 +461,6 @@ impl Column {
         self.thumb_version += 1;
     }
 
-    /// Appends staged rows in browser order into an already-grouped listing without
-    /// rebuilding `positions` or re-classifying earlier rows.
     fn append_grouped(&mut self, rows: Vec<Row>, preferences: ViewPreferences) {
         if rows.is_empty() {
             return;
@@ -571,8 +503,6 @@ impl Column {
         }
     }
 
-    /// A refill never moves a row; one that changes whether it is hidden still changes which
-    /// rows show.
     fn refill(&mut self, position: usize, row: Row) {
         let Some(current) = self.rows.get_mut(position) else {
             return;
@@ -583,8 +513,6 @@ impl Column {
         let moved = current.id != row.id || current.hidden != row.hidden || regroup;
         let old_thumb = current.thumbnail;
         let old_model = current.rendered_model;
-        // A row read again carries no type (`Row::of` reads none): one whose type did not
-        // change keeps the one its group was found by, which `group_at` reads.
         let group = current.group.filter(|_| !retyped);
         let mut row = row;
         row.keep_key_of(current);
@@ -623,10 +551,6 @@ impl Column {
         self.thumb_version += 1;
     }
 
-    /// Puts the rows shown in file-type groups, as GTK's grouped List shows them: by
-    /// strata-fs's own rule (`compare_type_groups`, under the folder's preferences), each
-    /// group keeping the browser's order inside it. Ungrouped, it leaves the browser's order
-    /// and allocates nothing.
     fn group(&mut self) {
         self.back.clear();
         let Some(preferences) = self.grouping else {
@@ -753,8 +677,6 @@ impl EntrySource for Column {
         let entry = Entry::new(row.id, &row.name, row.kind, row.icon)
             .maybe_color(color)
             .maybe_glyph(glyph);
-        // A custom icon or emoji stands in place of a file's thumbnail (`shows_icon_instead`),
-        // and STL models render only while `stl_thumbnails` is enabled.
         let allow_thumbnail = !has_glyph && (!row.rendered_model || self.worn.stl_thumbnails());
         match row.thumbnail.filter(|_| allow_thumbnail) {
             Some(key) => entry.thumbnail(key),

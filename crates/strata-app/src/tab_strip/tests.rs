@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The strip on the registered window, where GTK was driven to say what it does: a tab hidden
-//! with a rename open commits it, a child column its mirror was about to open is open when the
-//! tab comes back, in that tab only, and a filter's field has the keyboard again in a pane,
-//! where a Columns column's filter closes. A tab or a window with a file operation running is
-//! not closed, and GTK's notice says so. Folders open in new tabs from a menu's row and from
-//! Ctrl+Enter.
-
 use std::{path::Path, time::Duration};
 
 use rune::{Key, KeyEvent, Mods, Tx};
@@ -79,8 +72,6 @@ pub(super) fn act<T>(host: &mut Offscreen, act: impl FnOnce(&mut App, &mut Tx) -
     said.expect("the update ran")
 }
 
-/// The window at `folder`, and a second tab opened at it with the header's New tab, shown.
-/// Returns the first tab.
 pub(super) fn two_tabs_at(host: &mut Offscreen, folder: &Path) -> TabKey {
     let at = Location::local(folder);
     host.app().open(at.clone());
@@ -113,8 +104,6 @@ fn typed(host: &mut Offscreen, text: &str) {
     idle(host);
 }
 
-/// GTK's rename field commits when the keyboard leaves it, and a tab switch takes the
-/// keyboard: the name typed is the entry's, and the tab shown again has no edit open.
 #[test]
 fn a_rename_open_when_its_tab_is_hidden_is_committed() {
     hosted(
@@ -144,8 +133,6 @@ fn a_rename_open_when_its_tab_is_hidden_is_committed() {
     );
 }
 
-/// A cursor moved onto a folder starts the Columns mirror. A tab hidden while it waits opens
-/// no column in the tab shown, and has the folder's column open when it is shown again.
 #[test]
 fn a_mirror_due_in_a_hidden_tab_opens_its_column_in_that_tab_alone() {
     hosted(
@@ -194,8 +181,6 @@ fn a_mirror_due_in_a_hidden_tab_opens_its_column_in_that_tab_alone() {
     );
 }
 
-/// The entry menu's Open In → New Tab on a row of a selection: a tab for each folder the
-/// selection holds, in its order, the last shown; the file in it opens none.
 #[test]
 fn a_menu_row_opens_each_folder_it_acts_on_in_a_tab() {
     hosted(
@@ -224,8 +209,6 @@ fn a_menu_row_opens_each_folder_it_acts_on_in_a_tab() {
     );
 }
 
-/// Ctrl+Enter in the listing opens the cursor's folder in a new tab, shown; the tab it was
-/// pressed in stays.
 #[test]
 fn ctrl_enter_opens_the_cursors_folder_in_a_new_tab() {
     hosted(
@@ -255,8 +238,6 @@ pub(super) fn dialog(host: &Offscreen) -> Option<String> {
 
 pub(super) const OPERATIONS_ACTIVE: &str = "File operations are still active";
 
-/// GTK's `close` refuses a tab whose browser has a file operation running, and its notice
-/// says so: the tab stays.
 #[test]
 fn a_tab_with_an_operation_running_stays_open_and_says_so() {
     hosted(
@@ -275,8 +256,6 @@ fn a_tab_with_an_operation_running_stays_open_and_says_so() {
     );
 }
 
-/// GTK's close guard: the window's Close is refused while any tab, shown or hidden, has a
-/// file operation running, with the same notice; no close is sent.
 #[test]
 fn the_window_is_not_closed_while_a_hidden_tab_has_an_operation_running() {
     hosted(
@@ -319,8 +298,6 @@ fn click_key(host: &mut Offscreen, key: &str) {
     idle(host);
 }
 
-/// A query typed in the filter, a new tab opened, and the first tab shown again: the filter's
-/// field is then `back`, as `field` reads it.
 fn filter_across_a_switch(host: &mut Offscreen, folder: &Path, back: Option<(String, bool)>) {
     opened(host, folder);
     let view = shell::view_focus(host.app()).expect("the view's key");
@@ -337,8 +314,6 @@ fn filter_across_a_switch(host: &mut Offscreen, folder: &Path, back: Option<(Str
     assert!(reached, "the field is {:?}, not {back:?}", field(host));
 }
 
-/// Driven on GTK: in List a tab comes back with the keyboard in its filter's field, query
-/// kept.
 #[test]
 fn a_tab_left_from_a_panes_filter_field_gets_the_field_back() {
     hosted_in(
@@ -353,8 +328,6 @@ fn a_tab_left_from_a_panes_filter_field_gets_the_field_back() {
     );
 }
 
-/// Driven on GTK: a Columns column's filter closes as the keyboard leaves the column for
-/// another tab, so the tab comes back with none.
 #[test]
 fn a_tab_left_from_a_columns_filter_comes_back_with_it_closed() {
     hosted_in(
@@ -390,9 +363,6 @@ fn drawn_in_shown_tab(host: &mut Offscreen, key: &str) -> bool {
         .any(|element| in_tab(element.parent))
 }
 
-/// A new tab's first frame has its sidebar: a frame without it would lay the files out where
-/// the sidebar goes, and their move back is a layout Rune may not report to the view
-/// (finding lgse/strata#2477).
 #[test]
 fn a_new_tabs_first_frame_has_its_sidebar() {
     hosted(
@@ -436,9 +406,6 @@ fn click_tab(host: &mut Offscreen, index: usize) {
     idle(host);
 }
 
-/// GTK's `select` keeps a tab's focus only in its files, its sidebar or its preview: a tab
-/// left by a press on the strip, which took the keyboard, gets its view's back when it is
-/// shown again.
 #[test]
 fn a_tab_left_by_a_press_on_the_strip_gets_the_keyboard_back_in_its_view() {
     hosted(
@@ -469,8 +436,6 @@ fn a_tab_left_by_a_press_on_the_strip_gets_the_keyboard_back_in_its_view() {
     );
 }
 
-/// Each tab's close button reads GTK's translated `"Close tab"` key (`strip.rs`) in the active
-/// interface language (`TabStrip::words`, finding lgse/strata#2469).
 #[test]
 fn the_close_buttons_speak_the_users_language() {
     hosted_with(

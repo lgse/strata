@@ -63,20 +63,12 @@ fn ancestors<'a, B: Backend>(backend: &'a B, node: &B::Node) -> impl Iterator<It
     std::iter::successors(backend.parent(node), |above| backend.parent(above))
 }
 
-/// The scroll pane that scrolls a pane's entries. A list that holds its own (a Rune
-/// collection keeps its scroll viewport inside the node with the list's role) is scrolled by
-/// the one inside it nearest it, even inside another that scrolls sideways (Rune's List
-/// table); any other list by the nearest one around it, as GTK's is by its scrolled window. A
-/// scroll pane inside an entry is never the pane's.
 pub(crate) fn viewport<B: Backend>(backend: &B, container: &B::Node) -> Option<B::Node> {
     let scrolls = |node: &B::Node| backend.role(node) == "scroll pane";
     inside_list(backend, container, scrolls)
         .or_else(|| ancestors(backend, container).find(|node| scrolls(node)))
 }
 
-/// The node under `container` nearest it that `wanted` takes, the first in order among
-/// those as near, without looking inside an entry. The entries are the ones the backend lists
-/// for the container: a GTK row widget carries no mark of its own.
 fn inside_list<B: Backend>(
     backend: &B,
     container: &B::Node,
@@ -244,8 +236,6 @@ pub fn locate<B: Backend>(
             find(backend, &menu, "menu item", label)?
         }
         Target::DialogButton(label) => {
-            // The dialog on top, as `app.dialog` names it, so a message's button wins over its
-            // dialog's of the same name.
             let dialog = open_dialog(backend, &presented(backend, root))
                 .ok_or_else(|| missing("no dialog is open"))?;
             find(backend, &dialog, "button", label)?

@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A view's side of thumbnails: its viewer in the window's store, the requests it has sent
-//! to the pool, and the way their results come back. Every view that draws thumbnails keeps
-//! one, and says where an entry is in the browser its own way ([`Locate`]).
-
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -24,13 +20,9 @@ use crate::{App, slots::Later};
 /// What a view's own state and the window's store are, borrowed together.
 pub(crate) type Parts = fn(&mut App) -> (&mut Viewer, &mut ThumbnailStore);
 
-/// Where entry `id` of what the view shows is in the browser: its column's depth and its
-/// position there.
 pub(crate) type Locate = fn(&App, EntryId) -> Option<(usize, usize)>;
 
 pub(crate) struct Viewer {
-    /// The view's viewers in the store: one for a single grid or list, one for each open
-    /// column in Columns ([`Viewer::fit`]). Every request they make comes back here.
     ids: Vec<ViewerId>,
     /// The requests out, each with the switch that stops its render.
     pub(super) pending: HashMap<Ticket, Cancellation>,
@@ -65,9 +57,6 @@ impl Viewer {
         self.ids.get(index).copied()
     }
 
-    /// Keeps `count` viewers in the store, at least one: new ones for parts that opened, and
-    /// the last ones dropped for parts that closed, so the store no longer protects or asks
-    /// for what only they showed. Their requests out come back cancelled at the next pump.
     pub(crate) fn fit(&mut self, store: &mut ThumbnailStore, count: usize) {
         let count = count.max(1);
         while self.ids.len() < count {
@@ -80,8 +69,6 @@ impl Viewer {
         }
     }
 
-    /// Stops what the store no longer wants, and asks for what the pool has room for. An
-    /// entry with no local file fails its request. Call it from the view's `poll`.
     pub(crate) fn pump(app: &mut App, parts: Parts, now: f64) {
         let (requests, locate) = {
             let (viewer, store) = parts(app);
@@ -134,16 +121,12 @@ impl Viewer {
                     if let (true, Some(metadata)) = (landed, made.metadata) {
                         publish(app, locate, &sent, &metadata);
                     }
-                    // The image lands in its handle, and published metadata comes back as
-                    // the browser's event: nothing the view reads changed here.
                     false
                 });
             }),
         });
     }
 
-    /// Hands a result to the store, unless its request is no longer out: the folder was left
-    /// or the view went away since, and the result is dropped without touching the store.
     pub(crate) fn finish(
         &mut self,
         store: &mut ThumbnailStore,
@@ -165,9 +148,6 @@ fn file(app: &App, locate: Locate, id: EntryId) -> Option<PathBuf> {
     entry.location.native_path().map(Path::to_path_buf)
 }
 
-/// Hands the browser what the worker read of the file while it rendered, if the entry is
-/// still the file it rendered: GTK's `publish_thumbnail_metadata`
-/// (`src/ui/thumbnail/viewport.rs`). The browser announces it as a metadata fill.
 fn publish(app: &App, locate: Locate, sent: &Sent, metadata: &MediaMetadata) {
     let Some((depth, position)) = locate(app, sent.entry) else {
         return;
@@ -183,8 +163,6 @@ fn publish(app: &App, locate: Locate, sent: &Sent, metadata: &MediaMetadata) {
         .apply_thumbnail_metadata(depth, position, update);
 }
 
-/// The fill a render's metadata makes: the dimensions and the length, rounded to a second;
-/// nothing else is known by it.
 fn update_of(location: Location, metadata: &MediaMetadata) -> MetadataUpdate {
     MetadataUpdate {
         location,

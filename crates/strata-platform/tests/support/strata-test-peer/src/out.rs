@@ -97,8 +97,6 @@ pub fn received(data: &[u8]) -> Received {
     }
 }
 
-/// Writes a source's bytes for one reader on a thread of its own, so the peer's loop keeps
-/// running: a peer reading its own selection serves and reads at once.
 pub fn serve(mime: String, data: Result<Vec<u8>, String>, fd: impl Into<std::fs::File>) {
     let mut file = fd.into();
     event(Event::SourceSend { mime: mime.clone() });

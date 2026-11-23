@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Main Settings -> Actions page view, localized action summaries, problems card, and
-//! delete / notice dialogs, matching `src/ui/settings/actions.rs`.
-
 use std::rc::Rc;
 
 use rune::{Color, Cursor, El, Tx, col, icon, row, text};

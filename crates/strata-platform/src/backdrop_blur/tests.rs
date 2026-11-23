@@ -107,10 +107,6 @@ impl MockCompositor {
     }
 }
 
-/// Minimal Wayland server that answers `wl_display.get_registry` and `wl_display.sync`,
-/// advertises `globals`, emits initial `ext_background_effect_manager_v1.capabilities(initial_caps)`
-/// when that global is bound, drains any queued dynamic capability updates on each `sync`, and
-/// records all client requests until disconnect.
 fn spawn_mock_compositor(
     globals: Vec<(&'static str, u32)>,
     initial_ext_caps: Option<u32>,
@@ -690,8 +686,6 @@ fn dynamic_capabilities_transition_gates_applied_result_and_recovers_on_restore(
     // 2. Compositor dynamically withdraws Blur (`capabilities(0)`):
     mock.queue_capabilities(0);
     queue.roundtrip(&mut state).expect("capabilities(0)");
-    // Disable still succeeds (clears region); re-enable returns false so HandleState::applied
-    // is NOT prematurely marked Some(true).
     assert!(apply_to_surface(
         state.manager.as_ref().expect("manager"),
         &target,
@@ -735,8 +729,6 @@ fn dynamic_capabilities_transition_gates_applied_result_and_recovers_on_restore(
         .count();
     assert_eq!(get_calls, 1);
 
-    // `set_blur_region`: initial enable (non-null), disable (null), restored enable (non-null);
-    // the skipped enable while capabilities == 0 sent NO wire message!
     let regions: Vec<u32> = msgs
         .iter()
         .filter(|m| m.object == effect_id && m.opcode == 1)

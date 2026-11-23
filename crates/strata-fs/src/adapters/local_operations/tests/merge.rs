@@ -20,8 +20,6 @@ fn real_copy() -> CopyStep {
     super::super::merge_copy(None, NamePolicy::default())
 }
 
-/// Substitutes Trash staging with a rename into `staging`, recording the
-/// staged locations in call order.
 fn rename_stage(staging: PathBuf) -> (StageOverwrite, Rc<RefCell<Vec<Location>>>) {
     fs::create_dir_all(&staging).expect("staging dir");
     let calls = Rc::new(RefCell::new(Vec::new()));
@@ -274,8 +272,6 @@ fn hooks<'a>(
     }
 }
 
-/// Merges `source` into `target` with the real copy, staging what it
-/// overwrites through `stage`.
 fn merge_staged(
     source: &Path,
     target: &Path,
@@ -309,8 +305,6 @@ fn created_set(plan: &MergePlan) -> HashSet<Location> {
     plan.created.iter().cloned().collect()
 }
 
-/// The completed, failed, and not attempted items of the cancel `events`
-/// end with.
 fn cancel_outcome(events: &[OperationEvent], row: &str) -> [Vec<Location>; 3] {
     let Some(OperationEvent::Cancelled { result, .. }) = events.last() else {
         panic!("{row}: expected a cancel, got {events:?}");
@@ -332,8 +326,6 @@ fn undo_merge(
     undo_merge_cancelling(id, parts, (cancellable, lookup), |_| false)
 }
 
-/// As [`undo_merge`], and once an event `cancel_on` matches is emitted,
-/// cancels from an idle callback that runs ahead of the reply then in flight.
 fn undo_merge_cancelling(
     id: u64,
     parts: UndoParts,
@@ -363,8 +355,6 @@ fn undo_merge_cancelling(
     events.take()
 }
 
-/// Undo kept the original of `placed` in `trash` as `name`, as what the
-/// merge placed there changed after it.
 fn assert_kept_in_trash(
     events: &[OperationEvent],
     (trash, name): (&Path, &str),

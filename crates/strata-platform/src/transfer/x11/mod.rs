@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! X11: selections on a connection of our own, from one thread.
-//!
-//! Rune exposes no X connection (draft U9, not filed), and winit answers XDND for its window
-//! itself, so everything here runs on a second x11rb connection with an unmapped
-//! override-redirect window. One thread (the actor) does all of its I/O: a reply awaited on
-//! another thread would read events off the socket that the actor's poll then never sees.
-//! Calls from other threads become [`Cmd`]s on a channel, with a byte on a wake pipe.
-//!
-//! It owns `CLIPBOARD` and `PRIMARY` with `TARGETS`, `TIMESTAMP` and any MIME types, serves
-//! large data with INCR, reads others' selections (INCR too), and hears every ownership change
-//! through XFixes, so a lost selection shows at once.
-
 mod handoff;
 #[cfg(feature = "dnd")]
 pub(crate) mod hook;
@@ -98,7 +86,6 @@ enum Cmd {
     },
     /// A test switch: has the server kill our own connection, so it fails.
     KillSelf,
-    /// Installs the module that runs on the actor thread (P1's XDND).
     #[cfg(feature = "dnd")]
     Install(Box<dyn hook::Hook>),
     /// A command for the installed hook.
@@ -107,8 +94,6 @@ enum Cmd {
     Quit,
 }
 
-/// A read's answer, sent once. Dropped unsent (a command the actor never took, a read it
-/// abandoned when it stopped) it answers [`ReadError::Shutdown`], so no reader waits forever.
 pub(super) struct Reply(Option<Done>);
 
 impl Reply {
@@ -262,10 +247,6 @@ impl X11 {
         })
     }
 
-    /// Takes `selection` with `spec`. The actor completes it (after a round trip for the
-    /// server's timestamp) without the caller waiting; a refusal arrives as
-    /// [`Event::SourceCancelled`], and [`X11::owns`] turns true once it holds. A take still
-    /// queued when the actor fails is dropped: its caller hears only [`Event::Failed`].
     pub(crate) fn set_selection(
         &self,
         selection: Selection,
@@ -285,9 +266,6 @@ impl X11 {
         Ok(id)
     }
 
-    /// Gives up the selection `source` holds, if it still holds it, or cancels its take if it
-    /// still waits for its timestamp. True if it held one or was about to when asked; the
-    /// actor then gives it up and [`Event::SourceCancelled`] follows.
     pub(crate) fn clear_selection(&self, source: SourceId) -> Result<bool, Error> {
         let pending = lock(&self.shared).taking.contains(&source.get());
         if !self.owns(source) && !pending {
@@ -299,15 +277,10 @@ impl X11 {
         Ok(true)
     }
 
-    /// Hands `CLIPBOARD`, if this process holds it, to a running clipboard manager with every
-    /// type, so it outlives the process. Blocks until the manager answers, at most about
-    /// `timeout`; the actor serves the manager's requests meanwhile.
     pub(crate) fn hand_off(&self, timeout: std::time::Duration) -> HandOff {
         handoff::hand_off(&self.mailbox, timeout)
     }
 
-    /// Installs `hook` on the actor thread, replacing any earlier one. False if the actor is
-    /// gone.
     #[cfg(feature = "dnd")]
     pub(crate) fn install_hook(&self, hook: Box<dyn hook::Hook>) -> bool {
         self.mailbox.post(Cmd::Install(hook)).is_ok()
@@ -319,8 +292,6 @@ impl X11 {
         self.mailbox.post(Cmd::Hook(cmd)).is_ok()
     }
 
-    /// A test switch: makes the X server end our connection, to check how the actor's
-    /// failure is reported. False if the actor is gone.
     pub(crate) fn provoke_connection_failure(&self) -> bool {
         self.mailbox.post(Cmd::KillSelf).is_ok()
     }
@@ -374,7 +345,6 @@ struct Actor {
     win: Window,
     #[cfg(feature = "dnd")]
     root: Window,
-    /// The module built on the actor (P1's XDND), once installed.
     #[cfg(feature = "dnd")]
     hook: Option<Box<dyn hook::Hook>>,
     atoms: Atoms,
@@ -405,9 +375,6 @@ struct Actor {
 }
 
 impl Actor {
-    /// Serves until told to quit or the connection fails, then answers every read still
-    /// queued. The receiver drops on return, which discards (and so answers) any command sent
-    /// after.
     fn run(&mut self, rx: Receiver<Cmd>, wake: OwnedFd) {
         self.serve(&rx, wake);
         refuse_all(&rx);
@@ -443,8 +410,6 @@ impl Actor {
             }
             self.subs.emit(std::mem::take(&mut self.events));
             if busy {
-                // Handling may have read more events off the socket (replies do): drain them
-                // before sleeping.
                 continue;
             }
             let timeout = self

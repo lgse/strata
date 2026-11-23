@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Launching applications and opening file locations (`src/ui/browser/desktop.rs` and
-//! `src/ui/open_with/launch.rs`).
-
 use std::{collections::HashSet, path::Path, time::Duration};
 
 use gio::prelude::*;
@@ -29,8 +26,6 @@ use crate::{
     slots::Later,
 };
 
-/// GVfs grants an `admin://` mount only to the process that asked for it, so another
-/// application would have to authorize again, or could not read the file at all.
 pub(crate) const ADMINISTRATOR_OPEN_REFUSAL: &str = "Other applications can't open files in a folder opened as administrator. Preview the file here, or copy it to another folder first.";
 
 const RECENTLY_USED_XBEL: &str = "recently-used.xbel";

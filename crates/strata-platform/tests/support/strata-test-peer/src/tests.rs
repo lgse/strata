@@ -50,8 +50,6 @@ fn a_pattern_is_the_same_for_a_seed_and_differs_across_seeds() {
     assert_eq!(a.len(), 1000);
     assert_eq!(a, pattern(1000, 1));
     assert_ne!(a, pattern(1000, 2));
-    // A shorter pattern is a prefix of a longer one, so lengths that aren't multiples of 8
-    // still agree byte for byte.
     assert_eq!(pattern(13, 5), pattern(16, 5)[..13]);
 }
 

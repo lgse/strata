@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The keyboard state machine: keys in, selection operations and [`Outcome`]s out. Plain data,
-//! no Rune elements.
-
 use rune::{Key, KeyEvent};
 
 use super::command::{Command, RangeKind, Target, Vertical};
@@ -12,11 +9,7 @@ use crate::collection::element::KeyInput;
 use crate::collection::selection::{AnchorRule, Changed, Extend, Selection};
 use crate::contract::{CollectionGeometry, Direction, EntryId, EntrySource};
 
-/// What the machine asks for besides selection changes. What each means is the host's policy.
-///
-/// Variants may be added.
-///
-/// Used by: the C1e adapter, C2, C18, hosts.
+/// What the machine asks for besides selection changes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Outcome {
@@ -27,29 +20,17 @@ pub enum Outcome {
         /// The entry.
         id: EntryId,
     },
-    /// The cursor can't move this way inside the collection. The host decides: the sidebar or
-    /// the pane header (unless Keep arrows in file list is on), the next Columns column (C2),
-    /// the parent folder or the folder under the cursor (10xer List and Columns), or nothing
-    /// (List's Right). While a key repeats, an edge is reported once on arrival, not at every
-    /// repeat; a new press reports it again.
+    /// The cursor can't move this way inside the collection.
     Edge(Direction),
-    /// The key was keyboard navigation that moved no cursor (Ctrl+A, Escape): the cursor
-    /// outline shows, as Strata's `keyboard_navigation` turns it on.
+    /// The key was keyboard navigation that moved no cursor (Ctrl+A, Escape).
     Keyboard,
-    /// A 10xer selection key in an empty folder: the host flashes `Nothing to select` (C18).
+    /// A 10xer selection key in an empty folder: the host flashes `Nothing to select`.
     NothingToSelect,
-    /// A Select key ran and the cursor is where it was: Home on the first entry, End on the
-    /// last, a page key or an arrow at the list's end. Its entry is selected alone. Only with
-    /// [`KeySettings::reselects_in_place`]; Strata's `Browser` raises `FocusChanged` again
-    /// there, and the Columns view mirrors again.
+    /// A Select key ran and the cursor is where it was.
     Rested,
 }
 
-/// What the machine reads and changes: the source, its geometry, its settings, the selection,
-/// and where its outcomes go. The adapter ([`Keyboard`](super::Keyboard)) makes one of C1e's
-/// `Ctx`; tests use a plain one.
-///
-/// Used by: the adapter, and views that drive the machine themselves.
+/// What the machine reads and changes: the source, its geometry, its settings, the selection, and where its outcomes go.
 pub trait Surface {
     /// The settings: the host's collection setting, else the defaults.
     fn settings(&self) -> &KeySettings;
@@ -80,19 +61,10 @@ enum Landing {
 }
 
 /// The keyboard state machine of one collection.
-///
-/// Feed it each key with [`KeyMachine::key`], and run [`KeyMachine::tick`] when the host has
-/// queued commands on its [`KeyHandle`]. It changes the selection through the [`Surface`] and
-/// emits [`Outcome`]s for the rest. The [module docs](super) give the rules.
-///
-/// Used by: the adapter ([`Keyboard`](super::Keyboard)).
 #[derive(Debug)]
 pub struct KeyMachine {
     handle: KeyHandle,
     type_ahead: TypeAhead,
-    /// The selection's revision after the machine's own last change during a 10xer range. A
-    /// different revision means something else (a click) changed the selection, which ends
-    /// the range, as a pointer change ends one in Strata.
     range_revision: u64,
     /// Whether the key being handled is a repeat.
     repeating: bool,
@@ -156,15 +128,12 @@ impl KeyMachine {
         true
     }
 
-    /// A primary press on the collection: it ends a 10xer range, as a click does in Strata, at
-    /// once, so the footer is right. (Any other change to the selection the machine didn't
-    /// make ends the range at its next key, by the selection's revision.)
+    /// A primary press on the collection: it ends a 10xer range, as a click does in Strata, at once, so the footer is right.
     pub fn pressed(&mut self) {
         self.handle.set_range(None);
     }
 
-    /// Drops what is in progress: the type-ahead prefix, a 10xer range, and commands still
-    /// queued on the handle. The collection shows another folder.
+    /// Drops what is in progress: the type-ahead prefix, a 10xer range, and commands still queued on the handle.
     pub fn reset(&mut self) {
         self.type_ahead.reset();
         self.handle.set_range(None);
@@ -172,8 +141,7 @@ impl KeyMachine {
         self.last_edge = None;
     }
 
-    /// Runs the commands the host queued on the handle ([`KeyHandle::run`]). True when one
-    /// of them did something.
+    /// Runs the commands the host queued on the handle (`KeyHandle::run`).
     pub fn tick(&mut self, s: &mut dyn Surface) -> bool {
         let mut handled = false;
         while let Some(command) = self.handle.next() {
@@ -196,8 +164,6 @@ impl KeyMachine {
         taken
     }
 
-    /// Reports `d` as an edge, unless the key is a repeat that reached the same edge at the
-    /// same cursor last time.
     fn edge(
         &mut self,
         d: Direction,
@@ -220,8 +186,6 @@ impl KeyMachine {
         s.emit(Outcome::Reveal(i));
     }
 
-    /// A Select key: the entry `target` lands on, alone. Where the cursor cannot move, nothing
-    /// changes, unless [`KeySettings::reselects_in_place`] has its entry selected alone again.
     fn select(
         &mut self,
         target: Target,
@@ -270,8 +234,6 @@ impl KeyMachine {
         }
     }
 
-    /// A single-selection collection answers the commands that would select more than one
-    /// entry itself ([`Self::dispatch_single`]); everything else is [`Self::dispatch`]'s.
     fn route(
         &mut self,
         command: Command,
@@ -312,8 +274,6 @@ impl KeyMachine {
                     self.cursor_to(i, s);
                     true
                 }
-                // Not taken at an edge, so a Columns column hands Ctrl+Left and Ctrl+Right to
-                // the view, as Strata's directory_navigation proceeds with Ctrl held.
                 Landing::Edge(_) | Landing::Nowhere => false,
             },
             Command::Toggle => {
@@ -328,9 +288,6 @@ impl KeyMachine {
                 if len == 0 {
                     s.emit(Outcome::NothingToSelect);
                 } else if self.handle.range().is_some() {
-                    // Inside a `v`/`V` range, Space flips the cursor's entry against the range
-                    // and stays put; later steps keep the flip (Strata's
-                    // `toggle_visual_cursor`).
                     let i = cursor_or_first(s);
                     op(s, |sel, src| sel.toggle_in_run(src, i));
                     s.emit(Outcome::Reveal(i));
@@ -373,16 +330,6 @@ impl KeyMachine {
         }
     }
 
-    /// Shift: the range from the anchor, as Strata's `extend_selection` and
-    /// `extend_page_selection` do. Where there is no anchor (or no cursor), the anchor moves to
-    /// the cursor, or to the end the move starts from. With nothing selected, it moves there
-    /// too, and a one-entry step then selects that entry alone without moving, while a page or
-    /// a jump extends from it at once. With no cursor, a page or a jump selects where it lands
-    /// alone: `extend_page_selection` finds no cursor to anchor at.
-    ///
-    /// A sideways step with no neighbour isn't taken (false), so the view decides: Columns'
-    /// Shift+Right enters the folder and Shift+Left opens the parent (C2), and List does
-    /// nothing, as Strata keeps a Shift-held sideways arrow there.
     fn extend(&mut self, target: Target, s: &mut dyn Surface) -> bool {
         let len = s.source().len();
         if len == 0 {
@@ -411,8 +358,6 @@ impl KeyMachine {
         true
     }
 
-    /// Where a Shift move starts: the cursor; with none, where a page or a jump lands, which it
-    /// then selects alone (true); else the end a step starts from.
     fn extend_origin(
         &self,
         target: Target,
@@ -450,8 +395,6 @@ impl KeyMachine {
             s.emit(Outcome::NothingToSelect);
             return;
         }
-        // A range starts at the cursor; with none there is nothing to select (Strata's
-        // `start_visual`). A load's automatic pick isn't part of the range's base.
         let Some(i) = s.selection().cursor_index(s.source()) else {
             self.handle.set_range(None);
             s.emit(Outcome::NothingToSelect);
@@ -494,8 +437,6 @@ impl KeyMachine {
         }
     }
 
-    /// The entry next to `i` in direction `d`: the geometry's neighbour, else across a row
-    /// end with `wrap_rows`, else the edge.
     fn step(&self, i: usize, d: Direction, s: &dyn Surface) -> Landing {
         if let Some(next) = s.geometry().neighbor(i, d) {
             return Landing::At(next);
@@ -510,9 +451,6 @@ impl KeyMachine {
     }
 }
 
-/// Where a step in direction `d` lands with no cursor: on the first entry going down or
-/// right, on the last going up or left, unless Left leaves the collection there
-/// ([`KeySettings::left_leaves_without_cursor`]).
 fn first_step(d: Direction, last: usize, left_leaves: bool) -> Landing {
     match d {
         Direction::Left if left_leaves => Landing::Edge(d),
@@ -521,10 +459,6 @@ fn first_step(d: Direction, last: usize, left_leaves: bool) -> Landing {
     }
 }
 
-/// Ctrl+A in a collection whose last entry is `last`. The cursor stays, or goes to the first
-/// entry when there was none, and that entry is revealed. With
-/// [`KeySettings::select_all_to_last`] it goes to the last entry and nothing scrolls; the
-/// anchor stays where it was, or goes with the cursor when there was none.
 fn select_all(s: &mut dyn Surface, last: usize) {
     if !s.settings().select_all_to_last {
         if op(s, |sel, src| sel.select_all(src)).cursor {
@@ -548,8 +482,6 @@ fn op(
     s.apply(&mut f)
 }
 
-/// Whether `command` leaves an active 10xer range going: moves walk it, Space flips inside
-/// it, `v` and `V` end or switch it themselves.
 fn keeps_range(command: Command) -> bool {
     matches!(
         command,
@@ -562,8 +494,6 @@ fn keeps_range(command: Command) -> bool {
     )
 }
 
-/// Whether a target moves towards the last entry, so a range with no cursor starts at the
-/// first.
 fn forward(target: Target) -> bool {
     match target {
         Target::Step(d) => matches!(d, Direction::Down | Direction::Right),
@@ -577,9 +507,6 @@ fn cursor_or_first(s: &dyn Surface) -> usize {
     s.selection().cursor_index(s.source()).unwrap_or(0)
 }
 
-/// 10xer Space outside a range: the first Space adds the cursor's entry even over a load's
-/// automatic pick, then the cursor moves to the next entry in display order
-/// (`toggle_cursor_and_advance`: `move_displayed_cursor(1, 1)`).
 fn toggle_advance(s: &mut dyn Surface) {
     let len = s.source().len();
     let i = cursor_or_first(s);
@@ -592,9 +519,6 @@ fn toggle_advance(s: &mut dyn Surface) {
     s.emit(Outcome::Reveal(next));
 }
 
-/// Enter: opens the cursor's entry. With no cursor, the first entry takes the cursor and the
-/// selection and opens (a recorded decision, from Strata's grouped-List rule that Return
-/// starts at the first row shown). An empty collection leaves the key to the host.
 fn activate(s: &mut dyn Surface) -> bool {
     let i = match s.selection().cursor_index(s.source()) {
         Some(i) => i,

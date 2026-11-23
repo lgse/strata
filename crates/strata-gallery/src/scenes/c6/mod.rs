@@ -1,24 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for C6 LocationBar: its scenes, demo state, view and key and poll hooks. Scene
-//! names start with `c6-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/C6-location-bar.md`.
-//!
-//! The page draws Strata's header with the location bar in its middle, a stand-in file pane
-//! (`c6-files`, focusable and pressable, its label counting presses) and a `c6-log` line naming
-//! the last thing the host did, which scripts read. The demo plays Strata's part over a small
-//! fake folder tree under `/home/demo`:
-//!
-//! - it lists suggestions as Strata's planner does (prefix, `~`, relative, the folder's own
-//!   children when it matches alone), on a fake worker: an answer comes due 0.05 s after its
-//!   query on the virtual clock, or 1.5 s when it lists a folder named `nas` (a slow share).
-//!   It answers even a cancelled query, so the bar's own stale check is what scripts see;
-//! - it opens typed paths that exist, and logs "Unable to open location" for the rest;
-//! - page keys stand in for the window's: Ctrl+L edits the location, and F5 reloads the
-//!   folder 0.3 s later (a load that ends while the entry is open). F7 completes as Tab does,
-//!   as a key added to Strata's `focus_next` would.
-
 use rune::{Chord, Cx, El, Key, KeyEvent, Tx, col, row, text};
 use strata_components::contract::dnd::DropHover;
 use strata_components::header::{self, Header};
@@ -38,7 +19,6 @@ const KEY: &str = "c6-loc";
 const FAST: f64 = 0.05;
 const SLOW: f64 = 1.5;
 
-/// C6's demo state, held in `Gallery::c6`.
 pub struct Demo {
     pub bar: LocationBarState,
     /// The open folder, absolute.
@@ -163,8 +143,6 @@ fn trail(path: &str) -> Trail {
     Trail::new(crumbs, display(path))
 }
 
-/// A typed location, absolute, as Strata resolves it (`~`, `~/`, absolute, else relative to
-/// the open folder); `..` and `.` resolve as text.
 fn resolve(text: &str, cwd: &str) -> String {
     let t = text.trim();
     let joined = if t == "~" {
@@ -311,8 +289,6 @@ impl Demo {
                 self.worker
                     .push((self.now + wait, Completions::new(q.generation, found)));
             }
-            // The fake worker finishes what it started, as a listing already running does: its
-            // late answer then reaches the bar, which drops it as stale.
             LocationIntent::CancelCompletion => {}
             LocationIntent::Submit { text } => {
                 let path = resolve(&text, &self.cwd);
@@ -425,9 +401,6 @@ fn copied(g: &mut Gallery, dark: bool) {
 
 fn menu(g: &mut Gallery, dark: bool) {
     scene(g, dark);
-    // Opened where a secondary press 160 points in would open it: at the press's x, its top on
-    // the bar's bottom (the bar is centred in the header). Scenes can't press; the scripts
-    // `hierarchy-menu` and `hierarchy-menu-opens` open it with a real secondary press.
     let look = &g.look;
     let header = look.frame.bar + 2.0 * look.frame.inset;
     let bar = BarLook::app(look).horizontal();
@@ -435,8 +408,6 @@ fn menu(g: &mut Gallery, dark: bool) {
     g.c6.bar.open_menu(160.0, (header + height) / 2.0);
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("c6", dark)`, then fills in `g.c6`.
 pub const SCENES: &[Scene] = &[
     ("c6-short-light", |g| scene(g, false)),
     ("c6-short-dark", |g| scene(g, true)),
@@ -530,8 +501,6 @@ fn stand_in(look: &Look, icon: IconName, label: &str, key: &str) -> El {
         .key(key.to_owned())
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     let d = &mut g.c6;
     let ctrl_l = matches!(&key.key, Key::Command('l'))
@@ -549,8 +518,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds: the
-/// bar's tick, the fake worker's due answers and due folder loads. True when state changed.
 pub fn poll(g: &mut Gallery, t: f64, tx: &mut Tx) -> bool {
     let d = &mut g.c6;
     d.now = t;

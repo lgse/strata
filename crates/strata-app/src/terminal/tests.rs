@@ -281,8 +281,6 @@ fn ctrl_alt_t_and_menu_rows_open_the_targeted_or_opened_folder() {
             let folder = fixture();
             open_and_list(&mut host, folder.path(), 5);
 
-            // Initial load selects the first entry (`archive`, a folder), so `Ctrl+Alt+T`
-            // opens `archive`; selecting a file (`todo.txt`) opens the pane's folder itself.
             press_ctrl_alt_t(&mut host);
             assert!(
                 host.run_until(PATIENCE, |_| launches(&log).len() == 1),
@@ -298,8 +296,6 @@ fn ctrl_alt_t_and_menu_rows_open_the_targeted_or_opened_folder() {
             );
             assert_eq!(launches(&log)[1].0, folder.path());
 
-            // Clicking `documents` in the parent pane opens `documents` at depth 1 while the
-            // pointer stays over depth 0; `Ctrl+Alt+T` prefers the opened `documents` folder.
             let documents = folder.path().join("documents");
             click_row(&mut host, folder.path(), "documents");
             assert!(
@@ -421,8 +417,6 @@ fn assert_location_and_modal_after_yield(host: &mut Offscreen, folder: &Path, lo
     while host.turn() {}
     assert_eq!(current_holds(host), Some(Holds::Location));
 
-    // The first launch is the location bar's: neither the open menu's nor 10xer's press
-    // above launched one.
     press_ctrl_alt_t(host);
     assert!(
         host.run_until(PATIENCE, |_| !launches(log).is_empty()),
@@ -471,9 +465,6 @@ fn after_yield_opens_under_location_and_skips_under_menu_tenxer_or_modal() {
                 "documents column open"
             );
 
-            // Clear selection, pin targeted() to column 1 (`documents`), and open a menu on
-            // column 0 (`$root`). GTK's context menu is its own popover surface, so
-            // `Ctrl+Alt+T` there never reaches the window's actions and launches nothing.
             host.runtime().update(|app: &mut App, tx: &mut Tx| {
                 app.columns.clear_selection();
                 shell::publish(app);

@@ -88,8 +88,6 @@ fn make(path: &Path, folder: bool) -> io::Result<()> {
     }
 }
 
-/// No `RENAME_NOREPLACE`, and a link to `target` refused for that item alone,
-/// as `protected_hardlinks` does for another user's file.
 fn links_refused_for_the_item() -> Quirks {
     Quirks {
         fail: vec![(Op::Link, "target", 0, Errno::PERM)],

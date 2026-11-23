@@ -8,8 +8,6 @@ use strata_qa::Backend as _;
 use super::{now, staged_after};
 use crate::test_support::fixture;
 
-/// Seven Icons runs once passed on the Columns view, which the shell shows when no view
-/// answers to the saved mode (the review of #2192). `ready` refuses that start.
 #[test]
 fn a_run_whose_mode_no_view_answers_to_is_refused_at_ready() {
     staged_after(

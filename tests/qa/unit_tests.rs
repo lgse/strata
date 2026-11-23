@@ -36,8 +36,6 @@ use crate::{
     },
 };
 
-/// This target has its own harness, so `#[test]` and `#[cfg(test)]` code never runs;
-/// a test runs only when listed here.
 macro_rules! unit_tests {
     ($($name:ident),* $(,)?) => {
         pub(crate) const UNIT_TESTS: &[(&str, fn())] = &[$((stringify!($name), $name)),*];

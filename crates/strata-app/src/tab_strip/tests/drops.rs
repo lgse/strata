@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Headless behavioral tests for tab-strip drops, spring-loaded hover tab switching, `Return` on
-//! the header and strip New tab buttons, and in-process sidebar (`TabOpen::AtGap`) and folder-only
-//! view (`TabOpen::AtEnd`) drags.
-
 use std::{
     cell::RefCell,
     collections::HashMap,

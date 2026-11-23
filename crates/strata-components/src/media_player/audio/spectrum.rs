@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The live spectrum: bar ballistics over the host's band levels, drawn through `Live`
-//! values with no view commit (Strata's `src/ui/preview/audio/spectrum.rs` and `analysis.rs`).
-//!
-//! The host analyses the audio being heard (Strata's FFT and `band_levels`) and feeds the
-//! band levels, 0 to 1, in any number of bands ([`Spectrum::feed`]). Each tick the bars rise to
-//! their band at once and fall at 3.4 a second; a peak cap holds 0.42 s, then falls under
-//! gravity. With no feed (paused, nothing heard) they fall to rest.
-
 use std::cell::Cell;
 
 use rune::{Color, Live};
@@ -128,8 +120,6 @@ pub fn bar_count(width: f32, bar: f32, gap: f32) -> usize {
 }
 
 impl Spectrum {
-    /// Band levels heard since the last tick, 0 to 1, in any number of bands. Each bar takes
-    /// the loudest of the bands it spans.
     pub fn feed(&mut self, bands: &[f32]) {
         self.fed = Some(bands.to_vec());
     }
@@ -138,8 +128,6 @@ impl Spectrum {
         &self.ballistics
     }
 
-    /// The spectrum's laid-out size, and the bar count the build uses. True when the count
-    /// changed (the view rebuilds with that many bars).
     pub(crate) fn set_size(&mut self, size: [f32; 2], bar: f32, gap: f32) -> bool {
         self.size = size;
         self.gap = gap;
@@ -187,9 +175,6 @@ impl Spectrum {
         self.ballistics.is_settled() && self.ballistics.bars().iter().all(|b| *b <= SETTLED_LEVEL)
     }
 
-    /// Writes the bars' rects and colours (`spectrum::draw`): every bar spans one gradient from
-    /// the base at the baseline to the bright colour at the top, so a taller bar reaches a
-    /// brighter colour.
     fn place(&self) {
         let [w, h] = self.size;
         let n = self.bars.len();

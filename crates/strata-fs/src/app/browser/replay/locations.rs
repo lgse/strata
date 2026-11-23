@@ -42,9 +42,6 @@ impl Browser {
         self.restore_original_locations(replay, entry, request)
     }
 
-    /// Moves completed transfers back. `generation` pins the undo the caller
-    /// inspected, so an operation started while conflicts were being confirmed
-    /// wins instead of being reverted.
     pub fn undo_move(self: &Rc<Self>, generation: u64, items: Vec<UndoMoveItem>) -> bool {
         self.replay_move(false, generation, items)
     }
@@ -124,8 +121,6 @@ impl Browser {
         self.replay_entry_locations(Replay::redo(generation), UndoEntry::Copy(locations), true)
     }
 
-    /// Replays a copy undo or a trash or copy redo, which list plain locations:
-    /// `restore` brings them back from Trash, otherwise they go to Trash.
     fn replay_entry_locations(
         self: &Rc<Self>,
         requested: Replay,
@@ -191,8 +186,6 @@ impl Browser {
         true
     }
 
-    /// Merge undo restores originals from Trash, so it runs through the
-    /// restoration pipeline like trash undo.
     pub fn undo_merge(
         self: &Rc<Self>,
         generation: u64,

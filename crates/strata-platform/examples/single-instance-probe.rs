@@ -1,26 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The `single-instance` shim without Rune, for strata-platform's session tests (P8). It
-//! claims `org.example.SingleInstanceProbe` and reports as JSON lines on stdout:
-//!
-//! - `{"ev":"claim","result":"primary"}` (with `"file_manager1"`: `owned`, `queued` or
-//!   `failed: …`), `"forwarded"` with `"status"`, or `"standalone"` with `"reason"`;
-//! - as the primary, one line per event: `launch` (with `remote`, `args` and `cwd` as hex
-//!   bytes, `xdg` and `sid` tokens), `activate`, `open`, `action` and `reveal`.
-//!
-//! As the primary it answers each launch by its arguments: `--print` prints a line to the
-//! launch's stdout, `--usage-error` a line to its stderr and exit status 1, and
-//! `--release-after` answers the launch, then stops being the primary at once: from its main
-//! thread, or with `PROBE_RELEASE_ON=bus` from the bus thread. `--hold` never answers. Its
-//! stdin takes
-//! `release` (stop being the primary) and `quit`; the action `quit` ends it too. With
-//! `PROBE_SERVICE=1` the end of stdin doesn't: the bus starts it with none.
-//!
-//! The environment sets the rest: `PROBE_GATE=1` waits for a line on stdin before claiming,
-//! `PROBE_SERVICE=1` and `PROBE_FILE_MANAGER1=1` set those options, `PROBE_FILE_MANAGER1_NAME`
-//! the name asked for in place of `org.freedesktop.FileManager1`, and `PROBE_BUS_TIMEOUT_MS`
-//! the bus timeout. It accepts the actions `go` and `quit`.
-
 #[cfg(feature = "single-instance")]
 fn main() {
     probe::main();

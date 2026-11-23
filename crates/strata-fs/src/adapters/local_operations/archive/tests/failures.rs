@@ -28,8 +28,6 @@ fn extract_cancelled_on_start(request: ExtractRequest) -> (Events, Operation) {
         request,
         Rc::new(move |event| {
             if matches!(event, OperationEvent::ArchiveStarted { .. }) {
-                // Cancel before dispatching the worker, not after a main-context
-                // iteration that may also finish extracting a small archive.
                 drop(
                     cancel_on_started
                         .borrow_mut()

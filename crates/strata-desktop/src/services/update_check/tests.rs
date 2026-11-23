@@ -27,8 +27,6 @@ fn release_response_list(json: &str) -> Vec<ReleaseResponse> {
     serde_json::from_str(json).expect("release fixture list should deserialize")
 }
 
-/// A GitHub asset JSON object whose `name` matches [`archive_name`] for
-/// `version`, i.e. the asset this platform's architecture would download.
 fn matching_asset_json(version: &str) -> String {
     let name = archive_name(version);
     format!(r#"{{"name":"{name}","browser_download_url":"https://example.invalid/{name}"}}"#)
@@ -153,9 +151,6 @@ fn release_metadata_carries_channel_identity_fields() {
         metadata.published_at.as_deref(),
         Some("2026-08-01T00:00:00Z")
     );
-    // `target_commitish` is never the commit: GitHub returns the default
-    // branch for a release published against an existing tag. The metadata
-    // leaves `commit` unresolved for `resolve_commit` to fill in.
     assert!(metadata.commit.is_none());
     assert_eq!(
         metadata.url,
@@ -279,15 +274,6 @@ fn release_page_url_uses_the_exact_published_tag() {
     );
 }
 
-// --- channel selection, fixture-driven, no network -----------------------
-//
-// Eligibility and version ordering live in `release_channel`. This module
-// owns JSON → `select_update` wiring.
-
-/// Exercises `fetch_preview`'s exact filtering pipeline against a fixture
-/// list: a draft, an unparsable tag, a release with no asset for this
-/// architecture, and one valid newer release. Only the valid release may
-/// ever be offered.
 #[test]
 fn preview_feed_skips_drafts_unparsable_tags_and_assetless_releases() {
     let draft_asset = matching_asset_json("0.7.0");

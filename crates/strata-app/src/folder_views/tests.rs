@@ -14,9 +14,6 @@ use crate::test_support::{PATIENCE, hosted, hosted_after};
 const SAVE: Duration = Duration::from_millis(500);
 const USE: Duration = Duration::from_secs(60);
 
-/// GTK's one timer (`schedule_folder_views_write`): a pending write keeps its time unless a
-/// shorter wait is asked for, a longer or equal wait asked meanwhile changes nothing, and the
-/// time is stamped when the write is asked.
 #[test]
 fn a_pending_write_keeps_its_time_unless_a_shorter_wait_is_asked() {
     let mut timer = Timer::default();
@@ -48,9 +45,6 @@ fn a_pending_write_keeps_its_time_unless_a_shorter_wait_is_asked() {
     );
 }
 
-/// The last write before the process ends: a change made just before it is in
-/// `folder-views.toml` once the settings writer is flushed, with the 500 ms timer still
-/// pending, and a second call (a quit after a close) starts no second write.
 #[test]
 fn the_exit_write_saves_a_change_the_timer_has_not_written() {
     hosted(
@@ -85,14 +79,10 @@ fn the_exit_write_saves_a_change_the_timer_has_not_written() {
     );
 }
 
-/// A folder of the test's own configuration directory, so that start-up can find what was
-/// saved for it: made before the window is.
 fn sorted_folder() -> std::path::PathBuf {
     strata_core::storage::config_directory().join("sorted")
 }
 
-/// Three files whose sizes grow with their names, so a sort by size descending lists them the
-/// other way round from a sort by name.
 fn make_sorted_folder() {
     let folder = sorted_folder();
     std::fs::create_dir_all(&folder).expect("folder");
@@ -128,10 +118,6 @@ fn listed(host: &crate::host::offscreen::Offscreen, depth: usize) -> Vec<String>
         .collect()
 }
 
-/// A folder's sort saved by an earlier session is its sort from the moment its column is
-/// made, before anything is listed, so its rows never show in another order first (GTK's
-/// `set_folder_sorts` binding, bound before the first folder opens). Opening it counts as
-/// using it, and a write is owed for that.
 #[test]
 fn a_saved_folder_sort_applies_on_its_first_column() {
     let size_down = (SortKey::Size, SortDirection::Descending, Default::default());
@@ -177,8 +163,6 @@ fn a_saved_folder_sort_applies_on_its_first_column() {
     );
 }
 
-/// A sort chosen in a remembered folder is kept for that folder in `folder-views.toml`, and
-/// the default sort is left alone (`FolderSortChosen`, `set_folder_sort_options`).
 #[test]
 fn a_sort_chosen_in_a_remembered_folder_is_kept_for_it() {
     let size_down = (SortKey::Size, SortDirection::Descending, Default::default());
@@ -212,9 +196,6 @@ fn a_sort_chosen_in_a_remembered_folder_is_kept_for_it() {
     );
 }
 
-/// As GTK's windows share one `PreferenceManager`: a sort chosen in one window's remembered
-/// folder is the other window's at once, before any write reaches the file, and the other
-/// window's column of that folder follows it.
 #[test]
 fn the_windows_of_a_process_share_one_store() {
     use crate::{

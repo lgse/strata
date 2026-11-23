@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What DEVICES lists, read from GIO's volume monitor as GTK's `append_devices` reads it
-//! (`src/ui/window/sidebar_devices.rs`, with `gio_devices.rs` and `devices.rs`): the volumes,
-//! orphaned password-start drives, and the mounts no listed volume stands for, each placed under
-//! its drive.
-//!
-//! On the interface thread, whose GLib context is the default one the hosts iterate.
-
 use std::collections::HashSet;
 
 use gio::prelude::*;
@@ -55,8 +48,6 @@ pub(super) struct Seen {
     pub(super) source: Source,
 }
 
-/// The rows in display order, one list per drive. A local-only sidebar (the chooser's) lists
-/// only what is, or would mount as, a local path.
 pub(super) fn read(local_only: bool) -> Vec<Vec<Seen>> {
     let monitor = gio::VolumeMonitor::get();
     let volumes = monitor.volumes();
@@ -164,8 +155,6 @@ fn mount_row(location: Location, mount: gio::Mount, network: bool) -> Seen {
     }
 }
 
-/// The unshadowed mounts whose volume has no row, each once: a GVfs restart leaves the old
-/// mount listed, and GIO lists the newest first.
 fn mounts_without_volumes(
     monitor: &gio::VolumeMonitor,
     volumes: &[gio::Volume],
@@ -189,8 +178,6 @@ fn mounts_without_volumes(
         .collect()
 }
 
-/// GTK's `hides_volume`: system loops, exclusively held unmounted block devices, and non-local
-/// volumes when the chooser requests local-only destinations.
 fn hides_volume(volume: &gio::Volume, local_only: bool) -> bool {
     let mount = volume.get_mount();
     if mount.is_none() {
@@ -215,8 +202,6 @@ fn hides_volume(volume: &gio::Volume, local_only: bool) -> bool {
     }
 }
 
-/// GVfs marks a loop for automount only when this user attached it. Any other loop is system
-/// plumbing, such as the root image of a live system (`is_system_loop` in `devices/held.rs`).
 pub(super) fn is_system_loop(class: Option<&str>, should_automount: bool) -> bool {
     class == Some("loop") && !should_automount
 }

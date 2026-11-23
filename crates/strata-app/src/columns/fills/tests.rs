@@ -9,9 +9,6 @@ fn first(fills: &mut ColumnFills) -> &mut ScrollSettle {
     fills.columns[0].settle_mut()
 }
 
-/// A column's fills wait while its range moves, as GTK's Columns rows ask for none while their
-/// column scrolled in the last 150 ms: a first range or one that only grows as rows arrive is
-/// no scroll; a moved start is, until it has been still for [`SETTLE`].
 #[test]
 fn a_scrolling_column_is_asked_for_once_it_settles() {
     let mut fills = ColumnFills::new(true);
@@ -46,9 +43,6 @@ fn a_scrolling_column_is_asked_for_once_it_settles() {
     );
 }
 
-/// Another folder at the same depth starts unscrolled: its first range is asked for at once,
-/// however far down the last folder was, whether the poll sees the new folder after its first
-/// range or before it, and a scroll still settling there is dropped.
 #[test]
 fn another_folder_in_a_column_is_asked_for_at_once() {
     let mut fills = ColumnFills::new(true);

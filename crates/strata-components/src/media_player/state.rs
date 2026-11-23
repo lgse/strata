@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The player's state: what the host gave it, what the clock said last, where the pointer is,
-//! and the live values that move without a view commit.
-
 use std::cell::{Cell, RefCell};
 use std::time::Duration;
 
@@ -26,11 +23,7 @@ use crate::viewers::viewport::{Mode, ViewportState};
 pub const STAND_IN_FADE: f64 = 0.15;
 /// Grow-in frames commit at most this often, in seconds (OWNER ruling: 30 Hz).
 pub const GROW_INTERVAL: f64 = 1.0 / 30.0;
-/// A seek counts as reported once the clock is this close to its target (a clock that plays
-/// on from the target moves a frame or two before the next tick).
 const SEEK_REACHED: Duration = Duration::from_millis(250);
-/// A seek the clock never reports (a host that dropped it) stops holding the timeline after
-/// this long, in seconds on the host's clock.
 const SEEK_GIVE_UP: f64 = 1.0;
 /// The tick a playing player asks for.
 const FRAME: Duration = Duration::from_millis(16);
@@ -107,16 +100,8 @@ pub(crate) struct Shown {
     art: Option<u64>,
 }
 
-/// The player's state, held by the host and reached by accessor.
-///
-/// The host sets what it knows ([`MediaState::set_clip`] and the setters), calls
-/// [`MediaState::tick`] from its poll every frame with its [`PlaybackClock`], and applies the
-/// [`MediaIntent`]s the player sends (through `MediaPlayer::on_intent` from the view's
-/// handlers, or [`MediaState::drain_intents`] after a tick or a [`MediaState::command`]).
 pub struct MediaState {
     clip: Clip,
-    /// The video surface's zoom state (C14a): fitted for video, scaled down for animations, never
-    /// zoomed by the user.
     pub viewport: ViewportState,
     labels: Labels,
     keys: MediaKeys,
@@ -125,8 +110,6 @@ pub struct MediaState {
     duration: Option<Duration>,
     playback: PlaybackState,
     seekable: bool,
-    /// A seek sent but not yet reported by the clock, and the host time it was first seen
-    /// pending: the timeline holds its target until the clock reports it.
     pending_seek: Option<(Duration, Option<f64>)>,
 
     volume: f32,
@@ -244,9 +227,6 @@ impl MediaState {
 
     // What the host sets.
 
-    /// Shows another file: everything that belonged to the last one goes (its levels lower
-    /// first), except the volume, the keys, the labels and the art, which the host replaces
-    /// when it differs (so a track with the same art keeps it in place).
     pub fn set_clip(&mut self, clip: Clip) {
         self.clip = clip;
         self.position = Duration::ZERO;
@@ -327,14 +307,10 @@ impl MediaState {
         &self.chapters
     }
 
-    /// Waveform levels from bucket `start`, RMS from 0 to 1 (Strata: `rms(level)`), out of
-    /// `buckets` (Strata's 1,024). They grow in.
     pub fn set_levels(&mut self, buckets: usize, start: usize, levels: &[f32]) {
         self.levels.set(buckets, start, levels);
     }
 
-    /// The levels land at once, without growing in: a fixture's starting point, or a host
-    /// showing a waveform it had cached.
     pub fn settle_levels(&mut self) {
         self.levels.step(0.0, false);
         self.levels_shown = self.levels.generation();
@@ -370,15 +346,11 @@ impl MediaState {
         &self.details
     }
 
-    /// What stands in before the first frame: the listing's cached thumbnail (dimmed), or,
-    /// with none, a plain surface at `aspect` (width over height, from the probe).
     pub fn set_poster(&mut self, poster: Option<Pixels>, aspect: Option<f32>) {
         self.poster = poster;
         self.aspect = aspect;
     }
 
-    /// The decoder's frames are `size` pixels: the first frame shows (the stand-in fades),
-    /// or the size changed. `None` before any frame.
     pub fn set_frame(&mut self, size: Option<[u32; 2]>) {
         if size.is_none() {
             self.clear_ambient();
@@ -398,8 +370,6 @@ impl MediaState {
         self.frame.is_some()
     }
 
-    /// Samples an RGBA8 video frame into the 6×4 ambient glow grid, updating the persistent
-    /// texture in place on the 100 ms cadence. Ignored for non-video clips.
     pub fn feed_ambient(&mut self, pixels: &[u8], size: [u32; 2], now: f64) -> bool {
         if self.clip.kind != MediaKind::Video {
             return false;
@@ -483,9 +453,6 @@ impl MediaState {
         &self.labels
     }
 
-    /// The decode size to ask for now, in device pixels, from the frame's laid-out size:
-    /// `None` before the first layout. The player then asks again only when the frame grows
-    /// enough ([`MediaIntent::DecodeSize`]).
     pub fn decode_size(&mut self) -> Option<[u32; 2]> {
         let frame = self.viewport.frame()?;
         let wanted = time::decode_request(frame, self.viewport.scale());
@@ -523,9 +490,6 @@ impl MediaState {
         Some(d.mul_f64(f64::from(f)))
     }
 
-    /// One frame: reads the clock, moves the live values, runs the timers, and returns true
-    /// when the view should commit (what it shows changed). While anything moves it asks for
-    /// the next frame. `now` is the host's clock in seconds.
     pub fn tick(&mut self, clock: &dyn PlaybackClock, now: f64, tx: &mut Tx) -> bool {
         let elapsed = self.last_tick.map_or(1.0 / 60.0, |t| (now - t).max(0.0)) as f32;
         self.last_tick = Some(now);
@@ -575,8 +539,6 @@ impl MediaState {
         self.stale()
     }
 
-    /// Syncs the ambient glow's live opacity with the stand-in fade so the halo reveals cleanly
-    /// as the first video frame fades in, and rests at `ambient::OPACITY` with zero extra wakes.
     fn sync_ambient_opacity(&self, now: f64) {
         if !self.ambient.is_lit() {
             self.live.ambient.set(0.0);
@@ -633,9 +595,6 @@ impl MediaState {
         (self.disc_offset - target).abs() > 0.0
     }
 
-    /// Reads the clock. A seek the host hasn't applied yet (its poll drains intents after the
-    /// tick) keeps its target on the timeline until the clock reports it, so no frame shows
-    /// the old position.
     fn read(&mut self, clock: &dyn PlaybackClock, now: f64) {
         let position = clock.position();
         self.duration = clock.duration();
@@ -682,9 +641,6 @@ impl MediaState {
 
     // Commands.
 
-    /// Runs a media key's command (from [`MediaKeys::window_command`] or the player's own
-    /// keys). False when it does nothing for this kind of clip (Return on audio): the key
-    /// goes on.
     pub fn command(&mut self, command: MediaCommand) -> bool {
         match command {
             MediaCommand::PlayPause => self.toggle(),
@@ -712,8 +668,6 @@ impl MediaState {
         self.outbox.push(intent);
     }
 
-    /// A seek by key or step: clamped to the start and the last frame, and only when the
-    /// clip can seek.
     pub fn seek_by(&mut self, seek: Seek) {
         let Some(d) = self.duration else { return };
         let to = match seek {
@@ -744,8 +698,6 @@ impl MediaState {
         self.set_user_volume(time::snapped_volume(from + steps * VOLUME_STEP));
     }
 
-    /// A volume the person set (a step, a drag, Home, End). 0 mutes and keeps the volume
-    /// before it, which unmuting restores (`step_preview_volume`).
     pub fn set_user_volume(&mut self, volume: f32) {
         let volume = volume.clamp(0.0, 1.0);
         self.muted = volume == 0.0;
@@ -764,8 +716,6 @@ impl MediaState {
         self.set_user_volume(volume);
     }
 
-    /// A volume drag ended. A cancelled one (Escape, the window losing focus) puts the volume
-    /// it started from back.
     pub(crate) fn end_volume_drag(&mut self, cancelled: bool) {
         if let Some((volume, muted)) = self.volume_drag.take()
             && cancelled
@@ -795,8 +745,6 @@ impl MediaState {
         }
     }
 
-    /// Pauses and asks for the default player at the position (video only). Strata's Open
-    /// button runs this too.
     pub fn hand_off(&mut self) -> bool {
         if self.clip.kind != MediaKind::Video {
             return false;
@@ -812,8 +760,6 @@ impl MediaState {
 
     // The pointer.
 
-    /// The pointer moved over the timeline at `x` points from its start, or left it
-    /// (`None`). True when what the view shows changed (commit), else only live values moved.
     pub fn hover_at(&mut self, x: Option<f32>) -> bool {
         let f = x.map(|x| self.fraction(x));
         if self.hover == f {
@@ -824,9 +770,6 @@ impl MediaState {
         self.stale()
     }
 
-    /// A drag on the timeline: `Some(x)` as it presses and moves, `None` when it ends;
-    /// `seek` says whether it ends with a seek (released) or not (cancelled). A clip that
-    /// can't seek takes no drag.
     pub fn drag_at(&mut self, x: Option<f32>, seek: bool) -> bool {
         match x {
             Some(x) if self.seekable() => {
@@ -845,8 +788,6 @@ impl MediaState {
         self.stale()
     }
 
-    /// Puts the pointer over the timeline at `fraction` of its width, as a hover would: a
-    /// fixture's starting point (a golden of the bubble).
     pub fn preset_hover(&mut self, fraction: f32) {
         self.hover = Some(fraction.clamp(0.0, 1.0));
         self.place();
@@ -856,9 +797,6 @@ impl MediaState {
         self.drag.is_some()
     }
 
-    /// A wheel over the plain bar's seek slider: `notches` (a mouse) or `precise` points (a
-    /// touchpad, 40 points a step). Seeks at once, a step of 5 s each; moves under one tick
-    /// are ignored, as Strata ignores touchpad jumps within the current frame.
     pub fn wheel(&mut self, dy: f32, precise: bool) -> bool {
         if !self.seekable() {
             return false;

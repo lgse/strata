@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The entry menu's Copy to, Move to and Extract to rows: the chooser each asks for, its
-//! answer, and the folders it accepts.
-
 use std::{future::Future, path::Path};
 
 use rune::Tx;
@@ -70,8 +67,6 @@ fn ask_at(
     take(host.app_mut())
 }
 
-/// Copies `source`, in the column at `depth`, into `folder` through the chooser, and waits
-/// for the copy and what follows it.
 fn copy_through_chooser(host: &mut Offscreen, (depth, source): (usize, &Path), folder: &Path) {
     let request = ask_at(host, ("copy-to", depth), source).expect("a chooser");
     answer(host, request, Some(folder));
@@ -95,8 +90,6 @@ fn answer(host: &mut Offscreen, request: FloatingRequest, folder: Option<&Path>)
     idle(host);
 }
 
-/// `request` asks for one folder, under `title` with `accept` on its button, opening on `base`,
-/// and sized against the browser window.
 fn assert_folder_chooser(
     host: &Offscreen,
     request: &FloatingRequest,

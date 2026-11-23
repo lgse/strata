@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The media key map, as data: which chords play, seek, change the volume, step and hand off.
-//! Quick preview and the drawer share it.
-
 use std::time::Duration;
 
 use rune::{Chord, ChordKey, ChordMod, KeyEvent, KeyPlatform, Tx};
@@ -40,11 +37,7 @@ pub enum MediaCommand {
 /// Where a binding applies.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum KeyScope {
-    /// From anywhere in the window: the host's window key handler asks
-    /// ([`MediaKeys::window_command`]). Strata's `media_*` commands.
     Window,
-    /// While the player's timeline (or frame, art or spectrum) has the keys. Strata's
-    /// `seek_or_volume` and `PLAYBACK` tables (`src/ui/preview/keyboard.rs`).
     Focused,
 }
 
@@ -69,35 +62,6 @@ impl MediaBinding {
     }
 }
 
-/// The media keys, as data.
-///
-/// [`MediaKeys::default_map`] and [`MediaKeys::tenxer`] are Strata's shipped tables
-/// (`src/ui/keys/bindings/preview.rs`, `src/ui/preview/keyboard.rs` and `drawer.rs`,
-/// lgse/strata `upstream/main` e9a8993):
-///
-/// | Scope | Chord | Command |
-/// | --- | --- | --- |
-/// | Window | Ctrl+Alt+Space | Play or pause |
-/// | Window | Ctrl+Alt+Left, Ctrl+Alt+Right | Seek 5 s back, on |
-/// | Window | Ctrl+Alt+Up, Ctrl+Alt+Down | Volume up, down |
-/// | Window | Ctrl+Alt+M | Mute |
-/// | Window | Ctrl+Alt+`<`, Ctrl+Alt+`>` | Previous, next |
-/// | Focused | Left, Right | Seek 5 s |
-/// | Focused | Shift+Left, Shift+Right, Page Down, Page Up | Seek 30 s back, on |
-/// | Focused | Home, `0` (with or without Shift) | The start |
-/// | Focused | End, Shift+G | The last frame |
-/// | Focused | `+`, `=`, `-` (and the keypad's) | Volume up, down |
-/// | Focused | Space; Up, Down | Play or pause; volume up, down |
-/// | Focused | Return | Hand off (video) |
-///
-/// The 10xer map adds plain `m`, `<` and `>` while the player has the keys, and `<` and `>`
-/// from anywhere (Strata's listing too). The paging, jump and volume keys have no Ctrl+Alt
-/// form. The table is independent of the listing's key map (C1c's `KeyMap`), so rebinding
-/// the listing's Home or Page Down leaves these seeks alone.
-///
-/// Keys match with Rune's layout-aware chords ([`Chord::matches_tx_on`]): with Caps Lock on, a
-/// plain g types "G" with no Shift and doesn't match Shift+G. Modifiers match exactly, except
-/// those a binding tolerates; an exact binding wins over a tolerated match.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MediaKeys {
     bindings: Vec<MediaBinding>,
@@ -263,8 +227,6 @@ impl MediaKeys {
             .collect()
     }
 
-    /// The command `event` runs from anywhere in the window. A host's window key handler
-    /// calls it, and then [`MediaState::command`](super::MediaState::command).
     pub fn window_command(&self, event: &KeyEvent, tx: &Tx) -> Option<MediaCommand> {
         self.lookup(KeyScope::Window, &|c| {
             c.matches_tx_on(event, tx, KeyPlatform::current())
@@ -278,8 +240,6 @@ impl MediaKeys {
         })
     }
 
-    /// [`MediaKeys::focused_command`] or [`MediaKeys::window_command`] from the event alone,
-    /// without the layout's base key: for unit tests and hosts with no `Tx` at hand.
     pub fn command_on(
         &self,
         scope: KeyScope,

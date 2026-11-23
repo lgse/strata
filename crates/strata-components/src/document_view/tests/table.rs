@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Behavioral tests for interactive Markdown/document tables inside [`DocumentView`]:
-//! header sorting (ascending -> descending -> unsorted, multi-key, Shift-click, rich inline
-//! spans & links), display-order copy, column resizing & auto-fit, per-table state reset on
-//! `set_document`, horizontal overflow scrolling, and ragged/empty/find edge cases.
-
 use std::cmp::Ordering;
 use std::sync::Arc;
 
@@ -440,8 +435,6 @@ fn set_document_resets_per_table_sort_widths_and_scroll_state() {
         "horizontal scroll offset must reset after set_document"
     );
 
-    // Scroll Document B horizontally, then replace with a fresh DocumentState using the same key
-    // (mirroring RenderedDocument::new): horizontal scroll offset must still start at 0.
     let scroll_at = mid(table_scroll_rect(&rt, 0));
     rt.pointer_move(scroll_at.0, scroll_at.1);
     rt.wheel_xy(scroll_at.0, scroll_at.1, -180.0, 0.0);

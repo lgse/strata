@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Whole-line gutter selection, Shift+click range extension, viewport-edge auto-scroll, and
-//! live-only row highlights for [`super::CodeView`].
-
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -29,9 +26,6 @@ struct HighlightInner {
     cells: HashMap<usize, Live<Color>>,
 }
 
-/// Live-only row fills for whole-line gutter selections so dragging across lines highlights
-/// every selected row (including wrapped, empty, and continuation `↳` rows) with zero view
-/// commits.
 #[derive(Clone)]
 pub(crate) struct RowHighlights(Rc<RefCell<HighlightInner>>);
 
@@ -46,8 +40,6 @@ impl Default for RowHighlights {
 }
 
 impl RowHighlights {
-    /// Updates the selection highlight colour from the active theme, repainting any currently
-    /// highlighted mounted rows immediately.
     pub fn set_color(&self, color: Color) {
         let mut inner = self.0.borrow_mut();
         if inner.color == color {
@@ -63,8 +55,6 @@ impl RowHighlights {
         }
     }
 
-    /// Returns the shared [`Live<Color>`] for display row `row` (part of logical line `line`),
-    /// creating and initializing it when the row first mounts.
     pub fn live_for(&self, row: usize, line: usize) -> Live<Color> {
         let mut inner = self.0.borrow_mut();
         let want = row_fill(inner.lines, inner.color, line);
@@ -79,8 +69,6 @@ impl RowHighlights {
         live
     }
 
-    /// Drops `Live<Color>` handles for rows far outside the mounted window so memory stays
-    /// bounded to the visible rows.
     pub fn retain(&self, keep: Range<usize>) {
         self.0.borrow_mut().cells.retain(|r, _| keep.contains(r));
     }
@@ -141,14 +129,8 @@ fn row_fill(lines: Option<(usize, usize)>, color: Color, line: usize) -> Color {
 pub(crate) struct GutterDrag {
     pub anchor_line: usize,
     pub pointer_y: f32,
-    /// Clock timestamp of the previous edge auto-scroll tick, or `None` while resting inside
-    /// the viewport or at a scroll limit.
     pub last_tick: Option<f64>,
-    /// Whether `CodeView` has been observed holding focus during this drag; once true, losing
-    /// focus (e.g. a modal opening mid-drag) stops auto-scrolling immediately.
     pub focus_seen: bool,
-    /// Scroll offset before the previous non-clamped auto-scroll request, used to stop if an
-    /// unmounted/suspended viewport ignores the scroll request (`U-C10b-8`).
     pub expected_scroll_from: Option<f32>,
 }
 
@@ -230,10 +212,6 @@ fn gutter_move(st: &mut CodeState, y: f32, tx: &mut Tx) {
     }
 }
 
-/// Steps viewport-edge auto-scrolling during an active gutter drag and extends the selection
-/// to newly revealed lines. Stops scheduling wakes immediately once the pointer re-enters the
-/// viewport, reaches a scroll boundary, loses focus (e.g. a modal opens), the viewport stops
-/// responding (suspended/unmounted), line numbers are hidden, or the drag ends.
 pub(crate) fn poll_gutter_drag(st: &mut CodeState, tx: &mut Tx) {
     if !st.line_numbers() {
         st.stop_gutter_drag();
@@ -292,8 +270,6 @@ fn drag_lost_focus(drag: &mut GutterDrag, view_key: &str, focused: Option<&str>)
     }
 }
 
-/// Signed auto-scroll velocity in points per second when `y` lies outside the viewport and
-/// room remains to scroll in that direction.
 pub(crate) fn edge_speed(st: &CodeState, y: f32) -> Option<f32> {
     let (vp_top, vp_h) = st.position.viewport_bounds();
     let p = st.position.scroll_pos();

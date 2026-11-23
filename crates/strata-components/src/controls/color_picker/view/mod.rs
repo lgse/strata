@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The picker's element: the plane, the strips, the hex row and the swatch rows
-//! (`parts.rs`), inline or in a popover behind a button (`button.rs`).
-
 mod button;
 mod parts;
 
@@ -23,9 +20,6 @@ type Report<S> = Rc<dyn Fn(&mut S, Srgba, ColorChange, &mut Tx)>;
 type Menu<S> = Rc<dyn Fn(&mut S, Point, &mut Tx) -> bool>;
 type Closed<S> = Rc<dyn Fn(&mut S, bool, &mut Tx)>;
 
-/// Escape as Rune's modal dismisses on it: bare, or with Shift held, but no Ctrl, Alt, Cmd or
-/// Super (`focus_key` in rune's `runtime/input/focus.rs`). Whatever the modal would dismiss on,
-/// the picker takes first as a cancel, so no Escape keeps the colour as a press outside does.
 pub(super) fn escape_key(e: &KeyEvent) -> bool {
     let m = e.mods;
     e.key == Key::Escape && !(m.ctrl || m.alt || m.cmd || m.logo)
@@ -128,8 +122,6 @@ impl<S> Wire<S> {
         }
     }
 
-    /// Escape: in the open popover it closes it and puts the opening colour back (true);
-    /// inline it is the host's (false).
     fn escape(&self, s: &mut S, tx: &mut Tx) -> bool {
         if !self.st(s).is_open() {
             return false;
@@ -140,15 +132,6 @@ impl<S> Wire<S> {
     }
 }
 
-/// A colour picker over a [`ColorPickerState`] the host holds: a saturation and value plane,
-/// a hue strip, an alpha strip (with [`ColorPickerState::alpha`]), a hex field and rows of
-/// swatches, inline ([`ColorPicker::build`]) or in a popover behind a button
-/// ([`ColorPicker::button`]).
-///
-/// It reports through [`ColorPicker::on_change`]: [`ColorChange::Live`] while a drag moves the
-/// colour, [`ColorChange::Commit`] when it settles, and [`ColorChange::Cancel`] when a drag is
-/// cancelled or the popover closes on Escape. The colour is already in the state when the
-/// handler runs. Nothing is reported when the colour didn't change.
 pub struct ColorPicker<S> {
     key: String,
     get: Get<S>,
@@ -163,10 +146,6 @@ pub struct ColorPicker<S> {
 }
 
 impl<S: 'static> ColorPicker<S> {
-    /// The picker keyed `key` over the state `get` and `get_mut` reach. Its parts are keyed
-    /// `<key>-plane`, `<key>-hue`, `<key>-alpha`, `<key>-hex` (the text field) and
-    /// `<key>-swatches-<r>` (row `r`) holding `<key>-swatch-<r>-<i>`; with
-    /// [`ColorPicker::button`], `<key>-button` and the popover `<key>-popover-content`.
     pub fn new(key: impl Into<String>, get: Get<S>, get_mut: GetMut<S>) -> Self {
         ColorPicker {
             key: key.into(),
@@ -200,8 +179,6 @@ impl<S: 'static> ColorPicker<S> {
         self
     }
 
-    /// A picker that can't be used now: dimmed, out of the focus order, deaf to input; the
-    /// button doesn't open, and an open popover closes ([`ColorPicker::poll`]).
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
@@ -213,19 +190,11 @@ impl<S: 'static> ColorPicker<S> {
         self
     }
 
-    /// The hex field's text menu, as C20a's `NumberField::on_menu`: its right-click, Menu key
-    /// and Shift+F10, at the window point Rune gives. The host opens C21's `FieldMenu` there
-    /// and returns whether it opened; while it is open, losing the keyboard to it commits
-    /// nothing. The host calls `ColorPickerState::hold(false)` from the menu's `on_close`, and
-    /// `edited` from its `on_change`.
     pub fn on_menu(mut self, f: impl Fn(&mut S, Point, &mut Tx) -> bool + 'static) -> Self {
         self.menu = Some(Rc::new(f));
         self
     }
 
-    /// Hears the popover close ([`ColorPicker::button`]), with whether the colour differs from
-    /// the one it opened with: the host remembers it in its recent colours then
-    /// ([`super::remember`]). Escape always closes it unchanged.
     pub fn on_close(mut self, f: impl Fn(&mut S, bool, &mut Tx) + 'static) -> Self {
         self.closed = Some(Rc::new(f));
         self
@@ -244,11 +213,6 @@ impl<S: 'static> ColorPicker<S> {
         }
     }
 
-    /// Call from the host's poll every frame, built with the view's [`ColorPicker::disabled`]:
-    /// commits typed hex text once the field has lost the keyboard (Rune has no focus-change
-    /// hook, upstream #106), and closes an open popover once the picker is disabled, keeping
-    /// the colour as a press outside does, so enabling it again doesn't bring the popover back.
-    /// True when it changed the state.
     pub fn poll(&self, s: &mut S, tx: &mut Tx) -> bool {
         let w = self.wire();
         let mut changed = false;
@@ -294,9 +258,6 @@ impl<S: 'static> ColorPicker<S> {
         if self.disabled {
             return body.disabled(true).layer_opacity(0.5);
         }
-        // Escape with a strip, the plane or a swatch focused (the field takes its own): the
-        // open popover's cancel, ahead of Rune's modal dismissal, which can't tell Escape from a
-        // press outside (draft U-C20b-2).
         let w = self.wire();
         body.on_key(move |s: &mut S, e: &KeyEvent, tx: &mut Tx| escape_key(e) && w.escape(s, tx))
     }

@@ -13,8 +13,6 @@ pub(in crate::adapters::local_operations::copy_engine) struct Merged {
     pub(in crate::adapters::local_operations::copy_engine) parent: Option<MergedNames>,
 }
 
-/// Shared by a folder merged into it unless another filesystem is mounted at either side, as a
-/// bind mount of the same one shares its rules.
 #[derive(Clone, Copy)]
 pub(in crate::adapters::local_operations::copy_engine) struct MergedNames {
     pub(super) devices: (u64, u64),

@@ -2,12 +2,6 @@
 
 //! What the shortcut reference lists, as data: sections of rows, each an action and its keys.
 
-/// The reference's contents: the active key map's rows by section, in order. Bump
-/// [`ShortcutData::revision`] whenever anything in it changes (another map, a rebound key, a
-/// new view's navigation section): the reference indexes the rows once per revision.
-///
-/// Used by: hosts (Strata builds it from its catalog per view, key map and chooser request);
-/// [`keymap_rows`](super::keymap_rows) builds a section from a C1c [`KeyMap`](crate::collection::keyboard::KeyMap).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ShortcutData {
     pub sections: Vec<Section>,
@@ -30,9 +24,6 @@ pub struct Shortcut {
     pub keys: Keys,
     /// Words around the keys: "Tab / Shift+Tab" + " in a rename".
     pub context: Option<Context>,
-    /// More text the search matches but nothing shows: the action and key names in English,
-    /// each chord written out ("ctrl+0" for "Ctrl++ / − / 0"), so `ctrl+c` finds Copy under
-    /// German.
     pub search: Vec<String>,
 }
 
@@ -62,8 +53,6 @@ impl Shortcut {
         self
     }
 
-    /// The keys with their context as one line of text, as Strata's `key_text` writes it and
-    /// assistive technology reads it: "`/` in the preview".
     pub fn key_text(&self) -> String {
         let keys = self.keys.text();
         match &self.context {
@@ -80,9 +69,6 @@ pub struct Context {
     pub after: String,
 }
 
-/// A row's keys: alternatives, each a sequence of chord labels as the interface writes them.
-/// `[["Ctrl+C"], ["Ctrl+Insert"]]` reads "Ctrl+C / Ctrl+Insert"; `[["g", "h"]]` is the chord
-/// `g` then `h`. The row's keys (with any context) draw together inside one keycap chip.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Keys(pub Vec<Vec<String>>);
 

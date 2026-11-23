@@ -1,35 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! The gallery page for K3 Icon catalogs: its scenes, demo state, view and key and poll hooks.
-//! Scene names start with `k3-` and end in `-light` or `-dark`.
-//!
-//! Work package: `docs/rune/work/phase-1-leaves/K3-icon-catalogs.md`.
-//!
-//! Four sheets, each drawn from the look's catalog, as a component would:
-//!
-//! - `lucide`: every icon that isn't Catppuccin's (Strata's Lucide set and this repository's
-//!   additions), named, in the accent.
-//! - `catppuccin`: the Catppuccin file-type icons in Brand colors: Latte on the light look,
-//!   Mocha on the dark one (`catppuccin::for_background`).
-//! - `theme-colors`: the same icons in Theme colors (`lucide::SET`), in the accent.
-//! - `weights`: a folder, Lucide's document and four Catppuccin icons at 16, 32, 64 and 128
-//!   points, in both colourings, to compare stroke weight across sets and sizes.
-//!
-//! The `raster` review scenes fill the window with Catppuccin icons at 16 or 128 points, in
-//! Brand colors (resvg colour images) or Theme colors (the alpha atlas). Their first frame's
-//! CPU time, which `--snap` prints, is the cost of rasterizing that many icons:
-//!
-//! ```text
-//! cargo run --profile perf -p strata-gallery -- --scene k3-raster-brand-large-dark --snap out.png
-//! ```
-
 use rune::{Cx, El, Icon, KeyEvent, Tx, col, el, icon, row, text};
 use strata_kit::icons::{IconSet, catppuccin, lucide};
 use strata_kit::look::Look;
 
 use crate::{Gallery, Scene};
 
-/// K3's demo state, held in `Gallery::k3`.
 #[derive(Default)]
 pub struct Demo {
     pub sheet: Sheet,
@@ -47,8 +23,6 @@ pub enum Sheet {
     Raster(f32),
 }
 
-/// The Brand colors catalog for the gallery's appearance: the fallback look has no theme, so
-/// the dark look stands for a dark background.
 pub fn brand(dark: bool) -> IconSet {
     catppuccin::for_background(dark)
 }
@@ -59,8 +33,6 @@ fn open(g: &mut Gallery, dark: bool, sheet: Sheet, icons: IconSet) {
     g.k3.sheet = sheet;
 }
 
-/// Golden scenes: each gets an accessibility and a PNG golden. Each calls
-/// `g.open("k3", dark)`, then fills in `g.k3`.
 pub const SCENES: &[Scene] = &[
     ("k3-lucide-light", |g| {
         open(g, false, Sheet::Lucide, lucide::SET)
@@ -133,15 +105,10 @@ pub fn view(g: &Gallery, _cx: &mut Cx<Gallery>) -> El {
         .child(body)
 }
 
-/// Keys no focused element took while this page is open: shortcuts, and keys with nothing
-/// focused. True consumes the key; false lets the gallery's Escape go back to the index.
 pub fn on_key(_g: &mut Gallery, _key: &KeyEvent, _tx: &mut Tx) -> bool {
     false
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds.
-/// Deliver fake async results here; a worker wakes the loop with `Gallery::waker`. True when
-/// state changed.
 pub fn poll(_g: &mut Gallery, _t: f64, _tx: &mut Tx) -> bool {
     false
 }

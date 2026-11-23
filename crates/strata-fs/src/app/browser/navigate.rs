@@ -19,9 +19,6 @@ impl Browser {
         self.navigate_input_located(input, None).map(|_| ())
     }
 
-    /// Navigation for typed input, returning the location that was opened so a
-    /// caller can act once it loads (such as pinning it to a sidebar). A
-    /// relative path resolves against the native folder `base`.
     pub fn navigate_input_located(
         self: &Rc<Self>,
         input: &str,
@@ -87,8 +84,6 @@ impl Browser {
         }
     }
 
-    /// Navigates directly for native paths and validates URI locations first so mountable
-    /// locations can be mounted by the UI before loading them.
     fn finish_location_validation(
         self: &Rc<Self>,
         pending: &PendingNavigation,
@@ -160,8 +155,6 @@ impl Browser {
         self.navigate_for_selection(location, load_selection(select_first));
     }
 
-    /// Navigates to an ancestor of the current directory and selects the folder the
-    /// current directory sits in, or the first entry when it is not an ancestor.
     pub fn navigate_to_ancestor(self: &Rc<Self>, location: Location) {
         let selection = self
             .came_from_child(&location)
@@ -182,8 +175,6 @@ impl Browser {
         None
     }
 
-    /// Targets override remembered positions; the first listed target takes the cursor.
-    /// Returns true only for an in-place selection that needs no subsequent load.
     pub fn reveal_locations(self: &Rc<Self>, directory: Location, targets: Vec<Location>) -> bool {
         if targets.is_empty() {
             self.navigate_location(directory, true);
@@ -369,8 +360,6 @@ impl Browser {
     }
 }
 
-/// A navigation waiting for its location to validate; `reveal` lists the
-/// entries to select once it opens.
 struct PendingNavigation {
     generation: u64,
     location: Location,

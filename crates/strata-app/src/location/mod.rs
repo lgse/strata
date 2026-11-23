@@ -1,35 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The location bar (A5): C6's [`LocationBar`] in the header's middle, naming the folder the
-//! shown view shows, as GTK's `location_bar` does (`src/ui/browser/view_setup.rs`, with
-//! `location.rs` and `location/breadcrumbs.rs` beside it).
-//!
-//! - **The folder it names** is GTK's `displayed_location`: the deepest column in Columns,
-//!   the browser's active folder in Icons and List. The trail starts at `~` under the home
-//!   folder ([`trail`]), and the entry opens on the folder's path.
-//! - **Ctrl+L** opens the entry with its text selected, read where GTK's dispatcher reads it
-//!   (`filter_and_location_commands`); again while editing, it keeps the typed text. While the
-//!   entry has the keyboard the bar is the window's location owner ([`Holds::Location`]).
-//! - **Enter or Navigate** opens the typed location (`navigate_input_located`), and **Escape,
-//!   Cancel or a press elsewhere** goes back to the crumbs. The keyboard goes back to the shown
-//!   view, except after a press elsewhere, which keeps it where the press put it. A location
-//!   that could not be opened stays the entry's text: the next Ctrl+L opens on it
-//!   (`Bar::typed`).
-//!   **A crumb** opens its folder selecting the one the user came from.
-//! - **The names** are GTK's, with the keys as they are bound now ([`labels`]).
-//!
-//! A typed location that cannot be opened is reported on the window's error dialog
-//! ([`crate::open_failed`]).
-//!
-//! - **Path suggestions** ([`completion`]): GTK's planner, its folder listings off Rune's
-//!   thread; they close when the window loses its activation ([`window_focused`]).
-//!
-//! - **A crumb's middle click** runs `open-in-tab`, or with Ctrl or Shift `open-in-window`, on
-//!   its folder ([`intents`]); each does nothing until a part registers it.
-//!
-//! Not on this interface yet: mounting a typed location that needs it, Copy path, and drops
-//! on crumbs. `docs/rune/parity/packages/A5.md`, "Open", says who brings each.
-
 use rune::{El, Tx};
 use strata_components::location_bar::{LocationBar, LocationBarState, Trail};
 use strata_core::model::Location;
@@ -51,8 +21,6 @@ mod trail;
 #[cfg(test)]
 mod tests;
 
-/// The window gained or lost its activation: the bar's suggestions follow it, as GTK's
-/// `set_window_presence` does (C6's U-C6-6).
 pub(crate) fn window_focused(app: &mut App, focused: bool, tx: &mut Tx) {
     let polled = app.location.state.set_window_focused(focused);
     intents::route(app, polled, tx);
@@ -68,11 +36,6 @@ pub(crate) struct Bar {
     crumbs: Vec<Location>,
     /// The folder the trail names.
     shown: Option<Location>,
-    /// What an opened location left in the entry. GTK's entry keeps the text Enter opened
-    /// until the columns change or the view does (`set_location`, from
-    /// `sync_displayed_location`), or an edit is cancelled (`restore_location_text`); so after
-    /// a location that could not be opened, the next Ctrl+L opens on it. A location refused at
-    /// once is not kept, as GTK restores the folder's path then.
     typed: Option<String>,
     /// The suggestions' listing in flight.
     completing: completion::Completing,
@@ -112,8 +75,6 @@ fn moves(event: &BrowserEvent) -> bool {
     )
 }
 
-/// What makes GTK's entry name the folder again (`on_columns_truncated`, `on_column_added`
-/// and `on_columns_relocated` call `sync_displayed_location`); a reset alone does not.
 fn renames(event: &BrowserEvent) -> bool {
     matches!(
         event,
@@ -129,8 +90,6 @@ fn forget_typed(app: &mut App, _: &mut Tx) -> bool {
     false
 }
 
-/// GTK's `displayed_location`. Only the Columns view shows every open column; it is told
-/// from the others by the saved mode it answers to.
 fn displayed(app: &App) -> Option<Location> {
     let columns = shell::shown_view(app).is_some_and(|view| (view.shows)("columns"));
     if columns {
@@ -142,10 +101,7 @@ fn displayed(app: &App) -> Option<Location> {
     }
 }
 
-/// The bar names the folder the view shows now (`sync_displayed_location`). False when it
-/// already did, or when no folder shows.
 fn follow(app: &mut App, tx: &mut Tx) -> bool {
-    // With no folder shown, the last one's trail stays, as GTK's does.
     let Some(shown) = displayed(app) else {
         return false;
     };
@@ -198,15 +154,11 @@ impl Part for Bar {
         }))
     }
 
-    // `set_view_mode` calls `sync_displayed_location`: Columns names its deepest column, the
-    // other views the active one.
     fn switched(app: &mut App, tx: &mut Tx) {
         app.location.typed = None;
         follow(app, tx);
     }
 
-    /// Another tab is shown: an edit ends and its suggestions close, with a listing in flight
-    /// dropped, as GTK's `select` calls `cancel_location_edit` on the tab it leaves.
     fn tab_hidden(app: &mut App, tx: &mut Tx) {
         let ended = app.location.state.end_edit();
         intents::route(app, ended, tx);
@@ -221,8 +173,6 @@ impl Part for Bar {
         changed
     }
 
-    // `filter_and_location_commands` in `src/ui/window/keyboard/commands.rs`:
-    // `press.is(LOCATION)`, wherever the press lands.
     const COMMANDS: &'static [Action<App>] = &[Action::new("location", begin)
         .command(LOCATION)
         .keys(&[Keys::at(
@@ -230,8 +180,6 @@ impl Part for Bar {
             &[LOCATION.ignoring(Modifiers::empty())],
         )])];
 
-    /// The entry while it has the keyboard; the hierarchy menu while it is open, which takes
-    /// every key as GTK's menus do (finding lgse/strata#2407).
     fn keyboard(app: &App) -> Option<Holds> {
         let state = &app.location.state;
         if state.menu().is_some() {

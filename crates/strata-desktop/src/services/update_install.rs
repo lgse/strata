@@ -168,8 +168,6 @@ fn is_release_token(value: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || "._-+".contains(character))
 }
 
-/// Determines whether the running executable may be updated in place or is
-/// owned by pacman and must be updated through the operating system.
 pub fn update_method() -> UpdateMethod {
     if InstallSource::detect().is_managed() {
         return UpdateMethod::Aur;
@@ -213,10 +211,6 @@ fn os_release_has_id(contents: &str, expected: &str) -> bool {
     })
 }
 
-/// Returns the Strata version currently offered by pacman's configured sync
-/// databases. This is deliberately a local query: package-managed installs
-/// must not advertise a GitHub release until their package manager can
-/// actually install it.
 pub(super) fn package_repository_version() -> Result<Version, String> {
     package_repository_version_for(Path::new(PACMAN), PACKAGE_NAME)
 }
@@ -318,10 +312,6 @@ fn parse_aur_package_version(value: &str) -> Option<Version> {
     None
 }
 
-/// Reads the live Omarchy repository database selected by this installation,
-/// rather than pacman's cached copy. The cache is normally refreshed by the
-/// same `omarchy update` that installs Strata, so consulting it would make the
-/// notification arrive only after the update had already been installed.
 pub(super) fn omarchy_repository_version() -> Result<Version, String> {
     let server = omarchy_repository_server(Path::new(PACMAN_CONF))?;
     let database_url = format!("{}/omarchy.db", server.trim_end_matches('/'));
@@ -484,8 +474,6 @@ fn parse_package_version(value: &str) -> Option<Version> {
     Version::parse(version)
 }
 
-/// Downloads, verifies, and installs `request`'s archive in place of the running
-/// executable. Package-owned executables are rejected before download.
 pub fn install_update(request: InstallRequest, cancel: InstallCancel) -> Receiver<UpdateInstall> {
     let (sender, receiver) = mpsc::channel();
     let spawned = std::thread::Builder::new()
@@ -538,15 +526,8 @@ fn perform_install(
         .parent()
         .ok_or_else(|| crate::i18n::tr("Could not determine the install directory"))?;
 
-    // A unique-per-install directory, not the old process-scoped
-    // `.strata-update-{pid}`: with three independent install drivers (the
-    // update row, rollback, and the update dialog) that can all be reachable
-    // at once on a preview build, a shared path was how two installs racing
-    // over the same archive and staged binary corrupted each other. The
-    // shared `InstallGuard` in `ui::settings` now also prevents a second
-    // install from starting at all, but a unique path is kept as its own
-    // layer of defense -- e.g. against a leftover directory from a
-    // hard-killed previous process.
+    // Unique per-install directory to avoid races across concurrent install drivers or
+    // leftover directories from a hard-killed previous process.
     let download_url = verified_download_url(request)?;
     let workdir = stage_workdir(exe_dir)?;
     try_install(
@@ -562,8 +543,6 @@ fn perform_install(
     // error paths, replacing the old manual `remove_dir_all` cleanup.
 }
 
-/// Creates a fresh, uniquely-named staging directory for one install inside
-/// `exe_dir`. See `perform_install` for why uniqueness matters.
 fn stage_workdir(exe_dir: &Path) -> Result<tempfile::TempDir, String> {
     tempfile::Builder::new()
         .prefix(".strata-update-")
@@ -577,8 +556,6 @@ fn stage_workdir(exe_dir: &Path) -> Result<tempfile::TempDir, String> {
         })
 }
 
-/// Creates a fresh, uniquely-named path for the staged replacement binary
-/// inside `exe_dir`, for the same reason as `stage_workdir`.
 fn stage_binary_path(exe_dir: &Path) -> Result<tempfile::NamedTempFile, String> {
     tempfile::Builder::new()
         .prefix(".strata-update-")
@@ -884,8 +861,6 @@ fn read_metadata_body(
     Ok(bytes)
 }
 
-/// Retire only our old executable's chooser and file-manager instances. Leave the
-/// updating instance alive to report success and relaunch the replacement.
 fn retire_old_instances(proc_root: &Path, install_path: &Path, old_executable: &fs::Metadata) {
     let Ok(entries) = fs::read_dir(proc_root) else {
         tracing::warn!("could not enumerate old Strata processes after updating");
@@ -986,11 +961,6 @@ fn is_old_instance(proc_entry: &Path, install_path: &Path, old_executable: &fs::
         .is_none_or(|argument| !argument.starts_with(b"--") || argument == b"--portal")
 }
 
-/// Rewrites an already installed desktop entry and application icon from the
-/// downloaded archive so an in-app update cannot leave desktop metadata stale.
-/// Absent metadata is never created: a user who did not install a launcher does
-/// not gain one from an update. Failures are reported but never fail the update,
-/// which has already replaced the binary.
 fn refresh_desktop_metadata(package_dir: &Path, executable: &Path, data_home: &Path) {
     let entry_path = data_home.join("applications").join(DESKTOP_ENTRY);
     if !entry_path.is_file() {
@@ -1046,8 +1016,6 @@ fn write_application_icon(package_dir: &Path, data_home: &Path) -> Result<(), St
         .map_err(|error| crate::services::io_error_message(&error))
 }
 
-/// Points the packaged entry's `Exec` line at the running install path, keeping
-/// the packaged field codes so the entry still receives directory arguments.
 fn desktop_entry_with_exec(template: &str, executable: &Path) -> String {
     let program = desktop_exec_argument(&executable.display().to_string());
 

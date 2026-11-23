@@ -20,21 +20,6 @@ use crate::scroll::{Bar, BarLook, anchor};
 
 type DragFn<S> = Rc<dyn Fn(&mut S, &mut Drag, &mut Tx)>;
 
-/// The places sidebar: built-in places, then PINNED and DEVICES, in three widths.
-///
-/// ```ignore
-/// PlacesSidebar::new(&s.sidebar, |s: &mut App| &mut s.sidebar, data)
-///     .dnd(dnd.clone())
-///     .drop_action(|s: &App, item, offer, mods| s.drop_action(item, offer, mods))
-///     .footer(|step| update_notice(step))
-///     .on_intent(|s: &mut App, intent, tx| s.sidebar_intent(intent, tx))
-///     .build(&look)
-/// ```
-///
-/// Keys, under `key` (default `places`): `<key>-list`, `<key>-scroll`, `<key>-scrollbar`,
-/// `<key>-place-<id>`, `<key>-pin-<id>`, `<key>-device-<id>` with `-lock` and `-eject`,
-/// `<key>-gap-<i>` and its drop band `<key>-band-<i>`, `<key>-heading-pinned`,
-/// `<key>-heading-devices`, `<key>-divider-<g>`, `<key>-grip` and [`super::trash_target_key`].
 pub struct PlacesSidebar<'a, S> {
     key: String,
     state: &'a SidebarState,
@@ -91,16 +76,11 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
         self
     }
 
-    /// The content types a row takes from other apps besides files, most wanted first (the
-    /// host's content-drops policy). The pinned gaps take folders only. Default none.
     pub fn content_types(mut self, mimes: &'static [&'static str]) -> Self {
         self.content = mimes;
         self
     }
 
-    /// The action a drag over a row would take there, or `None` to refuse it: the host's
-    /// copy-or-move rule and volume lookup, and whether the Trash takes the selection.
-    /// Without it, rows use [`crate::contract::dnd::choose_action`] on an unknown volume.
     pub fn drop_action(
         mut self,
         f: impl Fn(&S, &ItemId, &DropOffer, Mods) -> Option<DropAction> + 'static,
@@ -109,9 +89,6 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
         self
     }
 
-    /// Lets the places and the pins be dragged into a new order, in either width
-    /// ([`super::drag`]): a move is a [`SidebarIntent::MovePlace`] or
-    /// [`SidebarIntent::MovePin`]. Without this, rows don't reorder.
     pub fn reorder(mut self, on: bool) -> Self {
         self.reorder = on;
         self
@@ -123,17 +100,11 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
         self
     }
 
-    /// 10xer mode's keys in the sidebar: `j`/`k` step, `l` activates, `h`, Left and
-    /// Backspace go back to the files.
     pub fn tenxer(mut self, on: bool) -> Self {
         self.tenxer = on;
         self
     }
 
-    /// Confines the resize grip to the 1 pt trailing border (as GTK's `sidebar-split >
-    /// separator.wide` is) so blank-space drags beside the divider start a marquee rather than
-    /// resizing. Default off (a 7 pt grip on the trailing edge: 1 pt line plus 6 pt inside the
-    /// sidebar, leaving the adjacent file view's viewport untouched).
     pub fn confined_grip(mut self, on: bool) -> Self {
         self.confined_grip = on;
         self
@@ -145,8 +116,6 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
         self
     }
 
-    /// Dresses the Trash icon's box, keyed [`super::trash_target_key`]: C23's pulse, shake or
-    /// landing slot.
     pub fn trash_icon(mut self, f: impl FnOnce(El) -> El + 'a) -> Self {
         self.trash = Some(Box::new(f));
         self
@@ -158,8 +127,6 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
         self
     }
 
-    /// Hears a primary drag starting on blank space inside the sidebar's scroll area, away from
-    /// its rows, headings and resize grip.
     pub fn on_background_drag(mut self, f: impl Fn(&mut S, &mut Drag, &mut Tx) + 'static) -> Self {
         self.background_drag = Some(Rc::new(f));
         self
@@ -262,16 +229,10 @@ pub(crate) fn full_grip_width(look: &Look) -> f32 {
     look.space.sm + 1.0
 }
 
-/// Trailing inset from the sidebar's right edge to the vertical scrollbar in full mode: keeps
-/// a 1 pt gap to the left of the 7 pt resize grip and leaves chooser's `start - 2` marquee
-/// band untouched.
 pub(crate) fn full_bar_edge(look: &Look) -> f32 {
     full_grip_width(look) + 1.0
 }
 
-/// Trailing padding inside full-width rows and section headings so `ACTION_SLOT` controls
-/// (device eject/lock buttons, pending spinners and disclosure chevrons) stay clear of the
-/// vertical scrollbar while keeping `list`'s even `space.xs` padding intact.
 pub(crate) fn full_row_trailing_pad(look: &Look) -> f32 {
     let clear = full_bar_edge(look) + strata_kit::slots::scroll::bar_width(look) + look.space.xxs
         - look.space.xs;
@@ -282,8 +243,6 @@ fn sidebar_bar_look(look: &Look, rail: bool) -> BarLook {
     let mut bar_look = BarLook::app(look);
     bar_look.ends = look.space.xs;
     bar_look.edge = if rail {
-        // The icon rail has no resize grip: inset by `space.xxs` (1 pt border + 1 pt gap) so
-        // the 4 pt bar sits cleanly to the right of the icon column without widening the rail.
         look.space.xxs
     } else {
         full_bar_edge(look)
@@ -390,9 +349,6 @@ fn places<S: 'static>(
     block
 }
 
-/// PINNED: its heading, then a gap before each pin and after the last. Collapsed, only the
-/// open pin shows, between its two gaps. With nothing pinned the section shows only while a
-/// drag is over the sidebar, expanded, with one gap.
 fn pinned<S: 'static>(ctx: &Ctx<'_, S>, data: &SidebarData<'_>) -> Option<El> {
     let look = ctx.look;
     let pins = data.pins;
@@ -469,9 +425,6 @@ pub(crate) fn gap_at(pins: &[super::Pin], i: usize) -> Gap {
     }
 }
 
-/// The insertion gap at full-list index `i`: the space between two rows, with a drop band
-/// reaching over each neighbour's edge. Taking a drag, it opens to `sidebar.gap.open` and
-/// draws the insertion line. Hidden from assistive technology: it is a drop target only.
 fn gap<S: 'static>(
     ctx: &Ctx<'_, S>,
     pins: &[super::Pin],
@@ -520,8 +473,6 @@ fn gap<S: 'static>(
     g.child(band)
 }
 
-/// DEVICES: its heading, then the rows, with a divider between drive groups. Collapsed, no
-/// row shows, not even the open device's.
 fn devices<S: 'static>(ctx: &Ctx<'_, S>, data: &SidebarData<'_>) -> Option<El> {
     let look = ctx.look;
     let n = data.device_count();
@@ -551,8 +502,6 @@ fn devices<S: 'static>(ctx: &Ctx<'_, S>, data: &SidebarData<'_>) -> Option<El> {
     Some(section)
 }
 
-/// A drive divider: a line in `sidebar.divider.color`, inset `sidebar.divider.inset` from the
-/// full sidebar's sides (`space.xxs` in the rail), with `space.xs` above and below.
 fn divider<S>(ctx: &Ctx<'_, S>, g: usize) -> El {
     let look = ctx.look;
     let pad = look.space.xs;
@@ -587,11 +536,6 @@ struct GripSpec {
     confined: bool,
 }
 
-/// The full sidebar's resize grip on its trailing edge: 1 pt border plus `space.sm` (6 pt)
-/// inside the sidebar by default (leaving the adjacent file pane's viewport completely
-/// untouched, as `preview_drawer::divider` leaves it), or confined to the 1 pt trailing border
-/// when `spec.confined` is set. Hovering or dragging lights the 1 pt divider line in
-/// `border_focus`; a double click resets the width.
 fn grip<S: 'static>(
     key: &str,
     look: &Look,

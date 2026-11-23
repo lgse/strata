@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! With `STRATA_INPUT_LOG` set, each synthetic event is appended in the format
-//! `.agents/skills/qa-scenarios/reference.md` defines. Coordinates are window points. A key
-//! is written by its name: Rune has no keycodes.
-
 use std::{
     fs::File,
     io::Write as _,

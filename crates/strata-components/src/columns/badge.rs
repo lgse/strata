@@ -1,25 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The size badge on each row: "12 items", "No items" or a file's size, as the host words it
-//! ([`ColumnSources::badge`](super::ColumnSources::badge)), and the row's accessible
-//! description, which carries the same text unless the host describes the entry itself
-//! (Strata's `.file-size`, `src/style.css`, and `src/ui/browser/columns/rows/`,
-//! `upstream/main` 35ee677ab).
-//!
-//! The badge is paint: an opaque chip pinned over the end of the row's name, as Strata's
-//! overlay is. Its visibility is Rune's hover-group paint, so the pointer crossing rows commits
-//! nothing: the row's content is a hover group whose hover fades in over 120 ms and goes at
-//! once; the chip's `group_opacity` rests at 1 on a selected or open-path row, else at 0, and
-//! rises to 1 under the hover. In keyboard mode (C1e's `row_hover` off) a transparent cover
-//! over the row content takes the hover alone (`El::hover_alone`, no handlers, hidden from
-//! assistive technology), so the group rests and a hovered row's chip hides at once; the
-//! pointer move that ends keyboard mode removes the cover, and the group's hover, still the
-//! same element, fades in afresh. Its rest changes land at once (an instant opacity motion).
-//!
-//! Rows are memoised by C1e on the look's colours, type, space and row heights, not on what
-//! only the badge reads, so the content slot's version hashes that too: the `columns.badge.*`
-//! tokens, the highlight fill and whether animations are on.
-
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -36,8 +16,6 @@ use crate::collection::element::{ContentSlot, Describe, LABEL, RowCx};
 /// The hover's fade in: Strata's `transition: opacity 120ms ease-out`.
 const FADE_IN: Anim = Anim::new(Curve::tween(0.12, Easing::EASE_OUT));
 
-/// Column `serial`'s badge text for the row `rcx` builds, when the setting shows badges and the
-/// row isn't being renamed.
 fn shown_text<'s, S: 'static>(
     sh: &Shared<S>,
     s: &'s S,
@@ -68,8 +46,6 @@ fn version_of(text: Option<&str>, look: &Look) -> u64 {
     h.finish()
 }
 
-/// Column `serial`'s detail line for the row `rcx` builds, while the host gives the column's
-/// rows details ([`ColumnSources::detail`](super::ColumnSources::detail)).
 fn detail_text<'s, S: 'static>(
     sh: &Shared<S>,
     s: &'s S,
@@ -93,8 +69,6 @@ fn detail_line(look: &Look) -> f32 {
     }
 }
 
-/// A row's height with a detail line: the one-line row's, and two lines of detail under the
-/// name, as Strata's `.file-search-path` wraps to two (`src/ui/browser/columns/rows/widgets.rs`).
 pub(super) fn detailed_height(look: &Look) -> f32 {
     (look.row.columns + 2.0 * detail_line(look) + look.space.xxs).round()
 }
@@ -123,8 +97,6 @@ fn with_detail(label: El, detail: Option<&str>, look: &Look) -> El {
         .child(col().key(DETAIL).w_full().min_w(0.0).child(line))
 }
 
-/// Whether a row may carry a hover tooltip: omitted while renaming, dragging, or anchored by
-/// a folder peek, or for empty names.
 fn shows_tooltip(rcx: &RowCx<'_>) -> bool {
     !rcx.state.renaming
         && !rcx.state.marks.dragging
@@ -161,8 +133,6 @@ fn row_tooltip<'s, S: 'static>(
         .filter(|t| !t.is_empty())
 }
 
-/// The row's content: C1e's icon and label, the host's detail line under the label when the
-/// column has them, and the badge over the label's end when there is one to show.
 pub(super) fn content<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> ContentSlot<S> {
     let (v, b) = (sh.clone(), sh.clone());
     ContentSlot::new(
@@ -206,16 +176,11 @@ pub(super) fn content<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> ContentSlo
                 content = content.help(tip.into_owned());
             }
             if shown.is_some() {
-                // The hover lives on the hover group's track, which the row's own
-                // hover tint doesn't share: the fade is the badge's alone.
                 let enter = if look.animations {
                     FADE_IN
                 } else {
                     Anim::INSTANT
                 };
-                // In keyboard mode a cover over the row takes the hover alone, so the
-                // group rests (the chip hides at once); the pointer move that ends keyboard
-                // mode removes it, and the group's hover fades in afresh.
                 content = content.hover_group().hover_motion(enter, Anim::INSTANT);
                 if !live {
                     content = content.child(
@@ -247,8 +212,6 @@ fn folder_chevron(look: &Look, rcx: &RowCx<'_>) -> El {
     }
 }
 
-/// The chip: an opaque surface pill (the highlight on an open-path row) pinned to the row's
-/// trailing edge, over the name.
 fn chip(look: &Look, t: &str, rcx: &RowCx<'_>, hover_live: bool) -> El {
     let kit = &look.kit;
     let open_path = rcx.state.marks.active_path;
@@ -257,9 +220,6 @@ fn chip(look: &Look, t: &str, rcx: &RowCx<'_>, hover_live: bool) -> El {
     } else {
         0.0
     };
-    // Keyboard mode: a hovered row shows only what it shows at rest (Strata's
-    // `.keyboard-navigation row:hover:not(:selected) .file-size`). The cover already rests the
-    // group then; this keeps the chip at rest should the cover not hold the hover.
     let hovered = if hover_live { 1.0 } else { rest };
     let fill = if open_path {
         look.fill.highlight
@@ -267,9 +227,6 @@ fn chip(look: &Look, t: &str, rcx: &RowCx<'_>, hover_live: bool) -> El {
         kit.c.surface_raised
     };
     let inset = tokens::badge_inset(look);
-    // One leaf element, its line as tall as the chip so the text sits in its middle: a box
-    // around a text costs a fifth more on each scroll frame (C2b's perf runs), and every row
-    // has a chip.
     let h = (look.row.columns - 2.0 * inset).max(1.0);
     text(t.to_owned())
         .key(BADGE)
@@ -286,9 +243,6 @@ fn chip(look: &Look, t: &str, rcx: &RowCx<'_>, hover_live: bool) -> El {
         .inert()
 }
 
-/// The row's accessible description: the host's words for the entry
-/// ([`ColumnSources::description`](super::ColumnSources::description)), else the badge's text
-/// under its setting, and none of the badge's while the row is being renamed.
 pub(super) fn describe<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> Describe<S> {
     let (v, b) = (sh.clone(), sh.clone());
     Describe::new(

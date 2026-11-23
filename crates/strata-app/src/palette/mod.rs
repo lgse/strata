@@ -1,42 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The search palette (A10): C17's [`SearchPalette`] for Ctrl+K and the header's Search
-//! button, as GTK's `SearchDialog` (`src/ui/search.rs`, `src/ui/search/panel.rs`,
-//! `src/ui/search/results.rs`) and its wiring (`src/ui/window/composition/search.rs`).
-//!
-//! - **Opening and closing.** The `search` command toggles it: Ctrl+K where no text field has
-//!   the keyboard (`window_commands`), and from anywhere once the chain has left the key
-//!   (`after_yield`), which is how Ctrl+K closes it from its own field. The header's Search
-//!   button runs the same command. Escape, a click outside and the toggle close it, and the
-//!   keyboard goes back to what opened it. While open it is the window's modal layer
-//!   ([`Holds::Modal`]), its field typing.
-//! - **What it searches** ([`search`]): strata-fs's index of Home and the mounted local
-//!   drives ([`roots`], read as it opens), with every subfolder but the excluded ones, hidden
-//!   entries as the browser shows them and the search limits from the settings, started as
-//!   it opens. Each edit asks the index again, and a batch counts only for the text the field
-//!   holds.
-//! - **Opening a result** ([`act`]): Enter or a click. A folder is navigated to; a file is
-//!   opened first when "Open files directly" is on or shown in the preview drawer otherwise,
-//!   then revealed and selected in its folder.
-//! - **Its folder:** Alt+Return, with Super held or not, or the result's menu ([`menu`], "Open
-//!   containing folder") reveals it in its folder, the folder's filter emptied first, as GTK's
-//!   `reveal_location` does. The palette's field reads Alt+Return itself (C17's reveal
-//!   chord): Rune's single-line field takes Return with any modifier, so the window's
-//!   commands never hear it there. A keymap that binds `open_containing_folder` to another
-//!   key is not followed yet, as GTK's is (finding lgse/strata#2470).
-//! - **No new tab:** GTK's palette takes neither Ctrl+Return nor a middle click (driven), so
-//!   the palette is given no new-tab chord and its middle click is off.
-//! - **The folder jump** ([`jump`]): the `jump_to_folder` command toggles the palette on the
-//!   folders visited before, as GTK's `jump-folder` action: Ctrl+Shift+K where no text field
-//!   has the keyboard (`window_commands` and `direct_commands`) and once the chain has left
-//!   the key (`after_yield`). Either command closes the palette whichever mode it is open in.
-//!   The history is strata-fs's [`NavigationHistory`], which each tab's browser fills with
-//!   the local folders its columns finish listing ([`visits`]). A result opens and reveals as
-//!   in Ctrl+K's mode.
-//!
-//! Not yet: the results' thumbnails and the header button's pressed look while it is open.
-//! `docs/rune/parity/packages/A10.md` keeps the list.
-
 use std::{collections::HashMap, path::PathBuf, rc::Rc};
 
 use rune::{El, Tx};
@@ -124,13 +87,6 @@ impl Part for Palette {
         false
     }
 
-    // `window_commands` reads Ctrl+K where no text field has the keyboard, and the window
-    // action `search` reads it once the chain has left the key (`WINDOW_ACTIONS` in
-    // `src/ui/window/keyboard.rs`).
-    //
-    // GTK reads Ctrl+Shift+K at `window_commands` in the default map's binding, at
-    // `direct_commands` in the active map's, and as the window action `jump-folder` once the
-    // chain has left the key (`src/ui/window/keyboard/commands.rs`, `direct.rs`).
     const COMMANDS: &'static [Action<App>] = &[
         Action::new("search", toggle).command(SEARCH).keys(&[
             Keys::at(
@@ -190,9 +146,6 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     None
 }
 
-/// Ctrl+K or the header's button: opens the palette on Home and the mounted local drives, as
-/// they are then, or closes it. While a result's
-/// menu is open the key is the menu's and does nothing, as GTK's popover takes it (driven).
 fn toggle(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     if app.palette.menu.is_open() {
         return Outcome::Ran;
@@ -206,8 +159,6 @@ fn toggle(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// Ctrl+Shift+K: opens the palette on the folders visited, or closes it. As for Ctrl+K, the
-/// key does nothing while a result's menu is open.
 fn toggle_jump(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     if app.palette.menu.is_open() {
         return Outcome::Ran;

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Paths the sandbox binds and runs. Launch-time `STRATA_SANDBOX_*` variables
-//! override values embedded at build time, which override the FHS defaults.
-
 use std::{
     ffi::OsString,
     path::{Component, Path},
@@ -17,9 +14,6 @@ const ROOT_VARIABLE: &str = "STRATA_SANDBOX_ROOT";
 pub(super) const PRLIMIT_VARIABLE: &str = "STRATA_SANDBOX_PRLIMIT";
 const GDK_PIXBUF_MODULE_FILE_VARIABLE: &str = "STRATA_SANDBOX_GDK_PIXBUF_MODULE_FILE";
 
-/// A launch-time root is less trusted than a packager's build-time root: it
-/// must stay inside an admin-managed runtime tree so `/` or user data can never
-/// be exposed to untrusted decoders.
 const ALLOWED_RUNTIME_ROOTS: &[&str] = &["/usr", "/nix/store", "/gnu/store"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,9 +54,6 @@ pub fn current() -> &'static Runtime {
     RUNTIME.get_or_init(|| resolve(|name| std::env::var_os(name)))
 }
 
-/// Applies launch-time overrides on top of the embedded configuration. A value
-/// that fails validation is ignored with a warning so the sandbox keeps the
-/// packager's configuration rather than binding an unsafe path.
 fn resolve(lookup: impl Fn(&str) -> Option<OsString>) -> Runtime {
     let mut runtime = Runtime::embedded();
     if let Some(path) = override_value(&lookup, PATH_VARIABLE, is_search_path) {

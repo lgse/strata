@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The per-folder views' model: what `folder-views.toml` holds, parsed from and serialized
-//! to its text, how a folder is keyed, and how changes merge over what another Strata
-//! process saved. It does not find, read or write the file. `docs/preferences.md` describes
-//! the behaviour.
-
 use std::{
     collections::{BTreeMap, HashMap},
     io,
@@ -27,8 +22,6 @@ const VERSION: i64 = 1;
 /// TOML integers are signed, so use times stop here rather than fail to save.
 const MAX_USED: u64 = i64::MAX as u64;
 
-/// A local folder by absolute path, or a folder on a removable drive by its
-/// filesystem UUID and path inside the drive, so it survives remounting.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum FolderKey {
     // Built only here, through the checks of `local` and `on_volume`.
@@ -66,8 +59,6 @@ impl FolderKey {
         }
     }
 
-    /// Whether `other` is this folder or inside it. Keys order by path
-    /// components, so the folders inside one sort right after it.
     fn contains(&self, other: &Self) -> bool {
         let (uuid, path) = self.parts();
         let (other_uuid, other_path) = other.parts();
@@ -128,14 +119,10 @@ impl TakenViews {
     }
 }
 
-/// Per-folder values that differ from the defaults, with a logical use clock
-/// for evicting the least recently used folders.
 #[derive(Clone, Debug, Default)]
 pub struct FolderViews {
     entries: BTreeMap<FolderKey, Entry>,
     clock: u64,
-    /// Unsaved changes, kept so a save can merge them over what another Strata
-    /// process (such as the portal chooser) wrote in the meantime.
     changed: HashMap<FolderKey, u64>,
     touched: HashMap<FolderKey, u64>,
     cleared: Option<u64>,
@@ -269,10 +256,6 @@ impl FolderViews {
         changed
     }
 
-    /// Moves the values of `from` and the folders inside it to `to`, or forgets
-    /// them for `None`. Like folder colors, a move drops stale values at and
-    /// under its destination, while a merge into an existing folder keeps that
-    /// folder's own values and carries the ones inside `from` over its contents.
     pub fn relocate(&mut self, from: &FolderKey, to: Option<&FolderKey>, merged: bool) -> bool {
         if to == Some(from) {
             return false;
@@ -335,10 +318,6 @@ impl FolderViews {
         true
     }
 
-    /// `saved`, as another process may have left it, with this store's unsaved
-    /// changes applied on top. Folders changed or opened here become the latest
-    /// used, since the other process's clock may have run ahead of this one's,
-    /// and the changes stay unsaved until a write succeeds.
     pub fn merged_over(&self, saved: Self) -> Self {
         let mut merged = if self.cleared.is_some() {
             Self::default()
@@ -417,9 +396,6 @@ impl FolderViews {
         }
     }
 
-    /// Fails only for invalid TOML or an unknown version, which saving must not
-    /// overwrite. Invalid entries and fields are skipped individually, and the
-    /// returned flag says whether anything was dropped or repaired.
     pub fn parse(contents: &str) -> io::Result<(Self, bool)> {
         let table: toml::Table = toml::from_str(contents)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;

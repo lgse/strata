@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! A window opened on an argument: a folder opens, and a file, or a symbolic link whose target
-//! is gone, shows selected in its folder. GIO is asked what the argument is first, as
-//! `classify` in `src/ui/window/open_argument.rs` asks it, since a path alone cannot say.
-//!
-//! What GTK does beyond that is not here yet: it mounts a location that needs mounting, shows
-//! "Connecting to location…" with Cancel when the answer takes a second, and shows "The
-//! requested location is unavailable" with Retry in the pane when there is none. Here an
-//! argument GIO cannot answer for opens as a location, and the browser reports what it finds.
-
 use std::rc::{Rc, Weak};
 
 use rune::Tx;
@@ -29,8 +20,6 @@ pub(super) enum Kind {
     Item,
 }
 
-/// Opens `location` in the window's browser once GIO has said what it is. A navigation the
-/// user makes meanwhile wins.
 pub(crate) fn open(app: &mut App, location: Location) {
     let browser = Rc::downgrade(&app.browser);
     let generation = app.browser.bump_navigation_generation();
@@ -45,8 +34,6 @@ pub(crate) fn open(app: &mut App, location: Location) {
     });
 }
 
-/// Opens the argument in `browser` as `kind` says, unless the browser has gone or navigated
-/// since `generation`.
 fn shown(
     browser: &Weak<Browser>,
     generation: u64,
@@ -67,8 +54,6 @@ fn shown(
     }
 }
 
-/// What GIO says `file` is: following a symbolic link, and when that fails, the link itself,
-/// so a dangling link is still an item. `None` when GIO has no answer.
 pub(super) async fn kind(file: &gio::File) -> Option<Kind> {
     use gio::prelude::*;
     let followed = file

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The picker's builder: the field, the grid, the name line and the tabs, inline or in a
-//! popover behind a button.
-
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -25,8 +22,6 @@ use crate::filter_bar::field::{self, Handlers, MenuFn, Spec};
 type ChooseFn<S> = Rc<dyn Fn(&mut S, &Choice, &mut Tx)>;
 type CloseFn<S> = Rc<dyn Fn(&mut S, &mut Tx)>;
 
-/// rune-kit's Popover body at its widest: `max_w(320.0)` in rune-kit's `overlay.rs`, which it
-/// doesn't export (as C20b's ColorButton reads it).
 const POPOVER_MAX_W: f32 = 320.0;
 
 /// What sits between the name and the keyword a search matched.
@@ -38,8 +33,6 @@ fn escape_key(e: &KeyEvent) -> bool {
     e.key == Key::Escape && !(m.ctrl || m.alt || m.cmd || m.logo)
 }
 
-/// Ctrl+N (`Some(false)`) or Ctrl+P (`Some(true)`): GTK's chooser steps sections with them.
-/// Matched as Rune's layout-aware chords, so they follow the key's label.
 fn tab_step(e: &KeyEvent, tx: &Tx) -> Option<bool> {
     let platform = KeyPlatform::current();
     let chord = |c| Chord::new(ChordKey::Char(c)).with(ChordMod::Ctrl);
@@ -52,9 +45,7 @@ fn tab_step(e: &KeyEvent, tx: &Tx) -> Option<bool> {
     }
 }
 
-/// An icon picker over an [`IconPickerState`]: see the [module docs](super).
-///
-/// Used by: hosts.
+/// An icon picker over an `IconPickerState`: see the module docs.
 pub struct IconPicker<S> {
     pub(super) key: Rc<str>,
     pub(super) get: fn(&S) -> &IconPickerState,
@@ -92,8 +83,7 @@ impl<S> Clone for IconPicker<S> {
 }
 
 impl<S: 'static> IconPicker<S> {
-    /// A picker keyed `key` over the state `get` and `get_mut` return, drawn with the look
-    /// `look` returns: searchable, 8 cells a row at most and 6 rows tall.
+    /// A picker keyed `key` over the state `get` and `get_mut` return, drawn with the look `look` returns.
     pub fn new(
         key: impl Into<Rc<str>>,
         get: fn(&S) -> &IconPickerState,
@@ -124,21 +114,18 @@ impl<S: 'static> IconPicker<S> {
     }
 
     /// Whether it has a search field and the name line under the grid (on by default).
-    /// Strata's 16 customize icons have neither.
     pub fn search(mut self, on: bool) -> Self {
         self.search = on;
         self
     }
 
-    /// Whether each cell shows its name as a tooltip (off by default): Strata's customize
-    /// icons do, GTK's emoji don't.
+    /// Whether each cell shows its name as a tooltip (off by default): Strata's customize icons do, native emoji don't.
     pub fn tooltips(mut self, on: bool) -> Self {
         self.tooltips = on;
         self
     }
 
-    /// How many cells a row holds at most (8 by default, Strata's): the picker is this wide.
-    /// In a popover, as many as fit inside rune-kit's widest popover.
+    /// How many cells a row holds at most: the picker is this wide.
     pub fn columns(mut self, columns: usize) -> Self {
         self.columns = columns.max(1);
         self
@@ -150,32 +137,25 @@ impl<S: 'static> IconPicker<S> {
         self
     }
 
-    /// Hears a choice: a click or a tap on a cell, Return or Space on the grid's cursor, or
-    /// Return in the field (the first result). It fires once per choice. The host saves it,
-    /// calls `IconPickerState::set_current`, and keeps its recent list with `remember`. In a
-    /// popover, the popover then closes.
+    /// Hears a choice: a click or a tap on a cell, Return or Space on the grid's cursor.
     pub fn on_choose(mut self, f: impl Fn(&mut S, &Choice, &mut Tx) + 'static) -> Self {
         self.on_choose = Some(Rc::new(f));
         self
     }
 
-    /// Hears the popover close: after a choice, Escape, or a press outside. Focus goes back to
-    /// the button either way.
+    /// Hears the popover close: after a choice, Escape, or a press outside.
     pub fn on_close(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
-    /// Escape in an inline picker's search field with no text left to clear: what the host
-    /// does next (C20c's `on_escape`; Settings closes). Rune's field takes an Escape its owner
-    /// leaves (it blurs), so the key never reaches the host's own handlers.
+    /// Escape in an inline picker's search field with no text left to clear: what the host does next.
     pub fn on_escape(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.on_escape = Some(Rc::new(f));
         self
     }
 
-    /// A menu press on the search field (right-click, Menu, Shift+F10), at a window point:
-    /// the host opens C21's `FieldMenu` on [`IconPicker::field_key`].
+    /// A menu press on the search field (right-click, Menu, Shift+F10), at a window point.
     pub fn on_menu(mut self, f: impl Fn(&mut S, Point, &mut Tx) + 'static) -> Self {
         self.on_menu = Some(Rc::new(f));
         self
@@ -250,10 +230,7 @@ impl<S: 'static> IconPicker<S> {
         self.body(s, look, &m, self.columns)
     }
 
-    /// A button labelled `label` (Strata's "Choose Emoji…", then "Emoji  🚀"), described by
-    /// `description`, keyed [`IconPicker::button_key`]. A press opens the picker in a popover
-    /// under it, pushed onto `layer`, with focus in the search field (on the grid without
-    /// one). A choice, Escape or a press outside closes it, and focus goes back to the button.
+    /// A button labelled `label`, described by `description`, keyed `IconPicker::button_key`.
     pub fn button(
         &self,
         s: &S,
@@ -292,9 +269,6 @@ impl<S: 'static> IconPicker<S> {
             let fit =
                 (((POPOVER_MAX_W - 2.0 * pad - 2.0 * m.pad) / m.cell).floor() as usize).max(1);
             let columns = self.columns.min(fit);
-            // Rune's modal traps Tab, focuses the first stop (the field) and gives focus back
-            // to the button when it goes. A press outside dismisses it via `modal_tx`; Escape
-            // never reaches the dismissal, as the picker takes it first and closes.
             let dismiss = self.clone();
             let body = self
                 .body(s, look, &m, columns)
@@ -305,14 +279,12 @@ impl<S: 'static> IconPicker<S> {
         row().child(popover.build(k, layer))
     }
 
-    /// Call from the host's poll every frame: runs the grid's controllers. True when it changed
-    /// the state.
+    /// Call from the host's poll every frame: runs the grid's controllers.
     pub fn poll(&self, s: &mut S, tx: &mut Tx) -> bool {
         self.collection(s).tick(s, tx)
     }
 
-    /// Searches for the field's text after the host changed it (C21's `FieldMenu` pasted,
-    /// cut or undid): the grid shows its results from the top.
+    /// Searches for the field's text after the host changed it: the grid shows its results from the top.
     pub fn edited(&self, s: &mut S, tx: &mut Tx) {
         let scope = self.grid_key();
         (self.get_mut)(s).query_changed(Some((&scope, tx)));
@@ -344,7 +316,7 @@ impl<S: 'static> IconPicker<S> {
         }
     }
 
-    /// The grid's collection (C1e), as the view builds it: for its `tick` and its geometry.
+    /// The grid's collection, as the view builds it: for its `tick` and its geometry.
     pub fn collection(&self, s: &S) -> Collection<S> {
         let (get, get_mut, look_of) = (self.get, self.get_mut, self.look);
         let st = get(s);
@@ -494,8 +466,6 @@ impl<S: 'static> IconPicker<S> {
         body.on_key(move |s: &mut S, e: &KeyEvent, tx: &mut Tx| keys.body_key(s, e, tx))
     }
 
-    /// Keys from the grid or the tabs that they didn't take: Escape closes a popover, Ctrl+N
-    /// and Ctrl+P step the tabs.
     fn body_key(&self, s: &mut S, e: &KeyEvent, tx: &mut Tx) -> bool {
         if escape_key(e) && (self.get)(s).is_open() {
             self.close(s, tx);
@@ -568,9 +538,6 @@ impl<S: 'static> IconPicker<S> {
         st.query_changed(Some((&scope, tx)));
     }
 
-    /// The field's keys: Return chooses the grid's cursor (the first result), Down goes to the
-    /// grid, Escape closes a popover (inline: clears the text, then goes to
-    /// [`IconPicker::on_escape`]), and Ctrl+N and Ctrl+P step the tabs.
     fn field_key_event(&self, s: &mut S, e: &KeyEvent, tx: &mut Tx) -> bool {
         let m = e.mods;
         let bare = !(m.ctrl || m.alt || m.cmd || m.logo || m.shift);
@@ -612,8 +579,6 @@ impl<S: 'static> IconPicker<S> {
         }
     }
 
-    /// Under the grid: the cursor's glyph and name, the query's matches lit in the name, and
-    /// the keyword it matched when the name didn't ("grinning face · happy").
     fn name_line(&self, s: &S, look: &Look, m: &Metrics) -> El {
         let k = &look.kit;
         let st = (self.get)(s);

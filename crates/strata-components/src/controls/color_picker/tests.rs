@@ -192,8 +192,6 @@ fn recent_colours_are_newest_first_without_copies_up_to_the_cap() {
     assert_eq!(recent, [5, 9, 8, 7, 6, 4, 3, 2].map(c));
 }
 
-/// A picker laid out with a 216 by 136 plane area and 216-wide strip tracks, inside an
-/// 8-point margin.
 fn laid_out(c: Srgba, alpha: bool) -> ColorPickerState {
     let mut st = ColorPickerState::new(Srgba::WHITE)
         .alpha(alpha)

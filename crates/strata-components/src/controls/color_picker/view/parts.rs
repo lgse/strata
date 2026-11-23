@@ -16,8 +16,6 @@ use super::super::value::{Hsv, Srgba};
 use super::{ColorPicker, Metrics, escape_key};
 use crate::contract::Point;
 
-/// The hue strip's stops: red, yellow, green, cyan, blue, magenta and red again, which sRGB
-/// interpolation between them draws as HSV's hue exactly.
 fn hue_stops() -> [(f32, Color); 7] {
     let at = |i: u8| {
         let c = Hsv {
@@ -31,8 +29,6 @@ fn hue_stops() -> [(f32, Color); 7] {
     [at(0), at(1), at(2), at(3), at(4), at(5), at(6)]
 }
 
-/// A checkerboard `w` by `h` of `cell` squares in `ink`, over the element's own fill: what
-/// shows through a translucent colour.
 fn checker(w: f32, h: f32, cell: f32, ink: Color) -> Shape {
     let mut shape = Shape::new();
     if w <= 0.0 || h <= 0.0 || cell <= 0.0 {
@@ -49,8 +45,6 @@ fn checker(w: f32, h: f32, cell: f32, ink: Color) -> Shape {
     shape
 }
 
-/// A `w` by `h` box of `color`, over a checkerboard where it is translucent, clipped to
-/// `radius`.
 fn paint(look: &Look, m: Metrics, w: f32, h: f32, radius: f32, color: Srgba) -> El {
     let c = &look.kit.c;
     let mut e = el().size(w, h).radius(radius).clip_rounded(radius);
@@ -67,8 +61,6 @@ fn paint(look: &Look, m: Metrics, w: f32, h: f32, radius: f32, color: Srgba) -> 
     )
 }
 
-/// The button's face: the colour as a small rounded bar, over a checkerboard where
-/// translucent.
 pub(super) fn swatch_paint(look: &Look, m: Metrics, color: Srgba) -> El {
     paint(look, m, m.dot * 1.5, m.knob, look.kit.radius.sm, color)
         .border(1.0, look.kit.c.border_base)
@@ -76,8 +68,6 @@ pub(super) fn swatch_paint(look: &Look, m: Metrics, color: Srgba) -> El {
 }
 
 impl<S: 'static> ColorPicker<S> {
-    /// A cursor: a ring around the colour under it, keyed `<part>-knob`, with the part's
-    /// keyboard focus ring.
     fn cursor(&self, look: &Look, m: Metrics, key: String, x: f32, y: f32, fill: Srgba) -> El {
         let k = &look.kit;
         let c = &k.c;
@@ -95,9 +85,6 @@ impl<S: 'static> ColorPicker<S> {
         )
     }
 
-    /// The saturation and value plane: the hue, white fading out to the right over it, and
-    /// black fading in downwards over that. With sRGB blending (Rune's default) the layers
-    /// composite to `v · (s · hue + 1 − s)`: HSV exactly.
     pub(super) fn plane(&self, st: &ColorPickerState, look: &Look, m: Metrics) -> El {
         let k = &look.kit;
         let hsv = st.hsv();
@@ -148,9 +135,6 @@ impl<S: 'static> ColorPicker<S> {
             .focusable(true)
             .cursor(Cursor::Crosshair)
             .on_drag(drag)
-            // Arrows move a whole percent, Alt+arrows ten (GTK's 0.01 and 0.1): Left and Right
-            // the saturation, Up and Down the value. Typed hex commits first, as for a strip.
-            // Shift, Ctrl, Super and Cmd arrows pass on.
             .on_key(move |s: &mut S, e: &KeyEvent, tx: &mut Tx| {
                 let mods = e.mods;
                 if mods.shift || mods.ctrl || mods.cmd || mods.logo {
@@ -172,8 +156,6 @@ impl<S: 'static> ColorPicker<S> {
             })
     }
 
-    /// The pointer on a draggable part: a press jumps its cursor there, a drag follows it, and
-    /// Escape or a lost pointer puts the colour back.
     fn drag_handler(
         &self,
         part: Part,
@@ -278,8 +260,6 @@ impl<S: 'static> ColorPicker<S> {
         strip
             .cursor(Cursor::Pointer)
             .on_drag(self.drag_handler(part, m))
-            // Rune's slider keys: Left and Down a step down, Right and Up a step up, Page Up and
-            // Page Down ten, and assistive increments and set-value.
             .on_step(move |s: &mut S, steps: i32, tx: &mut Tx| {
                 tx.instant();
                 w1.pending(s, tx);
@@ -326,8 +306,6 @@ impl<S: 'static> ColorPicker<S> {
                 .on_edit(move |s: &mut S| &mut get_mut(s).edit)
                 .on_input_change(move |s: &mut S, _: &mut Tx| get_mut(s).edited())
                 .on_input_key(move |s: &mut S, e: &KeyEvent, tx: &mut Tx| {
-                    // Typed text reverts first; then the open popover's cancel. A field's keys
-                    // never reach the body's `on_key`, but they do reach the modal's dismissal.
                     if escape_key(e) {
                         return w.st(s).revert_text() || w.escape(s, tx);
                     }
@@ -347,8 +325,6 @@ impl<S: 'static> ColorPicker<S> {
                 });
             }
         }
-        // The field in a box drawn as C20a's NumberField draws its own (rune-kit TextInput's
-        // look, from the same tokens).
         let mut frame = row()
             .h(height)
             .grow(1.0)
@@ -379,8 +355,6 @@ impl<S: 'static> ColorPicker<S> {
             .child(frame)
     }
 
-    /// A row of swatches under its heading: a radio group, each swatch checked while it is
-    /// the colour. Arrows move between them; Space, Return or a click picks one.
     pub(super) fn swatch_row(
         &self,
         st: &ColorPickerState,

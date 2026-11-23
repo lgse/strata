@@ -1,31 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! Linux PCM audio output and playback clock shim, with zero GStreamer dependency.
+//! Linux PCM audio output and playback clock shim (`dlopen` PulseAudio -> ALSA -> silent clock).
 //!
-//! Rune lacks, at the pinned rev (`7a707454`): a Linux PCM audio output with a playback clock.
-//! Rune's `Player` takes only a file or URL (`MediaSource`) and uses `video/unsupported.rs` off
-//! macOS, so apps that decode audio themselves (for example in a sandboxed helper) have nowhere to
-//! push interleaved PCM frames or read back how much audio has actually been heard.
-//!
-//! Rune issue: upstream [#525](https://github.com/anomalyco/rune/issues/525)
-//! (`docs/rune/upstream/rune/26-pcm-output.md`; related: #30, #100, #112, #506).
-//!
-//! # Backends
-//!
-//! Every backend is loaded at runtime with `dlopen` (zero build-time audio header dependencies):
-//!
-//! 1. **PulseAudio simple API (`libpulse-simple.so.0`)** — native on modern PipeWire desktops (via
-//!    `pipewire-pulse`) and PulseAudio.
-//! 2. **ALSA PCM (`libasound.so.2`)** — fallback on systems without a sound server.
-//! 3. **Silent real-time clock** — automatic fallback in headless environments (containers, CI) or
-//!    after mid-playback device loss, pacing at the exact sample rate without panics or hangs.
-//!
-//! # Threading
-//!
-//! Opening, writing, latency queries, and flushing run exclusively on a dedicated worker thread.
-//! Calling [`PcmOutput::open`], [`PcmOutput::push`], [`PcmOutput::play`], [`PcmOutput::pause`],
-//! [`PcmOutput::flush`], [`PcmOutput::set_volume`], [`PcmOutput::set_muted`], or
-//! [`PcmOutput::position`] from the UI thread never blocks on audio device I/O.
+//! Rune lacks a Linux PCM sink and playback clock (`Player` is unsupported off macOS;
+//! [anomalyco/rune#525](https://github.com/anomalyco/rune/issues/525), related: #30, #100, #112,
+//! #506). All device I/O runs on a dedicated worker thread so UI calls never block.
 
 use std::{
     fmt, io,
@@ -46,8 +25,6 @@ mod tests;
 
 pub use ring::MAX_VOLUME;
 
-/// Probes the best available Linux PCM backend (`PulseAudio` -> `Alsa` -> `Silent`) synchronously.
-/// Call off the UI thread; opening an audio daemon or device may block briefly.
 #[must_use]
 pub fn probe_backend(app_name: &str, stream_name: &str) -> BackendKind {
     let spec = PcmSpec::new(SampleFormat::S16Le, 48_000, 2);
@@ -364,8 +341,6 @@ impl PcmOutput {
         self.shared.lock().device_lost
     }
 
-    /// Queues interleaved PCM bytes without blocking. Returns [`OutputError::BufferFull`] if the
-    /// bounded ring does not have room for the entire slice.
     pub fn push(&self, bytes: &[u8]) -> Result<(), OutputError> {
         let frame = self.shared.spec.frame_bytes();
         if !bytes.len().is_multiple_of(frame) {
@@ -453,8 +428,6 @@ impl PcmOutput {
         }
     }
 
-    /// Pauses playback immediately, freezing the playback clock and flushing buffered device latency
-    /// without losing unheard PCM frames.
     pub fn pause(&self) {
         let mut state = self.shared.lock();
         if state.playing {
@@ -473,8 +446,6 @@ impl PcmOutput {
         self.shared.lock().playing
     }
 
-    /// Clears all buffered PCM, resets the playback clock to zero, and flushes the audio device
-    /// (typically called on seek).
     pub fn flush(&self) {
         let mut state = self.shared.lock();
         state.ring.clear();

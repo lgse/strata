@@ -2,8 +2,6 @@
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// Corner radius scale in percent of the stylesheet's radii; 0 squares every
-/// rounded rectangle.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct CornerRoundness(u32);

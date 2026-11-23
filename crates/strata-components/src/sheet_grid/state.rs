@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! [`SheetGridState`]: the sheets, and for each one its sort, widths, cursor, range and
-//! scroll position, kept by the host and reached by accessor.
-
 use std::cell::{Cell, OnceCell, RefCell};
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,7 +16,6 @@ use crate::collection::marquee::{EdgeScroll, edge_speed, glide_lead};
 use crate::preview_drawer::{DocumentView, HostedPreview};
 use crate::scroll::{Bar, ScrollFeed};
 
-/// The glide a range drag's autoscroll rides, as C2's drag scroll does.
 const GLIDE: rune::Spring = rune::tok::motion::GLIDE;
 /// A frame's length when the clock hasn't moved, and the most one step may cover.
 const FRAME: Duration = Duration::from_micros(16_667);
@@ -89,10 +85,6 @@ pub(crate) fn fill(template: &str, value: &str) -> String {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SheetIntent {
-    /// Sheet `i` was chosen and has no data yet: read it (Strata's sandbox) and hand it over
-    /// with [`SheetGridState::set_sheet`], or say why not with
-    /// [`SheetGridState::set_sheet_failed`]. Asked once until either; after a failure, again
-    /// only when the person presses Try again.
     Load(usize),
 }
 
@@ -107,12 +99,7 @@ pub(crate) struct SheetView {
     pub spec: Vec<(usize, SortDir)>,
     /// Body rows (source indices after the title row) in display order.
     pub order: Vec<u32>,
-    /// Each display row's element key, by position: the same keys in any order, so a re-sort
-    /// changes none (Rune re-reads and copies every key of a list whose keys change, #203)
-    /// and `virtual_rows_version` holds for the sheet. Built once.
     pub row_keys: Vec<String>,
-    /// Every column's width once one has been resized by hand; until then the columns fit the
-    /// viewport.
     pub manual: Option<Vec<f32>>,
     /// What each column wants, measured once per font size.
     pub wanted: RefCell<Option<(u32, Vec<f32>)>>,
@@ -202,8 +189,6 @@ pub(crate) struct DragState {
     pub ticked: Option<f64>,
 }
 
-/// What the next tick does about a glide still under way when its drag ends or leaves the
-/// edges: stop it dead where it is (Strata's stop, and C2's and C24's).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum Halt {
     #[default]
@@ -211,8 +196,6 @@ pub(crate) enum Halt {
     Pending,
 }
 
-/// The sheet grid's state. The host makes one per preview, hands sheets over as they arrive
-/// and calls [`Self::tick`] from its poll while the grid shows.
 pub struct SheetGridState {
     pub(crate) key: String,
     pub(crate) sheets: Vec<SheetView>,
@@ -229,15 +212,11 @@ pub struct SheetGridState {
     /// The last build's fitted widths, what a divider's double click puts a column back to.
     pub(crate) fitted: RefCell<Vec<f32>>,
     pub(crate) row_h: Cell<f32>,
-    /// The columns built (column windowing, for wide sheets): `None` until the rows are first
-    /// laid out, or after another sheet shows.
     pub(crate) window: Option<std::ops::Range<usize>>,
     /// The rows' viewport, `[x, y, w, h]` in the window, from its last layout.
     pub(crate) viewport: Cell<[f32; 4]>,
     /// The header titles' sideways offset: the rows' scroll, negated.
     pub(crate) strip_x: Live<[f32; 2]>,
-    /// [`Self::set_active`] switched sheets with no `Tx` at hand: the next tick scrolls the
-    /// active tab into the strip.
     reveal_tab: bool,
 }
 
@@ -275,8 +254,6 @@ impl SheetGridState {
         self.window = None;
     }
 
-    /// A workbook's sheets by name, none loaded yet; the first shows. The host loads the first
-    /// itself, and the others when [`SheetIntent::Load`] asks.
     pub fn set_workbook(&mut self, names: impl IntoIterator<Item = Arc<str>>) {
         self.sheets = names.into_iter().map(SheetView::new).collect();
         self.active = 0;
@@ -298,9 +275,6 @@ impl SheetGridState {
         }
     }
 
-    /// Sheet `i` couldn't be read: the grid shows `reason` under Strata's "Preview
-    /// unavailable", with a Try again button that asks [`SheetIntent::Load`] once more. The
-    /// drawer stops showing it busy. Ignored for a sheet whose data has come.
     pub fn set_sheet_failed(&mut self, i: usize, reason: impl Into<String>) {
         if let Some(v) = self.sheets.get_mut(i).filter(|v| v.data.is_none()) {
             v.loading = false;
@@ -321,8 +295,6 @@ impl SheetGridState {
         &self.labels
     }
 
-    /// `Some(current)` offers the drawer's Rendered and Source switch (CSV and TSV have a
-    /// source; workbooks don't).
     pub fn set_switch(&mut self, form: Option<DocumentView>) {
         self.switch = form;
     }
@@ -352,9 +324,6 @@ impl SheetGridState {
         self.sheets.get_mut(self.active)
     }
 
-    /// Shows sheet `i` as it was left, without scrolling it (for a host restoring a preview);
-    /// a tab click goes through the grid, which also keeps the scroll position. The sheet
-    /// left drops its range, and the next [`Self::tick`] scrolls sheet `i`'s tab into view.
     pub fn set_active(&mut self, i: usize) {
         if i < self.sheets.len() {
             if i != self.active {
@@ -442,8 +411,6 @@ impl SheetGridState {
         })
     }
 
-    /// Sets column `j`'s width as a drag does. The first resize keeps every other column at
-    /// its drawn width from then on (Strata's rule).
     pub fn set_column_width(&mut self, j: usize, w: f32) {
         let drawn: Vec<f32> = {
             let laid = self.laid.borrow();
@@ -464,7 +431,6 @@ impl SheetGridState {
         }
     }
 
-    /// Puts column `j` back to its fitted width (a divider's double click, D7).
     pub fn fit_column(&mut self, j: usize) {
         let w = self.fitted.borrow().get(j).copied();
         if let (Some(w), Some(v)) = (w, self.view_mut())
@@ -474,9 +440,6 @@ impl SheetGridState {
         }
     }
 
-    /// The range drag's autoscroll, one frame at `now` (seconds): near an edge of the rows the
-    /// view glides that way (steps, with animations off) and the range follows the pointer.
-    /// True when the range changed. Call it from the host's poll while the grid shows.
     pub fn tick(&mut self, now: f64, look: &Look, tx: &mut Tx) -> bool {
         if std::mem::take(&mut self.reveal_tab) {
             self.reveal_active_tab(tx);
@@ -538,8 +501,6 @@ impl SheetGridState {
         self.drag_to_viewport(drag.pointer, p)
     }
 
-    /// Ends a range drag and its autoscroll. Call it when the grid stops showing (the drawer
-    /// closed, another preview): Rune doesn't end a drag whose element goes (probe P4).
     pub fn stop(&mut self) {
         self.end_drag();
     }
@@ -580,9 +541,6 @@ impl SheetGridState {
 
     // --- What the handlers do ----------------------------------------------------------------
 
-    /// The cell at a point of the rows' content, if it is on one. The row numbers stay at the
-    /// viewport's left edge, over whatever has scrolled under them, so a point within the
-    /// gutter's width of that edge is on them, at any sideways offset.
     pub(crate) fn cell_at(&self, x: f32, y: f32) -> Option<CellPos> {
         let v = self.view()?;
         let laid = self.laid.borrow();
@@ -595,8 +553,6 @@ impl SheetGridState {
         (row < v.rows()).then(|| CellPos::new(row, laid.at(x)))
     }
 
-    /// The cell nearest a point of the viewport, clamped to the sheet: where a drag's range
-    /// reaches with the pointer over the header, the gutter or past the last row.
     fn clamped_at(&self, pointer: [f32; 2], p: ScrollPos) -> Option<CellPos> {
         let v = self.view()?;
         let laid = self.laid.borrow();
@@ -609,8 +565,6 @@ impl SheetGridState {
         Some(CellPos::new(row, laid.at(x)))
     }
 
-    /// A press at content (`x`, `y`): a plain press puts the cursor there and clears the range;
-    /// with Shift it spans the range from the anchor. Off every cell it clears the range.
     pub(crate) fn press(&mut self, x: f32, y: f32, shift: bool) {
         let at = self.cell_at(x, y);
         let p = self.feed.get();
@@ -677,8 +631,6 @@ impl SheetGridState {
         }
     }
 
-    /// A click on column `j`'s title: the sort that makes (see [`sort::clicked`]), the range
-    /// cleared and the rows back at the top, as Strata does.
     pub(crate) fn click_title(&mut self, j: usize, tx: &mut Tx) {
         let scroll = self.scroll_key();
         let x = self.feed.get().offset[0];
@@ -692,8 +644,6 @@ impl SheetGridState {
         tx.scroll_to_instant(scroll, x, 0.0);
     }
 
-    /// Shows sheet `i`, keeping where the last one was scrolled and its cursor, but not its
-    /// range, and scrolls its tab into view. True when the host should load it.
     pub(crate) fn show(&mut self, i: usize, tx: &mut Tx) -> bool {
         if i >= self.sheets.len() || i == self.active {
             return false;
@@ -719,8 +669,6 @@ impl SheetGridState {
         load
     }
 
-    /// Scrolls the active sheet's tab into the strip: `TabStrip` leaves that to the app, as
-    /// C7's tabs do. Rune's reveal stops at the strip's edge, under its fade (C7's U-C7-7).
     fn reveal_active_tab(&self, tx: &mut Tx) {
         if self.sheets.len() >= 2 {
             let key = &self.key;
@@ -731,8 +679,6 @@ impl SheetGridState {
         }
     }
 
-    /// Try again on the active sheet's failure: it shows loading again. The sheet the host
-    /// should load, if it had failed.
     pub(crate) fn retry(&mut self) -> Option<usize> {
         let i = self.active;
         let v = self.view_mut()?;
@@ -741,16 +687,11 @@ impl SheetGridState {
         Some(i)
     }
 
-    /// The rows moved to `list_x` in the window (a scroll, sideways or down). True when the
-    /// columns that show have left the built ones, which are then rebuilt around them: a
-    /// commit about once a viewport width of sideways travel, none for a scroll down.
     pub(crate) fn follow_columns(&mut self, list_x: f32) -> bool {
         let vp = self.viewport.get();
         self.cover_columns((vp[0] - list_x).max(0.0))
     }
 
-    /// The viewport laid out at `r` (it moved or resized). True when the built columns no
-    /// longer cover what shows.
     pub(crate) fn viewport_laid(&mut self, r: [f32; 4]) -> bool {
         self.viewport.set(r);
         self.cover_columns(self.feed.get().offset[0])
@@ -783,8 +724,6 @@ impl SheetGridState {
         }
     }
 
-    /// Moves the cursor to `c` (with `extend`, the range grows from the anchor) and scrolls it
-    /// into view.
     pub(crate) fn move_cursor(&mut self, c: CellPos, extend: bool, tx: &mut Tx) {
         // The cursor's cell is built, so the grid's active descendant is there to name.
         let vp = self.viewport.get();

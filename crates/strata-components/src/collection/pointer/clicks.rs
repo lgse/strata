@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Click runs: which click of a run a press is, timed by the settings' interval rather than
-//! Rune's fixed one.
-
 use super::machine::Button;
 use crate::contract::{EntryId, Point};
 
@@ -16,12 +13,6 @@ struct Last {
     count: u32,
 }
 
-/// Counts presses into runs, as GTK's `GestureClick` does for Strata: a press continues the run
-/// (2, then 3, 4, …) when it comes within the interval and the distance of the press before,
-/// with the same button on the same entry. Window coordinates, so a run holds while the
-/// content scrolls under it (Strata's `columns/double_click.rs`). Strata acts on the first and
-/// second press of a run only, so a triple click opens once (Rune's `Drag::clicks` keeps
-/// counting too).
 #[derive(Clone, Debug, Default)]
 pub(super) struct Clicks {
     last: Option<Last>,

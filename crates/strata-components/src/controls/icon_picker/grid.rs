@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The grid: C1e's collection element with C3's grid geometry, in cells sized for a picker.
-//!
-//! Not C3's `IconsGrid`: its tiles are file tiles (at least `MIN_CARD`, 116 pt, wide, with a
-//! caption, a details line, thumbnails, rename and marquee). The picker keeps the parts under
-//! them: C1e's virtual lines, C3's [`IconsGeometry`] (2D keys, a short last row as GTK's), C1c's
-//! keyboard with a map of its own and C1b's pointer intent in single-click mode.
-
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 
@@ -28,8 +21,6 @@ pub(super) struct Metrics {
     pub icon: f32,
     /// An emoji's font size: an icon and `space.xs` (24 at 13 px).
     pub emoji: f32,
-    /// The drawn tile: the icon and `space.md` around it, and a point of border (Strata's
-    /// 38 px `.customize-icon-button`).
     pub tile: f32,
     /// A cell: the tile and `space.sm` between tiles (Strata's 6 px grid spacing).
     pub cell: f32,
@@ -116,8 +107,6 @@ impl Lines for PickerLines {
     }
 }
 
-/// The grid's keys: arrows, Home, End and the page keys move the cursor (no Shift range: one
-/// choice at a time), and Return or Space chooses. Left and Right cross row ends.
 pub(super) fn key_settings() -> KeySettings {
     let mut map = KeyMap::new();
     for (k, d) in [
@@ -167,8 +156,6 @@ pub(super) fn choice_of(cell_key: &str) -> Choice {
     }
 }
 
-/// `choice` drawn `m.icon` points tall: an icon in the accent, Strata's primary icon colour,
-/// or an emoji as text. Hidden from assistive technology: what holds it is named.
 pub(super) fn glyph(look: &Look, m: &Metrics, choice: &Choice) -> El {
     let k = &look.kit;
     match choice {
@@ -185,17 +172,7 @@ pub(super) fn glyph(look: &Look, m: &Metrics, choice: &Choice) -> El {
     }
 }
 
-/// The text to draw for `choice`, for display only: an unqualified text-default emoji (such as
-/// bare `"❤"` from hand-edited config) borrows its bundled `U+FE0F`-qualified form so Rune
-/// sends it to the colour emoji font, while `Emoji_Presentation` emoji (`"♈"`, `"😀"`),
-/// already-qualified emoji (`"❤\u{fe0f}"`), keycaps, ZWJ sequences and icon names borrow as
-/// they are. Save and compare the choice itself, never this.
-///
-/// Rune 631e8a67 (#764) routes `Emoji_Presentation` graphemes to the colour emoji font and
-/// draws COLR v1 paint graphs without needing `U+FE0F`; only text-default code points
-/// (`Emoji_Presentation=No`) still need `U+FE0F` for colour presentation.
-///
-/// Used by: hosts.
+/// The text to draw for `choice`, for display only.
 pub fn drawn_text(choice: &Choice) -> Cow<'_, str> {
     match choice {
         Choice::Emoji(e) if !e.contains('\u{fe0f}') => match super::emoji::qualified(e) {
@@ -206,9 +183,6 @@ pub fn drawn_text(choice: &Choice) -> Cow<'_, str> {
     }
 }
 
-/// A cell: the tile, centred in it, lit by its state. The cursor shows only as a focus ring
-/// in keyboard mode (C1e's `cursor_shown`), as GTK's chooser shows its focus: a fill would
-/// read as the chosen icon, which is the current choice's mark.
 pub(super) struct CellLook {
     pub cursor_shown: bool,
     pub current: bool,
@@ -239,9 +213,6 @@ pub(super) fn cell(look: &Look, m: &Metrics, st: CellLook, glyph: El) -> El {
     col().w_full().h_full().center().child(tile)
 }
 
-/// C1b's pointer intent with every press read as a plain one: a picker has one choice, so
-/// Ctrl and Shift clicks choose as a click does, rather than toggling or extending a
-/// selection (probe P4: under C1b alone they selected several cells and chose none).
 #[derive(Debug, Default)]
 pub(super) struct OneChoice(PointerIntent);
 

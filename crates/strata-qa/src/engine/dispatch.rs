@@ -601,9 +601,6 @@ impl<B: Backend> Scope<'_, B> {
         Ok(())
     }
 
-    /// Keeps a node under a name. A field is kept for `field` targets and checks; any other
-    /// node is kept with its box. A target that need not be drawn is waited for among the
-    /// presented nodes, and keeps a box only if it has one.
     async fn remember(&self, target: &Target, name: String) -> Outcome {
         let backend = self.backend;
         if let Target::Role {

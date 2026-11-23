@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Strata's clipboard rules on [`Board`], without P2: marks, the badge and the cut's
-//! remainder. (What crosses processes is in `tests/x3.rs`, under W3.)
-
 use std::path::PathBuf;
 
 use super::{After, Board, Mark};
@@ -90,8 +87,6 @@ fn a_cut_paste_takes_the_moved_entries_off_the_clipboard() {
     let mut b = Board::<u32>::default();
     b.copied(1, vec![p("a"), p("b")], true);
     assert_eq!(b.moved(&[p("c")]), After::Keep, "none of ours");
-    // Part of the cut: the rest is to be cut again (the formats that copy offers are read in
-    // tests/x3.rs, `a_partial_cut_paste_keeps_the_rest_cut`).
     assert_eq!(b.moved(&[p("a")]), After::Recut(1, vec![p("b")]));
     assert_eq!((b.mark(&p("a")), b.mark(&p("b"))), (Mark::None, Mark::Cut));
     assert_eq!(b.moved(&[p("b")]), After::Clear(1));

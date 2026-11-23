@@ -42,8 +42,6 @@ pub fn normalized_video_start(percent: u32) -> u32 {
     percent.min(MAX_PREVIEW_VIDEO_START)
 }
 
-/// Unlisted limits round up to the next choice; 0 and anything past the largest
-/// choice mean no limit.
 pub fn normalized_search_limit(value: u32, choices: &[(&str, u32)]) -> u32 {
     if value == 0 {
         return 0;

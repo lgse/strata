@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What shows instead of pages: "Preview unavailable" and a message, with an Open button for a
-//! password-protected PDF (Strata's preview message; `preview/preview-panel`, "Images and
-//! PDFs"), and its keys (`preview/quick-preview`, `integration/10xer-mode/preview-keys`).
-//!
-//! The content box takes focus; Down or Right (`j` or `l` with [`PdfView::letters`]) moves it
-//! to Open. On Open, Return opens, Left (`h`) hands the keys back to the listing
-//! ([`PdfIntent::Leave`]), and Up, Down and Right (`j`, `k`, `l`) keep focus there.
-//!
-//! [`PdfView::letters`]: super::PdfView::letters
-//! [`PdfIntent::Leave`]: super::PdfIntent::Leave
-
 use rune::{El, Key, KeyEvent, Tx, col, text};
 use rune_kit::{Button, ButtonVariant};
 use strata_kit::look::Look;

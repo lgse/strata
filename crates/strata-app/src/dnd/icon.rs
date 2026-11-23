@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Drag preview icon snapshot (`drag_preview_icon` in `src/ui/browser/clipboard.rs`):
-//! renders the dragged file's resolved file-type icon on a transparent surface with a subtle
-//! drop shadow, plus stacked rear copies and a contrasting count pill when dragging multiple items.
-
 use rune::{Color, Cx, El, Icon, TextStyle, el, row, text};
 use strata_core::model::FileEntry;
 use strata_kit::{icons::IconName, look::Look};

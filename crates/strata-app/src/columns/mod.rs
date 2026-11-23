@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Columns adapter: Strata's `Browser` on one side, strata-components' Columns view on
-//! the other. Nothing else knows both.
-//!
-//! - **Events in.** The view's listener queues what each event changed
-//!   ([`crate::events`]); [`Columns::apply`] puts it into the view's listings and state.
-//! - **Intents out.** What the view asks goes to the browser ([`intents`]).
-//! - **One cursor and one selection.** The view interprets keys and the pointer, and the
-//!   browser holds the result ([`selection`]). `docs/rune/slice/V6-columns-adapter.md` has
-//!   the evidence for that choice.
-//! - **Mirroring** is view policy, ported from the GTK views ([`mirror`]).
-
 use std::{cell::Cell, rc::Rc};
 
 use rune::Tx;
@@ -77,11 +66,7 @@ pub(crate) struct Columns {
     listings: Listings,
     state: ColumnsState,
     ids: Ids,
-    /// For each column, the revision of its selection that the browser holds. Another
-    /// revision is a change the view made, which [`Columns::publish`] hands over.
     held: Vec<Held>,
-    /// For each column, the neighbour kept after a move out of its folder
-    /// ([`handover::Kept`]).
     kept: Vec<Kept>,
     /// The cursor the child column last followed, or was told of: its column and entry.
     followed: Option<(usize, EntryId)>,
@@ -96,8 +81,6 @@ pub(crate) struct Columns {
     thumbs: Thumbs,
     /// The rows' metadata fills: one for each open column.
     fills: ColumnFills,
-    /// Set by `Reset` or a root `Added(0)` until the rebuilt strip builds: keeps replay and
-    /// return-follow additions in that transaction instant (`ColumnsState::replace`).
     pub(super) rebuilding: Cell<bool>,
     /// The window's display scale at the last build, for drag preview icons.
     pub(super) scale: Cell<f32>,
@@ -107,8 +90,6 @@ pub(crate) struct Columns {
     dates: Dates,
 }
 
-/// With 10xer mode on, C1c's 10xer map moves the cursor without changing the selection; with
-/// "Type to search" off, `h j k l` alias the arrows (`Context::of` in `src/ui/keys/alias.rs`).
 pub(super) fn live_keys(settings: &Preferences, multiple: bool) -> Option<KeySettings> {
     if settings.tenxer_mode {
         Some(KeySettings::tenxer().multiple(multiple))
@@ -172,8 +153,6 @@ impl Columns {
         self.listings.set_worn(worn);
     }
 
-    /// "Show sizes in Columns view" changed: the open columns ask for their folders' counts,
-    /// or stop. The badges follow the saved setting at the next build.
     pub(crate) fn show_sizes(&mut self, show: bool) {
         self.fills.show_sizes(show);
     }
@@ -435,11 +414,8 @@ impl Columns {
             // Another location: the old columns go with no exit.
             self.state
                 .replace(&self.listings, 0, &|_| None, hands.look, hands.tx);
-            // The GTK window gives a new listing the keyboard too.
             hands.tx.focus(VIEW, false);
         } else {
-            // Browser observer callbacks drain from `poll` (no input cause in Rune 631e8a67),
-            // including mirroring's 75 ms timer: mark child opens animated unless rebuilding.
             if !self.rebuilding.get() && hands.look.animations {
                 hands.tx.animated();
             }
@@ -454,16 +430,12 @@ impl Columns {
         self.kept.push(Kept::default());
     }
 
-    /// Puts the context menu's keys ahead of a new column's own. GTK opens a Columns entry's
-    /// menu at its right edge (`ColumnView::context_menu_target`).
     fn read_menu_keys(&mut self, depth: usize) {
         if let Some(column) = self.state.column_mut(depth) {
             commands::view_keys(&mut column.collection, AnchorEdge::Right);
         }
     }
 
-    /// Folders that moved keep their columns, under their new names and with every row read
-    /// again: a row's id comes from its location, which changed.
     fn relocate(&mut self, from_depth: usize, moved: Vec<Moved>, hands: &mut Hands<'_>) {
         self.listings.drop_hits_from(from_depth);
         for (depth, moved) in (from_depth..).zip(moved) {
@@ -493,8 +465,6 @@ impl Columns {
         }
     }
 
-    /// Brings column `depth`'s view state in step with what it shows after that changed: its
-    /// rows, or a filter's results in their place.
     fn sync(&mut self, depth: usize, tx: &mut Tx) {
         self.sync_by(depth, handover::sync_rule, tx);
     }
@@ -507,10 +477,6 @@ impl Columns {
         self.state.sync(depth, column, rule(column), tx);
     }
 
-    /// After column `depth`'s rows changed: the view catches up with them, and then the
-    /// browser's cursor and selection stand. The one exception is a cursor the view was
-    /// waiting to place until the folder was listed (Right into a column still loading):
-    /// that is the user's, and [`Columns::publish`] hands it to the browser.
     fn settle(&mut self, depth: usize, marks: &Marks, hands: &mut Hands<'_>) {
         let before = self.cursor(depth);
         self.sync_by(depth, handover::settle_rule, hands.tx);
@@ -562,9 +528,6 @@ impl Columns {
 }
 
 impl Columns {
-    /// One poll of what each column says while it shows no entry and its header spinner grace
-    /// period: a read is announced once it outlasts GTK's grace period, and its header spinner
-    /// shows once it outlasts `COLUMN_SPINNER_DELAY`. True when the view has to run.
     pub(crate) fn watch_surface(&mut self, clock: f64, tx: &mut rune::Tx) -> bool {
         let surface = self
             .surface
@@ -573,8 +536,6 @@ impl Columns {
         surface | spinner
     }
 
-    /// Appends every [`EntryId`] referenced by open columns, active filter hits, kept
-    /// selection neighbours, or pending renames into `out`.
     pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
         self.listings.collect_ids(out);
         for kept in &self.kept {
@@ -611,8 +572,6 @@ impl Columns {
             .collect()
     }
 
-    /// What the view holds of the browser's columns: every listing, and each column the strip
-    /// draws with its collection.
     pub(crate) fn presented(&self) -> handover::Presented<'_> {
         let shown = (0..self.open())
             .filter_map(|depth| {

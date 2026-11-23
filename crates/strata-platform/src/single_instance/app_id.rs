@@ -1,16 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! The app id: the well-known bus name the primary owns, and the object path its interfaces
-//! sit at.
-
 use std::fmt;
 
-/// An application id, such as `org.example.Files`: checked as GLib's
-/// `g_application_id_is_valid` checks one, so a GApplication of the same id meets this one on
-/// the bus.
-///
-/// It is also the desktop entry's name and the window's app id, so the desktop can match the
-/// running app, its windows and its launcher.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AppId(String);
 
@@ -30,8 +21,6 @@ impl fmt::Display for InvalidAppId {
 impl std::error::Error for InvalidAppId {}
 
 impl AppId {
-    /// Two or more elements of `A`–`Z`, `a`–`z`, `0`–`9`, `_` and `-`, separated by dots, none
-    /// starting with a digit, at most 255 bytes in all.
     pub fn new(id: &str) -> Result<AppId, InvalidAppId> {
         let fail = |reason| {
             Err(InvalidAppId {
@@ -67,8 +56,6 @@ impl AppId {
         &self.0
     }
 
-    /// Where the app's interfaces are exported, as GApplication spells it: `/` first, every
-    /// `.` a `/` and every `-` a `_` (`org.example.my-app` is `/org/example/my_app`).
     pub fn object_path(&self) -> String {
         let mut path = String::with_capacity(self.0.len() + 1);
         path.push('/');

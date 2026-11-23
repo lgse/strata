@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Chooser keyboard bindings: Escape ladder, `Ctrl+Return` folder selection, 10xer Save/Edit-name,
-//! and chooser command refusals (`src/ui/chooser/shortcuts/editing.rs` and
-//! `src/ui/window/keyboard/chooser.rs`).
-
 use rune::Tx;
 use strata_core::i18n::tr;
 use strata_desktop::keys::{
@@ -31,9 +27,6 @@ use crate::{
 
 pub(super) const UNAVAILABLE: &str = "Not available in the file chooser";
 
-/// The window's commands GTK's chooser has no stage for (`PRESSED_STAGES` and
-/// `NAVIGATION_STAGES` in `src/ui/chooser/shortcuts.rs`): its Ctrl keys go to the widgets
-/// (`control_keeps_key`) and the rest reach nothing, so these keys do nothing in a chooser.
 const NOT_IN_CHOOSER: &[Command] = &[
     COPY,
     CUT,
@@ -70,8 +63,6 @@ const NOT_IN_CHOOSER: &[Command] = &[
     SEARCH,
 ];
 
-/// Whether a key may not run `action` at `stage`: a command GTK's chooser key table lacks
-/// ([`NOT_IN_CHOOSER`]), at a stage of the window's chain GTK's chooser does not reach.
 pub(crate) fn declines_key(app: &App, action: &Action<App>, stage: Stage) -> bool {
     app.chooser.is_active()
         && !reached_from_chooser(stage, shell::preferences(app).tenxer_mode)
@@ -80,11 +71,6 @@ pub(crate) fn declines_key(app: &App, action: &Action<App>, stage: Stage) -> boo
             .is_some_and(|command| NOT_IN_CHOOSER.contains(&command))
 }
 
-/// The stages of the window's chain GTK's chooser runs: its `tenxer_key` stage calls
-/// `handle_chooser_key` (`src/ui/window/keyboard.rs`), which renames a tab and runs the 10xer
-/// keys, after the input owner in 10xer mode, and never the window's other stages. In 10xer
-/// mode those keys swallow the default-map keys 10xer leaves unbound, Ctrl+T among them
-/// (`claims_unbound_command`).
 fn reached_from_chooser(stage: Stage, tenxer: bool) -> bool {
     match stage {
         Stage::RenameTab | Stage::TenxerKeys => true,
@@ -186,10 +172,6 @@ fn refusal_reason(press: &KeyPress, multiple: bool, in_view: bool) -> Option<&'s
     (fills && !multiple).then_some(SINGLE_ITEM)
 }
 
-/// A chooser's refusal of a 10xer key, with the flash. 10xer's stage asks for it after an
-/// armed chord and before anything else, as GTK's `tenxer_window_keys` does: so `;`, `y` and
-/// Shift+Q are refused, not armed or run. Outside 10xer mode nothing asks, and Space previews
-/// as in the window.
 pub(crate) fn refuse_key(
     app: &mut App,
     press: &KeyPress,

@@ -25,17 +25,7 @@ impl fmt::Display for WindowSystem {
 #[non_exhaustive]
 pub enum Outcome {
     /// The window is transient for the parent.
-    Parented {
-        system: WindowSystem,
-        /// Applied after the window mapped (X11) or drew its first frame (Wayland). The
-        /// compositor may already have placed it as a normal window: sway then keeps it
-        /// tiled. Open the window hidden and apply from `App::on_window` to avoid it.
-        ///
-        /// On Wayland it is `WindowHandle::is_ready`, which turns true only once the first
-        /// frame has completed: between the first commit (when the compositor maps the
-        /// window) and then, a late call still reads false.
-        late: bool,
-    },
+    Parented { system: WindowSystem, late: bool },
     /// The window has no parent: why, and what places it instead.
     Parentless { reason: Reason, fallback: Fallback },
 }
@@ -73,23 +63,14 @@ impl fmt::Display for Outcome {
 pub enum Reason {
     /// The request named no parent.
     NoParent,
-    /// The parent is of another window system than the window: an `x11:` parent for a
-    /// Wayland window (no protocol joins them), or a `wayland:` one for an X11 window.
     Mismatch {
         parent: WindowSystem,
         window: WindowSystem,
     },
     /// The compositor has no `zxdg_importer_v2` (a v1-only compositor counts as none).
     NoImporter,
-    /// winit's Wayland display is out of reach: libwayland below 1.23 has no
-    /// `wl_proxy_get_display` (Ubuntu 24.04). An unsupported environment: 1.23 is the minimum
-    /// supported version (S3 decision 1).
     NoDisplay,
-    /// The compositor destroyed the import at once: the handle is invalid, stale, or was
-    /// already unexported.
     Destroyed,
-    /// The `x11:` id names no window that can be a parent: none at all, a pixmap, a root
-    /// window, or the window itself.
     BadXid,
     /// The app's window was closed before the call.
     WindowClosed,
@@ -123,8 +104,6 @@ impl fmt::Display for Reason {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Fallback {
-    /// The compositor's own placement and focus policy. The caller may place it (a
-    /// compositor-specific rule).
     Compositor,
     /// The shim asked for the window to be centred on its screen (`WindowHandle::center`).
     Centred,

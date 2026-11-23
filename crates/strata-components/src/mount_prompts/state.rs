@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The prompt the host keeps in its state: the request it shows, the host's ticket for it, and
-//! the password form.
-
 use rune::TextEdit;
 
 use super::request::{
@@ -10,16 +7,10 @@ use super::request::{
     QuestionRequest, Remember,
 };
 
-/// One mount prompt at a time, with `T` the host's ticket for the request it shows: Strata's
-/// is the GLib bridge's `Request`, answered in [`MountPrompts`](super::MountPrompts)'s
-/// `on_answer`. Queueing a second operation's prompt is the host's.
 pub struct MountPromptState<T> {
     active: Option<Active<T>>,
     /// Errors shown so far: each one is a new live node, so a second refusal is heard too.
     attempt: u64,
-    /// What a field's edit handler reaches once its prompt has gone (an edit landing in the
-    /// frame the prompt closed): secure, and wiped after each edit ([`Self::edited`]), so
-    /// nothing typed into it is kept readable.
     spare: TextEdit,
 }
 
@@ -39,8 +30,6 @@ pub(crate) struct PasswordPrompt {
     pub form: PasswordForm,
 }
 
-/// The password prompt's fields and choices. Its edits are public for the prompt's accessors;
-/// the secret field's `TextEdit` is secure, and wipes its text when the prompt closes.
 #[derive(Debug)]
 pub struct PasswordForm {
     pub user: TextEdit,
@@ -63,8 +52,6 @@ impl PasswordForm {
             remember: Remember::Never,
             revealed: false,
         };
-        // Strata's `focus_first`: an empty username, else the secret; else the dialog starts on
-        // Connect (`MountPrompts`).
         if request.needs_user && request.default_user.is_empty() {
             form.user.focused = true;
         } else if request.needs_password {
@@ -73,8 +60,6 @@ impl PasswordForm {
         form
     }
 
-    /// Something is typed (a default username counts, as in Strata): the backdrop then doesn't
-    /// dismiss the prompt.
     pub fn typed(&self) -> bool {
         [&self.user, &self.domain, &self.secret]
             .iter()
@@ -93,11 +78,6 @@ impl<T> Default for MountPromptState<T> {
 }
 
 impl<T> MountPromptState<T> {
-    /// Shows `request`, answered through `ticket`. Returns the ticket of the prompt it
-    /// replaced, which the host answers (Strata: `respond(MountResponse::Abort)`).
-    ///
-    /// A process list over a process list updates the prompt in place, focus and all: the
-    /// backend sends `show-processes` again as programs close their files.
     pub fn open(&mut self, request: MountRequest, ticket: T) -> Option<T> {
         let prompt = match request {
             MountRequest::Password(r) => {
@@ -116,8 +96,6 @@ impl<T> MountPromptState<T> {
         old.map(|a| a.ticket)
     }
 
-    /// Closes the prompt without answering, and returns its ticket: the request was withdrawn
-    /// (GIO's `aborted`, or the operation sent a newer one).
     pub fn withdraw(&mut self) -> Option<T> {
         self.active.take().map(|a| a.ticket)
     }
@@ -146,8 +124,6 @@ impl<T> MountPromptState<T> {
         }
     }
 
-    /// The password form's edit for `field`, or the spare once the prompt has gone. The field's
-    /// change handler then calls [`edited`](Self::edited), which wipes what the edit put there.
     pub(crate) fn edit_mut(&mut self, field: PromptField) -> &mut TextEdit {
         let Some(Active {
             prompt: Prompt::Password(p),
@@ -165,8 +141,6 @@ impl<T> MountPromptState<T> {
         }
     }
 
-    /// After a field's edit (Rune's `on_input_change`): wipes the spare, so an edit that
-    /// reached it once its prompt had gone isn't kept.
     pub(crate) fn edited(&mut self) {
         if !self.spare.text.is_empty() {
             self.spare.clear();
@@ -191,8 +165,6 @@ impl<T> MountPromptState<T> {
         self.active.take().map(|a| (a.ticket, response))
     }
 
-    /// Closes the password prompt with what its form holds: Anonymous, or the credentials the
-    /// request asked for. The secret's edit wipes as the prompt drops.
     pub(crate) fn submit(&mut self) -> Option<(T, MountResponse)> {
         let response = {
             let Prompt::Password(p) = &self.active.as_ref()?.prompt else {

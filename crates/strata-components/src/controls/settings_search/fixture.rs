@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Strata's settings search index, as test and gallery data.
-//!
-//! The rows, their pages, titles and aliases are ported from Strata's
-//! `src/ui/settings/search/targets.rs` at upstream `fb7eb0c4e` (MIT, Copyright (c) LGSE), in
-//! its order, with `%{reference_keys}` filled in as F1. The page titles are Strata's
-//! navigation labels (`src/ui/settings/navigation.rs`). The section keys and the Keyboard
-//! members (Strata builds those from its key registry at run time) are made up for tests and
-//! the gallery.
-
 use super::index::{IndexPage, IndexRow, SearchIndex};
 
 /// The Keyboard page's group row (Strata's `KEYBOARD_SHORTCUTS`).

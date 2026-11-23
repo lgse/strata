@@ -111,9 +111,6 @@ fn an_ask_drop_settles_on_one_action_the_source_offers() {
     );
 }
 
-/// Round 2's case: wlroots ignores a preferred action the source doesn't offer and takes the
-/// lowest common one, here ask again, so a finish would end winit's connection. After the
-/// drop such answers are refused, and the drop stays on ask.
 #[test]
 fn an_ask_drop_answered_with_an_action_the_source_lacks_stays_ask() {
     let (copy, mv, ask) = (Action::Copy.bits(), Action::Move.bits(), Action::Ask.bits());
@@ -143,9 +140,6 @@ fn an_ask_drop_answered_with_an_action_the_source_lacks_stays_ask() {
     assert!(s.finish().is_err());
 }
 
-/// Round 3's case, from sway: a copy drop, then set_actions(none) after it. The compositor
-/// would now have no action, but its answer can't reach a dropped offer (leave has come), so
-/// the request is refused and the drop stays a copy that finish may end.
 #[test]
 fn after_a_settled_drop_set_actions_is_refused() {
     let (copy, mv) = (Action::Copy.bits(), Action::Move.bits());
@@ -163,8 +157,6 @@ fn after_a_settled_drop_set_actions_is_refused() {
     assert_eq!(s.finish(), Ok(true), "the copy stands");
 }
 
-/// P0's review, S1: after the drop, the settled action may be confirmed as `(a, a)` before
-/// finish, and that is the only other request let through.
 #[test]
 fn after_the_drop_the_settled_action_may_be_confirmed() {
     let (copy, mv) = (Action::Copy.bits(), Action::Move.bits());
@@ -215,9 +207,6 @@ fn an_action_the_source_lacks_or_ask_is_never_confirmed() {
 
 const ASK: u32 = 4;
 
-/// wlroots' `data_offer_choose_action` (`types/data_device/wlr_data_offer.c`): the
-/// compositor's forced action if the source and target share it, else the target's preferred
-/// action if they share it, else the lowest action they share, else none.
 fn wlr_choose(target: u32, preferred: u32, source: u32, forced: u32) -> u32 {
     let shared = target & source;
     if shared == 0 {
@@ -231,18 +220,12 @@ fn wlr_choose(target: u32, preferred: u32, source: u32, forced: u32) -> u32 {
     }
 }
 
-/// Every request set_actions can carry: any mask of the three actions, and no preference or
-/// one action.
 fn requests() -> Vec<(u32, u32)> {
     (0..8u32)
         .flat_map(|mask| [0u32, 1, 2, 4].map(|preferred| (mask, preferred)))
         .collect()
 }
 
-/// For every source mask, compositor-forced action, request before the drop (its action
-/// event applied before the drop or, as it may be, after) and request after the drop (or
-/// none): DropState never lets `finish` through when wlroots would take it as a protocol
-/// error (no action, or ask), and never refuses one wlroots would take.
 #[test]
 fn no_finish_is_allowed_that_wlroots_rejects() {
     let requests = requests();
@@ -398,8 +381,6 @@ fn offers_on_winits_display_refuse_other_threads() {
         rx.recv_timeout(Duration::from_secs(5)),
         Ok(Err(ReadError::OffUiThread))
     );
-    // Each refusal names the thread, not just any refusal: the offer is closed too, which
-    // refuses with another reason.
     let drag = DragOffer::closed(vec!["text/plain".into()], home);
     assert_eq!(drag.accept(Some("text/plain")), Err(Error::Refused(OFF_UI)));
     assert_eq!(

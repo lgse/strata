@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The closed-tabs stack: what Ctrl+Shift+T reopens, newest first (`browser/tabs`,
-//! Reopening). Plain data the host keeps per window; it is never saved.
-
 use std::collections::VecDeque;
 
 /// How many closed tabs a window keeps: a 21st close drops the oldest.
@@ -16,19 +13,11 @@ pub struct Closed<T> {
 }
 
 impl<T> Closed<T> {
-    /// Where to reopen it among `len` open tabs: its old place, or the right end when fewer
-    /// tabs are open than that.
     pub fn index_in(&self, len: usize) -> usize {
         self.index.min(len)
     }
 }
 
-/// A window's closed tabs, newest last.
-///
-/// The host records a tab only once it has really closed: a close a modal or a running
-/// operation blocked, or a close of the last tab (which closes the window), records nothing.
-/// Each close path records alike (Ctrl+W, the X button, a middle click, 10xer `t x`, an
-/// inactive tab's close).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClosedTabs<T> {
     entries: VecDeque<Closed<T>>,
@@ -63,8 +52,6 @@ impl<T> ClosedTabs<T> {
         self.entries.push_back(Closed { item, index });
     }
 
-    /// Takes the newest closed tab, to reopen at [`Closed::index_in`] and select. `None`
-    /// when nothing is recorded: Ctrl+Shift+T then opens nothing.
     pub fn reopen(&mut self) -> Option<Closed<T>> {
         self.entries.pop_back()
     }

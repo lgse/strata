@@ -12,8 +12,6 @@ pub(in crate::adapters::local_operations::copy_engine) struct Folder {
     pub(in crate::adapters::local_operations::copy_engine) naming: Naming,
     pub(in crate::adapters::local_operations::copy_engine) site: Site,
     pub(in crate::adapters::local_operations::copy_engine) mount: Mount,
-    /// Names link only within one scope, whose restrictive folders get their
-    /// modes together: the made tree, or one merge stage.
     pub(in crate::adapters::local_operations::copy_engine) scope: usize,
     pub(in crate::adapters::local_operations::copy_engine) recorded_in:
         Option<Arc<manifest::Folder>>,

@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What runs a command on a place, a location that is no row of the view, or on a folder row's
-//! middle click: the sidebar's menu rows and its middle click, a crumb's middle click, and a
-//! folder row's middle click in every view, each on its location (`On::Place`). `open-in-tab`
-//! is the tab strip's own, so each opens a tab there, and `customize` the Customize dialog's,
-//! which opens on it; `open-in-window` is A21's (`crate::new_window`), which asks the process
-//! for a window on it, read here from the launch queue.
-
 use std::{cell::RefCell, path::Path, time::Duration};
 
 use rune::{Key, KeyEvent, Mods, PointerButton};
@@ -146,9 +139,6 @@ fn menu_row(host: &mut Offscreen, name: &str) -> String {
     row(host).expect("the row")
 }
 
-/// A middle click on a sidebar row opens its location in a new tab, as its menu's "Open in New
-/// Tab" does, and its menu's other rows run their commands on the location the menu was opened
-/// on.
 #[test]
 fn a_sidebar_rows_middle_click_and_menu_rows_run_on_its_location() {
     hosted_over(
@@ -207,8 +197,6 @@ fn crumb_of(host: &Offscreen, folder: &Path) -> String {
     text(crumbs.first().expect("the folder's crumb"), "key")
 }
 
-/// A crumb's middle click opens its folder in a new tab, and with Ctrl or Shift runs
-/// `open-in-window`, as GTK's crumbs do; the tab it was pressed in stays where it is.
 #[test]
 fn a_crumbs_middle_click_runs_open_in_tab_or_with_a_modifier_in_window() {
     hosted_over(
@@ -264,8 +252,6 @@ fn double_middle_press(host: &mut Offscreen, key: &str, mods: Mods) {
     idle(host);
 }
 
-/// A folder row's middle click opens a tab, or a window with Ctrl or Shift, once per click run;
-/// a file row's middle click selects the file and opens nothing.
 fn middle_click_in_view(mode: &'static str, name: &'static str) {
     hosted_over_in((MODULE, name), mode, with_the_commands, |mut host| {
         let folder = fixture();
@@ -337,8 +323,6 @@ fn filter_in_columns(host: &mut Offscreen, query: &str) {
     idle(host);
 }
 
-/// In a filtered Columns column (`RowContext::view_entry` in GTK), a middle click on a folder
-/// hit from a subfolder opens that subfolder in a new tab.
 #[test]
 fn a_filtered_columns_folder_middle_click_opens_a_new_tab() {
     hosted_over(
@@ -363,9 +347,6 @@ fn a_filtered_columns_folder_middle_click_opens_a_new_tab() {
     );
 }
 
-/// In Columns with a deeper column open (`open_middle_clicked` -> `MiddleClickAction::RevealParent`
-/// in `src/ui/browser/columns/rows/click.rs`), middle-clicking a file in an ancestor column
-/// activates that column, selects and focuses the file, and closes the deeper column.
 #[test]
 fn a_columns_file_middle_click_activates_its_column_and_closes_deeper_ones() {
     hosted_over(
@@ -406,9 +387,6 @@ fn a_columns_file_middle_click_activates_its_column_and_closes_deeper_ones() {
     );
 }
 
-/// In filtered Columns (`open_middle_clicked` -> `state.reveal_locations`), middle-clicking a
-/// same-folder file hit clears the filter and selects the file in place, and middle-clicking a
-/// subfolder file hit navigates to its parent folder and reveals the file there.
 #[test]
 fn a_filtered_columns_file_middle_click_reveals_in_its_folder() {
     hosted_over(

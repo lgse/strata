@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Rows: what each one shows (its slots), the state it draws from, and the memo version that
-//! keeps it built while none of that changes.
-
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Duration;
@@ -19,10 +16,6 @@ use super::state::DropOver;
 use crate::contract::{DropHover, DropZone, ElementKey, Entry, EntryId, Point, Rect};
 
 /// Marks the host puts on rows, each with its own look.
-///
-/// Fields may be added: start from [`RowMarks::default`] and set the ones that apply.
-///
-/// Used by: hosts, C2 (the open path), C18 (the Enter target), C22 (the peek anchor), X3 (cut).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct RowMarks {
@@ -40,27 +33,13 @@ pub struct RowMarks {
     pub active_parent: bool,
     /// The row a folder peek is open from.
     pub peek_anchor: bool,
-    /// The parts of the name that match what the host looks for, painted over the label in the
-    /// accent ([`NameMatches`]).
+    /// The parts of the name that match what the host looks for, painted over the label in the accent (`NameMatches`).
     pub name_matches: NameMatches,
-    /// Gone from view while its entry stays listed: the row draws nothing and leaves the
-    /// accessibility tree, a pointer press there is on empty space, and the cursor on it is no
-    /// one's active descendant; but it keeps its slot. C23 hides the rows it dissolves this
-    /// way, and the rows a restore flies onto, for the length of one effect.
-    ///
-    /// It stays an entry of the listing for the keyboard and the marquee (C1c, C1d): arrows,
-    /// type-ahead and Select All can move the cursor onto it or select it, and a marquee over
-    /// its slot selects it. A host that hides rows for longer keeps the cursor and selection
-    /// off them itself, and one that takes the keys
-    /// ([`keys_by_host`](super::Collection::keys_by_host)) its active descendant too.
+    /// Gone from view while its entry stays listed.
     pub vanished: bool,
 }
 
 /// What a row draws from: its entry's place in the selection, and the host's marks.
-///
-/// Fields may be added.
-///
-/// Used by: slot builders (C3, C4, C5, C25).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct RowState {
@@ -81,8 +60,6 @@ pub struct RowState {
 }
 
 /// What a slot builds a row part from.
-///
-/// Used by: slot builders (C3, C4, C5, C25).
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub struct RowCx<'a> {
@@ -96,9 +73,7 @@ pub struct RowCx<'a> {
     pub look: &'a Look,
     /// The collection's key.
     pub scope: &'a str,
-    /// Whether the item draws hover now: off after keyboard navigation until the pointer
-    /// moves. The row's own hover follows it; a bare item's content slot follows it itself
-    /// (`Collection::bare_items`).
+    /// Whether the item draws hover now: off after keyboard navigation until the pointer moves.
     pub hover_live: bool,
 }
 
@@ -107,23 +82,7 @@ type ContentFn<S> = Rc<dyn Fn(&S, &RowCx<'_>, El, El) -> El>;
 type VersionFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> u64>;
 type DescribeFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> Option<String>>;
 
-/// A row part the host or the view builds: an icon or thumbnail (C25), a label (matched
-/// text), or a rename editor (C5).
-///
-/// Rows are memoized: a row is built again only when its entry, its [`RowState`], the look or
-/// a slot's version changes. So a slot that reads anything from the state beyond its
-/// [`RowCx`] (a thumbnail's readiness, a filter's matched ranges) is made with
-/// [`Slot::new`] and a version that changes with what it reads; one that reads only its
-/// `RowCx` is [`Slot::pure`]. Rows with a rename open are never memoized.
-///
-/// [`RowCx::index`] isn't part of the version: a row kept by its memo while entries are
-/// inserted above it keeps the part it built at its old index. Draw nothing from the index
-/// (zebra stripes, a position) without versioning it.
-///
-/// Parts a motion effect flies (C23) key themselves [`ICON`] and [`LABEL`], as the default
-/// parts do.
-///
-/// Used by: C3, C4, C5, C25, hosts.
+/// A row part the host or the view builds: an icon or thumbnail, a label (matched text), or a rename editor.
 pub struct Slot<S> {
     pub(super) build: BuildFn<S>,
     pub(super) version: Option<VersionFn<S>>,
@@ -139,8 +98,7 @@ impl<S> Clone for Slot<S> {
 }
 
 impl<S: 'static> Slot<S> {
-    /// A slot built by `build`, built again whenever `version` changes: the slot reads the
-    /// state beyond its [`RowCx`], and `version` hashes what it reads.
+    /// A slot built by `build`, built again whenever `version` changes.
     pub fn new(
         version: impl Fn(&S, &RowCx<'_>) -> u64 + 'static,
         build: impl Fn(&S, &RowCx<'_>) -> El + 'static,
@@ -160,9 +118,7 @@ impl<S: 'static> Slot<S> {
     }
 }
 
-/// The row's content, laid out from its icon and label parts (C4 adds trailing cells).
-///
-/// Used by: C4.
+/// The row's content, laid out from its icon and label parts.
 pub struct ContentSlot<S> {
     pub(super) build: ContentFn<S>,
     pub(super) version: Option<VersionFn<S>>,
@@ -178,8 +134,7 @@ impl<S> Clone for ContentSlot<S> {
 }
 
 impl<S: 'static> ContentSlot<S> {
-    /// Content laid out by `build` from the row's icon and label, built again whenever
-    /// `version` changes (see [`Slot`] on versions).
+    /// Content laid out by `build` from the row's icon and label.
     pub fn new(
         version: impl Fn(&S, &RowCx<'_>) -> u64 + 'static,
         build: impl Fn(&S, &RowCx<'_>, El, El) -> El + 'static,
@@ -199,11 +154,7 @@ impl<S: 'static> ContentSlot<S> {
     }
 }
 
-/// A row's accessible description, read after its name (the entry's): what a slot shows that
-/// assistive technology doesn't hear, such as the archive preview's file sizes (C14b). `None`
-/// gives the row none. Versioned as a [`Slot`] is.
-///
-/// Used by: C14b.
+/// A row's accessible description, read after its name (the entry's).
 pub struct Describe<S> {
     pub(super) build: DescribeFn<S>,
     pub(super) version: Option<VersionFn<S>>,
@@ -219,8 +170,7 @@ impl<S> Clone for Describe<S> {
 }
 
 impl<S: 'static> Describe<S> {
-    /// A description from `build`, built again whenever `version` changes (see [`Slot`] on
-    /// versions).
+    /// A description from `build`, built again whenever `version` changes (see `Slot` on versions).
     pub fn new(
         version: impl Fn(&S, &RowCx<'_>) -> u64 + 'static,
         build: impl Fn(&S, &RowCx<'_>) -> Option<String> + 'static,
@@ -245,34 +195,7 @@ type ReportFn<S> = Rc<dyn Fn(&mut S, RestReport, &mut Tx)>;
 type PartFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> Option<El>>;
 type ViewFn<S> = Rc<dyn Fn(&mut S, RestView) -> bool>;
 
-/// Rows that report the pointer resting on them, through Rune's `El::hover_delays`: C22's
-/// folder peek. Set with [`Collection::rest`](super::Collection::rest).
-///
-/// Each row `delays` gives `Some((enter, leave))` for reports `true` once the pointer has
-/// rested on it for `enter`, and `false` once it has stayed off it for `leave`; a pass shorter
-/// than the delay reports nothing, and a press cancels a wait (Rune). A row that leaves the
-/// tree (scrolled out, a listing change, another view) reports its leave at once.
-///
-/// A `true` report counts only on the row the pointer last arrived on by moving over the
-/// collection, as Strata's peek starts only from a motion enter: a row a scroll carries under
-/// a parked pointer, the row a press of the collection's own ended on, a folder row a drag was
-/// dropped on (taken or refused, a system drag included, which moves the pointer there
-/// unseen), and the row a drag from elsewhere ended on (once the host calls
-/// [`CollectionState::hold_rest`]) report nothing until the pointer leaves it (for another
-/// row, or out of the collection) and comes back; moving inside the row doesn't count. None counts while row hover is off after keyboard
-/// navigation ([`CollectionState::row_hover`]).
-///
-/// Rune counts a row under an overlay (a card, a menu, a scrim) as hovered too (Rune draft
-/// U-C22-1): the hook's owner decides what an overlay hides.
-///
-/// [`CollectionState::hold_rest`]: super::CollectionState::hold_rest
-///
-/// The delays and the part are part of the row's memo version, so they may read anything; a
-/// part that reads the state beyond its [`RowCx`] gives a `version` that changes with it.
-///
-/// [`CollectionState::row_hover`]: super::CollectionState::row_hover
-///
-/// Used by: C22.
+/// Rows that report the pointer resting on them, through Rune's `El::hover_delays`: folder peek.
 pub struct Rest<S> {
     pub(super) delays: DelaysFn<S>,
     pub(super) report: ReportFn<S>,
@@ -305,9 +228,7 @@ impl<S: 'static> Rest<S> {
         }
     }
 
-    /// A part added to the rows `build` returns one for, last, made inert and hidden from
-    /// assistive technology: it takes no input and says nothing. The builder pins it within the
-    /// row (C22's peek anchor). Built again whenever `version` changes.
+    /// A part added to the rows `build` returns one for, last, made inert and hidden from assistive technology.
     pub fn part(
         mut self,
         version: impl Fn(&S, &RowCx<'_>) -> u64 + 'static,
@@ -317,9 +238,7 @@ impl<S: 'static> Rest<S> {
         self
     }
 
-    /// Hears which entries the viewport shows whenever that changes (a scroll, a listing
-    /// change): C22 closes a peek whose folder left the view. Return true when it changed what
-    /// the view reads. Rune's `on_visible_rows` gives no transaction.
+    /// Hears which entries the viewport shows whenever that changes (a scroll, a listing change).
     pub fn on_view(mut self, f: impl Fn(&mut S, RestView) -> bool + 'static) -> Self {
         self.view = Some(Rc::new(f));
         self
@@ -336,11 +255,7 @@ impl<S: 'static> Rest<S> {
     }
 }
 
-/// What the viewport shows, for [`Rest::on_view`].
-///
-/// Fields may be added.
-///
-/// Used by: C22.
+/// What the viewport shows, for `Rest::on_view`.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct RestView {
@@ -351,10 +266,6 @@ pub struct RestView {
 }
 
 /// A row's rest report: the pointer came to rest on it, or left it.
-///
-/// Fields may be added.
-///
-/// Used by: C22.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct RestReport {
@@ -364,15 +275,12 @@ pub struct RestReport {
     pub id: EntryId,
     /// The pointer rests on the row (`true`) or left it (`false`).
     pub inside: bool,
-    /// The row's rect in window points, as the element lays it out now. Empty on a leave from
-    /// an entry the source no longer holds.
+    /// The row's rect in window points, as the element lays it out now.
     pub row: Rect,
     /// The viewport's rect in window points.
     pub viewport: Rect,
 }
 
-/// The width of a row's outline (the cursor, a drop target, the Enter target): a hairline,
-/// as Strata draws them (`outline: 1px`, `src/style.css`). No look token sizes outlines.
 const OUTLINE: f32 = 1.0;
 
 /// What the view decided once for every row it builds.
@@ -420,9 +328,6 @@ pub(super) fn look_key(look: &Look) -> u64 {
     h.finish()
 }
 
-/// A key for the builder settings that change what every row is, as a memo version: its
-/// roles, read-only, whether it takes drops, and which parts a slot fills. A collection whose
-/// builder changes one of them (a view that switches roles) builds its rows again.
 pub(super) fn config_key<S>(cfg: &Config<S>) -> u64 {
     let mut h = std::hash::DefaultHasher::new();
     cfg.roles.hash(&mut h);
@@ -532,8 +437,6 @@ fn build_item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, index: usiz
             .and_then(|v| v.version.as_ref())
             .map(|f| f(s, &rcx)),
     ];
-    // A grid cell, and a row among header lines, states its place in the set itself, so it
-    // changes with its index.
     let place = (frame.per_line > 1 || frame.grouped).then_some((index, frame.len));
     // Only rows that draw them read the rest hook and the peek fill.
     let rest = cfg.rest.as_ref().map(|r| r.version(s, &rcx));
@@ -610,8 +513,6 @@ fn item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, rcx: &RowCx<'_>) 
         opacity = opacity.min(tokens::drag_opacity(look));
     }
     if cfg.bare_items {
-        // The content slot's element is the item: no box of the row's own around it (a grid
-        // mounts a line of these in one frame, and each element costs).
         let mut item = content
             .key(row_key(id))
             .role(cfg.roles.item)
@@ -710,8 +611,6 @@ fn rest_row<S: 'static>(
     if let Some((enter, leave)) = (rest.delays)(s, rcx) {
         let report_cfg = cfg.clone();
         let id = rcx.entry.id;
-        // Not a press handler, so presses still reach the container (`Handlers::has_primary`
-        // at the pinned rev).
         outer = outer
             .hover_delays(enter, leave)
             .on_hover_change(move |s: &mut S, inside, tx| {
@@ -760,8 +659,6 @@ pub(super) fn header_body(style: &GroupStyle, h: f32, label: El) -> El {
     el
 }
 
-/// The clipboard mark icon, else the entry's catalog icon or custom decoration, else the Folder
-/// or File icon, at the row icon size.
 fn default_icon(rcx: &RowCx<'_>) -> El {
     let look = rcx.look;
     match crate::thumbnails::mark_icon(rcx.state.marks) {
@@ -796,21 +693,12 @@ fn default_label(rcx: &RowCx<'_>) -> El {
 
 pub(super) type DropFn<S> = Rc<dyn Fn(&mut S, Option<EntryId>, crate::contract::Dropped, &mut Tx)>;
 
-/// A folder row's drop zone: drops go to `on_drop` with the folder's id, the hover draws the
-/// row's drop highlight, and moves near the viewport's edges scroll it.
-///
-/// The stuck group header takes no input, so a drag over it is over the row it covers: there
-/// the drop goes to the folder shown, as on a header line, judged by the drop's point (or the
-/// last move's, when the platform gives the drop none). The row's drop highlight follows the
-/// moves, and is hidden under the stuck header anyway.
 fn row_zone<S: 'static>(cfg: &Rc<Config<S>>, on_drop: DropFn<S>, id: EntryId) -> DropZone<S> {
     let get_mut = cfg.get_mut.clone();
     let hover_cfg = cfg.clone();
     let edge = cfg.clone();
     let drop_cfg = cfg.clone();
     let zone = DropZone::new(move |s: &mut S, dropped: crate::contract::Dropped, tx| {
-        // Where it landed when the platform says, else where the last move was (a drop with
-        // no position and no move over the stuck header goes to the row it covers).
         let under_stuck = dropped
             .point
             .map(|p| super::route::under_stuck_header(&drop_cfg, s, p));
@@ -824,9 +712,6 @@ fn row_zone<S: 'static>(cfg: &Rc<Config<S>>, on_drop: DropFn<S>, id: EntryId) ->
         on_drop(s, target, dropped, tx);
     })
     .takes_content(cfg.drop_content);
-    // With the host's action, a folder row it refuses (the drag's own folder, one inside the
-    // drag) stops the drop: passed on, the background around it would take it into the folder
-    // shown.
     let zone = match cfg.drop_action.clone() {
         Some(f) => {
             let reject_cfg = cfg.clone();
@@ -852,8 +737,6 @@ fn row_zone<S: 'static>(cfg: &Rc<Config<S>>, on_drop: DropFn<S>, id: EntryId) ->
     .on_move(move |s: &mut S, point, tx| {
         let under_stuck = super::route::under_stuck_header(&edge, s, point);
         let st = (edge.get_mut)(s).1;
-        // A refused drag's moves (P1 sends them to a zone with on_reject) only drive the
-        // hook, and only a file drag's: no highlight.
         let refused = st.drop_refused == Some(DropOver::Row(id));
         if refused && !st.drop_refused_files {
             tx.live_only();

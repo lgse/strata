@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What assistive technology reads after a name: a row's [`Describe`], and the list's own
-//! description.
-
 use rune::{Cx, El, Env, Runtime};
 use strata_kit::look::Look;
 
@@ -43,9 +40,6 @@ fn description(rt: &Runtime<Host>, key: &str) -> Option<String> {
     rest.split_once('"').map(|(d, _)| d.to_owned())
 }
 
-/// A file row is described after its name and a folder (entry 0) isn't; a new description
-/// reaches the tree when its version changes, though the entries stay the same. The list
-/// keeps the description the host gave it.
 #[test]
 fn a_row_reads_its_description_and_follows_its_version() {
     let host = Host {
