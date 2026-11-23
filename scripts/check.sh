@@ -1,27 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The GTK application and the Rune side build in separate cargo runs (docs/workspace.md).
-scripts="$(dirname "${BASH_SOURCE[0]}")"
-gtk="$(python3 "$scripts/lanes.py" gtk)"
-rune="$(python3 "$scripts/lanes.py" rune)"
-
 cargo fmt --all --check
-# shellcheck disable=SC2086 # each lane is a list of cargo arguments
-for lane in "$gtk" "$rune"; do
-  cargo check $lane --all-targets --all-features
-  cargo clippy $lane --all-targets --all-features -- -D warnings
-done
-# Display-dependent tests are exercised by test-headless.py and qa.sh.
-# shellcheck disable=SC2086
-env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 STRATA_REQUIRE_DEVICE_TESTS=1 cargo test $gtk --all-targets --all-features
-# The Rune tests are headless: no X display, and a Wayland socket and session bus that do not
-# exist. They build without debug info, which keeps the links of their many binaries small.
-# shellcheck disable=SC2086
-env -u DISPLAY -u WAYLAND_SOCKET WAYLAND_DISPLAY=strata-test-no-wayland \
-  DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/strata-test-no-bus \
-  CARGO_PROFILE_DEV_DEBUG=0 \
-  cargo test $rune --all-targets --all-features
+cargo check --workspace --all-targets --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Run tests headless: no X display, and a Wayland socket and session bus that do not exist.
+# Built without debug info to keep links small. strata-gallery's GPU integration tests are on
+# demand (`mise run test-gallery`), so only its unit tests run here.
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+headless() {
+  env -u DISPLAY -u WAYLAND_SOCKET WAYLAND_DISPLAY=strata-test-no-wayland \
+    DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/strata-test-no-bus \
+    GIO_USE_VFS=local \
+    CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" \
+    RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}" \
+    HOME="$tmp" \
+    XDG_CONFIG_HOME="$tmp/config" \
+    XDG_DATA_HOME="$tmp/data" \
+    XDG_CACHE_HOME="$tmp/cache" \
+    XDG_STATE_HOME="$tmp/state" \
+    STRATA_REQUIRE_DEVICE_TESTS=1 \
+    CARGO_PROFILE_DEV_DEBUG=0 \
+    cargo test "$@"
+}
+headless --workspace --exclude strata-gallery --all-targets --all-features
+headless --package strata-gallery --lib --bins --examples --all-features
 
 if command -v cargo-deny >/dev/null 2>&1; then
   cargo deny --workspace check

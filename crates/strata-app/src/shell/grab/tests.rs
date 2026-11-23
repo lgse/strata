@@ -3,7 +3,7 @@
 //! A modal layer over the List view ends its click run, on the window the crate registers:
 //! what `executable-requires-confirmation` does with its second double click.
 
-use std::{cell::Cell, rc::Rc};
+use std::{cell::Cell, path::PathBuf, rc::Rc};
 
 use rune::{Key, KeyEvent, Mods};
 use strata_fs::app::BrowserEvent;
@@ -32,6 +32,27 @@ fn turns(host: &mut Offscreen) {
     }
 }
 
+/// Registers a harmless no-op default handler for `text/plain` in the isolated test home so
+/// opening `todo.txt` never opens an "Open With" dialog in minimal containers or launches a
+/// real desktop editor on developer hosts.
+fn register_noop_text_handler() {
+    let data = PathBuf::from(std::env::var_os("XDG_DATA_HOME").expect("XDG_DATA_HOME"));
+    let config = PathBuf::from(std::env::var_os("XDG_CONFIG_HOME").expect("XDG_CONFIG_HOME"));
+    let apps = data.join("applications");
+    std::fs::create_dir_all(&apps).expect("applications dir");
+    std::fs::create_dir_all(&config).expect("config dir");
+    std::fs::write(
+        apps.join("strata-test-noop.desktop"),
+        "[Desktop Entry]\nType=Application\nName=Noop\nExec=/bin/true %U\nMimeType=text/plain;\n",
+    )
+    .expect("desktop file");
+    std::fs::write(
+        config.join("mimeapps.list"),
+        "[Default Applications]\ntext/plain=strata-test-noop.desktop;\n",
+    )
+    .expect("mimeapps.list");
+}
+
 /// Finding lgse/strata#2454: a double click on a file, a dialog over the view, and a second
 /// double click within the double-click interval of the first, which opens the file again.
 #[test]
@@ -42,6 +63,7 @@ fn a_double_click_after_a_dialog_closes_opens_again() {
         String::new(),
         "a_double_click_after_a_dialog_closes_opens_again",
         |mut host| {
+            register_noop_text_handler();
             let folder = folder_of(&["todo.txt"]);
             open(&mut host, LIST, folder.path());
             let opened = Rc::new(Cell::new(0));

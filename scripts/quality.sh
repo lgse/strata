@@ -100,10 +100,8 @@ exec "$engine" run "${options[@]}" \
     esac
     rustc --version
     case "$1" in all|fmt) cargo fmt --all --check ;; esac
-    # The application without the Rune side, which builds in its own cargo runs.
     case "$1" in all|clippy)
-      gtk="$(python3 scripts/lanes.py gtk)"
-      cargo clippy --locked $gtk --all-targets --all-features -- -D warnings ;;
+      cargo clippy --locked --workspace --all-targets --all-features -- -D warnings ;;
     esac
     case "$1" in all|test)
       case "${STRATA_QUALITY_TASK:-test}" in

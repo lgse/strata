@@ -13,7 +13,6 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 from headless.display import HeadlessDisplay  # noqa: E402
 from headless.environment import TestEnvironment, process_environment  # noqa: E402
 from headless.process import terminate  # noqa: E402
-import lanes  # noqa: E402
 
 
 def test_tmpdir() -> str | None:
@@ -36,7 +35,7 @@ def main() -> int:
             **display.environment,
             "CARGO_HOME": os.environ.get("CARGO_HOME", str(Path.home() / ".cargo")),
             "RUSTUP_HOME": os.environ.get("RUSTUP_HOME", str(Path.home() / ".rustup")),
-            "STRATA_REQUIRE_GTK_TESTS": "1",
+            "WAYLAND_DISPLAY": "strata-test-no-wayland",
             "STRATA_REQUIRE_DEVICE_TESTS": "1",
             "GTK_A11Y": "none",
             "NO_AT_BRIDGE": "1",
@@ -47,7 +46,16 @@ def main() -> int:
         if tmpdir:
             environment["TMPDIR"] = tmpdir
         child = subprocess.Popen(
-            ["cargo", "test", *lanes.gtk(), "--all-targets", "--all-features", *sys.argv[1:]],
+            [
+                "cargo",
+                "test",
+                "--workspace",
+                "--exclude",
+                "strata-gallery",
+                "--all-targets",
+                "--all-features",
+                *sys.argv[1:],
+            ],
             cwd=REPOSITORY,
             env=environment,
             start_new_session=True,

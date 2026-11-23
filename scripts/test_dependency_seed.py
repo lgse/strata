@@ -167,7 +167,7 @@ class ScriptTests(unittest.TestCase):
     SCRIPTS = Path(__file__).resolve().parent
 
     def test_every_script_that_compiles_in_the_image_seeds_its_cache_first(self):
-        for name in ("qa.sh", "qa-parity.sh", "qa-drive.sh", "quality.sh"):
+        for name in ("qa.sh", "qa-drive.sh", "quality.sh"):
             script = (self.SCRIPTS / name).read_text(encoding="utf-8")
             with self.subTest(name):
                 self.assertIn("python3 scripts/dependency_seed.py", script)

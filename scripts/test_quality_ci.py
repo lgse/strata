@@ -39,7 +39,7 @@ class QualityCiTests(unittest.TestCase):
             "  sys.exit('the option `Z` is only accepted on the nightly compiler')\n"
             " with open(os.environ['RECORD'], 'a') as record:\n"
             "  record.write(json.dumps(dict(display=os.environ.get('DISPLAY'), selected=selected,\n"
-            "                               gtk=os.environ.get('STRATA_REQUIRE_GTK_TESTS'))) + '\\n')\n"
+            "                               wayland=os.environ.get('WAYLAND_DISPLAY'))) + '\\n')\n"
             " if os.environ.get('FAIL_TEST') in selected:\n"
             "  print(\"thread 'x' panicked at src/fixture.rs:1:1:\\nboom\")\n"
             "  sys.exit(101)\n"
@@ -87,8 +87,7 @@ class QualityCiTests(unittest.TestCase):
             patcher = patch.object(quality, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
-        for patcher in (patch.object(quality, "ISOLATED_TEST", "a"),
-                        patch.object(quality, "SHARDS", 2),
+        for patcher in (patch.object(quality, "SHARDS", 2),
                         patch.dict(quality.os.environ, STRATA_QUALITY_COMMIT="fixture", RECORD=str(self.record),
                                    PATH=f"{tools}:{quality.os.environ['PATH']}"),
                         patch.object(quality, "test_source_key", return_value="source"),
@@ -120,22 +119,12 @@ class QualityCiTests(unittest.TestCase):
         report = json.loads((self.reports / "shard-1.json").read_text())
         self.assertEqual(report["binaries"][0]["ignored"], ["ignored"])
 
-    def test_mixed_shard_runs_isolated_test_in_a_separate_process(self):
-        self.plan["binaries"][0]["shards"] = [["a", "b", "ignored"], ["c", "d"]]
-        self.save_plan()
-        self.run_all()
-        self.verify()
-        self.assertEqual([run["selected"] for run in self.runs()], [["a"], ["b", "ignored"], ["c", "d"]])
-        report = json.loads((self.reports / "shard-0.json").read_text())
-        self.assertEqual(report["binaries"][0]["passed"], ["a", "b"])
-        self.assertEqual(report["binaries"][0]["ignored"], ["ignored"])
-
     def test_lanes_split_a_shard_across_private_displays_under_one_receipt(self):
         self.run_all(lanes=2)
         self.verify()
         runs = self.runs()
         self.assertEqual(sorted(name for run in runs for name in run["selected"]), self.plan["binaries"][0]["tests"])
-        self.assertTrue(all(run["gtk"] == "1" for run in runs))
+        self.assertTrue(all(run["wayland"] == "strata-test-no-wayland" for run in runs))
         self.assertNotIn(None, [run["display"] for run in runs])
         shard_1 = [run for run in runs if "a" not in run["selected"]]
         self.assertEqual(len(shard_1), 2)
@@ -162,26 +151,6 @@ class QualityCiTests(unittest.TestCase):
         self.assertEqual(binary["shards"], [["e", "g"], ["f"]])
         self.plan["binaries"].append(binary)
         quality.validate_plan(self.plan)
-
-    def test_plan_rejects_missing_ignored_or_duplicate_isolated_test(self):
-        def remove(plan):
-            plan["binaries"][0]["tests"].remove("a")
-            plan["binaries"][0]["shards"][0].remove("a")
-
-        def ignore(plan):
-            plan["binaries"][0]["ignored"].append("a")
-
-        def duplicate(plan):
-            binary = copy.deepcopy(plan["binaries"][0])
-            binary["file"] = "test-1"
-            plan["binaries"].append(binary)
-
-        for mutate in (remove, ignore, duplicate):
-            with self.subTest(mutate=mutate.__name__):
-                plan = copy.deepcopy(self.plan)
-                mutate(plan)
-                with self.assertRaises(ValueError):
-                    quality.validate_plan(plan)
 
     def test_plan_rejects_missing_duplicate_extra_and_empty_assignments(self):
         mutations = [
@@ -278,8 +247,9 @@ class QualityCiTests(unittest.TestCase):
 
         with patch.object(quality.subprocess, "run", side_effect=run):
             quality.build()
-        self.assertEqual(len(commands), 1)
-        self.assertTrue({"--locked", "--all-targets", "--all-features", "--no-run"} <= set(commands[0]))
+        self.assertEqual(len(commands), 2)
+        self.assertTrue({"--locked", "--workspace", "--exclude", "strata-gallery", "--all-targets", "--all-features", "--no-run"} <= set(commands[0]))
+        self.assertTrue({"--locked", "--package", "strata-gallery", "--lib", "--bins", "--examples", "--all-features", "--no-run"} <= set(commands[1]))
         plan = json.loads(self.plan_path.read_text())
         self.assertEqual(plan["binaries"][0]["tests"], self.plan["binaries"][0]["tests"])
         self.assertEqual(plan["binaries"][0]["ignored"], ["ignored"])

@@ -68,7 +68,9 @@ fn a_tile_cuts_its_name_again_when_the_fonts_move() {
         grid: IconsGridState::new(),
         look: Look::fallback(false),
     };
-    let text = rune::text::TextSystem::new(strata_kit::fonts::FONTS, ("Inter", "Inter"));
+    // Use Rune's embedded fonts (Inter + IBM Plex Mono) so the test switches between two distinct
+    // faces without depending on system-installed fonts.
+    let text = rune::text::TextSystem::new(&[], ("Inter", "Inter"));
     let mut rt = Runtime::with_text(host, view, (600.0, 400.0), Env::new(false, 1.0), text);
     for _ in 0..4 {
         rt.frame(1.0 / 60.0);
@@ -78,8 +80,7 @@ fn a_tile_cuts_its_name_again_when_the_fonts_move() {
     // Switching the runtime's font families moves `font_epoch` and the runtime's own TextSystem
     // (`measure::lend` in Rune 631e8a67), as changing the interface font does in a window.
     let epoch = rune::text::font_epoch();
-    let (sans, mono) = strata_kit::fonts::FAMILIES;
-    rt.update(|_, tx| tx.set_font_families(sans, mono));
+    rt.update(|_, tx| tx.set_font_families("IBM Plex Mono", "IBM Plex Mono"));
     for _ in 0..4 {
         rt.frame(1.0 / 60.0);
     }

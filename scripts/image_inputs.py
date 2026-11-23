@@ -44,7 +44,7 @@ def dependency_key(repository=REPOSITORY):
 
 
 def source_key(repository=REPOSITORY):
-    files = [repository / name for name in ("Cargo.toml", "Cargo.lock", "build.rs")]
+    files = [repository / name for name in ("Cargo.toml", "Cargo.lock")]
     for directory in ("src", "data", "crates"):
         files.extend(path for path in (repository / directory).rglob("*") if path.is_file())
     inputs = [(str(path.relative_to(repository)), digest(path)) for path in sorted(files)]
