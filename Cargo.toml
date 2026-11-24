@@ -159,7 +159,6 @@ strata-test-peer.workspace = true
 tar.workspace = true
 tempfile.workspace = true
 toml.workspace = true
-x11rb = { workspace = true, features = ["xkb"] }
 zip.workspace = true
 
 [[test]]

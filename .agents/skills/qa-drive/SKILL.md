@@ -48,11 +48,10 @@ command, target, and predicate.
 ```
 
 `start` builds the `qa` binary (the same build `qa.sh` makes), seeds HOME
-from `tests/fixtures/harness.json`, writes the fixture, starts Xvfb, launches
-the app, and prints the fixture path and the launch reply. It takes a few
-seconds when nothing changed, longer after source edits, and many minutes
-on a cold cache: give it a 10-minute timeout, or run it in the background
-and wait for it.
+from `tests/fixtures/harness.json`, writes the fixture, launches the offscreen
+app, and prints the fixture path and the launch reply. It takes a few seconds
+when nothing changed, longer after source edits, and many minutes on a cold
+cache: give it a 10-minute timeout, or run it in the background and wait for it.
 
 - `--tree` is a manifest tree name, inline JSON, or `@file`: an object whose
   string values are file contents and whose object values are folders. All
@@ -125,9 +124,8 @@ pane while it was open, and Escape gave focus back to `plan.txt` in `notes`.
 | Command | Does |
 | --- | --- |
 | `send JSON...` | Sends each command in order and prints one reply line each. Exit 0 when a reply came back, whatever `ok` says; 1 when the app exited (with its log tail) or no reply came in 90 s (or the command's `timeout_ms` + 30 s), in which case that reply is skipped if it comes later; 2 for text that is not JSON. |
-| `screenshot NAME.png` | Captures the whole Xvfb screen to `target/qa-drive/NAME.png`. |
 | `restart [--pref K=V]... [--env N=V]...` | Closes the app's stdin, waits up to 10 s for it to quit, then signals its group; replaces those keys whole (arrays and tables too) in its saved `settings.toml`; relaunches on the same fixture and HOME and prints the launch reply. A value TOML cannot hold is refused before the app quits. |
-| `exec 'SHELL'` | Runs in the fixture directory with `$FIXTURE`, the session's `HOME`, `XDG_*_HOME`, `XDG_RUNTIME_DIR`, `DISPLAY`, and `DBUS_SESSION_BUS_ADDRESS`, so `gio` and similar tools see the session. |
+| `exec 'SHELL'` | Runs in the fixture directory with `$FIXTURE`, the session's `HOME`, `XDG_*_HOME`, `XDG_RUNTIME_DIR`, and `DBUS_SESSION_BUS_ADDRESS`, so `gio` and similar tools see the session. |
 | `log` | The application's log without colour codes. |
 | `stop` | Quits the app and removes the container. Safe to repeat. |
 
@@ -297,10 +295,8 @@ screen readers.
   check pass.
 - **`expect` does not wait.** Use it right after a `wait`, or give it
   `"timeout_ms"`.
-- **Xvfb is slow and software-rendered.** It is a debug build on `llvmpipe`.
-  A target lookup waits up to 15 s, so a wrong name costs 15 s before its
-  error. The window is 1200x760 on a 1440x900 screen; the black margin in
-  screenshots is normal.
+- **Target timeouts.** A target lookup waits up to 15 s, so a wrong name costs
+  15 s before its error. The offscreen window is 1200x760.
 - **Rebuilds.** `restart` reruns the binary already built. After an edit,
   `stop` then `start`.
 - **A stuck session.** If `send` reports no reply, read `log`, then `restart`,
@@ -339,7 +335,7 @@ Each process command is already a valid step. Then:
 docker ps -a --filter name=strata-qa-drive      # nothing listed (or podman ps -a)
 ```
 
-`stop` removes the container and everything in its `/tmp`: Xvfb, the bus,
+`stop` removes the container and everything in its `/tmp`: the bus,
 HOME, and the fixture. `target/qa-drive/` stays until the next `start`; it is
 ignored by Git. Never commit screenshots or transcripts; attach evidence to
 the PR as the repository instructions say.

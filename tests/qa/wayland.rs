@@ -3,19 +3,19 @@
 use std::{
     fs::{self, File},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
     time::{Duration, Instant},
 };
 
 use crate::{
-    Display, POLL_INTERVAL, Server,
+    POLL_INTERVAL,
     process::{spawn, tail, terminate},
 };
 
 pub(crate) const SWAY_SOCKET_VARIABLE: &str = "SWAYSOCK";
 pub(crate) const WINDOW_VARIABLE: &str = "STRATA_QA_WINDOW";
 const SWAY_START_TIMEOUT: Duration = Duration::from_secs(15);
-/// Xvfb's screen.
+/// The headless compositor output size.
 const SCREEN: (u32, u32) = (1440, 900);
 const PEER: (&str, u32, u32) = ("io.github.lgse.Strata.TestDragSource", 1200, 760);
 const SWAY_CONFIG: &str = "\
@@ -31,10 +31,19 @@ for_window [app_id=\"{peer}\"] move position {peer_x} {peer_y}
 ";
 
 pub(crate) struct Sway {
+    pub(crate) name: String,
+    server: Child,
+    pub(crate) log: PathBuf,
     pub(crate) ipc: PathBuf,
 }
 
-pub(crate) fn start(scratch: &Path, runtime: &Path) -> Result<Display, String> {
+impl Drop for Sway {
+    fn drop(&mut self) {
+        terminate(&mut self.server);
+    }
+}
+
+pub(crate) fn start(scratch: &Path, runtime: &Path) -> Result<Sway, String> {
     let io = |error: std::io::Error| error.to_string();
     let config = scratch.join("sway.conf");
     fs::write(
@@ -75,13 +84,11 @@ pub(crate) fn start(scratch: &Path, runtime: &Path) -> Result<Display, String> {
         if let (Some(socket), Some(ipc)) = (find(runtime, is_wayland_socket), find(runtime, is_ipc))
             && output_active(&runtime.join(&ipc))
         {
-            return Ok(Display {
+            return Ok(Sway {
                 name: socket,
                 server,
                 log,
-                kind: Server::Wayland(Sway {
-                    ipc: runtime.join(ipc),
-                }),
+                ipc: runtime.join(ipc),
             });
         }
         if !matches!(server.try_wait(), Ok(None)) || Instant::now() >= deadline {

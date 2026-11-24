@@ -56,17 +56,6 @@ class QaDriveMatchesTheRunner(unittest.TestCase):
     def test_home_and_the_xdg_directories_are_laid_out_as_the_runners(self):
         self.assertEqual(drive_array("xdg_directories"), runner_pairs("XDG_DIRECTORIES"))
 
-    def test_xvfb_starts_with_the_runners_screen_and_listening_arguments(self):
-        start = RUNNER.index('Command::new("Xvfb")')
-        end = RUNNER.index(".spawn()", start)
-        arguments = []
-        for listed in re.findall(r"\.args\(\[([^\]]*)\]\)", RUNNER[start:end]):
-            literals = re.findall(r'"([^"]*)"', listed)
-            # The `-displayfd` pair carries a descriptor, not literals only.
-            if len(literals) == listed.count(",") + 1:
-                arguments.extend(literals)
-        self.assertEqual(drive_array("xvfb_arguments"), arguments)
-
     def test_a_run_without_a_bus_gets_the_same_unconnectable_address(self):
         match = re.search(r'launch\s*\.runtime\s*\.join\("([^"]+)"\)', RUNNER)
         self.assertIsNotNone(match, "tests/qa.rs no longer names its unconnectable bus")
@@ -92,7 +81,6 @@ class QaDriveMatchesTheRunner(unittest.TestCase):
     def test_home_is_seeded_and_the_application_launched_as_the_runner_does(self):
         for runner, drive in (
             ('writeln!(output, "{key} = {}", render_value(value))', 'f"{key} = {toml(value)}\\n"'),
-            ('home.join("config/gtk-4.0")', '{home}/config/gtk-4.0/settings.ini'),
             ('fs::write(strata.join(&manifest.portal_offer_marker), "1\\n")', 'file.write("1\\n")'),
             ("from_mode(0o755)", "os.chmod(path, 0o755)"),
             ("from_mode(0o644)", "os.chmod(path, 0o644)"),

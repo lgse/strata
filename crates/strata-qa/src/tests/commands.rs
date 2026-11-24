@@ -390,7 +390,6 @@ fn new_commands_parse_and_reject_what_they_cannot_mean() {
         r#"{"keys_until":{"peek":true},"keys":["Home"],"times":0}"#,
         r#"{"keys_until":{"peek":true},"keys":["Home"],"times":[]}"#,
         r#"{"note":"entries","of":{"entry":"a"},"as":"x"}"#,
-        r#"{"capture":{"kept":"a"},"as":""}"#,
         r#"{"wait":{"band_selected":{"from":"a"}}}"#,
     ] {
         assert!(parse_command(bad).is_err(), "{bad} should be rejected");

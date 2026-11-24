@@ -4,17 +4,13 @@ use std::{fs, path::Path};
 
 use serde_json::{Value, json};
 
-use crate::{Application, COMMAND_TIMEOUT, Display};
+use crate::{Application, COMMAND_TIMEOUT};
 
 /// What the text file says first.
 pub(crate) const DREW_NOTHING: &str =
     "The Rune target draws offscreen and put nothing on the display, so there is no image.";
 
-pub(crate) fn take(
-    application: &mut Application,
-    _display: &Display,
-    destination: &Path,
-) -> Result<(), String> {
+pub(crate) fn take(application: &mut Application, destination: &Path) -> Result<(), String> {
     let reply = application.send(&json!({ "query": "tree" }), COMMAND_TIMEOUT)?;
     write_offscreen(destination, &step_text(&reply))
 }
@@ -30,11 +26,7 @@ pub(crate) fn step_text(reply: &Value) -> String {
     }
 }
 
-pub(crate) fn take_last(
-    _display: &Display,
-    destination: &Path,
-    with_tree: bool,
-) -> Result<(), String> {
+pub(crate) fn take_last(destination: &Path, with_tree: bool) -> Result<(), String> {
     write_offscreen(destination, &closing_text(with_tree))
 }
 

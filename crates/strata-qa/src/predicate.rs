@@ -4,11 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::{
-    AccentPixels, BandCheck, BlankCheck, ChildNames, ChildrenCheck, Comparison, ContainsPoint,
-    ContrastBelow, DescriptionCheck, EditorWindowCheck, Elapsed, FieldCheck, FieldRef, FileCheck,
-    FooterFill, HitPath, InsideCheck, LargestImage, MentionCheck, Movement, NameCheck, Names,
-    PanesWith, PixelCheck, PrefCheck, Presence, Repainted, Replaced, Resized, RowStates,
-    ScrollCheck, SectionsCheck, SomeWindow, StateCheck, SubtreeText, Target, TextMatch,
+    BandCheck, BlankCheck, ChildNames, ChildrenCheck, Comparison, ContainsPoint, DescriptionCheck,
+    EditorWindowCheck, FieldCheck, FieldRef, FileCheck, HitPath, InsideCheck, LargestImage,
+    MentionCheck, Movement, NameCheck, Names, PanesWith, PrefCheck, Presence, Replaced, Resized,
+    RowStates, ScrollCheck, SectionsCheck, SomeWindow, StateCheck, SubtreeText, Target, TextMatch,
     WindowCount,
 };
 
@@ -58,11 +57,6 @@ pub enum Check {
     FocusWithin(Target),
     Resized(Resized),
     ContainsPoint(ContainsPoint),
-    FooterFill(FooterFill),
-    Repainted(Repainted),
-    ContrastBelow(ContrastBelow),
-    Elapsed(Elapsed),
-    DiagnosticsMention(Vec<String>),
     All(Vec<Predicate>),
     EditableFields(usize),
     Description(DescriptionCheck),
@@ -73,8 +67,6 @@ pub enum Check {
     Inside(InsideCheck),
     EditorWithinWindow(EditorWindowCheck),
     Replaced(Replaced),
-    Pixel(PixelCheck),
-    AccentPixels(AccentPixels),
     AnyResultRow(RowStates),
     HitPath(HitPath),
     Compare(Comparison),
@@ -127,11 +119,6 @@ impl Check {
             | Self::FocusWithin(_)
             | Self::Resized(_)
             | Self::ContainsPoint(_)
-            | Self::FooterFill(_)
-            | Self::Repainted(_)
-            | Self::ContrastBelow(_)
-            | Self::Elapsed(_)
-            | Self::DiagnosticsMention(_)
             | Self::EditableFields(_)
             | Self::Description(_)
             | Self::Mentions(_)
@@ -141,8 +128,6 @@ impl Check {
             | Self::Inside(_)
             | Self::EditorWithinWindow(_)
             | Self::Replaced(_)
-            | Self::Pixel(_)
-            | Self::AccentPixels(_)
             | Self::HitPath(_)
             | Self::AnyResultRow(_)
             | Self::Compare(_)

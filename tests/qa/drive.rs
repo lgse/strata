@@ -11,11 +11,10 @@ use std::{
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Application, COMMAND_TIMEOUT, CONTROLLER_PANIC, DEFAULT_LAYOUT, DEFAULT_WAIT, Display,
-    LAUNCH_TIMEOUT, Launch, POLL_INTERVAL, STEP_IF, STEP_UNLESS, STEP_WHEN, WAIT_MARGIN,
+    Application, COMMAND_TIMEOUT, CONTROLLER_PANIC, DEFAULT_LAYOUT, DEFAULT_WAIT, LAUNCH_TIMEOUT,
+    Launch, POLL_INTERVAL, STEP_IF, STEP_UNLESS, STEP_WHEN, WAIT_MARGIN,
     fixture::Manifest,
     fs_check::{FsState, FsStep},
-    keyboard::switch,
     peer_steps::{PeerError, Peers, Relaunch, dbus_send, peer_step},
     run::Outcome,
     runner_steps::{EachStep, Kept, LogStep, ProcStep},
@@ -29,7 +28,6 @@ pub(crate) struct Context<'a> {
     pub(crate) steps: &'a [(usize, Value)],
     pub(crate) initial_layout: &'a str,
     pub(crate) manifest: &'a Manifest,
-    pub(crate) display: &'a Display,
     pub(crate) fixture: &'a Path,
     pub(crate) fixture_time: SystemTime,
     pub(crate) screens: &'a Path,
@@ -154,7 +152,7 @@ pub(crate) fn drive(
             let destination = context.screens.join(name.as_str().unwrap_or_default());
             let taken = fs::create_dir_all(context.screens)
                 .map_err(|error| error.to_string())
-                .and_then(|()| screen::take(application, context.display, &destination));
+                .and_then(|()| screen::take(application, &destination));
             if let Err(error) = taken {
                 outcome.errors.push(format!("{label}: {error}"));
                 return outcome;
@@ -427,7 +425,6 @@ fn change_layout(
     (name, line): (&str, Option<usize>),
     outcome: &mut Outcome,
 ) -> Result<(), String> {
-    switch(context.manifest, context.display, name)?;
     let layout = context
         .manifest
         .layouts

@@ -58,7 +58,6 @@
       "videos"
     ]
   },
-  "gtk_settings": "[Settings]\ngtk-enable-animations=false\ngtk-theme-name=Adwaita\ngtk-icon-theme-name=Adwaita\ngtk-font-name=Cantarell 11\ngtk-cursor-blink=false\ngtk-double-click-time=400\ngtk-cursor-theme-name=Adwaita\ngtk-cursor-theme-size=24\ngtk-xft-antialias=1\ngtk-xft-hinting=1\ngtk-xft-hintstyle=hintslight\ngtk-xft-rgba=none\ngtk-overlay-scrolling=false\ngtk-primary-button-warps-slider=false\ngtk-decoration-layout=:\n",
   "portal_offer_marker": "portal-opt-in-v1",
   "environment": {
     "XDG_DATA_DIRS": "/usr/local/share:/usr/share",
@@ -67,14 +66,6 @@
     "LANG": "C.UTF-8",
     "LANGUAGE": "",
     "TZ": "UTC",
-    "GDK_BACKEND": "x11",
-    "GSK_RENDERER": "cairo",
-    "GDK_SCALE": "1",
-    "GDK_DPI_SCALE": "1",
-    "GTK_A11Y": "atspi",
-    "NO_AT_BRIDGE": "0",
-    "GTK_USE_PORTAL": "0",
-    "GTK_OVERLAY_SCROLLING": "0",
     "LIBGL_ALWAYS_SOFTWARE": "1",
     "GALLIUM_DRIVER": "llvmpipe",
     "GIO_USE_VFS": "local",

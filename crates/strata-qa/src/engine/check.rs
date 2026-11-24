@@ -32,16 +32,6 @@ pub fn mismatch(predicate: &Predicate, actual: Value) -> Failure {
     }
 }
 
-/// What a predicate is called in a scenario: the key that is not its `dir`.
-fn predicate_name(predicate: &Predicate) -> String {
-    serde_json::to_value(predicate)
-        .ok()
-        .as_ref()
-        .and_then(Value::as_object)
-        .and_then(|fields| fields.keys().find(|key| *key != "dir").cloned())
-        .unwrap_or_else(|| "the predicate".to_owned())
-}
-
 impl<B: Backend> Scope<'_, B> {
     pub fn check(&self, predicate: &Predicate) -> Verdict {
         if !predicate.check.is_live() {
@@ -638,20 +628,6 @@ impl<B: Backend> Scope<'_, B> {
                     verdict(text.contains(&check.contains), json!(text))
                 }
             },
-            Check::Pixel(_)
-            | Check::AccentPixels(_)
-            | Check::Repainted(_)
-            | Check::ContrastBelow(_)
-            | Check::Elapsed(_)
-            | Check::FooterFill(_)
-            | Check::DiagnosticsMention(_) => {
-                return backend.check(self, predicate).unwrap_or_else(|| {
-                    Err(format!(
-                        "{} is not supported on this target",
-                        predicate_name(predicate)
-                    ))
-                });
-            }
             _ => self.scene().observation.evaluate(predicate),
         })
     }

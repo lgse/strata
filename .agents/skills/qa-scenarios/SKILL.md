@@ -298,9 +298,9 @@ A failed run prints `<scenario>/<run> failed:` with each failure as
 
 The artifact directory holds `failures.txt`, `transcript.jsonl` (every
 command with its reply and `app` snapshot), `tree.txt`, `state.json`,
-`screenshot.png`, `strata.log`, `input.log`, `fixture.txt`, `xvfb.log`, and
-`result.json`. Pass `STRATA_QA_KEEP_ARTIFACTS=1` to keep them for a passing
-run.
+`screenshot.txt`, `strata.log`, `input.log`, `fixture.txt`, `sway.log` (for
+session runs), and `result.json`. Pass `STRATA_QA_KEEP_ARTIFACTS=1` to keep
+them for a passing run.
 
 - **A wait timed out.** The line reads `timed out after 15000 ms: <message>
   expected <predicate>, actual <value>`. Compare `actual` with what you

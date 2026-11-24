@@ -149,7 +149,7 @@ Pointer moves approach targets cleanly so enter and motion handlers run before c
 | `{"holds":PREDICATE}` | Replies `true` or `false` in `result`; never fails. |
 | `{"query":"state"}`, `"tree"`, `"prefs"` | The snapshot, the widget tree as text, or `settings.toml` as JSON in `result`. |
 
-### Memory, notes, and pixels
+### Memory and notes
 
 | Step | Meaning |
 | --- | --- |
@@ -157,9 +157,6 @@ Pointer moves approach targets cleanly so enter and motion handlers run before c
 | `{"keep":[0,0,240,80],"as":"foreign"}` | Keeps a screen box for `kept` targets. |
 | `{"note":"entries","dir":"$root","as":"names"}` | Keeps an accessor's value. Accessors: `directory`, `pane`, `panes`, `entries`, `selected`, `all_selected`, `matches`, `focused`, `focused_pane`, `visible`, `menu_items`, `editable_fields`, `visible_top`, `middle_visible` (`unless_first`), `bounds` and `scroll_target` (with `"of":TARGET`), `number` (with `"expr":NUMBER`). |
 | note shaping | `from`/`through` slice a list between two names; `"middle":3` keeps three from the middle; `"plus":[...]` unions and sorts; `"sorted":true`; `"pick":-1` keeps one item. `"until_found":true` (with `message`, `timeout_ms`) polls until non-null; `"until_names":NAMES` polls until the list matches; a `number` note takes `"until":[{"op":">","than":300}]`. |
-| `{"capture":TARGET,"inset":3,"as":"before"}` | Keeps the screen pixels in the target's box, inset on every side, for `repainted`; any part off the screen is black. |
-| `{"measure_text":"label","as":"resting"}` | Ink position (the luma-weighted mean row) and contrast in a kept box, for `contrast_below` and `drop_samples`. Fails as `the source label disappeared` when the box holds no ink. |
-| `{"drop_samples":"label","resting":"resting","dragging":"dragging","escape":true,"as":"released"}` | Ends a drag (optional Escape, then button 1 up) and samples the kept box at 60, 120, and 180 ms; each sample must come within 240 ms and sit within 1.5 px of `resting`, and the last must have 1.25 times `dragging`'s contrast. Keeps the release instant for `elapsed`. |
 
 ## Runner steps
 
@@ -375,14 +372,13 @@ pane name) where the check reads a pane.
 | `{"panes_with":{"target":{role target},"names":[...]}}` | The panes, left to right, showing that role target. |
 | `{"alive":"rename"}`, `{"replaced":{"target":T,"since":"listed"}}` | A remembered widget still belongs to a window; the target now resolves to another widget than the one remembered (a reload rebuilt the row). |
 | `{"some_window":{"title":"Strata","holds":PREDICATE}}`, `{"windows":{"title":"Strata","count":6}}` | Some showing window with the title satisfies the predicate in its own tree; how many such windows show. |
-| `{"diagnostics_mention":["could not","permission denied"]}` | Any of the texts appears in the app windows' names and descriptions (lowercased). |
 | `{"children":{"comm_prefix":"xdg-terminal-ex","count":0}}` | How many app child processes have a command name with the prefix. |
-| `{"hit_path":{"mark":"search: txt","hits":{...},"name":"todo.txt"}}`, `{"footer_fill":{"ends":[...],"total":180}}` | Footer search hit and selection-count readouts: `footer_fill` holds when both ends are listed, cleared, and on screen, and a label is described as `<total - cleared> of <total> items selected`. |
+| `{"hit_path":{"mark":"search: txt","hits":{...},"name":"todo.txt"}}` | Footer search hit readout. |
 
-### Geometry and pixels
+### Geometry
 
-Use these only where position or pixels are the behaviour (a scroll target
-reached, a drag landing, a repaint, a visual baseline); never to pin layout.
+Use these only where position is the behaviour (a scroll target reached or a
+drag landing); never to pin layout.
 
 | Predicate | Holds when |
 | --- | --- |
@@ -392,8 +388,6 @@ reached, a drag landing, a repaint, a visual baseline); never to pin layout.
 | `{"compare":{"left":NUMBER,"op":"<=","right":NUMBER}}` | `op` is `<`, `<=`, `==`, `!=`, `>=`, or `>`. `NUMBER` is a literal, `{"of":T,"get":"width"}` (`x`, `y`, `width`, `height`, `right`, `bottom`, `center_x`, `center_y`, `value`), `{"pref":"text_size","default":0}`, `{"count":{role target}}` (also `"rendered":false` and `"states"`), or `sum`, `minus`, `times`, `divide`, `floor_divide`, `ceil`, `abs` over them. A target off screen is a mismatch, so a wait keeps polling. |
 | `{"editor_within_viewport":{"of":"rename"}}`, `{"editor_within_window":{"of":"rename","pane":"$root"}}` | The inline editor stays inside the viewport or window. |
 | `{"blank":{"target":T,"at":[...]}}`, `{"band_selected":{"from":"start","to":"end"}}` | The point lands on nothing but panels; the marquee band's visible rows are all selected. |
-| `{"pixel":{"target":T,"rgb":[...]}}`, `{"accent_pixels":{"target":T,"inset":2,"more_than":100}}` | The centre pixel's colour; more than N pixels in the box, inset on every side, are exactly the accent of the theme `settings.toml` names in `data/themes/catalog.toml`. |
-| `{"repainted":{"since":"before"}}`, `{"contrast_below":{"of":"dragging","to":"resting","share":0.8}}`, `{"elapsed":{"since":"released","ms":600}}` | A fresh grab of a captured box differs from it outside the cursor's square (from 2 px before the pointer to 32 px after it); `of`'s contrast is below `share` times `to`'s; time since a kept instant. |
 | `{"largest_image":{"within":T,"wider_than":40,"size":[160,80]}}` (or `"exceeds"`) | Of the rendered images inside the target wider than `wider_than`, the largest by area (the first of equals) exists, is exactly `size`, or is larger than `exceeds` on either axis. |
 
 ### Combinators and NAMES
