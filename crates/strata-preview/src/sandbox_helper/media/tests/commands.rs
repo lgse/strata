@@ -49,6 +49,11 @@ fn assert_decoder_command_is_limited() {
         .join(" ");
     assert!(args.starts_with("--core=0 --fsize=536870912 --as=2147483648"));
     assert_eq!(missing(&args, &[BOUNDS[0], BOUNDS[2]]), NO_TERMS);
+    assert_eq!(
+        present(&args, &["-thread_queue_size"]),
+        NO_TERMS,
+        "FFmpeg 9.1 rejects -thread_queue_size ahead of an input"
+    );
 }
 
 fn flag_positions(args: &[String], flags: &[&str]) -> Vec<usize> {

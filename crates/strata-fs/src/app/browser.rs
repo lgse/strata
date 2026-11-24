@@ -32,6 +32,7 @@ mod directory_changes;
 mod folder_sorts;
 mod freshness;
 mod leftovers;
+mod live_changes;
 mod loading;
 mod navigation_lifecycle;
 mod operation_events;
@@ -59,6 +60,7 @@ use folder_sorts::SortOrigin;
 pub use freshness::{FreshnessInput, Presence, VisibleDepths};
 #[cfg(test)]
 use location_input::location_from_input_with_home;
+pub use location_input::typed_location_uri;
 pub use operation_start::{folder_destination_texts, trash_destination_texts};
 use publication::{PublicationPlan, PublishTerminal, StagedPublish};
 #[cfg(test)]
@@ -572,6 +574,7 @@ pub struct Browser {
     deletion_operation: Cell<bool>,
     deletion_permanent: Cell<bool>,
     deferred_file_operation_changes: RefCell<DeferredDirectoryChanges>,
+    live_changes: live_changes::LiveChanges,
     operation_rescan_depths: RefCell<HashSet<usize>>,
     restoration_operation: Cell<bool>,
     recovery_operation: Cell<bool>,
@@ -661,6 +664,7 @@ impl Browser {
             deletion_operation: Cell::new(false),
             deletion_permanent: Cell::new(false),
             deferred_file_operation_changes: RefCell::new(HashMap::new()),
+            live_changes: live_changes::LiveChanges::default(),
             operation_rescan_depths: RefCell::new(HashSet::new()),
             restoration_operation: Cell::new(false),
             recovery_operation: Cell::new(false),

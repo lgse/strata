@@ -89,37 +89,82 @@ impl Browser {
         watched: &Location,
         change: DirectoryChange,
     ) {
+        if let Some(change) = self.accept_directory_change(depth, watched, change) {
+            self.apply_or_queue_change(depth, watched, change);
+        }
+    }
+
+    /// A monitor's changes can arrive in bursts, which are batched.
+    pub(super) fn handle_monitored_change(
+        self: &Rc<Self>,
+        depth: usize,
+        watched: &Location,
+        change: DirectoryChange,
+    ) {
+        if let Some(change) = self.accept_directory_change(depth, watched, change) {
+            self.spend_live_change_budget(depth);
+            self.apply_or_queue_change(depth, watched, change);
+        }
+    }
+
+    /// Returns a change to the entries of the column at `depth`; every other report is
+    /// handled here.
+    fn accept_directory_change(
+        self: &Rc<Self>,
+        depth: usize,
+        watched: &Location,
+        change: DirectoryChange,
+    ) -> Option<DirectoryChange> {
         if self.location_at(depth).as_ref() != Some(watched) {
-            return;
+            return None;
         }
         if removed_location(&change) == Some(watched) {
-            if self.parent_column_watches(depth, watched) {
-                self.check_watching_columns_remain(depth);
-            } else {
-                self.handle_root_departure(depth, watched, change);
-            }
-            return;
+            self.handle_own_departure(depth, watched, change);
+            return None;
         }
+        let rescan = matches!(&change, DirectoryChange::Rescan);
         // A rescan reloads the column, which refreshes the indexes itself.
-        if !matches!(&change, DirectoryChange::Rescan) {
+        if !rescan {
             Self::refresh_search_indexes_for(watched, Some(&change));
         }
+        if self.file_operation_defers_changes() {
+            self.defer_directory_change(depth, watched.clone(), change);
+            return None;
+        }
+        if rescan {
+            // The batch path would hold a queued rescan until an operation ends.
+            self.publish_queued_live_changes();
+            self.refresh_column(depth);
+            return None;
+        }
+        Some(change)
+    }
+
+    fn handle_own_departure(
+        self: &Rc<Self>,
+        depth: usize,
+        watched: &Location,
+        change: DirectoryChange,
+    ) {
+        if self.parent_column_watches(depth, watched) {
+            self.check_watching_columns_remain(depth);
+        } else {
+            self.handle_root_departure(depth, watched, change);
+        }
+    }
+
+    fn apply_or_queue_change(
+        self: &Rc<Self>,
+        depth: usize,
+        watched: &Location,
+        change: DirectoryChange,
+    ) {
         let removed = (!watched.is_recent_root())
             .then(|| removed_location(&change).cloned())
             .flatten();
-        if self.file_operation_defers_changes() {
-            self.deferred_file_operation_changes
-                .borrow_mut()
-                .entry(depth)
-                .or_default()
-                .push((watched.clone(), change));
-            return;
-        }
-        if matches!(&change, DirectoryChange::Rescan) {
-            self.refresh_column(depth);
-            return;
-        }
-        if let Some(change) = self.queue_loading_change(depth, watched, change) {
+        if self.queues_live_change() {
+            self.defer_directory_change(depth, watched.clone(), change);
+        } else if let Some(change) = self.queue_loading_change(depth, watched, change) {
             self.apply_live_directory_change(depth, watched, change);
         }
         if let Some(removed) = removed {
@@ -127,7 +172,7 @@ impl Browser {
         }
     }
 
-    fn file_operation_defers_changes(&self) -> bool {
+    pub(super) fn file_operation_defers_changes(&self) -> bool {
         self.deletion_operation.get()
             || self.restoration_operation.get()
             || self.transfer_operation.get().is_some()
@@ -416,7 +461,7 @@ impl Browser {
         }
     }
 
-    fn queue_loading_change(
+    pub(super) fn queue_loading_change(
         &self,
         depth: usize,
         watched: &Location,

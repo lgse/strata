@@ -20,6 +20,8 @@ mod events;
 mod folder_counts;
 mod folder_sorts;
 mod leftovers;
+#[path = "live_changes/tests.rs"]
+mod live_changes;
 mod location_input;
 mod metadata;
 mod monitor;

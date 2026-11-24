@@ -150,7 +150,7 @@ fn app_haystack(app: &gio::AppInfo) -> String {
         app.display_name(),
         app.name(),
         app.description().unwrap_or_default(),
-        app.executable().to_string_lossy(),
+        app.executable().unwrap_or_default().to_string_lossy(),
         app.id().unwrap_or_default(),
     )
     .to_lowercase()

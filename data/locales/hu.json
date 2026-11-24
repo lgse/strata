@@ -680,6 +680,7 @@
   "Only relative local images are loaded; remote images are blocked for privacy": "Csak relatív helyi képek betöltése; a távoli képek adatvédelmi okok miatt blokkolva vannak",
   "Only used when running per item": "Csak elemenkénti futtatáskor használandó",
   "Only ~ and ~/ paths are supported for the current user's home directory.": "A jelenlegi felhasználó saját mappájához csak a ~ és ~/ útvonalak támogatottak.",
+  "A file:// URI must name a file on this computer. Use smb:// or sftp:// for another computer.": "A file:// URI-nak ezen a számítógépen lévő fájlra kell mutatnia. Másik számítógéphez használja az smb:// vagy sftp:// sémát.",
   "Open": "Megnyitás",
   "Open AUR Update": "AUR-frissítés megnyitása",
   "Open Files": "Fájlok megnyitása",

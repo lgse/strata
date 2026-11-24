@@ -476,6 +476,18 @@ error in place unless the folder is confirmed gone. A departure that arrives dur
 deletion, restoration, or transfer waits with the operation's other changes, which apply
 first.
 
+Outside those operations a monitor's changes apply one at a time, each a pass over its
+column. `live_changes.rs` adds up that cost over a burst (changes less than 100 ms apart);
+past 100,000 entries the rest of the burst queues in order with the operations' deferred
+changes and publishes every 100 ms through the same batch path until an interval passes
+quietly, so thousands of files landing in an open folder, from a background copy or another
+program, splice a few batches instead of one row each. Changes the browser applies itself,
+such as staged deltas after a load, stay synchronous unless a batch waits ahead of them. A
+starting operation publishes the waiting batch before it clears the queue, and a rescan
+publishes it before reloading its column at once. A live batch reports the cursor as a
+single change does, only when it removes the cursor's entry or the column has no cursor, so
+a burst does not scroll the listing back to the cursor.
+
 ### Browser staged publication
 
 `app/browser/publication.rs` owns staged row publication on the same `Browser`, not a

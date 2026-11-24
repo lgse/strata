@@ -680,6 +680,7 @@
   "Only relative local images are loaded; remote images are blocked for privacy": "Vengono caricate solo immagini locali relative; le immagini remote sono bloccate per la privacy",
   "Only used when running per item": "Usato solo con l’esecuzione per elemento",
   "Only ~ and ~/ paths are supported for the current user's home directory.": "Per la cartella home dell’utente corrente sono supportati solo i percorsi ~ e ~/.",
+  "A file:// URI must name a file on this computer. Use smb:// or sftp:// for another computer.": "Un URI file:// deve indicare un file su questo computer. Per un altro computer usa smb:// o sftp://.",
   "Open": "Apri",
   "Open AUR Update": "Apri aggiornamento AUR",
   "Open Files": "Apri file",
