@@ -9,9 +9,14 @@ use super::intent::SidebarIntent;
 use super::state::SidebarState;
 
 const SLOP: f32 = 8.0;
+const CLICK_SLOP: f32 = 4.0;
 
 pub(crate) fn past_threshold(dx: f32, dy: f32) -> bool {
     dx.abs().max(dy.abs()) > SLOP
+}
+
+fn past_click_slop(dx: f32, dy: f32) -> bool {
+    dx.abs() > CLICK_SLOP || dy.abs() > CLICK_SLOP
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -24,6 +29,7 @@ pub struct RowDrag {
 enum Lift {
     Pressed {
         index: usize,
+        past_click_slop: bool,
     },
     Dragging {
         from: usize,
@@ -33,6 +39,7 @@ enum Lift {
     },
     LetGo {
         from: usize,
+        past_click_slop: bool,
     },
 }
 
@@ -123,10 +130,29 @@ impl RowDrag {
 
     pub fn cancel(&mut self) {
         self.lift = match self.lift {
-            Some(Lift::Pressed { index }) => Some(Lift::LetGo { from: index }),
-            Some(Lift::Dragging { from, .. }) => Some(Lift::LetGo { from }),
+            Some(Lift::Pressed {
+                index,
+                past_click_slop,
+            }) => Some(Lift::LetGo {
+                from: index,
+                past_click_slop,
+            }),
+            Some(Lift::Dragging { from, .. }) => Some(Lift::LetGo {
+                from,
+                past_click_slop: true,
+            }),
             held => held,
         };
+    }
+
+    fn is_let_go_within_click_slop(&self) -> bool {
+        matches!(
+            self.lift,
+            Some(Lift::LetGo {
+                past_click_slop: false,
+                ..
+            })
+        )
     }
 
     pub fn shift(&self, index: usize, count: usize) -> f32 {
@@ -152,16 +178,30 @@ impl RowDrag {
     }
 
     pub(crate) fn press(&mut self, index: usize) {
-        self.lift = Some(Lift::Pressed { index });
+        self.lift = Some(Lift::Pressed {
+            index,
+            past_click_slop: false,
+        });
     }
 
     /// The pointer moved during a drag of row `index`, one of `count`: `d` as Rune gives it.
     pub(crate) fn follow(&mut self, index: usize, count: usize, d: &Drag) {
+        if past_click_slop(d.dx, d.dy) {
+            match &mut self.lift {
+                Some(Lift::Pressed {
+                    past_click_slop, ..
+                })
+                | Some(Lift::LetGo {
+                    past_click_slop, ..
+                }) => *past_click_slop = true,
+                _ => {}
+            }
+        }
         let (from, pitch) = match self.lift {
             Some(Lift::Dragging { from, pitch, .. }) => (from, pitch),
             Some(Lift::LetGo { .. }) => return,
             _ if !past_threshold(d.dx, d.dy) => return,
-            Some(Lift::Pressed { index }) => (index, (d.h + self.gap).max(1.0)),
+            Some(Lift::Pressed { index, .. }) => (index, (d.h + self.gap).max(1.0)),
             None => (index, (d.h + self.gap).max(1.0)),
         };
         // Off the side of the row, and so of the sidebar, a drop lands nowhere.
@@ -182,7 +222,7 @@ impl RowDrag {
     pub(crate) fn end(&mut self, cancelled: bool) -> Option<(usize, Option<Landing>)> {
         match self.lift.take()? {
             Lift::Dragging { from, landing, .. } if !cancelled => Some((from, landing)),
-            Lift::LetGo { from } if !cancelled => Some((from, None)),
+            Lift::LetGo { from, .. } if !cancelled => Some((from, None)),
             _ => None,
         }
     }
@@ -269,7 +309,7 @@ fn handle_row_drag<S: 'static>(s: &mut S, d: &mut Drag, tx: &mut Tx, ctx: &RowDr
     match d.phase {
         Phase::Down => {
             let sidebar = (ctx.access)(s);
-            sidebar.dropped = None;
+            sidebar.cancelled_press = None;
             ctx.block.of(sidebar).press(ctx.index);
         }
         Phase::Move => {
@@ -307,13 +347,18 @@ fn handle_row_drag<S: 'static>(s: &mut S, d: &mut Drag, tx: &mut Tx, ctx: &RowDr
 }
 
 fn finish_row_drag<S: 'static>(s: &mut S, d: &Drag, tx: &mut Tx, ctx: &RowDragCtx<'_, S>) {
+    let on_row = (0.0..=d.w).contains(&d.x) && (0.0..=d.h).contains(&d.y);
     let (was_dragging, ended) = {
         let sidebar = (ctx.access)(s);
         let drag = ctx.block.of(sidebar);
+        let swallow_cancelled_press = !d.cancelled()
+            && on_row
+            && !past_click_slop(d.dx, d.dy)
+            && drag.is_let_go_within_click_slop();
         let was = drag.dragging().is_some();
         let ended = drag.end(d.cancelled());
-        if ended.is_some() {
-            sidebar.dropped = Some(ctx.item.clone());
+        if swallow_cancelled_press {
+            sidebar.cancelled_press = Some(ctx.item.clone());
         }
         (was, ended)
     };

@@ -75,8 +75,6 @@ struct Host {
     followers: Option<FollowerLog>,
     /// With it, a `before_keys` hook that takes each key, or leaves each.
     host_takes_keys: Option<bool>,
-    /// Every range `on_visible` heard, in order.
-    heard_visible: Vec<std::ops::Range<usize>>,
     /// Allows one selected entry only (`PointerSettings::multiple(false)`).
     single: bool,
 }
@@ -118,7 +116,6 @@ impl Host {
             vanished: Vec::new(),
             followers: None,
             host_takes_keys: None,
-            heard_visible: Vec::new(),
             single: false,
         }
     }
@@ -198,10 +195,6 @@ fn collection(s: &Host) -> Collection<Host> {
     }))
     .on_cursor(|s: &mut Host, id, _| s.cursors.push(id))
     .on_selection(|s: &mut Host, _| s.selections += 1)
-    .on_visible(|s: &mut Host, range| {
-        s.heard_visible.push(range);
-        false
-    })
     .on_press(|s: &mut Host, input, _| {
         s.order
             .borrow_mut()

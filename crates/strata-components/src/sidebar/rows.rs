@@ -203,8 +203,8 @@ fn activate<S: 'static>(ctx: &Ctx<'_, S>, el: El, item: ItemId, new_tab: bool) -
             tx.live_only();
         })
         .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-            let dropped = access(s).dropped.take();
-            if !tx.by_keys() && dropped.as_ref() == Some(&press_item) {
+            let cancelled = access(s).cancelled_press.take();
+            if !tx.by_keys() && cancelled.as_ref() == Some(&press_item) {
                 return;
             }
             let via = if tx.by_keys() {

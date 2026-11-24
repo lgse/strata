@@ -191,7 +191,7 @@ pub struct Stats {
     pub bytes: usize,
     /// The budget.
     pub budget: usize,
-    /// Bytes held for rows a viewer shows (or showed at its previous sync).
+    /// Bytes held for rows a viewer shows.
     pub protected_bytes: usize,
     /// Keys with an image held.
     pub ready: usize,
@@ -267,7 +267,7 @@ pub(super) struct Inner {
     pub in_flight: HashSet<ThumbKey>,
     pub cancelled: Vec<Ticket>,
     pub viewers: Vec<Option<Viewer>>,
-    /// Keys every viewer shows now or showed at its previous sync: never evicted.
+    /// Keys every viewer shows now: never evicted.
     pub protected: HashSet<ThumbKey>,
     /// Keys some viewer wants (shown or in a margin), at the largest step any wants.
     pub wanted: HashMap<ThumbKey, Step>,

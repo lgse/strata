@@ -347,9 +347,7 @@ fn row_press_middle_click_and_keyboard_activation_route_cleanly() {
     rt.button_up(ux, uy, PointerButton::Middle);
     rt.frame(1.0 / 60.0);
 
-    // An off-row drag release leaves `dropped` set; keyboard Enter/Space still opens via Keyboard.
     let home = ItemId::Place("home".into());
-    rt.state.sidebar.dropped = Some(home.clone());
     rt.update(|_, tx| tx.focus("places-place-home", true));
     rt.frame(1.0 / 60.0);
     for key in [Key::Enter, Key::Text(" ".into())] {
@@ -452,9 +450,40 @@ fn row_drag_outside_sidebar_reports_start_move_and_outside_release() {
     assert_eq!(
         rt.state.intents.last(),
         Some(&SidebarIntent::RowDragEnd {
-            item: home,
+            item: home.clone(),
             dropped_outside: Some([360.0, hy]),
         })
+    );
+    assert!(
+        !rt.state
+            .intents
+            .iter()
+            .any(|intent| matches!(intent, SidebarIntent::Open { .. })),
+        "dragging past slop must not fire Open"
+    );
+
+    // Drag past row slop and return onto the row: Rune suppresses on_press_tx natively.
+    rt.state.intents.clear();
+    rt.pointer_move(hx, hy);
+    rt.pointer_down(hx, hy);
+    rt.pointer_move(hx + 24.0, hy);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(hx, hy);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_up(hx, hy);
+    rt.frame(1.0 / 60.0);
+    assert!(
+        !rt.state
+            .intents
+            .iter()
+            .any(|intent| matches!(intent, SidebarIntent::Open { .. })),
+        "returning to the row after dragging past slop must not fire Open: {:?}",
+        rt.state.intents
+    );
+    assert!(
+        rt.state
+            .intents
+            .contains(&SidebarIntent::RowDragStart { item: home })
     );
 }
 

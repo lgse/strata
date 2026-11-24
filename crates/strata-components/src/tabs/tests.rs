@@ -410,6 +410,18 @@ fn variable_width_drag_reorders_narrow_and_wide_tabs_and_cancels_on_escape() {
     press(&mut state);
     assert!(!state.follow(-2.0, 0.0), "motion inside slop stays pressed");
     assert!(matches!(state.release(false, true), drag::Release::Click));
+    assert!(
+        state.take_swallowed_click(),
+        "click within slop swallows the following on_press"
+    );
+
+    press(&mut state);
+    assert!(state.follow(10.0, 0.0));
+    assert!(matches!(state.release(false, true), drag::Release::None));
+    assert!(
+        !state.take_swallowed_click(),
+        "drag past slop released over the tab must not leave a stale swallow_click"
+    );
 
     press(&mut state);
     assert!(state.follow(-114.5, 0.0));
@@ -498,6 +510,79 @@ fn escape_cancelled_drag_over_tab_does_not_swallow_keyboard_activation() {
             via: Via::Strip,
         }]
     );
+}
+
+#[test]
+fn drag_past_slop_released_over_tab_does_not_swallow_keyboard_activation() {
+    struct State {
+        strip: BrowserTabsState,
+        look: strata_kit::look::Look,
+        intents: Vec<TabsIntent>,
+    }
+    fn view(s: &State, cx: &mut rune::Cx<State>) -> rune::El {
+        let items = [
+            Tab::new(TabId(1), "Applications", IconName::Folder),
+            Tab::new(TabId(2), "~", IconName::Home),
+        ];
+        let d = TabsData::new(&items, Some(TabId(1)));
+        BrowserTabs::new(
+            &d,
+            &s.strip,
+            |s: &mut State| &mut s.strip,
+            |s| &mut s.strip.drag,
+        )
+        .on_intent(|s, intent, _| s.intents.push(intent))
+        .build(&s.look, cx)
+    }
+    for (label, release_dx) in [
+        ("released shifted over tab", 10.0_f32),
+        ("dragged past slop and returned to grab point", 0.0_f32),
+    ] {
+        let state = State {
+            strip: BrowserTabsState::default(),
+            look: strata_kit::look::Look::default(),
+            intents: Vec::new(),
+        };
+        let mut rt = rune::Runtime::new(state, view, (600.0, 48.0), rune::Env::default());
+        rt.frame(0.0);
+        rt.frame(1.0 / 60.0);
+
+        let tab1 = rt
+            .elements()
+            .into_iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some("t-tabs-1"))
+            .expect("tab 1");
+        let (x, y) = (
+            tab1.visible[0] + 24.0,
+            tab1.visible[1] + tab1.visible[3] / 2.0,
+        );
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.pointer_move(x + 12.0, y);
+        rt.pointer_move(x + release_dx, y);
+        rt.pointer_up(x + release_dx, y);
+        rt.frame(0.0);
+        assert!(
+            rt.state.intents.is_empty(),
+            "{label}: dragging active tab past slop emits no select"
+        );
+
+        rt.update(|_, tx| tx.focus("t-tabs-2", true));
+        rt.frame(0.0);
+        rt.key(rune::KeyEvent {
+            key: rune::Key::Text(" ".to_owned()),
+            mods: rune::Mods::default(),
+        });
+        rt.frame(0.0);
+        assert_eq!(
+            rt.state.intents,
+            [TabsIntent::Select {
+                id: TabId(2),
+                via: Via::Strip,
+            }],
+            "{label}: subsequent keyboard activation must not be swallowed"
+        );
+    }
 }
 
 #[test]

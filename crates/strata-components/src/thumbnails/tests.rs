@@ -92,12 +92,11 @@ fn eviction_takes_the_least_recently_shown_first() {
     // 0..4 held. Building row 0 again (drawn) makes it the most recent.
     let _ = st.thumb(key(0));
     st.sync(v, &src, view(4..5));
-    st.sync(v, &src, view(5..6));
     serve(&mut st, 0.0);
-    // Protected: 4 (previous sync) and 5. One had to go: 1, the least recently shown.
+    // Protected: 4. One had to go: 1, the least recently shown.
     assert!(!ready(&st, 1), "1 evicted first");
     assert!(ready(&st, 0) && ready(&st, 2) && ready(&st, 3));
-    st.sync(v, &src, view(6..7));
+    st.sync(v, &src, view(5..6));
     serve(&mut st, 0.0);
     assert!(!ready(&st, 2), "then 2");
     assert!(ready(&st, 0), "row 0 was drawn after 2 and 3");
@@ -122,7 +121,6 @@ fn an_evicted_image_empties_its_handle_in_place_and_shows_the_icon() {
         "the icon fades under a held image"
     );
     st.sync(v, &src, view(1..2));
-    st.sync(v, &src, view(2..3));
     serve(&mut st, 0.0);
     let after = st.thumb(key(0));
     assert_eq!(after.epoch(), before.epoch(), "the same handles");
@@ -387,15 +385,10 @@ fn rows_on_screen_are_never_evicted_and_win_over_the_budget() {
     assert!((0..10).all(|i| ready(&st, i)));
     assert_eq!(st.stats().bytes, 10 * 64);
     st.sync(v, &src, view(10..20));
-    assert!(
-        (0..10).all(|i| ready(&st, i)),
-        "the previous sync's rows stay"
-    );
     serve(&mut st, 0.0);
-    st.sync(v, &src, view(11..21));
     assert!(
         (0..10).all(|i| !ready(&st, i)),
-        "two syncs on, the old rows go"
+        "once scrolled off screen, the old rows go"
     );
     assert!((10..20).all(|i| ready(&st, i)));
     assert!(st.stats().bytes <= st.stats().protected_bytes);

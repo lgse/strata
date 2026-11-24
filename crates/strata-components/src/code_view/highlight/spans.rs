@@ -8,8 +8,6 @@ use rune::{Color, Span};
 
 use super::engine::Token;
 
-pub const MAX_SPANS: usize = u16::MAX as usize;
-
 pub(crate) fn colored(
     tokens: &[Token],
     palette: &[Option<Color>],

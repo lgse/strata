@@ -106,6 +106,8 @@ struct Grab {
     widths: Vec<f32>,
     gap: f32,
     tear: Option<TearOutSpec>,
+    /// Crossed the runtime's click slop on either axis, so no `on_press` follows the release.
+    past_slop: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -272,8 +274,23 @@ impl ReorderState {
                 widths: spec.widths,
                 gap: spec.gap,
                 tear: spec.tear,
+                past_slop: false,
             },
         };
+    }
+
+    /// Records pointer travel `offset` since the press, to know whether the runtime will suppress
+    /// the release's `on_press`.
+    pub(super) fn note_travel(&mut self, offset: [f32; 2]) {
+        if offset[0].abs() <= DRAG_SLOP && offset[1].abs() <= DRAG_SLOP {
+            return;
+        }
+        match &mut self.gesture {
+            Gesture::Pressed { grab, .. }
+            | Gesture::Reorder { grab, .. }
+            | Gesture::TearOut { grab, .. } => grab.past_slop = true,
+            Gesture::Idle { .. } => {}
+        }
     }
 
     pub(super) fn grab_point(&self) -> [f32; 2] {
@@ -318,6 +335,7 @@ impl ReorderState {
     }
 
     pub(super) fn follow(&mut self, dx: f32, dy: f32) -> bool {
+        self.note_travel([dx, dy]);
         let Some(active) = self.active_drag() else {
             return false;
         };
@@ -352,7 +370,13 @@ impl ReorderState {
     }
 
     pub(super) fn release(&mut self, cancelled: bool, on_tab: bool) -> Release {
-        let swallow_click = !cancelled && on_tab;
+        let past_slop = match &self.gesture {
+            Gesture::Pressed { grab, .. }
+            | Gesture::Reorder { grab, .. }
+            | Gesture::TearOut { grab, .. } => grab.past_slop,
+            Gesture::Idle { .. } => false,
+        };
+        let swallow_click = !cancelled && on_tab && !past_slop;
         let prev = std::mem::take(&mut self.gesture);
         let (next, out) = match prev {
             Gesture::Pressed { .. } => (Gesture::Idle { swallow_click }, Release::Click),

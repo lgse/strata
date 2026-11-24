@@ -1029,7 +1029,7 @@ fn text_spans_are_offset_into_the_whole_text() {
 }
 
 #[test]
-fn text_spans_stop_below_runes_span_limit() {
+fn text_spans_preserve_spans_past_u16_max() {
     let line = format!("x = [{}]\n", "1,".repeat(2000));
     let text = line.repeat(40);
     let mut pump = Pump::new(light());
@@ -1041,7 +1041,7 @@ fn text_spans_stop_below_runes_span_limit() {
     doc.show(0..40);
     pump.run();
     doc.poll();
-    assert_eq!(doc.text_spans(0..40).len(), MAX_SPANS);
+    assert!(doc.text_spans(0..40).len() > u16::MAX as usize);
 }
 
 #[test]
