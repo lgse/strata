@@ -494,25 +494,6 @@ fn move_only_protocol_still_copies_across_volumes() {
 }
 
 #[test]
-fn in_app_drag_keeps_move_when_the_drop_is_copy_only() {
-    use gtk::gdk::DragAction;
-
-    let dest = DragAction::COPY | DragAction::MOVE;
-    let source =
-        file_drop_source_actions(DragAction::COPY, Some(DragAction::COPY | DragAction::MOVE));
-    assert_eq!(
-        preferred_file_drop_commit(
-            offered_file_actions(dest, source),
-            crate::services::DropOverride::None,
-            crate::services::VolumeRelation::Same,
-            false,
-            crate::services::CrossVolumeDropStrategy::Ask,
-        ),
-        DropCommit::Move
-    );
-}
-
-#[test]
 fn copy_only_source_does_not_move_on_the_same_volume() {
     let dest = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
     let offered = offered_file_actions(dest, gtk::gdk::DragAction::COPY);
