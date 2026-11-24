@@ -32,10 +32,9 @@ fn assert_every_backend_decodes_within_bounds(devices: &[PathBuf], ordinary: &In
     for backend in backends(devices, MediaPreviewBackend::Automatic) {
         let args = command_args(Path::new("/input"), ordinary, &backend, Track::Video).join(" ");
         assert_eq!(present(&args, &ENCODERS), NO_TERMS);
-        assert_eq!(
-            args.contains("--as=2147483648"),
-            backend == Backend::Software
-        );
+        assert!(args.starts_with("--core=0"), "{args}");
+        assert_eq!(args.contains("--as="), backend == Backend::Software);
+        assert_eq!(args.contains("--fsize="), backend == Backend::Software);
         assert_eq!(missing(&args, &BOUNDS), NO_TERMS);
     }
 }
