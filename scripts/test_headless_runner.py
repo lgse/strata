@@ -42,34 +42,35 @@ class HeadlessRunnerTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
 
     def run_runner(self, inherited):
-        display = Mock(environment={"DISPLAY": ":99", "XDG_RUNTIME_DIR": "/private/runtime"})
-        home = Mock(variables=lambda: {"HOME": "/private/home"})
-        child = Mock(wait=lambda: 0)
-        with (
-            patch.dict(os.environ, {"PATH": "/usr/bin", **inherited}, clear=True),
-            patch.object(RUNNER, "HeadlessDisplay", return_value=display),
-            patch.object(RUNNER, "TestEnvironment", return_value=home),
-            patch.object(RUNNER.subprocess, "Popen", return_value=child) as spawn,
-            patch.object(RUNNER, "terminate") as terminate,
-            patch.object(RUNNER.sys, "argv", ["test-headless.py"]),
-        ):
-            self.assertEqual(RUNNER.main(), 0)
-        terminate.assert_called_once_with(child)
-        display.stop.assert_called_once()
-        home.cleanup.assert_called_once()
-        return spawn.call_args.kwargs["env"]
+        with tempfile.TemporaryDirectory() as home_root:
+            home = Mock(root=Path(home_root), variables=lambda: {"HOME": "/private/home"})
+            child = Mock(wait=lambda: 0)
+            with (
+                patch.dict(os.environ, {"PATH": "/usr/bin", **inherited}, clear=True),
+                patch.object(RUNNER, "TestEnvironment", return_value=home),
+                patch.object(RUNNER.subprocess, "Popen", return_value=child) as spawn,
+                patch.object(RUNNER, "terminate") as terminate,
+                patch.object(RUNNER.sys, "argv", ["test-headless.py"]),
+            ):
+                self.assertEqual(RUNNER.main(), 0)
+            terminate.assert_called_once_with(child)
+            home.cleanup.assert_called_once()
+            return spawn.call_args.kwargs["env"]
 
-    def test_cargo_uses_only_the_private_display_and_preferences(self):
+    def test_cargo_runs_headless_with_private_preferences_and_no_desktop_endpoints(self):
         environment = self.run_runner({
-            "DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-1", "GTK_MODULES": "private",
+            "DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-1",
+            "DBUS_SESSION_BUS_ADDRESS": "unix:path=/desktop/bus", "GTK_MODULES": "private",
             "TMPDIR": "/desktop/tmp", "STRATA_TEST_TMPDIR": "",
         })
-        self.assertEqual(environment["DISPLAY"], ":99")
+        self.assertNotIn("DISPLAY", environment)
         self.assertEqual(environment["HOME"], "/private/home")
         self.assertEqual(environment["WAYLAND_DISPLAY"], "strata-test-no-wayland")
+        self.assertEqual(environment["DBUS_SESSION_BUS_ADDRESS"], "unix:path=/nonexistent/strata-test-no-bus")
+        self.assertEqual(environment["GIO_USE_VFS"], "local")
         self.assertNotIn("GTK_MODULES", environment)
+        self.assertNotIn("GTK_A11Y", environment)
         self.assertNotIn("TMPDIR", environment)
-        self.assertEqual(environment["GTK_A11Y"], "none")
         self.assertEqual(environment["NO_AT_BRIDGE"], "1")
 
     def test_test_tmpdir_moves_only_the_fixtures_tmpdir(self):
@@ -80,24 +81,10 @@ class HeadlessRunnerTests(unittest.TestCase):
     def test_relative_test_tmpdir_is_refused_before_anything_starts(self):
         with (
             patch.dict(os.environ, {"STRATA_TEST_TMPDIR": "lab/tmp"}),
-            patch.object(RUNNER, "HeadlessDisplay") as display,
+            patch.object(RUNNER, "TestEnvironment") as home,
             patch.object(RUNNER.subprocess, "Popen") as spawn,
         ):
             with self.assertRaisesRegex(SystemExit, "STRATA_TEST_TMPDIR must be an absolute path"):
                 RUNNER.main()
-        display.assert_not_called()
+        home.assert_not_called()
         spawn.assert_not_called()
-
-    def test_startup_failure_never_falls_back_to_the_desktop(self):
-        display = Mock(start=Mock(side_effect=RuntimeError("no Xvfb")))
-        home = Mock()
-        with (
-            patch.object(RUNNER, "HeadlessDisplay", return_value=display),
-            patch.object(RUNNER, "TestEnvironment", return_value=home),
-            patch.object(RUNNER.subprocess, "Popen") as spawn,
-        ):
-            with self.assertRaisesRegex(RuntimeError, "no Xvfb"):
-                RUNNER.main()
-        spawn.assert_not_called()
-        display.stop.assert_called_once()
-        home.cleanup.assert_called_once()

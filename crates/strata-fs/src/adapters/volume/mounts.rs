@@ -374,7 +374,7 @@ static MOUNTINFO_FOR_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::
 #[cfg(any(test, feature = "test-support"))]
 pub fn set_mountinfo_for_isolated_test(mountinfo: Option<String>) {
     assert!(
-        std::env::var_os("STRATA_ISOLATED_GTK_TEST").is_some(),
+        std::env::var_os("STRATA_ISOLATED_TEST").is_some(),
         "the mount table override needs an isolated test process"
     );
     *MOUNTINFO_FOR_TEST

@@ -287,7 +287,7 @@ pub fn distinct_device_dirs(name: &str) -> Option<(tempfile::TempDir, tempfile::
 }
 
 /// Names the one test an isolated child runs.
-const ISOLATED_CHILD: &str = "STRATA_ISOLATED_GTK_TEST";
+const ISOLATED_CHILD: &str = "STRATA_ISOLATED_TEST";
 
 pub fn isolated_test(
     name: &str,
@@ -305,9 +305,6 @@ pub fn isolated_test(
         .into_iter()
         .map(|(key, value)| (key.as_ref().to_owned(), value.as_ref().to_owned()))
         .collect();
-    // Child processes still share the display's clipboard and pointer grabs.
-    static DISPLAY: TestMutex = TestMutex::new();
-    let _display = DISPLAY.lock().expect("display lock");
     let sandbox = tempfile::tempdir().expect("isolated preferences");
     let home = sandbox.path().join("home");
     std::fs::create_dir_all(&home).expect("isolated home");

@@ -48,8 +48,8 @@ if [[ "$group_id" != 0 ]]; then
   printf 'strata-quality:x:%s:\n' "$group_id" >> "$accounts/group"
 fi
 # Tests need O_TMPFILE in their temporary folders, which an overlay /tmp may refuse. Podman caps a
-# container at 2048 tasks by default; the lanes' libtest threads and GTK children exceed that and
-# then fail to spawn threads with EAGAIN.
+# container at 2048 tasks by default; concurrent test lanes and their isolated children can exceed
+# that and fail to spawn threads with EAGAIN.
 options=(--rm --platform=linux/amd64 --user "$user_id:$group_id" --shm-size=512m --pids-limit=-1
   --tmpfs /tmp:rw,exec,nosuid,nodev,size=2g,mode=1777)
 if [[ -z "${CI:-}" || -n "${STRATA_CONTAINER_CPU_SHARES:-}" ]]; then
@@ -106,7 +106,7 @@ exec "$engine" run "${options[@]}" \
     case "$1" in all|test)
       case "${STRATA_QUALITY_TASK:-test}" in
         build) python3 scripts/quality_ci.py build ;;
-        # Each lane starts its own private Xvfb and D-Bus session.
+        # Each lane runs headless with no display and an unreachable session bus.
         shard) STRATA_REQUIRE_DEVICE_TESTS=1 python3 scripts/quality_ci.py run "${@:2}" ;;
         test) python3 scripts/quality_ci.py local "${@:2}" ;;
         *) echo "Invalid STRATA_QUALITY_TASK" >&2; exit 2 ;;
