@@ -280,7 +280,6 @@ fn search_field(look: &Look, form: &Form) -> El {
         )
         .child(input)
         .role("textbox")
-        .on_secondary_press(|_: &mut App, _, _| {})
         .radius(kit.radius.md)
         .fill(kit.c.bg_base)
         .token_motion(kit.motion.control);

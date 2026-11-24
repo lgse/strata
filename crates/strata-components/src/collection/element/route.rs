@@ -164,6 +164,7 @@ fn after<S: 'static>(
             Effect::Glide { y, spring } => {
                 tx.scroll_to_with(keys::viewport_path(&cfg.key), 0.0, y, spring);
             }
+            Effect::StopScroll => tx.stop_scroll(keys::viewport_path(&cfg.key)),
             Effect::KeyboardMode(on) => {
                 let st = (cfg.get_mut)(s).1;
                 st.keyboard = on;
@@ -292,6 +293,66 @@ fn default_region<S: 'static>(
     } else {
         Region::Gutter
     }
+}
+
+/// Handles assistive-technology actions (such as AT-SPI / AccessKit `Action::Click`) bubbled
+/// from composite option/row descendants that intentionally carry no per-row pointer handlers.
+pub(super) fn on_a11y_action<S: 'static>(
+    cfg: &Rc<Config<S>>,
+    s: &mut S,
+    key: &str,
+    action: rune::accesskit::Action,
+    tx: &mut Tx,
+) -> bool {
+    if action != rune::accesskit::Action::Click {
+        return false;
+    }
+    let Some(id) = keys::parse_row_key(key) else {
+        return false;
+    };
+    let index = {
+        let (src, _) = (cfg.get)(s);
+        src.index_of(id)
+    };
+    let Some(index) = index else {
+        return false;
+    };
+    let (point, window) = {
+        let g = geometry(cfg, s);
+        let r = g.rect_of(index);
+        let point = Point::new(r.x + r.w / 2.0, r.y + r.h / 2.0);
+        let st = (cfg.get)(s).1;
+        let window = Point::new(
+            st.viewport.x + point.x,
+            st.viewport.y + point.y - st.scroll.get(),
+        );
+        (point, window)
+    };
+    let base = PointerInput {
+        phase: PointerPhase::Down,
+        button: PointerButton::Primary,
+        point,
+        window,
+        travel: Point::new(0.0, 0.0),
+        hit: Hit {
+            index: Some(index),
+            region: Region::Content,
+        },
+        mods: Mods::default(),
+        clicks: 1,
+        cancelled: false,
+        now: tx.clock(),
+    };
+    let _ = route_pointer(cfg, s, tx, &base);
+    let up = PointerInput {
+        phase: PointerPhase::Up,
+        ..base
+    };
+    let _ = route_pointer(cfg, s, tx, &up);
+    if !cfg.keys_by_host {
+        tx.focus(&*cfg.key, true);
+    }
+    true
 }
 
 /// `on_drag` on the container.

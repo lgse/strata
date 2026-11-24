@@ -284,6 +284,12 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
         crate::clipboard::bind(&mut app, clip_for_init);
         crate::dnd::bind(&mut app, dnd_for_init);
         shell::bind_backdrop_blur(&mut app, blur_for_init);
+        let wake = registered.clone();
+        app.window
+            .thumbnails_mut()
+            .set_cache(std::sync::Arc::new(rune::ImageCache::new(
+                std::sync::Arc::new(move || wake.wake()),
+            )));
         follow_queue(&app, registered.clone());
         opened(shell::window_id(&app), registered);
         if let Some(initial) = initial {
@@ -309,7 +315,8 @@ fn run_initial(
     UI.with(|cell| cell.set(ui))
         .map_err(|_| "the windows are already running on this thread".to_owned())?;
     super::floating::bind(ui);
-    let app = extend(window(ui, Start::New(Box::new((settings, initial)))));
+    let app =
+        extend(window(ui, Start::New(Box::new((settings, initial))))).on_display_close(shut_down);
     let glib = GlibLoop::start(glib::MainContext::default(), notify)
         .map_err(|error| format!("unable to start the GLib loop: {error}"))?;
     GLIB.with(|cell| cell.set(glib))

@@ -913,6 +913,7 @@ fn primary_round_trip(b: B) {
         &[Offer::text(UTF8, "the peer's primary")],
     );
     demo.change(at, "lost", Some(copy));
+    demo.change(at, "offered", None);
     let got = demo.read(Selection::Primary, &[UTF8], None);
     assert_eq!(got["text"], "the peer's primary");
     // The clipboard is apart from it.

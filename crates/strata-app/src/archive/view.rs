@@ -135,7 +135,6 @@ fn field_frame(look: &Look, inner: El, focused: bool, invalid: bool) -> El {
     let kit = &look.kit;
     let framed = inner
         .role("textbox")
-        .on_secondary_press(|_: &mut App, _, _| {})
         .radius(kit.radius.md)
         .fill(kit.c.bg_base)
         .token_motion(kit.motion.control);

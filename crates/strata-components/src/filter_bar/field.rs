@@ -89,20 +89,10 @@ pub(crate) fn input<S: 'static>(
     field
 }
 
-pub(crate) fn frame<S: 'static>(
-    look: &Look,
-    inner: El,
-    focused: bool,
-    invalid: bool,
-    menu: &MenuFn<S>,
-) -> El {
+pub(crate) fn frame(look: &Look, inner: El, focused: bool, invalid: bool) -> El {
     let k = &look.kit;
-    let on_menu = menu.clone();
     let e = inner
         .role("textbox")
-        .on_secondary_press(move |s: &mut S, p: PointerPress, tx: &mut Tx| {
-            on_menu(s, Point::new(p.x, p.y), tx)
-        })
         .radius(k.radius.md)
         .fill(k.c.bg_base)
         .token_motion(k.motion.control);

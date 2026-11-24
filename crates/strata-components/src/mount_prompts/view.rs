@@ -338,7 +338,7 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
                 .key(format!("{dk}-reveal")),
             );
         }
-        let mut frame = field::frame(look, inner, edit.focused && !disabled, false, &menu);
+        let mut frame = field::frame(look, inner, edit.focused && !disabled, false);
         if disabled {
             frame = frame.layer_opacity(0.5);
         }

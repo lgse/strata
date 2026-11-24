@@ -96,17 +96,18 @@ impl Staged {
         let stage = &mut *self.stage.borrow_mut();
         if let Some(event) = event {
             let host = stage.host();
-            host.set_key_origin(origin);
             host.modifiers(event.mods);
             let runtime = host.runtime();
-            runtime.key(event.clone());
+            match origin.and_then(|origin| Some((origin.physical?, origin.base))) {
+                Some((physical, base)) => runtime.key_with(event.clone(), physical, base),
+                None => runtime.key(event.clone()),
+            }
             runtime.key_up(event);
         }
         self.log.key(name, true);
         self.log.key(name, false);
         self.show_modifiers(stage);
         stage.settle();
-        stage.host().set_key_origin(None);
     }
 
     fn wheel_click(&self, x: f32, y: f32, delta: f32) -> WheelEvent {
@@ -160,7 +161,6 @@ impl Host for Staged {
     async fn settle(&self) {
         let mut stage = self.stage.borrow_mut();
         stage.settle();
-        stage.host().set_key_origin(None);
     }
 
     async fn sleep(&self, time: Duration) {
@@ -245,11 +245,12 @@ impl Host for Staged {
         let origin = self.keyboard.borrow().origin();
         let host = stage.host();
         if pressed {
-            host.set_key_origin(origin);
             host.modifiers(event.mods);
-            host.runtime().key(event);
+            match origin.and_then(|origin| Some((origin.physical?, origin.base))) {
+                Some((physical, base)) => host.runtime().key_with(event, physical, base),
+                None => host.runtime().key(event),
+            }
         } else {
-            host.set_key_origin(None);
             host.runtime().key_up(event);
             self.show_modifiers(stage);
         }

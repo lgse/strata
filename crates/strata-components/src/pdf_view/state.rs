@@ -569,6 +569,7 @@ impl PdfState {
 
     pub(crate) fn set_viewport(&mut self, rect: [f32; 4], scale: f32, tx: &mut Tx) -> bool {
         let old = self.viewport;
+        let rescaled = old.is_some() && self.scale != scale;
         self.scale = scale;
         let widened = old.is_some_and(|o| (o[2] - rect[2]).abs() > 0.25);
         if widened {
@@ -583,6 +584,12 @@ impl PdfState {
             self.zoom_gen = self.zoom_gen.wrapping_add(1);
             self.place_reveal(tx);
             self.wake = self.wake.wrapping_add(1);
+            return true;
+        }
+        if rescaled {
+            let vis = self.visible();
+            self.set_visible(vis);
+            tx.wake_after(Duration::ZERO);
             return true;
         }
         old.is_some_and(|o| (o[3] - rect[3]).abs() > 0.25)

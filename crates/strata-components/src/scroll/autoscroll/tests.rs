@@ -18,6 +18,7 @@ const S: AutoscrollSettings = AutoscrollSettings::STRATA;
 enum Req {
     Glide(String, f32, f32),
     Jump(String, f32, f32),
+    Stop(String),
     Wake,
 }
 
@@ -30,6 +31,9 @@ impl Out for Rec {
     }
     fn jump(&mut self, path: &str, x: f32, y: f32) {
         self.0.push(Req::Jump(path.to_owned(), x, y));
+    }
+    fn stop(&mut self, path: &str) {
+        self.0.push(Req::Stop(path.to_owned()));
     }
     fn wake(&mut self) {
         self.0.push(Req::Wake);
@@ -204,7 +208,7 @@ fn back_into_the_dead_zone_the_view_stops_where_it_is() {
     m.track(Point::new(400.0, 305.0));
     let mut out = Rec::default();
     m.step(1.0 / 60.0, true, &mut out);
-    assert_eq!(out.0, vec![Req::Jump("list/viewport".into(), 0.0, 1040.0)]);
+    assert_eq!(out.0, vec![Req::Stop("list/viewport".into())]);
 }
 
 #[test]
@@ -248,19 +252,19 @@ fn a_target_that_stops_is_stopped_once_while_another_moves_on() {
     m.step(0.0, true, &mut rec);
     // The sideways scroll reaches its end; the vertical one goes on.
     side.set(feed([900.0, 0.0], [900.0, 0.0]).get());
-    let jumps = |rec: &Rec| {
+    let stops = |rec: &Rec| {
         rec.0
             .iter()
-            .filter(|q| matches!(q, Req::Jump(p, ..) if p == "list-scroll"))
+            .filter(|q| matches!(q, Req::Stop(p) if p == "list-scroll"))
             .count()
     };
     rec.0.clear();
     m.step(1.0 / 60.0, true, &mut rec);
-    assert_eq!(jumps(&rec), 1, "stopped as it reached its end: {:?}", rec.0);
+    assert_eq!(stops(&rec), 1, "stopped as it reached its end: {:?}", rec.0);
     for i in 2..6 {
         rec.0.clear();
         m.step(f64::from(i) / 60.0, true, &mut rec);
-        assert_eq!(jumps(&rec), 0, "and left alone after: {:?}", rec.0);
+        assert_eq!(stops(&rec), 0, "and left alone after: {:?}", rec.0);
         assert!(
             rec.0
                 .iter()
@@ -280,7 +284,7 @@ fn a_stop_leaves_the_view_where_it_is() {
     f.set(p);
     let mut out = Rec::default();
     assert!(m.stop_now(&mut out));
-    assert_eq!(out.0, vec![Req::Jump("list/viewport".into(), 0.0, 1020.0)]);
+    assert_eq!(out.0, vec![Req::Stop("list/viewport".into())]);
     assert!(!m.active());
     let mut out = Rec::default();
     assert!(!m.step(0.1, true, &mut out));
@@ -300,7 +304,7 @@ fn an_escape_stops_on_the_next_frame() {
         m.step(1.0 / 60.0, true, &mut out),
         "the host draws the shield away"
     );
-    assert!(matches!(out.0[..], [Req::Jump(..)]));
+    assert!(matches!(out.0[..], [Req::Stop(..)]));
     assert!(!m.active());
 }
 
@@ -477,8 +481,8 @@ fn a_press_without_a_shield_stops_every_moving_target_on_the_next_frame() {
     assert_eq!(
         rec.0,
         vec![
-            Req::Jump("list/viewport".into(), 0.0, 0.0),
-            Req::Jump("list-scroll".into(), 0.0, 0.0),
+            Req::Stop("list/viewport".into()),
+            Req::Stop("list-scroll".into()),
         ]
     );
 }

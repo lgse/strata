@@ -44,6 +44,13 @@ pub fn row_key(id: EntryId) -> String {
     prefixed_u64("row-", id.get())
 }
 
+/// Parses an entry id from a row key or key path (`"row-42"` or `"…/row-42"`).
+pub(super) fn parse_row_key(key: &str) -> Option<EntryId> {
+    let leaf = key.rsplit('/').next()?;
+    let raw = leaf.strip_prefix("row-")?.parse::<u64>().ok()?;
+    Some(EntryId::new(raw))
+}
+
 /// The key of the header line of the group keyed `key` (`Group::key`).
 pub fn header_key(key: u64) -> String {
     prefixed_u64("head-", key)

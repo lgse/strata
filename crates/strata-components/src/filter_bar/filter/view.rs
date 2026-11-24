@@ -156,13 +156,7 @@ impl<S: 'static> FilterBar<S> {
             .w_full()
             .px(look.space.sm)
             .py(look.space.xs)
-            .child(field::frame(
-                look,
-                inner,
-                st.edit.focused,
-                false,
-                &handlers.menu,
-            ));
+            .child(field::frame(look, inner, st.edit.focused, false));
         if let Some(to) = &self.focus_return {
             bar = bar.focus_return(to.clone());
         }

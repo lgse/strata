@@ -577,19 +577,6 @@ fn focus_accent_bar(look: &Look, content: El) -> El {
         .child(content.pin(Some(bleed), Some(-indicator), Some(bleed), Some(bleed)))
 }
 
-pub(crate) fn return_as_space<S: 'static>(_: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    if ev.key != rune::Key::Enter || ev.mods != rune::Mods::default() {
-        return false;
-    }
-    if !tx.key_repeat() {
-        tx.send_key(KeyEvent {
-            key: rune::Key::Text(" ".to_owned()),
-            mods: rune::Mods::default(),
-        });
-    }
-    true
-}
-
 fn drawer_key<S: 'static>(
     shared: &Shared<S>,
     s: &mut S,

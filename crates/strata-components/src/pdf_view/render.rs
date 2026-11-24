@@ -66,7 +66,7 @@ impl Paint {
     }
 }
 
-pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look, scale: f32) -> El {
+pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look) -> El {
     let key = st.key().to_owned();
     let scroll_key = st.scroll_key();
     let get_mut = ctx.get_mut;
@@ -107,7 +107,7 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look, sca
             sideways.follow(p);
         })
         .on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
-            if !get_mut(s).set_viewport(r, scale, tx) {
+            if !get_mut(s).set_viewport(r, tx.scale(), tx) {
                 tx.live_only();
             }
         })
@@ -183,23 +183,6 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look, sca
                     if !get_mut(s).apply_level_request(tx) {
                         tx.live_only();
                     }
-                    tx.wake_after(Duration::ZERO);
-                }),
-        );
-    }
-    if st.viewport.is_some() && st.scale != scale {
-        root = root.child(
-            el().key(format!("{key}-rescale-{:08x}", scale.to_bits()))
-                .pin(Some(0.0), Some(0.0), None, None)
-                .size(0.0, 0.0)
-                .a11y_hidden()
-                .on_layout_tx(move |s: &mut S, _r: [f32; 4], tx: &mut Tx| {
-                    let st = get_mut(s);
-                    if let Some(vp) = st.viewport {
-                        st.set_viewport(vp, scale, tx);
-                    }
-                    let vis = st.visible();
-                    st.set_visible(vis);
                     tx.wake_after(Duration::ZERO);
                 }),
         );

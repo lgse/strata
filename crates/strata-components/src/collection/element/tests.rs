@@ -3624,3 +3624,20 @@ fn the_first_move_after_a_refused_system_drop_on_a_row_is_no_arrival() {
     wake_until(&mut rt, 1.0, |_| false);
     assert_eq!(rested(&rt), []);
 }
+
+#[test]
+fn a11y_click_on_an_option_selects_it_and_focuses_the_collection() {
+    let mut rt = runtime(Host::new(20));
+    let taken = rt.accessibility_action("row-3", rune::accesskit::Action::Click, None);
+    rt.frame(1.0 / 60.0);
+    assert!(taken, "option Click bubbles to Collection::on_a11y_action");
+    assert_eq!(rt.state.coll.selection.cursor(), Some(id(3)));
+    assert!(rt.state.coll.selection.is_selected_at(&rt.state.src, 3));
+    let focused: Vec<_> = rt
+        .elements()
+        .into_iter()
+        .filter(|e| e.focused)
+        .filter_map(|e| e.key)
+        .collect();
+    assert_eq!(focused, [SCOPE]);
+}

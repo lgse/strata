@@ -29,14 +29,14 @@ fn a_press_starts_a_drag_past_the_threshold_and_not_before() {
 }
 
 #[test]
-fn on_wayland_the_escapes_cancelled_up_is_swallowed() {
+fn on_wayland_the_cancelled_up_is_swallowed() {
     let mut g = Guard::default();
     g.phase(step(Phase::Down, 0.0, false), 8.0);
     assert_eq!(
         g.phase(step(Phase::Move, 20.0, false), 8.0),
         Decision::Start
     );
-    g.started(Release::Escape);
+    assert!(g.started(Release::CancelPointer));
     assert_eq!(g.phase(step(Phase::Move, 30.0, false), 8.0), Decision::Own);
     assert_eq!(g.phase(step(Phase::Up, 30.0, true), 8.0), Decision::Own);
     assert_eq!(
@@ -183,24 +183,18 @@ fn source_actions_unknown_yet_negotiate_as_copy() {
 }
 
 #[test]
-fn the_escape_is_allowed_once_and_only_for_a_press_seen() {
+fn cancel_pointer_is_requested_only_for_a_wayland_press_seen() {
     let mut g = Guard::default();
-    g.started(Release::Escape);
-    assert!(!g.take_escape(), "no press seen: an app's own start_drag");
-    let mut g = Guard::default();
-    g.phase(step(Phase::Down, 0.0, false), 8.0);
-    g.started(Release::Escape);
-    assert!(g.take_escape());
-    assert!(!g.take_escape(), "once");
+    assert!(
+        !g.started(Release::CancelPointer),
+        "no press seen: an app's own start_drag"
+    );
     let mut g = Guard::default();
     g.phase(step(Phase::Down, 0.0, false), 8.0);
-    g.started(Release::Escape);
-    assert_eq!(g.phase(step(Phase::Up, 30.0, false), 8.0), Decision::Own);
-    assert!(!g.take_escape(), "the Up has come: the capture is gone");
+    assert!(g.started(Release::CancelPointer));
     let mut g = Guard::default();
     g.phase(step(Phase::Down, 0.0, false), 8.0);
-    g.started(Release::RealUp);
-    assert!(!g.take_escape(), "X11 sends none");
+    assert!(!g.started(Release::RealUp), "X11 keeps the capture");
 }
 
 #[test]

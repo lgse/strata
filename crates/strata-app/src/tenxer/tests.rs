@@ -5,7 +5,6 @@ use strata_core::model::Location;
 
 use crate::{
     App,
-    commands::{Origin, XKey},
     host::offscreen::Offscreen,
     preview, shell,
     test_support::{
@@ -153,13 +152,16 @@ fn russian_layout_origin_moves_cursor_without_replacing_selection() {
             host.app().browser().select(0, 0);
             while host.turn() {}
 
-            // X keycode 44 is physical J, which types Cyrillic 'о' unshifted on `ru`.
-            host.set_key_origin(Some(Origin::from_x(XKey {
-                keycode: 44,
-                base: Some('о'),
-            })));
-            tap(&mut host, char_key("о"), Mods::default());
-            host.set_key_origin(None);
+            // Physical J types Cyrillic 'о' unshifted on `ru`.
+            host.runtime().key_with(
+                KeyEvent {
+                    key: char_key("о"),
+                    mods: Mods::default(),
+                },
+                rune::PhysicalKeyCode::KeyJ,
+                Some('о'),
+            );
+            while host.turn() {}
 
             let cursor = host.app().browser().focused_item().map(|(_, pos, _)| pos);
             assert_eq!(cursor, Some(1));
@@ -458,17 +460,20 @@ fn sidebar_routes_russian_l_and_unclaimed_keys_to_escape_and_listing() {
             );
             tap(&mut host, Key::Escape, Mods::default());
 
-            // Physical `L` (X keycode 46, Cyrillic 'д' on `ru`) activates the focused sidebar row.
+            // Physical `L` (Cyrillic 'д' on `ru`) activates the focused sidebar row.
             host.runtime().update(|_, tx| {
                 tx.focus("sidebar-place-home", true);
             });
             while host.turn() {}
-            host.set_key_origin(Some(Origin::from_x(XKey {
-                keycode: 46,
-                base: Some('д'),
-            })));
-            tap(&mut host, char_key("д"), Mods::default());
-            host.set_key_origin(None);
+            host.runtime().key_with(
+                KeyEvent {
+                    key: char_key("д"),
+                    mods: Mods::default(),
+                },
+                rune::PhysicalKeyCode::KeyL,
+                Some('д'),
+            );
+            while host.turn() {}
             assert!(host.run_until(PATIENCE, |h| {
                 h.app().browser().active_location() == Some(Location::local(&home))
             }));

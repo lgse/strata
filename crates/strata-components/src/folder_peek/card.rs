@@ -31,6 +31,7 @@ pub(super) fn card<S: 'static>(sh: &Rc<Shared<S>>, s: &S) -> Option<El> {
     let mut layer = Vec::new();
     let _ = HoverCard::new(format!("{}-peek", target.collection))
         .placement(Placement::RightStart)
+        .width(WIDTH)
         .child(content)
         .open(true)
         .build(&look.kit, &mut layer);

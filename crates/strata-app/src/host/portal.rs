@@ -162,6 +162,10 @@ pub(crate) fn run_with(
         .on_quit(|_: &mut Daemon, _: &mut Tx| {
             crate::dnd::shutdown();
             let _ = foreign_parent::shutdown();
+        })
+        .on_display_close(|| {
+            crate::dnd::shutdown();
+            let _ = foreign_parent::shutdown();
         });
     let daemon_handle = daemon_app.handle();
     if let Some(started) = hooks.started.take() {

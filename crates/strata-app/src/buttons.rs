@@ -3,8 +3,7 @@
 use rune::{El, Key, KeyEvent, Mods, Tx};
 
 pub(crate) fn on_return(key: impl Into<String>, button: El) -> El {
-    taking_return(key, button)
-        .on_key(|_: &mut crate::App, event: &KeyEvent, tx: &mut Tx| pressed(event, tx))
+    taking_return(key, button).press_on_return()
 }
 
 pub(crate) fn taking_return(key: impl Into<String>, button: El) -> El {

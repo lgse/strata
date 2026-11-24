@@ -71,7 +71,7 @@ fn heard(s: &mut P, ev: &KeyEvent, _: &mut Tx) -> bool {
 type Jobs = Arc<Mutex<Vec<Job>>>;
 
 fn runtime(mode: Mode) -> (Runtime<P>, Jobs) {
-    FAKE_START.set(Some(Release::Escape));
+    FAKE_START.set(Some(Release::CancelPointer));
     let st = P {
         dnd: Dnd::new(),
         mode,
@@ -114,14 +114,6 @@ fn route(rt: &mut Runtime<P>, r: Routed) {
     rt.frame(0.0);
 }
 
-fn holding(rt: &mut Runtime<P>) {
-    rt.update_if(|s, tx| {
-        s.dnd.clone().holding_for_test(tx);
-        false
-    });
-    rt.frame(0.0);
-}
-
 fn let_time_pass(rt: &mut Runtime<P>, jobs: &Jobs) {
     std::thread::sleep(Duration::from_millis(400));
     let posted: Vec<Job> =
@@ -138,10 +130,11 @@ fn let_time_pass(rt: &mut Runtime<P>, jobs: &Jobs) {
 }
 
 #[test]
-fn a_click_after_a_drag_no_proof_reached_gets_no_escape() {
+fn a_click_after_a_drag_works_without_leaking_keys() {
     let (mut rt, jobs) = runtime(Mode::Plain);
     let (x, y) = rt.find("tile").expect("tile");
     let id = start(&mut rt, x, y);
+    assert!(!rt.pressing(), "cancel_pointer ended the capture at start");
     route(
         &mut rt,
         Routed::Ended {
@@ -149,20 +142,15 @@ fn a_click_after_a_drag_no_proof_reached_gets_no_escape() {
             outcome: rune::DragOutcome::Cancelled,
         },
     );
-    assert!(rt.pressing(), "no proof: Rune still holds the press");
     let (bx, by) = rt.find("button").expect("button");
     rt.pointer_move(bx, by);
     rt.pointer_down(bx, by);
     rt.frame(0.0);
     rt.pointer_up(bx, by);
     rt.frame(0.0);
-    assert!(!rt.pressing(), "the press replaced the capture");
+    assert!(!rt.pressing());
     let_time_pass(&mut rt, &jobs);
-    assert!(
-        rt.state.keys.is_empty(),
-        "an Escape reached the app: {:?}",
-        rt.state.keys
-    );
+    assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
 }
 
 #[test]
@@ -192,49 +180,22 @@ fn the_next_drag_is_not_cancelled_by_an_earlier_one() {
 }
 
 #[test]
-fn a_drag_no_proof_reached_holds_the_capture_until_the_next_press() {
-    let (mut rt, jobs) = runtime(Mode::Plain);
-    let (x, y) = rt.find("tile").expect("tile");
-    let id = start(&mut rt, x, y);
-    route(
-        &mut rt,
-        Routed::Ended {
-            id,
-            outcome: rune::DragOutcome::Copied,
-        },
-    );
-    let_time_pass(&mut rt, &jobs);
-    assert!(rt.pressing(), "held until the next press");
-    let (bx, by) = rt.find("button").expect("button");
-    rt.pointer_move(bx, by);
-    rt.pointer_down(bx, by);
-    rt.pointer_up(bx, by);
-    rt.frame(0.0);
-    assert!(!rt.pressing());
-    assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
-}
-
-#[test]
-fn a_source_whose_centre_is_clipped_still_gets_its_escape() {
+fn a_source_whose_centre_is_clipped_still_releases_capture() {
     let (mut rt, _) = runtime(Mode::Clipped);
     let (cx, cy) = rt.find("clip").expect("clip");
     start(&mut rt, cx, cy + 15.0);
-    holding(&mut rt);
-    assert!(!rt.pressing(), "the proof ended the capture");
+    assert!(!rt.pressing(), "cancel_pointer ended the capture");
     assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
 }
 
 #[test]
-fn a_source_that_loses_its_on_drag_clears_capture_without_leaking_escape() {
+fn a_source_that_loses_its_on_drag_clears_capture_without_leaking_keys() {
     let (mut rt, _) = runtime(Mode::LosesHandler);
     let (x, y) = rt.find("tile").expect("tile");
     start(&mut rt, x, y);
-    // Drain the cancelled Phase::Up Rune queued when the source lost its on_drag handler.
     rt.frame(0.0);
-    assert!(!rt.pressing(), "losing on_drag ended the capture");
-    holding(&mut rt);
-    assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
     assert!(!rt.pressing());
+    assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
 }
 
 mod modal {
@@ -274,7 +235,7 @@ mod modal {
 
     #[test]
     fn a_modal_opened_in_on_end_is_not_dismissed() {
-        FAKE_START.set(Some(Release::Escape));
+        FAKE_START.set(Some(Release::CancelPointer));
         let st = M {
             dnd: Dnd::new(),
             dialog: false,
@@ -363,8 +324,8 @@ mod modal_at_start {
     }
 
     #[test]
-    fn a_modal_opened_in_on_start_is_not_dismissed_by_a_stray_escape() {
-        FAKE_START.set(Some(Release::Escape));
+    fn a_modal_opened_in_on_start_is_not_dismissed() {
+        FAKE_START.set(Some(Release::CancelPointer));
         let st = M {
             dnd: Dnd::new(),
             dialog: false,
@@ -381,14 +342,7 @@ mod modal_at_start {
         rt.frame(0.0);
         rt.frame(0.0);
         assert!(rt.state.dialog, "on_start opened the modal");
-        assert!(!rt.pressing(), "its mounting cleared the capture");
-        rt.update_if(|s, tx| {
-            s.dnd.clone().holding_for_test(tx);
-            false
-        });
-        rt.frame(0.0);
-        rt.frame(0.0);
-        assert!(rt.state.dialog, "the modal stays open");
+        assert!(!rt.pressing());
         assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
     }
 }

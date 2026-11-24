@@ -218,6 +218,7 @@ impl<'a, S: 'static> Viewport<'a, S> {
             frame = frame.on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
                 let st = access(s);
                 let size = [r[2], r[3]];
+                let scale = tx.scale();
                 if st.frame() == Some(size) && st.scale() == scale {
                     // Only moved (a scroll or a sibling around it): nothing the view reads.
                     tx.live_only();
@@ -226,22 +227,6 @@ impl<'a, S: 'static> Viewport<'a, S> {
                 let report = st.set_frame(size, scale);
                 emit(&on_zoom, s, report, tx);
             });
-        }
-
-        // Rune fires `on_layout` only when a rect changes in points, not on a display-scale-only
-        // change; mount a scale-keyed probe element to trigger `sync_scale`.
-        if st.frame().is_some() && st.scale() != scale {
-            let on_zoom = on_zoom.clone();
-            frame = frame.child(
-                el().key(format!("{key}-rescale-{:08x}", scale.to_bits()))
-                    .role("presentation")
-                    .pin(Some(0.0), Some(0.0), None, None)
-                    .size(0.0, 0.0)
-                    .on_layout_tx(move |s: &mut S, _r: [f32; 4], tx: &mut Tx| {
-                        let report = access(s).sync_scale(scale);
-                        emit(&on_zoom, s, report, tx);
-                    }),
-            );
         }
 
         match placed {

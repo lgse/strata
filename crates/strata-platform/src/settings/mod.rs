@@ -2,9 +2,9 @@
 
 //! XDG Settings portal watcher delivering desktop settings changes onto Rune's loop.
 //!
-//! Rune reads only `color-scheme` from the Settings portal (not text scale, double-click
-//! interval, drag threshold, caret blink, `reduced-motion`, or `remember-recent-files`) and
-//! hardcodes a 0.5 s Linux double-click interval in windowed apps.
+//! Rune reads `color-scheme` and the double-click interval natively, but not text scale, drag
+//! threshold, caret blink, animations, `reduced-motion`, or `remember-recent-files`, and does not
+//! expose a getter for the desktop double-click interval to custom pointer state machines.
 
 mod fallback;
 mod keys;

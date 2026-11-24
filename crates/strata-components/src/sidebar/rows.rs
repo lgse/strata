@@ -361,7 +361,12 @@ pub(crate) fn folder_row<S: 'static>(
         rail_row(look, icon, spec.selected)
     } else {
         let trailing = match (spec.keycap, ctx.state.keycaps) {
-            (Some(cap), true) => Some(Keybind::new(&[cap]).build(&look.kit).a11y_hidden()),
+            (Some(cap), true) => Some(
+                Keybind::new(&[cap])
+                    .keep_case()
+                    .build(&look.kit)
+                    .a11y_hidden(),
+            ),
             _ => None,
         };
         full_row(look, icon, spec.label, spec.selected, trailing)

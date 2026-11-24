@@ -43,12 +43,11 @@ pub(super) struct Form {
     pub(super) connecting: bool,
     pub(super) error: Option<String>,
     pub(super) attempt: u64,
-    pub(super) return_focus: Option<String>,
     pending: Option<Pending>,
 }
 
 impl Form {
-    fn new(generation: u64, return_focus: Option<String>) -> Self {
+    fn new(generation: u64) -> Self {
         Self {
             generation,
             address: TextEdit::new(""),
@@ -56,7 +55,6 @@ impl Form {
             connecting: false,
             error: None,
             attempt: 0,
-            return_focus,
             pending: None,
         }
     }
@@ -146,7 +144,7 @@ fn poll_pending(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     }
 }
 
-fn connect_to_server(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
+fn connect_to_server(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     if app
         .connect_server
         .form
@@ -155,16 +153,9 @@ fn connect_to_server(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     {
         app.browser.bump_navigation_generation();
     }
-    // Work around upstream Rune #559/#1492 regression (`a3d7bff`): when a modal context menu
-    // closes and this modal dialog opens in the same commit, Rune's `ModalEffect::Return` checks
-    // `can_focus` against the already-mounted new modal and drops the opener's focus.
-    let return_focus = match call.on {
-        crate::commands::On::Place(_) => Some("sidebar-place-network".to_owned()),
-        _ => shell::view_focus(app).map(str::to_owned),
-    };
     let state = &mut app.connect_server;
     state.opened += 1;
-    state.form = Some(Form::new(state.opened, return_focus));
+    state.form = Some(Form::new(state.opened));
     state.open = true;
     Outcome::Ran
 }

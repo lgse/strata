@@ -528,7 +528,7 @@ impl<S: 'static> IconPicker<S> {
                     .key(format!("{}-clear", self.key)),
             );
         }
-        field::frame(look, inner, st.field.focused, false, &menu)
+        field::frame(look, inner, st.field.focused, false)
     }
 
     fn clear(&self, s: &mut S, tx: &mut Tx) {

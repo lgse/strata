@@ -29,7 +29,6 @@ struct Item {
     folder: bool,
     /// Told apart from the item before, so each dialog takes its own first focus.
     generation: u64,
-    return_focus: Option<String>,
 }
 
 pub(crate) struct Customize {
@@ -87,14 +86,7 @@ fn customize(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     let Some(path) = location.native_path().map(PathBuf::from) else {
         return Outcome::Declined;
     };
-    // Work around upstream Rune #559/#1492 regression (`a3d7bff`): when a modal context menu
-    // closes and this modal dialog opens in the same commit, Rune's `ModalEffect::Return` checks
-    // `can_focus` against the already-mounted new modal and drops the opener's focus.
-    let return_focus = match call.on {
-        On::Row(_) | On::Column(_) => shell::view_focus(app).map(str::to_owned),
-        _ => None,
-    };
-    open(app, path, name_of(&location), folder, return_focus);
+    open(app, path, name_of(&location), folder);
     Outcome::Ran
 }
 
@@ -115,7 +107,7 @@ fn name_of(location: &Location) -> String {
         .unwrap_or_else(|| location.display_name())
 }
 
-fn open(app: &mut App, path: PathBuf, name: String, folder: bool, return_focus: Option<String>) {
+fn open(app: &mut App, path: PathBuf, name: String, folder: bool) {
     let icon = shell::preferences(app).item_icon(&path).map(str::to_owned);
     let customize = &mut app.customize;
     customize.custom.close();
@@ -127,7 +119,6 @@ fn open(app: &mut App, path: PathBuf, name: String, folder: bool, return_focus: 
         name,
         folder,
         generation: customize.opened,
-        return_focus,
     });
     customize.open = true;
 }
@@ -208,18 +199,15 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     };
     let mut over = Vec::new();
     let children = body::children(app, &shown, &mut over);
-    let mut dialog = StrataDialog::new(format!("customize-{}", item.generation), title, close)
+    StrataDialog::new(format!("customize-{}", item.generation), title, close)
         .open(customize.open)
         .subtitle(item.name.clone())
         .children(children)
         .secondary(tr("Clear"), clear)
         .primary(tr("Done"), close)
         .initial_focus(Focus::Primary)
-        .close_label(tr("Close dialog"));
-    if let Some(target) = &item.return_focus {
-        dialog = dialog.return_focus(target.clone());
-    }
-    dialog.build(&app.look, frame.layer);
+        .close_label(tr("Close dialog"))
+        .build(&app.look, frame.layer);
     frame.layer.extend(over);
     custom::build(app, item, frame);
     None

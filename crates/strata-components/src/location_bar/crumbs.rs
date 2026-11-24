@@ -236,19 +236,6 @@ fn ancestor_handlers<S: 'static>(cx: &Ctx<'_, S>, button: El, i: usize, id: &str
         .drop_zone_keyed(button, crumb_key(cx.key, i), drops::zone(cx, i, id))
 }
 
-fn return_as_space<S: 'static>(_: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    if ev.key != Key::Enter || ev.mods != Mods::default() {
-        return false;
-    }
-    if !tx.key_repeat() {
-        tx.send_key(KeyEvent {
-            key: Key::Text(" ".to_owned()),
-            mods: Mods::default(),
-        });
-    }
-    true
-}
-
 fn copy_path_button<S: 'static>(cx: &Ctx<'_, S>, fade: Anim) -> El {
     let look = cx.look;
     let k = &look.kit;
@@ -287,7 +274,7 @@ fn copy_path_button<S: 'static>(cx: &Ctx<'_, S>, fade: Anim) -> El {
             tx.wake_at(tx.clock() + COPIED_FOR);
             emit(s, LocationIntent::CopyPath, tx);
         })
-        .on_key(return_as_space::<S>)
+        .press_on_return()
         .child(
             icon(look.icon(icon_name), look.icon_size.md)
                 .key("icon")

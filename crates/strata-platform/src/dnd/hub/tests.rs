@@ -7,8 +7,6 @@ use super::{Job, Posters, Release};
 
 thread_local! {
     pub(crate) static FAKE_START: Cell<Option<Release>> = const { Cell::new(None) };
-    /// What `still_holding` answers with no platform: whether the drag still runs.
-    pub(crate) static FAKE_LIVE: Cell<Option<bool>> = const { Cell::new(None) };
     static NEXT: Cell<u64> = const { Cell::new(0) };
 }
 

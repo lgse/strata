@@ -184,8 +184,6 @@ pub(crate) struct Live {
     resolved: RefCell<KeymapOverrides>,
     /// The press a view's collection last asked the early stages for ([`heard`]).
     asked: Asked,
-    #[cfg(any(test, feature = "qa"))]
-    qa_origin: Cell<Option<press::Origin>>,
 }
 
 impl Live {
@@ -206,8 +204,6 @@ impl Live {
             keymap: RefCell::new(resolved),
             resolved: RefCell::new(settings.keymap.clone()),
             asked: Asked::default(),
-            #[cfg(any(test, feature = "qa"))]
-            qa_origin: Cell::new(None),
         });
         live.follow(settings);
         let weak = Rc::downgrade(&live);
@@ -225,16 +221,6 @@ impl Live {
                 .replace(Rc::new(resolve_keymap(&settings.keymap, None)));
             self.resolved.replace(settings.keymap.clone());
         }
-    }
-
-    #[cfg(any(test, feature = "qa"))]
-    pub(crate) fn set_qa_origin(&self, origin: Option<press::Origin>) {
-        self.qa_origin.set(origin);
-    }
-
-    #[cfg(any(test, feature = "qa"))]
-    fn qa_origin(&self) -> Option<press::Origin> {
-        self.qa_origin.get()
     }
 }
 
@@ -373,25 +359,12 @@ fn walk(app: &mut App, offer: &Offer<'_>, tx: &mut Tx) -> Outcome {
 pub(crate) fn read(app: &App, event: &KeyEvent, at: &Situation, tx: &Tx) -> KeyPress {
     let live = shell::live_keys(app);
     let typing = at.typing() || live.type_to_search_active();
-    let press = press::read(event, origin_of(live, tx));
+    let press = press::read(event, press::Origin::of(tx));
     keys::rewrite(press, Context { typing })
 }
 
-pub(crate) fn read_pressed(app: &App, event: &KeyEvent, tx: &Tx) -> KeyPress {
-    press::read(event, origin_of(shell::live_keys(app), tx))
-}
-
-fn origin_of(live: &Live, tx: &Tx) -> press::Origin {
-    let origin = press::Origin::of(tx);
-    #[cfg(any(test, feature = "qa"))]
-    if origin.physical.is_none()
-        && let Some(qa) = live.qa_origin()
-    {
-        return qa;
-    }
-    #[cfg(not(any(test, feature = "qa")))]
-    let _ = live;
-    origin
+pub(crate) fn read_pressed(_app: &App, event: &KeyEvent, tx: &Tx) -> KeyPress {
+    press::read(event, press::Origin::of(tx))
 }
 
 fn hear(app: &mut App, event: &KeyEvent, heard: Heard, tx: &mut Tx) -> bool {

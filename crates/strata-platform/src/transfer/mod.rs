@@ -2,15 +2,16 @@
 
 //! Internal transfer substrate shared by `dnd`, `clipboard`, `foreign-parent`, and `backdrop-blur`.
 //!
-//! Rune lacks a native display handle on `WindowHandle`, a pre-teardown display hook, and an
-//! every-turn dispatch hook for a custom Wayland queue.
+//! Uses `WindowHandle::with_raw_display_handle` to share winit's Wayland display; Rune still
+//! lacks an every-turn dispatch hook for a custom Wayland queue ([anomalyco/rune#522]).
 //!
 //! Invariants:
 //! - On winit's Wayland display, every request and dispatch must run on the UI thread (the
 //!   reader thread never dispatches).
-//! - Call [`Transfer::shutdown`] on the UI thread before the event loop ends (from `App::on_quit`
-//!   and the last window's `on_close`) so proxies bound on winit's display are destroyed while
-//!   the display is still alive; dropping them after winit frees the display segfaults.
+//! - Call [`Transfer::shutdown`] on the UI thread before the event loop tears down the display
+//!   (from `App::on_display_close`, `App::on_quit`, or the last window's `on_close`) so proxies
+//!   bound on winit's display are destroyed while the display is still alive; dropping them after
+//!   winit frees the display segfaults.
 
 mod data;
 mod error;

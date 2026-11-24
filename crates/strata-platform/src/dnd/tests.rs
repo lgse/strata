@@ -43,14 +43,6 @@ fn view(s: &S, _: &mut Cx<S>) -> El {
         .child(own)
 }
 
-/// The compositor's proof that it took the pointer arrives, in an update of its own.
-fn holding(rt: &mut Runtime<S>) {
-    rt.update_if(|s, tx| {
-        s.dnd.clone().holding_for_test(tx);
-        false
-    });
-}
-
 fn heard_key(s: &mut S, ev: &KeyEvent, _: &mut Tx) -> bool {
     s.keys.push(format!("{:?}", ev.key));
     false
@@ -73,8 +65,8 @@ fn runtime(release: Release) -> (Runtime<S>, (f32, f32)) {
 }
 
 #[test]
-fn on_wayland_the_escape_ends_runes_capture_at_the_start() {
-    let (mut rt, (x, y)) = runtime(Release::Escape);
+fn on_wayland_cancel_pointer_ends_runes_capture_at_the_start() {
+    let (mut rt, (x, y)) = runtime(Release::CancelPointer);
     rt.pointer_move(x, y);
     rt.pointer_down(x, y);
     rt.frame(0.0);
@@ -84,12 +76,9 @@ fn on_wayland_the_escape_ends_runes_capture_at_the_start() {
     rt.pointer_move(x + 12.0, y);
     rt.frame(0.0);
     assert_eq!(rt.state.started, 1, "past the threshold the drag starts");
-    assert!(rt.pressing(), "no Escape before the compositor's proof");
-    holding(&mut rt);
-    rt.frame(0.0);
     assert!(
         !rt.pressing(),
-        "Rune's capture ended once the compositor had the pointer"
+        "Rune's capture ended immediately via Tx::cancel_pointer"
     );
     // The compositor takes the pointer, then gives it back with no button held.
     rt.pointer_leave();
@@ -103,11 +92,7 @@ fn on_wayland_the_escape_ends_runes_capture_at_the_start() {
         vec![(Phase::Down, false), (Phase::Move, false)],
         "the element's own handler heard the press and the move under the threshold only"
     );
-    assert!(
-        rt.state.keys.is_empty(),
-        "the Escape leaked: {:?}",
-        rt.state.keys
-    );
+    assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
     // The next press is the element's again.
     rt.pointer_down(x, y);
     rt.frame(0.0);
@@ -124,7 +109,7 @@ fn on_x11_the_real_release_is_swallowed() {
     assert_eq!(rt.state.started, 1);
     assert!(
         rt.pressing(),
-        "no Escape on X11: the capture runs to the release"
+        "no cancel_pointer on X11: the capture runs to the release"
     );
     rt.pointer_move(x + 30.0, y);
     rt.pointer_up(x + 30.0, y);
@@ -139,8 +124,8 @@ fn on_x11_the_real_release_is_swallowed() {
 }
 
 #[test]
-fn a_fast_flick_on_wayland_sends_no_escape_to_the_app() {
-    let (mut rt, (x, y)) = runtime(Release::Escape);
+fn a_fast_flick_on_wayland_sends_no_keys_to_the_app() {
+    let (mut rt, (x, y)) = runtime(Release::CancelPointer);
     rt.pointer_move(x, y);
     rt.pointer_down(x, y);
     rt.frame(0.0);
@@ -150,35 +135,12 @@ fn a_fast_flick_on_wayland_sends_no_escape_to_the_app() {
     rt.frame(0.0);
     assert_eq!(rt.state.started, 1, "the flick crossed the threshold");
     assert!(!rt.pressing());
-    assert!(
-        rt.state.keys.is_empty(),
-        "the Escape leaked: {:?}",
-        rt.state.keys
-    );
+    assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
 }
 
 #[test]
-fn a_proof_after_the_release_sends_no_escape() {
-    let (mut rt, (x, y)) = runtime(Release::Escape);
-    rt.pointer_move(x, y);
-    rt.pointer_down(x, y);
-    rt.frame(0.0);
-    rt.pointer_move(x + 12.0, y);
-    rt.pointer_up(x + 12.0, y);
-    rt.frame(0.0);
-    holding(&mut rt);
-    rt.frame(0.0);
-    assert_eq!(rt.state.started, 1);
-    assert!(
-        rt.state.keys.is_empty(),
-        "the Escape leaked: {:?}",
-        rt.state.keys
-    );
-}
-
-#[test]
-fn start_drag_from_a_press_the_guard_never_saw_sends_no_escape() {
-    let (mut rt, _) = runtime(Release::Escape);
+fn start_drag_from_a_press_the_guard_never_saw_does_not_cancel_capture() {
+    let (mut rt, _) = runtime(Release::CancelPointer);
     let (x, y) = rt.find("own").expect("the app's own element");
     rt.pointer_move(x, y);
     rt.pointer_down(x, y);
@@ -186,8 +148,6 @@ fn start_drag_from_a_press_the_guard_never_saw_sends_no_escape() {
     rt.pointer_move(x + 12.0, y);
     rt.frame(0.0);
     assert_eq!(rt.state.started, 1);
-    holding(&mut rt);
-    rt.frame(0.0);
     assert!(
         !rt.state.own.iter().any(|(_, cancelled)| *cancelled),
         "the app's handler heard a cancel it didn't ask for: {:?}",
@@ -225,8 +185,8 @@ mod gone {
     }
 
     #[test]
-    fn no_escape_when_the_source_has_left_the_tree() {
-        FAKE_START.set(Some(Release::Escape));
+    fn capture_ends_cleanly_when_the_source_leaves_the_tree() {
+        FAKE_START.set(Some(Release::CancelPointer));
         let st = G {
             dnd: Dnd::new(),
             hide: false,
@@ -242,55 +202,9 @@ mod gone {
         rt.pointer_move(x + 12.0, y);
         rt.frame(0.0);
         assert!(rt.state.hide, "the drag started and hid its source");
-        rt.update_if(|s, tx| {
-            s.dnd.clone().holding_for_test(tx);
-            false
-        });
-        rt.frame(0.0);
-        assert!(
-            rt.state.keys.is_empty(),
-            "the Escape leaked: {:?}",
-            rt.state.keys
-        );
+        assert!(!rt.pressing());
+        assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
     }
-}
-
-/// Starts a Wayland drag from the tile, under the threshold first, and returns the drag's id.
-fn started(rt: &mut Runtime<S>, (x, y): (f32, f32)) -> u64 {
-    rt.pointer_move(x, y);
-    rt.pointer_down(x, y);
-    rt.frame(0.0);
-    rt.pointer_move(x + 12.0, y);
-    rt.frame(0.0);
-    assert_eq!(rt.state.started, 1);
-    rt.state.dnd.drag_id_for_test().expect("a drag")
-}
-
-fn route(rt: &mut Runtime<S>, r: super::hub::Routed) {
-    let cell = std::cell::Cell::new(Some(r));
-    rt.update_if(move |s, tx| {
-        if let Some(r) = cell.take() {
-            s.dnd.clone().route_for_test(r, s, tx);
-        }
-        false
-    });
-}
-
-#[test]
-fn a_proof_for_a_drag_that_already_dropped_sends_no_escape() {
-    let (mut rt, at) = runtime(Release::Escape);
-    let id = started(&mut rt, at);
-    rt.window_focus(false);
-    super::hub::tests::FAKE_LIVE.set(Some(false));
-    route(&mut rt, super::hub::Routed::Holding { id });
-    super::hub::tests::FAKE_LIVE.set(None);
-    rt.frame(0.0);
-    rt.frame(0.0);
-    assert!(
-        rt.state.keys.is_empty(),
-        "the Escape leaked: {:?}",
-        rt.state.keys
-    );
 }
 
 mod moved {
@@ -324,8 +238,8 @@ mod moved {
     }
 
     #[test]
-    fn no_escape_when_the_source_moved_to_another_path() {
-        FAKE_START.set(Some(Release::Escape));
+    fn capture_ends_cleanly_when_the_source_moves_to_another_path() {
+        FAKE_START.set(Some(Release::CancelPointer));
         let st = M {
             dnd: Dnd::new(),
             wrap: false,
@@ -341,16 +255,8 @@ mod moved {
         rt.pointer_move(x + 12.0, y);
         rt.frame(0.0);
         assert!(rt.state.wrap, "the drag started and moved its source");
-        rt.update_if(|s, tx| {
-            s.dnd.clone().holding_for_test(tx);
-            false
-        });
-        rt.frame(0.0);
-        assert!(
-            rt.state.keys.is_empty(),
-            "the Escape leaked: {:?}",
-            rt.state.keys
-        );
+        assert!(!rt.pressing());
+        assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
     }
 }
 

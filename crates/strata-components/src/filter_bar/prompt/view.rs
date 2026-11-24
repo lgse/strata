@@ -221,7 +221,6 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
             field::frame_row(look, format!("{}-box", self.key)).child(input),
             st.edit.focused,
             st.invalid(),
-            &handlers.menu,
         );
         Some(if spec.legend.is_some() {
             row()

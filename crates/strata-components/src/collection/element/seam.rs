@@ -245,6 +245,8 @@ pub enum Effect {
         /// The spring to glide on.
         spring: rune::Spring,
     },
+    /// Halt any running glide or momentum on the viewport where it is.
+    StopScroll,
     /// Keyboard mode on (the cursor outline shows, row hover waits for the pointer to move) or off.
     KeyboardMode(bool),
     /// Run the controllers' `tick` again after this long: a timeout.

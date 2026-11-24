@@ -73,11 +73,6 @@ pub(crate) struct OutState {
 }
 
 impl OutState {
-    /// The drag runs: neither dropped nor ended.
-    pub(crate) fn live(&self) -> bool {
-        !self.dropped && !self.ended
-    }
-
     pub(crate) fn on(&mut self, ev: SrcEvent) -> Option<DragOutcome> {
         if self.ended {
             return None;

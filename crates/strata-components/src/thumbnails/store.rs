@@ -5,8 +5,9 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
-use rune::{Live, Pixels};
+use rune::{ImageCache, Live, Pixels};
 
 use super::queue::{Queued, Viewer};
 use super::step::Step;
@@ -256,6 +257,7 @@ pub(super) struct Entry {
 
 pub(super) struct Inner {
     pub settings: Settings,
+    pub cache: Option<Arc<ImageCache>>,
     pub enabled: bool,
     pub entries: HashMap<ThumbKey, Entry>,
     /// Keys with an image held, least recently touched first: the eviction order.
@@ -298,6 +300,7 @@ impl ThumbnailStore {
         Self {
             inner: RefCell::new(Inner {
                 settings,
+                cache: None,
                 enabled: true,
                 entries: HashMap::new(),
                 lru: BTreeMap::new(),
@@ -325,6 +328,11 @@ impl ThumbnailStore {
             }),
             skipped: Cell::new(false),
         }
+    }
+
+    /// Uses `cache` to upload thumbnails with linear-light mipmaps via `ImageCache::rgba_into`.
+    pub fn set_cache(&mut self, cache: Arc<ImageCache>) {
+        self.inner.get_mut().cache = Some(cache);
     }
 
     /// The settings.
@@ -517,9 +525,13 @@ impl ThumbnailStore {
                 inner.room_freed();
             }
         }
+        let cache = inner.cache.clone();
         let entry = inner.entries.get_mut(&ticket.key).expect("checked above");
         entry.held = Some(new);
-        entry.thumb.pixels.set(width, height, rgba);
+        match &cache {
+            Some(cache) => cache.rgba_into(&entry.thumb.pixels, width, height, rgba),
+            None => entry.thumb.pixels.set(width, height, rgba),
+        }
         entry.thumb.icon_alpha.set(0.0);
         inner.touch(ticket.key);
         if inner

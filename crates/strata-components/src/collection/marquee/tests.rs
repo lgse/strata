@@ -774,9 +774,7 @@ mod adapter {
         let (taken, effects) = with_cx(&mut sel, None, 2.0 / 60.0, |cx| m.cancel(cx));
         assert!(taken);
         assert!(
-            effects
-                .iter()
-                .any(|e| matches!(e, Effect::ScrollTo { y, glide: false } if *y == 0.0)),
+            effects.iter().any(|e| matches!(e, Effect::StopScroll)),
             "a dead stop where the view is: {effects:?}"
         );
         assert!(sel.is_empty(), "the plain band's press had cleared it");
