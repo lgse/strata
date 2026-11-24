@@ -52,7 +52,7 @@ pub(super) fn install(
     });
     let dialog = SearchDialog::new(activate, reveal, dismiss);
     content.overlay.add_overlay(&dialog.widget());
-    let toggle = toggle_handler(dialog.clone(), content, preferences);
+    let toggle = toggle_handler(dialog.clone(), content);
     let clicked_search = toggle.clone();
     content.header.search.connect_clicked(move |_| {
         if crate::ui::tenxer_mode::chrome_suppressed() {
@@ -121,14 +121,9 @@ fn install_history_recorder(controller: &Rc<Browser>, history: &Rc<NavigationHis
     });
 }
 
-fn toggle_handler(
-    dialog: SearchDialog,
-    content: &WindowContent,
-    preferences: &Rc<PreferenceManager>,
-) -> Rc<dyn Fn()> {
+fn toggle_handler(dialog: SearchDialog, content: &WindowContent) -> Rc<dyn Fn()> {
     let button = content.header.search.downgrade();
     let root = content.blurred_root.downgrade();
-    let preferences = preferences.clone();
     Rc::new(move || {
         let (Some(button), Some(root)) = (button.upgrade(), root.upgrade()) else {
             return;
@@ -137,10 +132,9 @@ fn toggle_handler(
             dialog.hide();
             return;
         }
-        let roots = super::super::devices::global_search_roots();
         button.add_css_class("active");
         root.set_blurred(true);
-        dialog.show(roots, preferences.sort_preferences().show_hidden);
+        dialog.show_global(None);
     })
 }
 

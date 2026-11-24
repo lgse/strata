@@ -481,6 +481,7 @@ const CHOOSER_FIRST: &[(Command, Tables)] = &[
     (ESCAPE, Tables::Both),
     (RENAME, Tables::Default),
     (PROPERTIES, Tables::Both),
+    (SEARCH, Tables::Both),
     (FILTER, Tables::Default),
     (LOCATION, Tables::Both),
     (SIDEBAR_FOCUS, Tables::Both),

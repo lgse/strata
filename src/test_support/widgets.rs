@@ -102,7 +102,7 @@ fn visible_popovers(widget: &gtk::Widget) -> Vec<gtk::Popover> {
 
 /// Presses a key on `widget`'s own key controllers, as GTK does once the
 /// window's capture-phase controller declines it.
-fn press_on_widget(widget: &gtk::Widget, key: Key, modifiers: ModifierType) {
+pub(crate) fn press_on_widget(widget: &gtk::Widget, key: Key, modifiers: ModifierType) {
     let controllers = widget.observe_controllers();
     for index in 0..controllers.n_items() {
         if let Some(keys) = controllers

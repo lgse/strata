@@ -40,7 +40,7 @@ pub(super) fn build_chooser_hosted(
         source.root_limit.is_some(),
     );
     let (footer, footer_holder) = chooser_footer(&view, &theme);
-    footer.set_chooser(chooser_reference(&request.kind));
+    footer.set_chooser(chooser_reference(&request.kind, &source));
 
     let details = ChooserDetails::build(&request, &filters, selected_filter, &source, &view);
     let actions = ChooserActions::build(&request, &theme);
@@ -62,6 +62,7 @@ pub(super) fn build_chooser_hosted(
         window: window.clone(),
         destination_host: host,
         view: view.clone(),
+        search: Default::default(),
         filename: details.filename.clone(),
         filename_selection: RefCell::new(Vec::new()),
         filename_edited: Cell::new(false),
@@ -91,13 +92,7 @@ pub(super) fn build_chooser_hosted(
     observe_browser(&state, &preview, &browser);
     #[cfg(test)]
     remember_destination_state(&state);
-    let weak = Rc::downgrade(&state);
-    window.connect_close_request(move |_| {
-        if let Some(state) = weak.upgrade() {
-            state.cancel();
-        }
-        glib::Propagation::Proceed
-    });
+    cancel_on_close(&window, &state);
     install_shortcuts(
         &state,
         ShortcutParts {
@@ -119,6 +114,16 @@ pub(super) fn build_chooser_hosted(
     present_window(&state, &window, &browser);
     focus_initial_widget(&state, &window, &header.sidebar_toggle);
     Some(state)
+}
+
+fn cancel_on_close(window: &gtk::Window, state: &Rc<ChooserState>) {
+    let weak = Rc::downgrade(state);
+    window.connect_close_request(move |_| {
+        if let Some(state) = weak.upgrade() {
+            state.cancel();
+        }
+        glib::Propagation::Proceed
+    });
 }
 
 fn configure_source(
@@ -809,7 +814,10 @@ pub(super) fn save_hints(
     Some(row)
 }
 
-pub(super) fn chooser_reference(kind: &ChooserKind) -> crate::ui::shortcut_reference::ChooserScope {
+pub(super) fn chooser_reference(
+    kind: &ChooserKind,
+    source: &ChooserFileSource,
+) -> crate::ui::shortcut_reference::ChooserScope {
     use crate::ui::shortcut_reference::{ChooserRequest, ChooserScope};
     let (request, multiple) = match kind {
         ChooserKind::Open {
@@ -823,7 +831,11 @@ pub(super) fn chooser_reference(kind: &ChooserKind) -> crate::ui::shortcut_refer
         ChooserKind::SaveFile { .. } => (ChooserRequest::SaveFile, false),
         ChooserKind::SaveFiles { .. } => (ChooserRequest::SaveFiles, false),
     };
-    ChooserScope { request, multiple }
+    ChooserScope {
+        request,
+        multiple,
+        confined: source.root_limit.is_some(),
+    }
 }
 
 pub(super) fn chooser_footer(

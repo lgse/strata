@@ -7,6 +7,7 @@ pub(super) struct ChooserState {
     pub(super) window: gtk::Window,
     pub(super) destination_host: Option<DestinationHost>,
     pub(super) view: BrowserView,
+    pub(super) search: std::cell::OnceCell<crate::ui::search::SearchDialog>,
     pub(super) filename: Option<gtk::Entry>,
     pub(super) filename_selection: RefCell<Vec<Location>>,
     pub(super) filename_edited: Cell<bool>,

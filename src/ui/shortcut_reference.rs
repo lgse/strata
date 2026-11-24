@@ -36,6 +36,7 @@ impl ReferenceScope {
 pub(crate) struct ChooserScope {
     pub request: ChooserRequest,
     pub multiple: bool,
+    pub confined: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -411,7 +412,7 @@ fn tenxer_sections(mode: BrowserMode, chooser: Option<ChooserScope>) -> Vec<Refe
         },
         ReferenceSection {
             title: "Search and tools",
-            rows: tenxer_tools(mode, chooser.is_some()),
+            rows: tenxer_tools(mode, chooser),
         },
         ReferenceSection {
             title: "Preview media",
@@ -1409,6 +1410,9 @@ const TENXER_TABS: &[Shortcut] = &[
         "Move the active tab left / right",
     ),
     SELECT_TAB,
+];
+
+const GLOBAL_SEARCH: &[Shortcut] = &[
     row(One(SEARCH.shown()), "Open global search"),
     row(
         One(OPEN_CONTAINING_FOLDER.shown()),
@@ -1462,15 +1466,18 @@ const TENXER_REFERENCE: &[Shortcut] = &[
     row(One(REFERENCE.shown()), "Show or hide this reference"),
 ];
 
-fn tenxer_tools(mode: BrowserMode, chooser: bool) -> Vec<Shortcut> {
+fn tenxer_tools(mode: BrowserMode, chooser: Option<ChooserScope>) -> Vec<Shortcut> {
     let mut shortcuts = TENXER_FIND.to_vec();
     shortcuts.push(dismiss_search_hits(mode));
     shortcuts.extend_from_slice(TENXER_HEADER_AND_SIDEBAR);
-    if !chooser {
+    if chooser.is_none() {
         shortcuts.extend_from_slice(TENXER_TABS);
     }
+    if chooser.is_none_or(|scope| !scope.confined) {
+        shortcuts.extend_from_slice(GLOBAL_SEARCH);
+    }
     shortcuts.extend_from_slice(TENXER_VIEW);
-    if !chooser {
+    if chooser.is_none() {
         shortcuts.push(row(One(SETTINGS.shown()), "Open Settings"));
     }
     shortcuts.extend_from_slice(TENXER_REFERENCE);
@@ -1651,7 +1658,11 @@ fn tenxer_scopes(mode: BrowserMode) -> Vec<Vec<ReferenceSection>> {
         for multiple in [false, true] {
             scopes.push(tenxer_sections(
                 mode,
-                Some(ChooserScope { request, multiple }),
+                Some(ChooserScope {
+                    request,
+                    multiple,
+                    confined: false,
+                }),
             ));
         }
     }

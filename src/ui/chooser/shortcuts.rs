@@ -38,6 +38,7 @@ const NAVIGATION_STAGES: &[Stage] = &[
     ChooserShortcuts::properties,
     ChooserShortcuts::editing_keeps_key,
     ChooserShortcuts::preview_search_result,
+    ChooserShortcuts::global_search,
     ChooserShortcuts::filter,
     ChooserShortcuts::location,
     ChooserShortcuts::sidebar_focus,
@@ -229,6 +230,9 @@ impl ChooserShortcuts {
 /// An open modal layer keeps the keys; Escape first ends a column drag.
 fn modal_or_drag(state: &ChooserState, press: &KeyPress) -> Option<glib::Propagation> {
     if let Some(layer) = visible_modal_layer(&state.window) {
+        if press.is(SEARCH) && state.hide_global_search(&layer) {
+            return STOP;
+        }
         let focused = gtk::prelude::RootExt::focus(&state.window);
         if !focused.is_some_and(|focus| focus == layer || focus.is_ancestor(&layer)) {
             layer.grab_focus();

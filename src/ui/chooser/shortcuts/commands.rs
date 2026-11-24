@@ -87,6 +87,13 @@ impl ChooserShortcuts {
         STOP
     }
 
+    pub(super) fn global_search(&self, context: &KeyContext<'_>) -> Option<glib::Propagation> {
+        (context.press.is(SEARCH)
+            && !context.focus_in_popover()
+            && context.state.show_global_search())
+        .then_some(glib::Propagation::Stop)
+    }
+
     pub(super) fn filter(&self, context: &KeyContext<'_>) -> Option<glib::Propagation> {
         (context.press.is(FILTER.in_map(Map::Default)) && context.view().show_filter())
             .then_some(glib::Propagation::Stop)

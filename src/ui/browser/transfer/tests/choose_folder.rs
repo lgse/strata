@@ -245,6 +245,15 @@ fn choose_folder_rejects_invalid_destinations_and_copies_into_a_confined_directo
             );
             wait_until(|| send_to.listing_loaded(), "confined directory listing");
             send_to.assert_listed_inside_device();
+            crate::test_support::widgets::press_on_widget(
+                send_to.chooser_window.upcast_ref(),
+                gtk::gdk::Key::k,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            );
+            assert!(
+                !modal_layer_shown(&chooser_overlay(&send_to.chooser_window)),
+                "a device-confined chooser cannot open global search"
+            );
             send_to.assert_outside_paths_stay_confined();
             send_to.assert_invalid_folders_fail_to_load();
             #[cfg(unix)]
