@@ -8,9 +8,7 @@ use crate::{
 };
 
 use super::columns::Descent;
-use super::location_input::{
-    is_relative_path_input, join_relative, location_from_input, unsupported_shorthand_message,
-};
+use super::location_input::{location_from_input, unsupported_shorthand_message};
 use super::{Browser, BrowserEvent, LoadSelection, load_selection, select_on_load};
 
 impl Browser {
@@ -42,10 +40,7 @@ impl Browser {
             self.navigate_validated(current.clone(), true);
             return Ok(current);
         }
-        let location = match base.filter(|_| is_relative_path_input(input)) {
-            Some(base) => Location::local(join_relative(base, input)),
-            None => location_from_input(input)?,
-        };
+        let location = location_from_input(input, base)?;
         if location.native_path().is_some() && !location.is_absolute_native() {
             return Err(LocationValidationError::NotAbsolute);
         }

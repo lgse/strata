@@ -60,6 +60,7 @@ use folder_sorts::SortOrigin;
 pub use freshness::{FreshnessInput, Presence, VisibleDepths};
 #[cfg(test)]
 use location_input::location_from_input_with_home;
+pub use location_input::typed_location_uri;
 pub use operation_start::{folder_destination_texts, trash_destination_texts};
 use publication::{PublicationPlan, PublishTerminal, StagedPublish};
 #[cfg(test)]
