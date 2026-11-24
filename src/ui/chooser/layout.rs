@@ -40,10 +40,7 @@ pub(super) fn build_chooser_hosted(
         source.root_limit.is_some(),
     );
     let (footer, footer_holder) = chooser_footer(&view, &theme);
-    footer.set_chooser(chooser_reference(
-        &request.kind,
-        source.root_limit.is_some(),
-    ));
+    footer.set_chooser(chooser_reference(&request.kind, &source));
 
     let details = ChooserDetails::build(&request, &filters, selected_filter, &source, &view);
     let actions = ChooserActions::build(&request, &theme);
@@ -95,13 +92,7 @@ pub(super) fn build_chooser_hosted(
     observe_browser(&state, &preview, &browser);
     #[cfg(test)]
     remember_destination_state(&state);
-    let weak = Rc::downgrade(&state);
-    window.connect_close_request(move |_| {
-        if let Some(state) = weak.upgrade() {
-            state.cancel();
-        }
-        glib::Propagation::Proceed
-    });
+    cancel_on_close(&window, &state);
     install_shortcuts(
         &state,
         ShortcutParts {
@@ -123,6 +114,16 @@ pub(super) fn build_chooser_hosted(
     present_window(&state, &window, &browser);
     focus_initial_widget(&state, &window, &header.sidebar_toggle);
     Some(state)
+}
+
+fn cancel_on_close(window: &gtk::Window, state: &Rc<ChooserState>) {
+    let weak = Rc::downgrade(state);
+    window.connect_close_request(move |_| {
+        if let Some(state) = weak.upgrade() {
+            state.cancel();
+        }
+        glib::Propagation::Proceed
+    });
 }
 
 fn configure_source(
@@ -815,7 +816,7 @@ pub(super) fn save_hints(
 
 pub(super) fn chooser_reference(
     kind: &ChooserKind,
-    confined: bool,
+    source: &ChooserFileSource,
 ) -> crate::ui::shortcut_reference::ChooserScope {
     use crate::ui::shortcut_reference::{ChooserRequest, ChooserScope};
     let (request, multiple) = match kind {
@@ -833,7 +834,7 @@ pub(super) fn chooser_reference(
     ChooserScope {
         request,
         multiple,
-        confined,
+        confined: source.root_limit.is_some(),
     }
 }
 

@@ -22,6 +22,11 @@ impl ChooserState {
         dialog.show_global(Some(browser));
         true
     }
+
+    pub(super) fn hide_global_search(&self, layer: &gtk::Widget) -> bool {
+        let search = self.search.get().filter(|search| search.widget() == *layer);
+        search.inspect(|search| search.hide()).is_some()
+    }
 }
 
 fn install(overlay: &gtk::Overlay, root: &BlurBin, view: &BrowserView) -> SearchDialog {

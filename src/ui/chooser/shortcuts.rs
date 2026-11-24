@@ -230,11 +230,7 @@ impl ChooserShortcuts {
 /// An open modal layer keeps the keys; Escape first ends a column drag.
 fn modal_or_drag(state: &ChooserState, press: &KeyPress) -> Option<glib::Propagation> {
     if let Some(layer) = visible_modal_layer(&state.window) {
-        if press.is(SEARCH)
-            && let Some(search) = state.search.get()
-            && search.widget() == layer
-        {
-            search.hide();
+        if press.is(SEARCH) && state.hide_global_search(&layer) {
             return STOP;
         }
         let focused = gtk::prelude::RootExt::focus(&state.window);
