@@ -207,10 +207,17 @@ pub(crate) fn search_result<B: Backend + ?Sized>(
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
     presented(backend, &container).into_iter().find(|row| {
-        backend.role(row) == row_role
-            && rendered(backend, row)
-            && backend.name(row) == file_name
-            && presented(backend, row).iter().any(|label| {
+        if backend.role(row) != row_role
+            || !rendered(backend, row)
+            || backend.name(row) != file_name
+        {
+            return false;
+        }
+        let described = backend.description(row);
+        described.ends_with(path)
+            || described.split(", ").any(|part| part.ends_with(path))
+            || (!path.contains('/') && !path.contains('\\') && backend.name(row) == path)
+            || presented(backend, row).iter().any(|label| {
                 backend.role(label) == "label"
                     && rendered(backend, label)
                     && backend.name(label).ends_with(path)

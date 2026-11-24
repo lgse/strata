@@ -10,13 +10,15 @@ use std::{
 use rune::ElementInfo;
 use strata_components::{
     collection::element::{ICON, LABEL},
-    columns::keys::BADGE,
+    columns::keys::DETAIL,
+    contract::EntryId,
     thumbnails::GLYPH,
 };
 use strata_qa::Rect;
 
-use super::tree::{
-    Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, RowIcon, Seen, Shape, Snapshot,
+use super::{
+    kept::entry_id_of,
+    tree::{Drawn, EntryParts, Shape, Snapshot},
 };
 use crate::{App, host::offscreen::Offscreen, shell};
 
@@ -48,7 +50,7 @@ fn label_bounds(elements: &[ElementInfo], element: &ElementInfo, app: &App) -> R
         outer
             .key
             .as_deref()
-            .is_some_and(|key| key.starts_with("row-"))
+            .is_some_and(|key| entry_id_of(key).is_some())
     }) else {
         return bounds;
     };
@@ -74,191 +76,54 @@ fn label_bounds(elements: &[ElementInfo], element: &ElementInfo, app: &App) -> R
     bounds
 }
 
-/// The names and Columns size/count badges the view draws in rows, each with its outer keys.
-fn name_labels(elements: &[ElementInfo], app: &App) -> Vec<NameLabel> {
-    let collect = |badge: bool| {
-        let wanted = if badge { BADGE } else { LABEL };
-        elements
-            .iter()
-            .filter(move |element| !element.exiting && element.key.as_deref() == Some(wanted))
-            .filter_map(move |element| {
-                Some(NameLabel {
-                    above: above(elements, element)
-                        .filter_map(|outer| outer.key.clone())
-                        .collect(),
-                    text: element.text.clone()?,
-                    bounds: if badge {
-                        rect(element)
-                    } else {
-                        label_bounds(elements, element, app)
-                    },
-                    badge,
-                })
-            })
-    };
-    collect(false).chain(collect(true)).collect()
-}
-
-/// The icons the view draws in rows, each with the keys of the elements around it.
-fn row_icons(elements: &[ElementInfo]) -> Vec<RowIcon> {
-    let drawn = |element: &&ElementInfo| !element.exiting && element.key.as_deref() == Some(ICON);
-    let icon = |element: &ElementInfo| {
-        let inside = |inner: &&ElementInfo| {
-            !inner.exiting
-                && inner.key.as_deref() == Some(GLYPH)
-                && inner
-                    .parent
-                    .and_then(|parent| elements.get(parent))
-                    .is_some_and(|parent| std::ptr::eq(parent, element))
-        };
-        RowIcon {
-            above: above(elements, element)
-                .filter_map(|outer| outer.key.clone())
-                .collect(),
-            bounds: rect(element),
-            glyph: elements.iter().find(inside).map(rect),
-        }
-    };
-    elements.iter().filter(drawn).map(icon).collect()
-}
-
-/// The indices of the elements above the element at `index`, the nearest first.
-fn above_indices(elements: &[ElementInfo], index: usize) -> impl Iterator<Item = usize> + '_ {
-    let parent = elements.get(index).and_then(|element| element.parent);
-    std::iter::successors(parent, |at| elements.get(*at)?.parent)
-}
-
-fn list_and_pane(elements: &[ElementInfo], list: &str) -> Option<(usize, usize)> {
-    let keyed = |element: &ElementInfo| element.key.as_deref() == Some(list);
-    let at = elements
-        .iter()
-        .position(|element| !element.exiting && keyed(element))?;
-    let pane = above_indices(elements, at).find(|outer| elements[*outer].label.is_some())?;
-    Some((at, pane))
-}
-
-fn row_card_bounds(elements: &[ElementInfo], row_index: usize) -> Rect {
-    let element = &elements[row_index];
-    if element.role == "grid-cell" {
-        return rect(element);
-    }
-    elements
-        .iter()
-        .find(|child| !child.exiting && !child.inert && child.parent == Some(row_index))
-        .map_or_else(|| rect(element), rect)
-}
-
-fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
-    let (at, pane) = list_and_pane(elements, list)?;
-    let pane = &elements[pane];
-    let inside = |(_, element): &(usize, &ElementInfo)| {
-        above(elements, element).any(|outer| std::ptr::eq(outer, &elements[at]))
-    };
-    let row = |(index, element): (usize, &ElementInfo)| {
-        let key = element.key.clone().filter(|key| key.starts_with("row-"))?;
-        Some(DrawnRow {
-            key,
-            name: element.label.clone()?,
-            selected: element.item_selected,
-            bounds: row_card_bounds(elements, index),
-        })
-    };
-    let rows = elements
-        .iter()
-        .enumerate()
-        .filter(|(_, element)| !element.exiting);
-    Some(DrawnColumn {
-        list: list.to_owned(),
-        name: elements[at].label.clone().unwrap_or_default(),
-        bounds: rect(&elements[at]),
-        pane: rect(pane),
-        rows: rows.filter(inside).filter_map(row).collect(),
-    })
-}
-
-pub(super) fn sync_entry_bounds(columns: &[DrawnColumn], list: &str, seen: &mut Seen) {
-    if seen.role == "grid-cell" {
-        return;
-    }
-    let Some(key) = seen.key.as_deref() else {
-        return;
-    };
-    let row = columns
-        .iter()
-        .find(|column| column.list == list)
-        .and_then(|column| column.rows.iter().find(|row| row.key == key));
-    if let Some(row) = row {
-        seen.bounds = Some(row.bounds);
-    }
-}
-
-/// What [`drawn_buttons`] reads of one drawn element.
-struct Candidate<'a> {
-    role: &'a str,
-    key: Option<&'a str>,
-    label: Option<&'a str>,
-    rect: [f32; 4],
-    /// The part of `rect` its ancestors' clips leave visible.
-    visible: [f32; 4],
-    /// With its ancestors': Rune leaves an element out of its tree at 0.01 and under.
-    opacity: f32,
-    exiting: bool,
-}
-
-impl<'a> Candidate<'a> {
-    fn of(element: &'a ElementInfo) -> Self {
-        Self {
-            role: element.role,
-            key: element.key.as_deref(),
-            label: element.label.as_deref(),
-            rect: element.rect,
-            visible: element.visible,
-            opacity: element.opacity,
-            exiting: element.exiting,
+/// Drawn label and icon geometry per browser entry, for pointer targeting only.
+fn entry_parts(elements: &[ElementInfo], app: &App) -> HashMap<EntryId, EntryParts> {
+    let mut parts: HashMap<EntryId, EntryParts> = HashMap::new();
+    for element in elements.iter().filter(|element| !element.exiting) {
+        match element.key.as_deref() {
+            Some(LABEL) => {
+                if let Some(id) = owning_entry(elements, element, true) {
+                    parts
+                        .entry(id)
+                        .or_default()
+                        .label
+                        .get_or_insert_with(|| label_bounds(elements, element, app));
+                }
+            }
+            Some(ICON) => {
+                if let Some(id) = owning_entry(elements, element, false) {
+                    let glyph = elements.iter().find(|inner| {
+                        !inner.exiting
+                            && inner.key.as_deref() == Some(GLYPH)
+                            && inner
+                                .parent
+                                .and_then(|parent| elements.get(parent))
+                                .is_some_and(|parent| std::ptr::eq(parent, element))
+                    });
+                    parts.entry(id).or_default().icon =
+                        Some(glyph.map_or_else(|| rect(element), rect));
+                }
+            }
+            _ => {}
         }
     }
+    parts
+}
 
-    fn button(&self) -> Option<DrawnButton> {
-        let [_, _, width, height] = self.visible;
-        let shown = width > 0.0 && height > 0.0 && self.opacity > 0.01;
-        let pressable = self.role == "button" && !self.exiting && shown;
-        if !pressable {
+fn owning_entry(
+    elements: &[ElementInfo],
+    element: &ElementInfo,
+    skip_detail: bool,
+) -> Option<EntryId> {
+    for outer in above(elements, element) {
+        if skip_detail && outer.key.as_deref() == Some(DETAIL) {
             return None;
         }
-        let [x, y, width, height] = self.rect.map(f64::from);
-        Some(DrawnButton {
-            key: self.key?.to_owned(),
-            name: self.label?.to_owned(),
-            bounds: Rect {
-                x,
-                y,
-                width,
-                height,
-            },
-            column: None,
-        })
+        if let Some(id) = outer.key.as_deref().and_then(entry_id_of) {
+            return Some(id);
+        }
     }
-}
-
-fn drawn_buttons(elements: &[ElementInfo], lists: &[String]) -> Vec<DrawnButton> {
-    let panes: Vec<(usize, &String)> = lists
-        .iter()
-        .filter_map(|list| Some((list_and_pane(elements, list)?.1, list)))
-        .collect();
-    let column = |index: usize| {
-        above_indices(elements, index).find_map(|outer| {
-            let pane = panes.iter().find(|(pane, _)| *pane == outer)?;
-            Some(pane.1.clone())
-        })
-    };
-    let button = |(index, element)| {
-        let button = Candidate::of(element).button()?;
-        Some(DrawnButton {
-            column: column(index),
-            ..button
-        })
-    };
-    elements.iter().enumerate().filter_map(button).collect()
+    None
 }
 
 /// Window-level `Tx::announce` live region (`a11y/tree.rs` at the pinned rev).
@@ -324,18 +189,7 @@ pub(super) fn drawn(elements: &[ElementInfo], app: &App) -> Drawn {
             list: probe.roles.0,
             entry: probe.roles.1,
         }),
-        columns: lists
-            .iter()
-            .filter_map(|list| drawn_column(elements, list))
-            .collect(),
-        labels: name_labels(elements, app),
-        icons: row_icons(elements),
-        icon_descriptions: crate::file_providers::presented_descriptions(app),
-        buttons: drawn_buttons(elements, &lists),
-        sidebar: super::sidebar::Gaps::drawn(elements),
-        jobs: super::jobs::Labels::drawn(elements),
-        tenxer: super::tenxer::Labels::drawn(elements),
-        words: super::control_words::Words::drawn(elements),
+        parts: entry_parts(elements, app),
         outlined: crate::filter::outlined(app),
         edit_range: elements
             .iter()

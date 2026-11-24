@@ -4,7 +4,7 @@
 
 use std::{path::PathBuf, time::Duration};
 
-use crate::{Chord, Command, FieldState, Modifier, Orientation, Outcome, Rect, Scope};
+use crate::{Chord, Command, EntryPart, FieldState, Modifier, Orientation, Outcome, Rect, Scope};
 
 /// What the application says a node is for, where its role and name do not.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -112,6 +112,11 @@ pub trait Backend {
     fn value(&self, node: &Self::Node) -> Option<f64>;
 
     fn frame(&self, node: &Self::Node) -> Option<Rect>;
+    /// The box of a visual sub-part (`EntryPart::Label` or `EntryPart::Icon`) inside an entry
+    /// row, in window coordinates, for pointer targeting without synthesizing accessibility nodes.
+    fn entry_part_frame(&self, _node: &Self::Node, _part: EntryPart) -> Option<Rect> {
+        None
+    }
     /// Where the corner of that surface is on the screen. A popup is a surface of its own.
     fn origin(&self, node: &Self::Node) -> Result<(f64, f64), String>;
     /// The node's box in the coordinates of `window`, whether or not it is drawn.

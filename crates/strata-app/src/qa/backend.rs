@@ -10,7 +10,7 @@ use std::{
 use serde_json::{Value, json};
 use strata_core::{i18n::tr, logging::criticals, storage};
 use strata_qa::{
-    Backend, Chord, Command, DEFAULT_WAIT, Failure, FieldState, Labels, Mark, Modifier,
+    Backend, Chord, Command, DEFAULT_WAIT, EntryPart, Failure, FieldState, Labels, Mark, Modifier,
     Orientation, Outcome, Rect, Scope, Scroll, States, TextMatch,
 };
 
@@ -304,6 +304,10 @@ impl<H: Host> Backend for Rune<H> {
 
     fn frame(&self, node: &Node) -> Option<Rect> {
         self.read(node, |_, seen| seen.bounds).flatten()
+    }
+
+    fn entry_part_frame(&self, node: &Node, part: EntryPart) -> Option<Rect> {
+        self.snapshot().entry_part_frame(node, part)
     }
 
     /// Rune draws a window and its menus on one surface.

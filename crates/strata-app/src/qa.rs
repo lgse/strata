@@ -2,13 +2,11 @@
 
 mod backend;
 mod compose;
-mod control_words;
 mod field;
 mod filter;
 mod host;
 mod input_log;
 mod invariants;
-mod jobs;
 mod kept;
 mod keyboard;
 mod keymap;
@@ -18,11 +16,9 @@ mod replaced;
 mod reveal;
 mod roles;
 mod session;
-mod sidebar;
 mod stage;
 mod staged;
 mod submenus;
-mod tenxer;
 mod toplevel;
 mod tree;
 mod windows;
