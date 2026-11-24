@@ -23,11 +23,10 @@
 {"key":"Down","variants":["false"]}
 {"wait":{"field":{"of":"filter","focused":false}},"message":"Down to leave the filter field","variants":["false"]}
 {"wait":{"not":{"focused_widget":null}},"message":"a focused widget","variants":["false"]}
-{"remember":{"focused_widget":true},"as":"focused","variants":["false"]}
 {"expect":{"any_result_row":{"focused":true}},"variants":["false"]}
 {"expect":{"not":{"focused_widget":{"contains":"Shortcuts"}}},"variants":["false"]}
 {"key":"Return","modes":["columns"],"variants":["false"]}
-{"settle":{"remembered":"focused"},"modes":["columns"],"variants":["false"]}
+{"wait":{"dialog":"Open With"},"message":"Return on a filtered text file to open the Open With chooser instead of an error","modes":["columns"],"variants":["false"]}
 {"expect":{"absent":{"role":"label","name":"Unable to open file"}},"modes":["columns"],"variants":["false"]}
 {"select":{"entry":"match-note.txt"},"variants":["true"]}
 {"key":"ctrl+f","variants":["true"]}
@@ -53,9 +52,8 @@
 {"key":"Down","variants":["true"]}
 {"wait":{"field":{"of":"filter","focused":false}},"message":"Down to leave the filter field","variants":["true"]}
 {"wait":{"not":{"focused_widget":null}},"message":"a focused widget","variants":["true"]}
-{"remember":{"focused_widget":true},"as":"focused","variants":["true"]}
 {"expect":{"any_result_row":{"focused":true}},"variants":["true"]}
 {"expect":{"not":{"focused_widget":{"contains":"Shortcuts"}}},"variants":["true"]}
 {"key":"Return","modes":["columns"],"variants":["true"]}
-{"settle":{"remembered":"focused"},"modes":["columns"],"variants":["true"]}
+{"wait":{"dialog":"Open With"},"message":"Return on a filtered text file to open the Open With chooser instead of an error","modes":["columns"],"variants":["true"]}
 {"expect":{"absent":{"role":"label","name":"Unable to open file"}},"modes":["columns"],"variants":["true"]}

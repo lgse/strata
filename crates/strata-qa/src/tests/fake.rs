@@ -12,6 +12,7 @@ use super::super::{
 pub(super) struct Node {
     pub(super) role: &'static str,
     pub(super) name: &'static str,
+    pub(super) description: &'static str,
     pub(super) mark: Option<Mark>,
     pub(super) states: States,
     pub(super) text: Option<&'static str>,
@@ -154,8 +155,8 @@ impl Backend for Fake {
         self.nodes[*node].name.to_owned()
     }
 
-    fn description(&self, _node: &usize) -> String {
-        String::new()
+    fn description(&self, node: &usize) -> String {
+        self.nodes[*node].description.to_owned()
     }
 
     fn mark(&self, node: &usize) -> Option<Mark> {

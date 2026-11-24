@@ -67,7 +67,11 @@ pub(super) fn check(app: &App, observation: &Observation, focused: bool) -> Vec<
             marks(shown, browsed, kept, &mut failures);
         }
     }
-    tree(&presented, &observation.panes, &mut failures);
+    // Rune's modal AccessKit tree intentionally omits background surfaces behind an open
+    // dialog or menu, so compare panes against the view only when no modal covers them.
+    if observation.dialog.is_none() && observation.menu.is_none() {
+        tree(&presented, &observation.panes, &mut failures);
+    }
     failures.0
 }
 

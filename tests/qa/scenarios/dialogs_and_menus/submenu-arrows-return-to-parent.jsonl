@@ -19,7 +19,6 @@
 {"wait":{"state":{"target":{"menu_item":"Cut"},"focused":true}},"message":"parent Down navigation"}
 {"key":"Up"}
 {"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"parent Up navigation"}
-{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
 {"key":"space"}
 {"wait":{"state":{"target":{"menu_item":"First action"},"focused":true}},"message":"first submenu action focus"}
 {"key":"Down"}
@@ -31,7 +30,6 @@
 {"wait":{"state":{"target":{"menu_item":"Cut"},"focused":true}},"message":"parent Down navigation"}
 {"key":"Up"}
 {"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"parent Up navigation"}
-{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
 {"key":"Return"}
 {"wait":{"state":{"target":{"menu_item":"First action"},"focused":true}},"message":"first submenu action focus"}
 {"key":"Down"}
@@ -43,12 +41,12 @@
 {"wait":{"state":{"target":{"menu_item":"Cut"},"focused":true}},"message":"parent Down navigation"}
 {"key":"Up"}
 {"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"parent Up navigation"}
-{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
 {"key":"Down"}
 {"key":"Down"}
 {"wait":{"state":{"target":{"menu_item":"Copy"},"focused":true}},"message":"Copy focus after submenu return"}
 {"key":"Return"}
 {"wait":{"menu_items":null},"message":"the menu to close"}
+{"expect":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to stay ['readme.md', 'todo.txt']"}
 {"select":{"entry":"archive"},"modes":["columns"]}
 {"click":{"entry":"archive"},"count":2,"modes":["icons","list"]}
 {"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}

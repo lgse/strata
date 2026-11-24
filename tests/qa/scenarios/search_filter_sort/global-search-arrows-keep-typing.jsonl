@@ -8,7 +8,7 @@
 {"remember":{"field":true},"as":"field"}
 {"type":"nav"}
 {"wait":{"field":{"of":"field","text":"nav"}},"message":"the initial global-search query"}
-{"wait":{"all":[{"present":{"role":"label","name":"navigation-alpha"}},{"present":{"role":"label","name":"navigation-beta"}},{"present":{"role":"label","name":"navigation-final"}},{"present":{"role":"label","name":"navigation-gamma"}}]},"message":"all navigation results to be indexed"}
+{"wait":{"all":[{"present":{"role":"list item","name_ends_with":["/navigation-alpha"]}},{"present":{"role":"list item","name_ends_with":["/navigation-beta"]}},{"present":{"role":"list item","name_ends_with":["/navigation-final"]}},{"present":{"role":"list item","name_ends_with":["/navigation-gamma"]}}]},"message":"all navigation results to be indexed"}
 {"expect":{"present":{"role":"list item","name_ends_with":["/navigation-alpha","/navigation-beta","/navigation-final","/navigation-gamma"],"nth":3}}}
 {"expect":{"absent":{"role":"list item","name_ends_with":["/navigation-alpha","/navigation-beta","/navigation-final","/navigation-gamma"],"nth":4}}}
 {"expect":{"state":{"target":{"role":"list item","name_ends_with":["/navigation-alpha","/navigation-beta","/navigation-final","/navigation-gamma"],"nth":0},"selected":true}}}

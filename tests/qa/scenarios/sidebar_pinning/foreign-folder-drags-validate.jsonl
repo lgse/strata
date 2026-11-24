@@ -3,8 +3,8 @@
 {"fs":{"path":"foreign-alias","symlink":"$fixture/foreign-folder"},"variants":["False-False"]}
 {"foreign":{"paths":["$fixture/foreign-folder","$fixture/foreign-alias"],"move_only":false},"as":"foreign","message":"the foreign drag source","variants":["False-False"]}
 {"drag":{"from":{"kept":"foreign"},"to":{"ancestor":"scroll pane","of":{"sidebar":"Home"}},"to_at":["50%",-80]},"release":false,"variants":["False-False"]}
-{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"a file drag over the sidebar to reveal the Pinned insertion targets","variants":["False-False"]}
-{"move":{"role":"grouping","name":"PINNED","nth":0},"variants":["False-False"]}
+{"wait":{"present":{"role":"button","name":"PINNED"}},"message":"a file drag over the sidebar to reveal the Pinned insertion targets","variants":["False-False"]}
+{"move":{"point":[{"of":{"role":"button","name":"PINNED"}},{"of":{"role":"button","name":"PINNED"},"at":"end+2"}]},"variants":["False-False"]}
 {"button_up":1,"variants":["False-False"]}
 {"foreign_label":"Foreign drag finished","message":"external validation and the drop protocol to finish","variants":["False-False"]}
 {"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["file://$fixture_quoted/foreign-folder foreign-folder","file://$fixture_quoted/foreign-alias foreign-alias"]},"timeout_ms":0,"variants":["False-False"]}
@@ -16,8 +16,8 @@
 {"fs":{"path":"foreign-file.txt","write":"not a folder"},"variants":["True-False"]}
 {"foreign":{"paths":["$fixture/foreign-folder","$fixture/foreign-alias","$fixture/foreign-file.txt"],"move_only":false},"as":"foreign","message":"the foreign drag source","variants":["True-False"]}
 {"drag":{"from":{"kept":"foreign"},"to":{"ancestor":"scroll pane","of":{"sidebar":"Home"}},"to_at":["50%",-80]},"release":false,"variants":["True-False"]}
-{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"a file drag over the sidebar to reveal the Pinned insertion targets","variants":["True-False"]}
-{"move":{"role":"grouping","name":"PINNED","nth":0},"variants":["True-False"]}
+{"wait":{"present":{"role":"button","name":"PINNED"}},"message":"a file drag over the sidebar to reveal the Pinned insertion targets","variants":["True-False"]}
+{"move":{"point":[{"of":{"role":"button","name":"PINNED"}},{"of":{"role":"button","name":"PINNED"},"at":"end+2"}]},"variants":["True-False"]}
 {"button_up":1,"variants":["True-False"]}
 {"foreign_label":"Foreign drag finished","message":"external validation and the drop protocol to finish","variants":["True-False"]}
 {"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":[]},"timeout_ms":0,"variants":["True-False"]}
@@ -28,8 +28,8 @@
 {"fs":{"path":"foreign-alias","symlink":"$fixture/foreign-folder"},"variants":["False-True"]}
 {"foreign":{"paths":["$fixture/foreign-folder","$fixture/foreign-alias"],"move_only":true},"as":"foreign","message":"the foreign drag source","variants":["False-True"]}
 {"drag":{"from":{"kept":"foreign"},"to":{"ancestor":"scroll pane","of":{"sidebar":"Home"}},"to_at":["50%",-80]},"release":false,"variants":["False-True"]}
-{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"a file drag over the sidebar to reveal the Pinned insertion targets","variants":["False-True"]}
-{"move":{"role":"grouping","name":"PINNED","nth":0},"variants":["False-True"]}
+{"wait":{"present":{"role":"button","name":"PINNED"}},"message":"a file drag over the sidebar to reveal the Pinned insertion targets","variants":["False-True"]}
+{"move":{"point":[{"of":{"role":"button","name":"PINNED"}},{"of":{"role":"button","name":"PINNED"},"at":"end+2"}]},"variants":["False-True"]}
 {"button_up":1,"variants":["False-True"]}
 {"foreign_label":"Foreign drag finished","message":"external validation and the drop protocol to finish","variants":["False-True"]}
 {"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":[]},"timeout_ms":0,"variants":["False-True"]}

@@ -5,7 +5,7 @@
 {"fs":{"path":"documents/notes.txt","text":"notes\n"},"message":"opening the folder leaves its files in place"}
 {"key":"ctrl+shift+1"}
 {"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"the original tab remains available"}
-{"drag":{"from":{"entry":"pictures","dir":"$root"},"to":{"ancestor":"scroll pane","of":{"role":"page tab list","name":"Tabs"}},"to_at":["end-8","50%"]}}
+{"drag":{"from":{"entry":"pictures","dir":"$root"},"to":{"parent":{"ancestor":"scroll pane","of":{"role":"page tab list","name":"Tabs"}}},"to_at":["end-8","50%"]}}
 {"wait":{"all":[{"directory":"pictures"},{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}}]},"message":"a folder dropped on unused tab-bar space opens a new tab"}
 {"fs":{"path":"pictures","exists":true},"message":"the dragged folder is not moved out of its original directory"}
 {"fs":{"path":"documents/pictures","exists":false},"message":"opening a tab from unused space does not transfer into an existing tab"}

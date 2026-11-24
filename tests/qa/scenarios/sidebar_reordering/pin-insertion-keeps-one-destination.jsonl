@@ -4,7 +4,7 @@
 {"restart":true}
 {"remember":{"sidebar":"One"},"as":"above"}
 {"remember":{"sidebar":"Two"},"as":"below"}
-{"remember":{"role":"grouping","name":"PINNED","nth":1},"as":"gap"}
+{"remember":{"point":[{"of":{"sidebar":"One"}},{"mid":[{"of":{"sidebar":"One"},"at":"100%"},{"of":{"sidebar":"Two"},"at":0}]}]},"as":"gap"}
 {"drag":{"from":{"sidebar":"Three"},"from_at":["50%","50%"],"to":{"kept":"above"},"to_at":["50%","end-2"]},"release":false}
 {"move":{"kept":"gap"}}
 {"move":{"kept":"below"},"at":["50%",2]}

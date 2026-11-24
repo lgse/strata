@@ -327,3 +327,79 @@ fn a_dialog_button_is_the_dialog_on_top() {
         "a toolkit that nests no dialogs keeps the first"
     );
 }
+
+#[test]
+fn slashless_result_prefers_root_hit_over_earlier_subfolder_hit() {
+    let mut fake = Fake::new();
+    let list = fake.add(
+        WINDOW,
+        drawn("list", "Search results", [0.0, 40.0, 400.0, 500.0]),
+    );
+    let decoy = fake.add(
+        list,
+        Node {
+            description: "not-alpha/match-note.txt",
+            ..drawn("list item", "match-note.txt", [0.0, 40.0, 400.0, 28.0])
+        },
+    );
+    let subfolder = fake.add(
+        list,
+        Node {
+            description: "alpha/match-note.txt, Synced",
+            ..drawn("list item", "match-note.txt", [0.0, 68.0, 400.0, 28.0])
+        },
+    );
+    let root = fake.add(
+        list,
+        Node {
+            description: "match-note.txt, Synced",
+            ..drawn("list item", "match-note.txt", [0.0, 96.0, 400.0, 28.0])
+        },
+    );
+    let plain = fake.add(
+        list,
+        Node {
+            description: "File",
+            ..drawn("list item", "plain.txt", [0.0, 124.0, 400.0, 28.0])
+        },
+    );
+    let abs_sub = fake.add(
+        list,
+        Node {
+            description: "File, /tmp/fixture/alpha/deep.txt",
+            ..drawn("list item", "deep.txt", [0.0, 152.0, 400.0, 28.0])
+        },
+    );
+    let abs_root = fake.add(
+        list,
+        Node {
+            description: "File, /tmp/fixture/deep.txt",
+            ..drawn("list item", "deep.txt", [0.0, 180.0, 400.0, 28.0])
+        },
+    );
+    let kept = Remembered::default();
+    let scope = scope(&fake, &kept);
+
+    assert_ne!(decoy, subfolder);
+    assert_ne!(abs_sub, abs_root);
+    assert_eq!(
+        scope.resolve(&target(json!({ "result": "match-note.txt" }))),
+        Ok(Some(root)),
+        "slashless result picks the root hit instead of an earlier subfolder hit"
+    );
+    assert_eq!(
+        scope.resolve(&target(json!({ "result": "alpha/match-note.txt" }))),
+        Ok(Some(subfolder)),
+        "path match respects directory boundaries and ignores not-alpha/"
+    );
+    assert_eq!(
+        scope.resolve(&target(json!({ "result": "plain.txt" }))),
+        Ok(Some(plain)),
+        "non-recursive hits with no path description still resolve"
+    );
+    assert_eq!(
+        scope.resolve(&target(json!({ "result": "deep.txt" }))),
+        Ok(Some(abs_root)),
+        "absolute-path results prefer the shallowest root hit"
+    );
+}

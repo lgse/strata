@@ -14,7 +14,7 @@
 {"key":"ctrl+a"}
 {"type":"readme.md"}
 {"key":"Return"}
-{"wait":{"present":{"role":"label","name":"“readme.md” already exists"}},"message":"the conflict to keep the prompt open with its reason"}
+{"wait":{"description":{"target":{"field":"field"},"text":"“readme.md” already exists"}},"message":"the conflict to keep the prompt open with its reason"}
 {"expect":{"field":{"of":"field","focused":true}}}
 {"fs":{"path":"readme.md","text":"# Fixture\n"},"timeout_ms":0}
 {"key":"ctrl+a"}

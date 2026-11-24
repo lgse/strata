@@ -249,9 +249,36 @@ pub(super) fn describe<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> Describe<
         move |s: &S, rcx: &RowCx<'_>| {
             let mut h = std::hash::DefaultHasher::new();
             described(&v, s, serial, rcx).hash(&mut h);
+            shown_text(&v, s, serial, rcx).hash(&mut h);
+            detail_text(&v, s, serial, rcx).hash(&mut h);
+            if let Some((ver, _)) = &v.extra_description {
+                ver(s, rcx.entry.id).hash(&mut h);
+            }
             h.finish()
         },
-        move |s: &S, rcx: &RowCx<'_>| described(&b, s, serial, rcx).map(Cow::into_owned),
+        move |s: &S, rcx: &RowCx<'_>| {
+            let mut parts: Vec<String> = Vec::new();
+            if let Some(base) = described(&b, s, serial, rcx).filter(|t| !t.is_empty()) {
+                parts.push(base.into_owned());
+            }
+            if let Some(badge) = shown_text(&b, s, serial, rcx).filter(|t| !t.is_empty())
+                && parts.last().map(String::as_str) != Some(badge.as_ref())
+            {
+                parts.push(badge.into_owned());
+            }
+            if let Some(detail) = detail_text(&b, s, serial, rcx).filter(|t| !t.is_empty()) {
+                parts.push(detail.into_owned());
+            }
+            if let Some(extra) = b
+                .extra_description
+                .as_ref()
+                .and_then(|(_, text)| text(s, rcx.entry.id))
+                .filter(|t| !t.is_empty())
+            {
+                parts.push(extra);
+            }
+            (!parts.is_empty()).then(|| parts.join(", "))
+        },
     )
 }
 
@@ -266,5 +293,4 @@ fn described<'s, S: 'static>(
         .depth_of(serial)
         .filter(|d| *d < p.sources.len())
         .and_then(|depth| p.sources.description(depth, rcx.index))
-        .or_else(|| shown_text(sh, s, serial, rcx))
 }

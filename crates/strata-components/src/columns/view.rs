@@ -103,6 +103,10 @@ type FlagFn<S> = Rc<dyn Fn(&S) -> bool>;
 type IntentFn<S> = Rc<dyn Fn(&mut S, ColumnsIntent, &mut Tx)>;
 type DropActionFn<S> =
     Rc<dyn Fn(&S, Option<(usize, Option<EntryId>)>, &DropOffer, Mods) -> Option<DropAction>>;
+type ExtraDescriptionFn<S> = (
+    Rc<dyn Fn(&S, EntryId) -> u64>,
+    Rc<dyn Fn(&S, EntryId) -> Option<String>>,
+);
 
 /// What the view was built with, shared by its parts' handlers.
 pub(super) struct Shared<S> {
@@ -112,6 +116,7 @@ pub(super) struct Shared<S> {
     pub(super) actions: Option<ActionsFn<S>>,
     pub(super) band: Option<ActionsFn<S>>,
     marks: Option<MarksFn<S>>,
+    pub(super) extra_description: Option<ExtraDescriptionFn<S>>,
     pointer: PointerFn<S>,
     escape_closes: FlagFn<S>,
     pub(super) close_buttons: FlagFn<S>,
@@ -134,6 +139,7 @@ impl<S> Clone for Shared<S> {
             actions: self.actions.clone(),
             band: self.band.clone(),
             marks: self.marks.clone(),
+            extra_description: self.extra_description.clone(),
             pointer: self.pointer.clone(),
             escape_closes: self.escape_closes.clone(),
             close_buttons: self.close_buttons.clone(),
@@ -204,6 +210,7 @@ impl<S: 'static> ColumnsView<S> {
                 actions: None,
                 band: None,
                 marks: None,
+                extra_description: None,
                 pointer: Rc::new(|_| PointerSettings::default()),
                 escape_closes: Rc::new(|_| true),
                 close_buttons: Rc::new(|_| true),
@@ -251,6 +258,15 @@ impl<S: 'static> ColumnsView<S> {
     /// The host's marks on each row (cut, dragging, the Enter target); the view adds the open path's.
     pub fn marks(self, f: impl Fn(&S, usize, EntryId) -> RowMarks + 'static) -> Self {
         self.with(|sh| sh.marks = Some(Rc::new(f)))
+    }
+
+    /// Extra accessible status text appended to a row's description, invalidated when `version` changes.
+    pub fn extra_description(
+        self,
+        version: impl Fn(&S, EntryId) -> u64 + 'static,
+        text: impl Fn(&S, EntryId) -> Option<String> + 'static,
+    ) -> Self {
+        self.with(|sh| sh.extra_description = Some((Rc::new(version), Rc::new(text))))
     }
 
     /// Whether Escape with nothing selected in the active column closes the deepest one: on by default.

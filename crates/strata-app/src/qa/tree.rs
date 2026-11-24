@@ -8,52 +8,21 @@ use std::{
 
 use serde_json::Value;
 use strata_components::{contract::EntryId, pdf_view::page_row_identity};
-use strata_qa::{Mark, Orientation, Rect};
+use strata_qa::{EntryPart, Mark, Orientation, Rect};
 
 pub(super) use super::kept::Scrolled;
 pub(crate) use super::kept::{Kept, Node};
 use super::{
-    kept::{SCROLLS_AT_LEAST, is_entry_key},
+    kept::{SCROLLS_AT_LEAST, entry_id_of},
     roles,
 };
 
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct NameLabel {
-    /// The keys of the elements around it, the nearest first.
-    pub(super) above: Vec<String>,
-    pub(super) text: String,
-    /// In window points.
-    pub(super) bounds: Rect,
-    pub(super) badge: bool,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct RowIcon {
-    /// The keys of the elements around it, the nearest first.
-    pub(super) above: Vec<String>,
-    /// The keyed element's box, in window points.
-    pub(super) bounds: Rect,
-    pub(super) glyph: Option<Rect>,
-}
-
-/// A row as the view draws it.
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct DrawnRow {
-    pub(super) key: String,
-    pub(super) name: String,
-    pub(super) selected: bool,
-    pub(super) bounds: Rect,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct DrawnColumn {
-    /// The key of the column's list.
-    pub(super) list: String,
-    pub(super) name: String,
-    pub(super) bounds: Rect,
-    /// The group around the list, which the view names by the folder.
-    pub(super) pane: Rect,
-    pub(super) rows: Vec<DrawnRow>,
+/// Drawn geometry of an entry row's visual sub-parts, used for pointer targeting only
+/// (never injected into the accessibility snapshot tree).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct EntryParts {
+    pub(super) label: Option<Rect>,
+    pub(super) icon: Option<Rect>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -63,32 +32,15 @@ pub(super) struct Shape {
     pub(super) entry: &'static str,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct DrawnButton {
-    pub(super) key: String,
-    pub(super) name: String,
-    pub(super) bounds: Rect,
-    /// The list of the drawn column whose pane is among the button's ancestors, if any.
-    pub(super) column: Option<String>,
-}
-
-/// What the snapshot is read from beside the accessibility tree.
+/// What the snapshot reads beside Rune's accessibility JSON.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct Drawn {
     /// The shown view's shape. None when no view is shown, and then it has no lists.
     pub(super) view: Option<Shape>,
     /// The keys of the entry lists the view shows, one for each pane.
     pub(super) lists: Vec<String>,
-    pub(super) columns: Vec<DrawnColumn>,
-    pub(super) labels: Vec<NameLabel>,
-    pub(super) icons: Vec<RowIcon>,
-    pub(super) icon_descriptions: HashMap<EntryId, String>,
-    pub(super) buttons: Vec<DrawnButton>,
-    pub(super) sidebar: super::sidebar::Gaps,
-    pub(super) jobs: super::jobs::Labels,
-    pub(super) tenxer: super::tenxer::Labels,
-    /// The texts drawn inside the controls Rune makes one leaf (`qa::control_words`).
-    pub(super) words: super::control_words::Words,
+    /// Drawn label/icon boxes for pointer targeting (`Backend::entry_part_frame`), never added to `nodes`.
+    pub(super) parts: HashMap<EntryId, EntryParts>,
     /// The entry the filter's Enter would open (`qa::filter`).
     pub(super) outlined: Option<EntryId>,
     pub(super) edit_range: Option<[usize; 2]>,
@@ -119,6 +71,7 @@ pub(super) struct Seen {
     /// A scroll view's offsets and limits.
     pub(super) scroll: Option<Scrolled>,
     pub(super) mark: Option<Mark>,
+    pub(super) parts: Option<EntryParts>,
 }
 
 impl Seen {
@@ -132,9 +85,6 @@ impl Seen {
 
     /// The AT-SPI role name the scenarios use.
     pub(super) fn role(&self) -> &'static str {
-        if roles::is_search_box(&self.role, self.key.as_deref()) {
-            return roles::SEARCH_BOX;
-        }
         let toggled = self.has_state("checked") || self.has_state("unchecked");
         roles::at_spi_toggled(&self.role, !self.name.is_empty(), toggled)
     }
@@ -214,8 +164,6 @@ fn segment_of(key: &str) -> String {
         .unwrap_or_else(|| key.to_owned())
 }
 
-const PANEL: &str = "group";
-
 fn is_window_announcer(node: &Value) -> bool {
     let unit = Rect {
         x: 0.0,
@@ -245,41 +193,12 @@ impl Snapshot {
         }
         snapshot.focus = snapshot.keyboard_focus();
         snapshot.apply_drawn_states(drawn);
-        let panes = snapshot.present_view(drawn);
-        for label in &drawn.labels {
-            snapshot.add_label(label);
-        }
-        snapshot.unname_archive_members();
-        snapshot.label_archive_text_buttons();
-        for icon in &drawn.icons {
-            snapshot.add_icon(icon, &drawn.icon_descriptions);
-        }
-        drawn.words.present(&mut snapshot);
-        for button in &drawn.buttons {
-            snapshot.add_hidden_button(button, &panes);
-        }
-        drawn.sidebar.present(&mut snapshot);
-        drawn.jobs.present(&mut snapshot);
-        drawn.tenxer.present(&mut snapshot);
-        snapshot.widen_unscrolled_tab_strip();
-        snapshot
-    }
-
-    fn present_view<'a>(&mut self, drawn: &'a Drawn) -> Vec<(&'a str, usize)> {
-        let mut panes = Vec::new();
-        let Some(view) = &drawn.view else {
-            return panes;
-        };
-        for column in &drawn.columns {
-            if let Some(pane) = self.add_hidden_column(column, view) {
-                panes.push((column.list.as_str(), pane));
+        if let Some(view) = &drawn.view {
+            for list in &drawn.lists {
+                snapshot.mark_column(list, view, &drawn.parts);
             }
         }
-        for list in &drawn.lists {
-            self.mark_column(list, view, &drawn.columns);
-        }
-        self.add_row_panels();
-        panes
+        snapshot
     }
 
     /// The entry the filter's Enter would open, as of this snapshot.
@@ -287,211 +206,14 @@ impl Snapshot {
         self.outlined
     }
 
-    /// Presents `seen` under the window: a node a part draws and the tree leaves out.
-    pub(super) fn push_under_window(&mut self, segment: &str, seen: Seen) {
-        if !self.nodes.is_empty() {
-            self.push(0, segment, seen);
+    /// The drawn label or icon box of an entry row, in window coordinates.
+    pub(super) fn entry_part_frame(&self, node: &Node, part: EntryPart) -> Option<Rect> {
+        let parts = self.get(node)?.parts?;
+        match part {
+            EntryPart::Label => parts.label,
+            EntryPart::Icon => parts.icon,
+            EntryPart::Metadata => None,
         }
-    }
-
-    fn add_hidden_button(&mut self, button: &DrawnButton, panes: &[(&str, usize)]) {
-        let listed = |seen: &Seen| seen.key.as_deref() == Some(button.key.as_str());
-        let menu = |seen: &Seen| seen.role == "menu" && seen.has_state("modal");
-        let modal = self.nodes.iter().any(menu);
-        if !modal || self.nodes.iter().any(listed) {
-            return;
-        }
-        let seen = Seen {
-            role: "button".to_owned(),
-            key: Some(button.key.clone()),
-            name: button.name.clone(),
-            bounds: Some(button.bounds),
-            ..Seen::default()
-        };
-        let parent = panes
-            .iter()
-            .find(|(list, _)| button.column.as_deref() == Some(*list))
-            .map_or(0, |(_, index)| *index);
-        self.push(parent, &button.key, seen);
-    }
-
-    /// How many nodes the snapshot holds, presented ones included.
-    pub(super) fn len(&self) -> usize {
-        self.nodes.len()
-    }
-
-    /// Presents `seen` under the node at `parent`, at `segment` of its path.
-    pub(super) fn push_under(&mut self, parent: usize, segment: &str, seen: Seen) {
-        self.push(parent, segment, seen);
-    }
-
-    fn push(&mut self, parent: usize, segment: &str, seen: Seen) -> usize {
-        let index = self.nodes.len();
-        let path = self.nodes[parent]
-            .node
-            .as_ref()
-            .map(|node| node.0.to_string());
-        let node = Node(Rc::from(
-            format!("{}/{segment}", path.unwrap_or_default()).as_str(),
-        ));
-        self.index.insert(node.clone(), index);
-        self.nodes.push(Seen {
-            node: Some(node),
-            parent: Some(parent),
-            ..seen
-        });
-        self.nodes[parent].children.push(index);
-        index
-    }
-
-    fn add_hidden_column(&mut self, column: &DrawnColumn, view: &Shape) -> Option<usize> {
-        let listed = |seen: &Seen| seen.key.as_deref() == Some(column.list.as_str());
-        if self.nodes.is_empty() || self.nodes.iter().any(listed) {
-            return None;
-        }
-        let named = |role: &str, bounds: Rect| Seen {
-            role: role.to_owned(),
-            name: column.name.clone(),
-            bounds: Some(bounds),
-            ..Seen::default()
-        };
-        let pane = self.push(
-            0,
-            &format!("@pane-{}", column.list),
-            named("group", column.pane),
-        );
-        let list = Seen {
-            key: Some(column.list.clone()),
-            ..named(view.list, column.bounds)
-        };
-        let list = self.push(pane, &column.list, list);
-        for row in &column.rows {
-            let state = if row.selected {
-                "selected"
-            } else {
-                "unselected"
-            };
-            let seen = Seen {
-                role: view.entry.to_owned(),
-                key: Some(row.key.clone()),
-                name: row.name.clone(),
-                states: vec![state.to_owned()],
-                bounds: Some(row.bounds),
-                ..Seen::default()
-            };
-            self.push(list, &row.key, seen);
-        }
-        Some(pane)
-    }
-
-    fn add_row_panels(&mut self) {
-        let rows: Vec<(usize, Rect)> = (0..self.nodes.len())
-            .filter(|index| self.nodes[*index].mark == Some(Mark::Entry))
-            .filter_map(|index| Some((index, self.nodes[index].bounds?)))
-            .collect();
-        for (row, bounds) in rows {
-            let panel = Seen {
-                role: PANEL.to_owned(),
-                bounds: Some(bounds),
-                ..Seen::default()
-            };
-            self.push(row, "@panel", panel);
-        }
-    }
-
-    /// Presents a row's drawn name (or Columns size/count badge) as a `label` under its entry.
-    fn add_label(&mut self, label: &NameLabel) {
-        let Some(row) = self.entry_around(&label.above) else {
-            return;
-        };
-        let seen = Seen {
-            role: "label".to_owned(),
-            name: label.text.clone(),
-            bounds: Some(label.bounds),
-            ..Seen::default()
-        };
-        let segment = if label.badge { "@badge" } else { "@label" };
-        self.push(row, segment, seen);
-    }
-
-    fn unname_archive_members(&mut self) {
-        let in_archive = |nodes: &[Seen], mut at: Option<usize>| {
-            while let Some(index) = at {
-                if nodes[index].key.as_deref() == Some(crate::preview::ARCHIVE_KEY) {
-                    return true;
-                }
-                at = nodes[index].parent;
-            }
-            false
-        };
-        let members: Vec<usize> = (0..self.nodes.len())
-            .filter(|&index| self.nodes[index].role == "list-box-option")
-            .filter(|&index| in_archive(&self.nodes, self.nodes[index].parent))
-            .collect();
-        for index in members {
-            self.nodes[index].name.clear();
-        }
-    }
-
-    fn label_archive_text_buttons(&mut self) {
-        let crumb = format!("{}-crumb-", crate::preview::ARCHIVE_KEY);
-        let unlock = format!("{}-unlock", crate::preview::PROMPT_KEY);
-        let is_text_button = |seen: &Seen| {
-            seen.role == "button"
-                && !seen.name.is_empty()
-                && seen.key.as_deref().is_some_and(|key| {
-                    key == unlock
-                        || key
-                            .strip_prefix(&crumb)
-                            .is_some_and(|level| level.parse::<usize>().is_ok())
-                })
-        };
-        let buttons: Vec<usize> = (0..self.nodes.len())
-            .filter(|&index| is_text_button(&self.nodes[index]))
-            .collect();
-        for index in buttons {
-            let seen = Seen {
-                role: "label".to_owned(),
-                name: self.nodes[index].name.clone(),
-                bounds: self.nodes[index].bounds,
-                ..Seen::default()
-            };
-            self.push(index, "@label", seen);
-        }
-    }
-
-    /// Presents a row's drawn icon as an `image` under the entry it is in.
-    fn add_icon(&mut self, icon: &RowIcon, descriptions: &HashMap<EntryId, String>) {
-        let Some(row) = self.entry_around(&icon.above) else {
-            return;
-        };
-        let description = self.nodes[row]
-            .node
-            .as_ref()
-            .and_then(|node| self.keep(node).entry())
-            .and_then(|id| descriptions.get(&id).cloned())
-            .unwrap_or_default();
-        let seen = Seen {
-            role: "image".to_owned(),
-            description,
-            bounds: Some(icon.glyph.unwrap_or(icon.bounds)),
-            ..Seen::default()
-        };
-        self.push(row, "@icon", seen);
-        let children = &mut self.nodes[row].children;
-        children.rotate_right(1);
-    }
-
-    fn entry_around(&self, above: &[String]) -> Option<usize> {
-        let entry = |key: &String| {
-            let row_id = is_entry_key(key);
-            self.nodes.iter().position(|seen| {
-                seen.key.as_deref() == Some(key.as_str())
-                    && (seen.mark == Some(Mark::Entry)
-                        || (row_id && seen.role == "list-box-option"))
-            })
-        };
-        above.iter().find_map(entry)
     }
 
     fn add(&mut self, value: &Value, parent: Option<usize>, path: String) -> usize {
@@ -517,6 +239,7 @@ impl Snapshot {
             busy: false,
             scroll: scrolled(value),
             mark: None,
+            parts: None,
         });
         let children = value["children"].as_array().map_or(&[][..], Vec::as_slice);
         let mut taken: Vec<String> = Vec::new();
@@ -556,30 +279,6 @@ impl Snapshot {
         }
     }
 
-    fn widen_unscrolled_tab_strip(&mut self) {
-        let Some(scroll_idx) = self
-            .nodes
-            .iter()
-            .position(|seen| seen.key.as_deref() == Some("tabs-scroll"))
-        else {
-            return;
-        };
-        if self.nodes[scroll_idx]
-            .scroll
-            .is_some_and(|scroll| scroll.scrolls[0])
-        {
-            return;
-        }
-        let Some(parent_idx) = self.nodes[scroll_idx].parent else {
-            return;
-        };
-        if self.nodes[parent_idx].key.as_deref() == Some("tabs")
-            && let Some(strip_bounds) = self.nodes[parent_idx].bounds
-        {
-            self.nodes[scroll_idx].bounds = Some(strip_bounds);
-        }
-    }
-
     fn keyboard_focus(&self) -> Option<usize> {
         let focused = self
             .nodes
@@ -605,7 +304,7 @@ impl Snapshot {
         found
     }
 
-    fn mark_column(&mut self, list: &str, view: &Shape, columns: &[DrawnColumn]) {
+    fn mark_column(&mut self, list: &str, view: &Shape, parts: &HashMap<EntryId, EntryParts>) {
         let is_list = |seen: &Seen| seen.role == view.list && seen.key.as_deref() == Some(list);
         let Some(container) = self.nodes.iter().position(is_list) else {
             return;
@@ -613,9 +312,11 @@ impl Snapshot {
         self.nodes[container].mark = Some(Mark::EntryContainer);
         for index in self.below(container) {
             let seen = &mut self.nodes[index];
-            if seen.role == view.entry && seen.key.as_deref().is_some_and(is_entry_key) {
+            if seen.role == view.entry
+                && let Some(id) = seen.key.as_deref().and_then(entry_id_of)
+            {
                 seen.mark = Some(Mark::Entry);
-                super::stage::sync_entry_bounds(columns, list, seen);
+                seen.parts = parts.get(&id).copied();
             }
         }
         let above = std::iter::successors(self.nodes[container].parent, |index| {

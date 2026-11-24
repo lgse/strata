@@ -72,13 +72,6 @@ pub(super) fn at_spi(role: &str, named: bool) -> &'static str {
     }
 }
 
-pub(super) const SEARCH_BOX: &str = "entry";
-
-pub(super) fn is_search_box(role: &str, key: Option<&str>) -> bool {
-    let open_with_search = |key: &str| key.starts_with("open-with-") && key.ends_with("-search");
-    role == "text-input" && key.is_some_and(open_with_search)
-}
-
 pub(super) fn at_spi_toggled(role: &str, named: bool, toggled: bool) -> &'static str {
     if toggled && matches!(role, "button" | "default-button") {
         return TOGGLE_BUTTON;

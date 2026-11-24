@@ -238,14 +238,21 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     .settings(live_keys(app, single))
     .settings(live_pointer::<V>(app))
     .settings(autoscroll_settings(app))
-    .describe(Describe::pure(|app: &App, row| {
-        let single = V::single(app);
-        let description = single
-            .pane
-            .listing()?
-            .description(row.index, &single.words)?;
-        Some(description.to_owned())
-    }))
+    .describe(Describe::new(
+        |app: &App, row| crate::file_providers::badge_version(app, row.entry.id),
+        |app: &App, row| {
+            let single = V::single(app);
+            let base = single
+                .pane
+                .listing()
+                .and_then(|listing| listing.description(row.index, &single.words))
+                .map(str::to_owned);
+            crate::file_providers::combine_description(
+                base,
+                crate::file_providers::badge_description(app, row.entry.id),
+            )
+        },
+    ))
     .dnd(crate::dnd::binder(app))
     .content_types(crate::dnd::CONTENT_TYPES)
     .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
@@ -285,6 +292,21 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
     .settings(live_keys(app, single))
     .settings(live_pointer::<V>(app).missing_anchor_stays(true))
     .settings(autoscroll_settings(app))
+    .describe(Describe::new(
+        |app: &App, row| {
+            use std::hash::{DefaultHasher, Hash as _, Hasher as _};
+            let mut hasher = DefaultHasher::new();
+            crate::filter::pane::relative_path_of(app, row.entry.id).hash(&mut hasher);
+            crate::file_providers::badge_version(app, row.entry.id).hash(&mut hasher);
+            hasher.finish()
+        },
+        |app: &App, row| {
+            crate::file_providers::combine_description(
+                crate::filter::pane::path_of(app, row.entry.id),
+                crate::file_providers::badge_description(app, row.entry.id),
+            )
+        },
+    ))
     .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
     .marks(result_marks)
     .empty(filter::pane::status)

@@ -3,8 +3,8 @@
 {"click":{"role":"button","name":"Paramètres"}}
 {"wait":{"present":{"role":"button","name":"Langue"}},"message":"French language selector"}
 {"click":{"role":"button","name":"Langue"}}
-{"wait":{"present":{"role":"label","name":"日本語"}},"message":"Japanese autonym"}
-{"click":{"role":"label","name":"日本語"}}
+{"wait":{"present":{"role":"radio menu item","name":"日本語"}},"message":"Japanese autonym"}
+{"click":{"role":"radio menu item","name":"日本語"}}
 {"wait":{"pref":{"key":"language","value":"ja"}},"message":"manual language saved"}
 {"wait":{"present":{"role":"button","name":"Redémarrer maintenant"}},"message":"restart notice remains in the running French language"}
 {"expect":{"present":{"role":"button","name":"Langue"}}}
@@ -14,8 +14,8 @@
 {"click":{"role":"button","name":"設定"}}
 {"wait":{"present":{"role":"button","name":"言語"}},"message":"Japanese language selector"}
 {"click":{"role":"button","name":"言語"}}
-{"wait":{"present":{"role":"label","name":"自動検出"}},"message":"Auto-detect in Japanese"}
-{"click":{"role":"label","name":"自動検出"}}
+{"wait":{"present":{"role":"radio menu item","name":"自動検出"}},"message":"Auto-detect in Japanese"}
+{"click":{"role":"radio menu item","name":"自動検出"}}
 {"wait":{"pref":{"key":"language","value":"auto"}},"message":"Auto-detect saved"}
 {"expect":{"present":{"role":"button","name":"言語"}}}
 {"restart":true}

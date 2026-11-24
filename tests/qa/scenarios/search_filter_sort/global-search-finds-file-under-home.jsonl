@@ -9,9 +9,9 @@
 {"layout":"us"}
 {"type":"quarterly"}
 {"wait":{"field":{"of":"field","text":"quarterly"}},"message":"the query to be typed"}
-{"wait":{"all":[{"present":{"role":"label","name":"quarterly-summary.txt"}},{"present":{"role":"label","name":"quarterly-summary.md"}}]},"message":"both files under home to appear in the search results"}
+{"wait":{"all":[{"present":{"role":"list item","name_ends_with":["/quarterly-summary.txt"]}},{"present":{"role":"list item","name_ends_with":["/quarterly-summary.md"]}}]},"message":"both files under home to appear in the search results"}
 {"type":" txt"}
 {"wait":{"field":{"of":"field","text":"quarterly txt"}},"message":"the extension term to refine the global query"}
-{"wait":{"all":[{"present":{"role":"label","name":"quarterly-summary.txt"}},{"absent":{"role":"label","name":"quarterly-summary.md"}}]},"message":"all terms to match the text filename without a contiguous phrase and exclude the Markdown file"}
+{"wait":{"all":[{"present":{"role":"list item","name_ends_with":["/quarterly-summary.txt"]}},{"absent":{"role":"list item","name_ends_with":["/quarterly-summary.md"]}}]},"message":"all terms to match the text filename without a contiguous phrase and exclude the Markdown file"}
 {"key":"Escape"}
 {"wait":{"editable_fields":0},"message":"Escape to close the search palette"}

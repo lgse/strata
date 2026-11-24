@@ -5,12 +5,12 @@
 use serde_json::{Value, json};
 
 use super::{
-    locate::{screen_rect, viewport},
+    locate::{screen_frame, screen_rect, viewport},
     lookup::{presented, rendered},
     scope::Scope,
     wanted::has_state,
 };
-use crate::{Aim, Backend, Expr, HitPath, LookupError, Measure, Target};
+use crate::{Aim, Backend, EntryPart, Expr, HitPath, LookupError, Measure, Target};
 
 /// The state of each direct child of this process whose command name starts with `prefix`.
 pub(crate) fn child_processes(prefix: &str) -> Result<Vec<(u32, String)>, String> {
@@ -304,12 +304,16 @@ impl<B: Backend> Scope<'_, B> {
             if row_height <= 0 || y < top || y + row_height > top + height {
                 continue;
             }
-            let label = presented(backend, node)
-                .into_iter()
-                .find(|label| backend.role(label) == "label");
-            let name_box = label
-                .as_ref()
-                .and_then(|label| screen(label).ok())
+            let name_box = backend
+                .entry_part_frame(node, EntryPart::Label)
+                .and_then(|frame| screen_frame(backend, node, frame).ok())
+                .map(|rect| rect.pixels())
+                .or_else(|| {
+                    presented(backend, node)
+                        .into_iter()
+                        .find(|label| backend.role(label) == "label")
+                        .and_then(|label| screen(&label).ok())
+                })
                 .map_or_else(|| screen(node), Ok)
                 .map_err(|error| error.message().to_owned())?;
             rows.push(VisibleRow {

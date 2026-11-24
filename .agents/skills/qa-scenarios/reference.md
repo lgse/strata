@@ -277,7 +277,7 @@ click lands.
 
 | Target | Finds |
 | --- | --- |
-| `{"entry":"todo.txt","dir":"archive"}` | An entry row; any pane without `dir`. `"part":"label"`, `"icon"`, or `"metadata"` picks its name label, image, or first other label. |
+| `{"entry":"todo.txt","dir":"archive"}` | An entry row; any pane without `dir`. `"part":"label"` or `"icon"` aims pointer actions at its drawn name or icon hit-target geometry (no synthetic child nodes are injected into the accessibility tree); `"part":"metadata"` picks its first metadata label child. |
 | `{"row":"readme.md"}` | The first rendered list item with the name, else the first table cell (chooser rows). |
 | `{"pane":"archive"}` | A pane; aims at an empty point unless `at` is given. |
 | `{"background":true,"dir":...}` | An empty point in a pane (a point; takes no `at`). |
@@ -309,7 +309,18 @@ and have no lower bound, so `"1/6"` of a row under 6 pixels tall is 0.
 Targets resolve through Strata's accessibility tree exposed by `strata-components`
 and `strata-app` for screen readers:
 
-- An entry row is labelled with its name and described as `Folder` or `File`.
+- An entry row is labelled with its name and described as `Folder` or `File`
+  (with Columns size/item-count badges, subfolder filter paths, and
+  file-provider status descriptions appended when present).
+- Checkboxes, radios, switches, tabs, menu items, and list-box options are
+  single leaf nodes in Rune's AccessKit tree: their own `name` and `description`
+  carry their text rather than synthetic child `label` nodes.
+- While a modal dialog or menu is open, Rune's AccessKit tree contains only the
+  modal surface; check background panes or selection before opening or after
+  dismissing the modal. To hover or click a background target while a modal is
+  open, save its box beforehand (with `remember`, `settle`, or `keep`) and aim
+  at `{"kept":"..."}` (cached screen rect, works behind modals) rather than
+  `{"remembered":"..."}` (live node recall, absent behind modals).
 - A pane is labelled with its directory and described with its presentation;
   an empty, unreadable, or loading pane's focusable surface is labelled with
   its directory and described with its status text.
@@ -360,7 +371,7 @@ pane name) where the check reads a pane.
 | `{"present":TARGET}`, `{"absent":TARGET}` | Found on screen, or not found or not on screen. |
 | `{"presented":TARGET}` | Found, even scrolled away. |
 | `{"on_screen":TARGET}` | Within the window's height. |
-| `{"state":{"target":T,"selected":true,"focused":false,"checked":false,"pressed":true,"sensitive":true}}` | Each given state matches; also `selectable`, `editable`, `focusable`, `busy` (what `accessibility::set_busy` recorded), and `marked` (an entry row outlined as the result Enter in its filter field opens). An active switch is `pressed` and `checked`; a tab's `selected` is what `accessibility::set_selected` recorded. |
+| `{"state":{"target":T,"selected":true,"focused":false,"checked":false,"pressed":true,"sensitive":true}}` | Each given state matches; also `selectable`, `editable`, `focusable`, `busy` (from AccessKit's busy state), and `marked` (an entry row outlined as the result Enter in its filter field opens). An active switch is `pressed` and `checked`; a tab's `selected` comes from AccessKit's selected state. |
 | `{"name":{"target":T,"text":"0:05"}}`, `{"text":{"target":T,"text":"..."}}`, `{"description":{"target":T,"text":"Ctrl+C"}}` | Accessible name, text content (a label's or entry's text, a text view's buffer), or description (the recorded one, or a picture's alternative text), exactly or as a pattern (`{"contains":...}`). |
 | `{"mentions":{"target":T,"text":"..."}}` | Some name or description in the subtree contains the text; `"role":"label"` limits it; `"words":"a b"` allows any whitespace; `"equals"` matches a whole collapsed name. |
 | `{"subtree_text":{"target":T,"contains":"...","strip_newlines":true}}` | The subtree's joined text contains the part. |

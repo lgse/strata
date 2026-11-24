@@ -93,6 +93,9 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     // The filter's field, in a band under the header of the column it is open in.
     .header_band(|app: &App, cx| filter::column_band(app, cx.depth))
     .marks(row_marks)
+    .extra_description(crate::file_providers::badge_version, |app: &App, id| {
+        crate::file_providers::badge_description(app, id).map(str::to_owned)
+    })
     .on_intent(intents::heard)
 }
 

@@ -6,7 +6,7 @@
 {"key":"F5"}
 {"wait":{"replaced":{"target":{"entry":"blocked"},"since":"listed"}},"message":"F5's reload to replace the blocked row"}
 {"wait":{"description":{"target":{"entry":"blocked","dir":"$root"},"text":"Folder that requires administrator access"}},"message":"the metadata fill to mark 'blocked' as a folder that needs administrator access"}
-{"select":{"entry":"blocked"}}
+{"click":{"entry":"blocked"}}
 {"wait":{"dialog":true},"message":"a dialog to appear"}
 {"expect":{"dialog":"Unable to open directory"}}
 {"expect":{"mentions":{"target":{"dialog":true},"role":"label","text":"do not have permission"}}}

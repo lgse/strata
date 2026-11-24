@@ -606,8 +606,12 @@ fn panes_lists_and_rows_carry_the_names_the_gtk_views_give_them() {
             press(&mut host, "Down");
             press(&mut host, "Down");
 
-            let seen = wait(&mut host, "the mirrored column", |seen| {
+            let seen = wait(&mut host, "the mirrored column and its sizes", |seen| {
                 host_listed(seen, "pictures")
+                    && seen
+                        .panes
+                        .iter()
+                        .all(|pane| pane.rows.iter().all(|row| row.description.contains(", ")))
             });
 
             let named = |role: &str, name: &str, description: &str| {
@@ -626,21 +630,21 @@ fn panes_lists_and_rows_carry_the_names_the_gtk_views_give_them() {
                         group: named("group", &root, "Columns view"),
                         list: named("list-box", &root, "Files"),
                         rows: vec![
-                            row("archive", "Folder", false),
-                            row("documents", "Folder", false),
-                            row("pictures", "Folder", true),
-                            row("shortcut", "Folder link", false),
-                            row("readme.md", "File", false),
-                            row("stale", "Broken link", false),
-                            row("todo.txt", "File", false),
+                            row("archive", "Folder, No items", false),
+                            row("documents", "Folder, 3 items", false),
+                            row("pictures", "Folder, 2 items", true),
+                            row("shortcut", "Folder link, 3 items", false),
+                            row("readme.md", "File, 9 B", false),
+                            row("stale", "Broken link, 7 B", false),
+                            row("todo.txt", "File, 8 B", false),
                         ],
                     },
                     Pane {
                         group: named("group", "pictures", "Columns view"),
                         list: named("list-box", "pictures", "Files"),
                         rows: vec![
-                            row("diagram.txt", "File", false),
-                            row("photo.txt", "File", false),
+                            row("diagram.txt", "File, 20 B", false),
+                            row("photo.txt", "File, 18 B", false),
                         ],
                     },
                 ]

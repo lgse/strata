@@ -1,9 +1,9 @@
 {"scenario":"tenxer-numbered-action-confirms","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$config/strata/actions/record-names","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/record-names/action.toml","write":"schema_version = 1\nid = \"record-names\"\nname = \"Record names\"\nmenu = \"top\"\n\n[when]\nextensions = [\"txt\"]\n\n[run]\nruntime = \"command\"\nprogram = \"/bin/sh\"\nconfirm = true\nargs = [\"-c\", \"printf '%s\\\\n' \\\"$$@\\\" >> '$environment/numbered-action'\", \"sh\", \"{paths}\"]\n"}},{"fs":{"path":"$config/strata/actions/record-folder","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/record-folder/action.toml","write":"schema_version = 1\nid = \"record-folder\"\nname = \"Record folder\"\nmenu = \"top\"\n\n[when]\nkinds = [\"folder\"]\n\n[run]\nruntime = \"command\"\nprogram = \"/bin/sh\"\nargs = [\"-c\", \"printf '%s\\\\n' \\\"$$STRATA_ACTION_SOURCE\\\" \\\"$$@\\\" >> '$environment/folder-action'\", \"sh\", \"{paths}\"]\n"}}],"cost":{"columns":1.1},"quality":{"impact":4,"coverage":3,"criticality":2,"diagnostic":3,"score":25,"note":"Numbered action slots via ; digit confirm then run/cancel; headless tests pin slot routing, only GUI confirm and folder-chord path"}}
 {"select_with_keyboard":"todo.txt"}
 {"key":";"}
-{"wait":{"present":{"role":"label","name":";-"}},"message":"the armed action chord"}
+{"wait":{"present":{"role":"status bar","name":";-"}},"message":"the armed action chord"}
 {"key":"2"}
-{"wait":{"present":{"role":"label","name":"No action 2"}},"message":"a vacant slot"}
+{"wait":{"present":{"role":"status bar","name":"No action 2"}},"message":"a vacant slot"}
 {"key":";"}
 {"key":"1"}
 {"wait":{"present":{"role":"dialog","name":"Run this action?"}},"message":"confirmation"}
@@ -15,16 +15,18 @@
 {"key":"1"}
 {"wait":{"present":{"role":"dialog","name":"Run this action?"}},"message":"confirmation"}
 {"click":{"role":"button","name":"Run","within":{"role":"dialog","name":"Run this action?"}}}
-{"wait":{"present":{"role":"label","name_matches":"Done in "}},"message":"Jobs to show the completed run"}
+{"wait":{"mentions":{"target":{"dialog":true},"text":"Done in "}},"message":"Jobs to show the completed run"}
 {"fs":{"path":"$environment/numbered-action","text":"$fixture/todo.txt\n"},"timeout_ms":0}
 {"key":"Escape"}
 {"wait":{"absent":{"role":"button","name":"Clear finished"}},"message":"Escape to close the Jobs popover the run opened"}
 {"click":{"entry":"todo.txt"}}
 {"wait":{"focused":"todo.txt"},"message":"keyboard focus to return to 'todo.txt'"}
 {"key":";"}
-{"wait":{"present":{"role":"label","name":";-"}},"message":"the armed action chord"}
+{"wait":{"present":{"role":"status bar","name":";-"}},"message":"the armed action chord"}
 {"key":"."}
-{"wait":{"present":{"role":"label","name":"; .-"}},"message":"the folder action chord"}
+{"wait":{"present":{"role":"status bar","name":"; .-"}},"message":"the folder action chord"}
 {"key":"1"}
-{"wait":{"present":{"role":"label","name":"2 jobs finished","rendered":false}},"message":"Jobs to count the folder action's run as the second finished job"}
+{"wait":{"present":{"role":"label","name":"2 finished","within":{"dialog":true}}},"message":"Jobs to count the folder action's run as the second finished job"}
+{"key":"Escape"}
+{"wait":{"present":{"role":"button","name":"2 jobs finished"}},"message":"Jobs footer indicator to count both finished jobs"}
 {"fs":{"path":"$environment/folder-action","text":"background\n$fixture\n"},"timeout_ms":0}

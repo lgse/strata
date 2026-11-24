@@ -200,9 +200,9 @@ and `$previous`):
 {"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
 {"click":{"entry":"$target","dir":"$root"},"button":3}
 {"wait":{"menu_items":{}},"message":"the context menu for '$target'"}
-{"wait":{"selected":["$target"],"dir":"$root"},"message":"the selection to become ['$target']"}
 {"key":"Escape"}
 {"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"selected":["$target"],"dir":"$root"},"message":"the selection to become ['$target']"}
 {"wait":{"focused":"$target"},"message":"keyboard focus to reach '$target'"}
 {"expect":{"panes":["$root"]},"message":"a folder context menu must not navigate"}
 {"key":"Left","modes":["icons"]}
@@ -309,9 +309,12 @@ them for a passing run.
   `tree.txt` for an unexpected dialog or menu, and `strata.log` for errors. If
   the state is right but named differently, fix the predicate from `tree.txt`.
 - **A target was not found.** Search `tree.txt` for the role and name. Names
-  come from labels and `accessibility::set_label`, never tooltips; a widget
-  scrolled away is not `present` (use `reveal`, or `"rendered":false` where
-  presence is enough).
+  come from Rune's real AccessKit tree (`strata-components` and `strata-app`),
+  never tooltips; single-leaf controls (options, tabs, menu items, checkboxes,
+  radios, switches) carry their text on the control itself rather than in child
+  `label` nodes, and modal menus or dialogs hide background surfaces while open.
+  A widget scrolled away is not `present` (use `reveal`, or `"rendered":false`
+  where presence is enough).
 - **Focus is not where expected.** `tree.txt` starts with `focus: ...`,
   marked when focus sits on an unmapped widget; such focus shows as `null`
   in the snapshot. Wait for `{"focused":...}` or `{"focused_widget":...}`

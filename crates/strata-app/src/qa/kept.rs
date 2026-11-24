@@ -10,10 +10,15 @@ use strata_qa::{Orientation, Scroll};
 /// Less than this far to go is nowhere: Rune's tree rounds to a tenth of a point.
 pub(super) const SCROLLS_AT_LEAST: f64 = 0.5;
 
-pub(super) fn is_entry_key(key: &str) -> bool {
+pub(super) fn entry_id_of(key: &str) -> Option<EntryId> {
     let digits = key.trim_start_matches(|c: char| !c.is_ascii_digit());
-    let id = digits.parse::<u64>();
-    id.is_ok_and(|id| row_key(EntryId::new(id)) == key)
+    let id = digits.parse::<u64>().ok()?;
+    let entry = EntryId::new(id);
+    (row_key(entry) == key).then_some(entry)
+}
+
+pub(super) fn is_entry_key(key: &str) -> bool {
+    entry_id_of(key).is_some()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

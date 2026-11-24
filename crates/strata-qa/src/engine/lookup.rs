@@ -193,6 +193,35 @@ pub fn find_presented<B: Backend + ?Sized>(
         .find(|node| backend.role(node) == role && backend.name(node) == name)
 }
 
+fn ends_with_path(text: &str, path: &str) -> bool {
+    text.strip_suffix(path)
+        .is_some_and(|prefix| prefix.is_empty() || prefix.ends_with('/') || prefix.ends_with('\\'))
+}
+
+fn is_nested_path(text: &str, path: &str) -> bool {
+    text.strip_suffix(path)
+        .is_some_and(|prefix| prefix.ends_with('/') || prefix.ends_with('\\'))
+}
+
+fn row_path_texts<B: Backend + ?Sized>(backend: &B, row: &B::Node) -> Vec<String> {
+    let described = backend.description(row);
+    let mut texts: Vec<String> = described
+        .split(", ")
+        .filter(|part| !part.is_empty())
+        .map(str::to_owned)
+        .collect();
+    for label in presented(backend, row) {
+        if backend.role(&label) == "label" && rendered(backend, &label) {
+            texts.push(backend.name(&label));
+        }
+    }
+    texts
+}
+
+fn path_separators(text: &str) -> usize {
+    text.bytes().filter(|&b| b == b'/' || b == b'\\').count()
+}
+
 pub(crate) fn search_result<B: Backend + ?Sized>(
     backend: &B,
     root: &B::Node,
@@ -206,16 +235,43 @@ pub(crate) fn search_result<B: Backend + ?Sized>(
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    presented(backend, &container).into_iter().find(|row| {
-        backend.role(row) == row_role
-            && rendered(backend, row)
-            && backend.name(row) == file_name
-            && presented(backend, row).iter().any(|label| {
-                backend.role(label) == "label"
-                    && rendered(backend, label)
-                    && backend.name(label).ends_with(path)
-            })
-    })
+    let candidates: Vec<_> = presented(backend, &container)
+        .into_iter()
+        .filter(|row| {
+            backend.role(row) == row_role
+                && rendered(backend, row)
+                && backend.name(row) == file_name
+        })
+        .collect();
+    if path.contains('/') || path.contains('\\') {
+        return candidates.into_iter().find(|row| {
+            row_path_texts(backend, row)
+                .iter()
+                .any(|text| ends_with_path(text, path))
+        });
+    }
+    candidates
+        .iter()
+        .find(|row| {
+            !row_path_texts(backend, row)
+                .iter()
+                .any(|text| is_nested_path(text, path))
+        })
+        .or_else(|| {
+            candidates
+                .iter()
+                .filter_map(|row| {
+                    let depth = row_path_texts(backend, row)
+                        .iter()
+                        .filter(|text| ends_with_path(text, path))
+                        .map(|text| path_separators(text))
+                        .min()?;
+                    Some((depth, row))
+                })
+                .min_by_key(|(depth, _)| *depth)
+                .map(|(_, row)| row)
+        })
+        .cloned()
 }
 
 pub(crate) fn missing(message: impl Into<String>) -> LookupError {

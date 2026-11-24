@@ -31,7 +31,7 @@ impl Chooser<'_> {
     }
 
     fn shows(&self, label: &str) -> bool {
-        self.holds(&json!({ "present": { "role": "label", "name": label, "within": { "toplevel": "Copy to" } } }))
+        self.holds(&json!({ "present": { "role": "status bar", "name": label, "within": { "toplevel": "Copy to" } } }))
     }
 
     /// The role and name of what has the chooser's keyboard.

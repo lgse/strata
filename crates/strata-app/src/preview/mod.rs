@@ -37,8 +37,6 @@ pub(crate) mod viewer;
 #[cfg(test)]
 mod tests;
 
-#[cfg(feature = "qa")]
-pub(crate) use archive::{ARCHIVE_KEY, PROMPT_KEY};
 pub(crate) use follow::{
     follow_active_column, follow_filter_close, follow_filter_pick, note_click_opening,
 };

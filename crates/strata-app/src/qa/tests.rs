@@ -199,7 +199,9 @@ fn a_wait_for_what_never_comes_fails_and_shows_the_tree() {
             let row = row.expect("the focused row").trim_start();
             assert!(row.starts_with("list-box-option#row-"), "{row}");
             assert!(
-                row.contains(" role=\"list item\" name=\"readme.md\" [selected] description=\"File\" [focused] ("),
+                row.contains(
+                    " role=\"list item\" name=\"readme.md\" [selected] description=\"File"
+                ) && row.contains("[focused] ("),
                 "{row}"
             );
         },
@@ -274,23 +276,25 @@ fn a_click_on_a_rows_name_label_lands_on_the_name_the_view_draws() {
                 passes(&backend, &kept, &step);
             }
 
-            // The label is the name the view draws, under its row.
+            // The entry stays a single AccessKit leaf; pointer targeting resolves the drawn label box.
             let window = backend.window().expect("the window");
             let mut below = vec![window];
-            let mut labels = Vec::new();
+            let mut rows = Vec::new();
             while let Some(node) = below.pop() {
-                if backend.role(&node) == "label" && backend.name(&node) == "pictures" {
-                    labels.push(node.clone());
+                if backend.role(&node) == "list item" && backend.name(&node) == "pictures" {
+                    rows.push(node.clone());
                 }
                 below.extend(backend.children(&node));
             }
-            let [label] = labels.as_slice() else {
-                panic!("one label named pictures, not {labels:?}");
+            let [row] = rows.as_slice() else {
+                panic!("one list item named pictures, not {rows:?}");
             };
-            let row = backend.parent(label).expect("its row");
-            assert_eq!(backend.role(&row), "list item");
-            assert_eq!(backend.name(&row), "pictures");
-            let (inner, outer) = (backend.frame(label), backend.frame(&row));
+            assert!(
+                backend.children(row).is_empty(),
+                "no synthetic child label nodes under a Rune list item"
+            );
+            let inner = backend.entry_part_frame(row, strata_qa::EntryPart::Label);
+            let outer = backend.frame(row);
             assert!(inner.is_some() && outer.is_some(), "{inner:?} in {outer:?}");
         },
     );
@@ -312,11 +316,11 @@ fn a_right_click_opens_an_entry_menu_and_escape_gives_the_keyboard_back() {
                     wait(json!({ "focused": "readme.md" })),
                     json!({ "click": { "entry": target, "dir": root }, "button": 3 }),
                     wait(json!({ "menu_items": {} })),
-                    wait(json!({ "selected": [target], "dir": root })),
                     json!({ "expect": { "description": {
                         "target": { "menu_item": "Copy" }, "text": "Ctrl+C" } } }),
                     json!({ "key": "Escape" }),
                     wait(json!({ "menu_items": null })),
+                    wait(json!({ "selected": [target], "dir": root })),
                     wait(json!({ "focused": target })),
                     json!({ "expect": { "panes": [root] } }),
                     json!({ "key": "Up" }),

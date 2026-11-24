@@ -3,15 +3,15 @@
 {"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
 {"layout":"ru"}
 {"key":"m"}
-{"wait":{"present":{"role":"label","name":"m-"}},"message":"m to arm the save chord"}
+{"wait":{"present":{"role":"status bar","name":"m-"}},"message":"m to arm the save chord"}
 {"key":"z"}
-{"wait":{"present":{"role":"label","name":"Saved bookmark z"}},"message":"the key in z's place to save bookmark z"}
+{"wait":{"present":{"role":"status bar","name":"Saved bookmark z"}},"message":"the key in z's place to save bookmark z"}
 {"fs":{"path":"$data/strata/letter-bookmarks.json","json":{"entries":{"z":"file://$fixture_quoted"}}},"timeout_ms":0,"message":"only bookmark z to be saved, for the fixture folder"}
 {"select_with_keyboard":"documents","message":"keyboard focus to reach 'documents'"}
 {"key":"Return"}
 {"wait":{"directory":"documents"},"message":"Enter to open 'documents'"}
 {"select_with_keyboard":"notes.txt","message":"keyboard focus to reach 'notes.txt'"}
 {"key":"apostrophe"}
-{"wait":{"present":{"role":"label","name":"'-"}},"message":"the key in ' 's place to arm the jump chord"}
+{"wait":{"present":{"role":"status bar","name":"'-"}},"message":"the key in ' 's place to arm the jump chord"}
 {"key":"z"}
 {"wait":{"directory":"$root"},"message":"' z to return to the bookmarked folder"}

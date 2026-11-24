@@ -29,7 +29,7 @@
 {"wait":{"entry":"readme.md","dir":"grouped"},"message":"the entry 'readme.md' in 'grouped' to appear","modes":["columns"]}
 {"wait":{"entry":"todo.txt","dir":"grouped"},"message":"the entry 'todo.txt' in 'grouped' to appear","modes":["columns"]}
 {"wait":{"not":{"field":{}}},"message":"the rename editor to release keyboard focus"}
-{"wait":{"present":{"role":"label","name":"2 items","within":{"entry":"grouped","dir":"$root"}}},"message":"the renamed folder's row to count its two items","modes":["columns"]}
+{"wait":{"description":{"target":{"entry":"grouped","dir":"$root"},"text":{"contains":"2 items"}}},"message":"the renamed folder's row to count its two items","modes":["columns"]}
 {"click":{"entry":"grouped","dir":"$root"}}
 {"wait":{"focused_pane":"grouped"},"message":"the open folder's column to take focus","modes":["columns"]}
 {"key":"Left","modes":["columns"]}

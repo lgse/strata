@@ -21,18 +21,18 @@
 {"key":"Left","variants":["root-item","root-background","root-header"]}
 {"wait":{"focused_pane":"$root"},"message":"Left to move the cursor to the root column, keeping the open path","variants":["root-item","root-background","root-header"]}
 {"select":{"entry":"child.txt","dir":"nested"},"variants":["nested-item","nested-background","nested-header"]}
+{"remember":{"pane":"$root"},"as":"other","variants":["root-item","root-background","root-header"]}
+{"remember":{"pane":"nested"},"as":"other","variants":["nested-item","nested-background","nested-header"]}
 {"click":{"entry":"notes.txt","dir":"documents"},"button":3,"variants":["root-item","nested-item"]}
 {"wait":{"menu_items":{}},"message":"the context menu for 'notes.txt'","variants":["root-item","nested-item"]}
 {"click":{"background":true,"dir":"documents"},"button":3,"variants":["root-background","nested-background"]}
 {"click":{"role":"label","name":"documents","description":"$fixture/documents","within":{"pane":"documents"}},"button":3,"variants":["root-header","nested-header"]}
 {"wait":{"menu_items":{}},"message":"the background context menu to open","variants":["root-background","nested-background","root-header","nested-header"]}
-{"wait":{"panes_with":{"target":{"role":"button","name":"Refresh (F5)"},"names":["documents"]}},"message":"actions to stay on the menu's column"}
-{"move":{"pane":"$root"},"at":["50%","50%"],"variants":["root-item","root-background","root-header"]}
-{"move":{"pane":"nested"},"at":["50%","50%"],"variants":["nested-item","nested-background","nested-header"]}
+{"move":{"kept":"other"},"at":["50%","50%"]}
 {"expect":{"menu_items":{}}}
-{"expect":{"panes_with":{"target":{"role":"button","name":"Refresh (F5)"},"names":["documents"]}}}
 {"key":"Escape"}
 {"wait":{"menu_items":null},"message":"the context menu to close"}
+{"wait":{"panes_with":{"target":{"role":"button","name":"Refresh (F5)"},"names":["documents"]}},"message":"actions to stay on the menu's column"}
 {"key":"Down"}
 {"wait":{"focused":"report.md"},"message":"keyboard focus to reach 'report.md'","variants":["root-item","nested-item"]}
 {"wait":{"focused":"notes.txt"},"message":"keyboard focus to reach 'notes.txt'","variants":["root-background","nested-background","root-header","nested-header"]}

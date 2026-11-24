@@ -3,9 +3,9 @@
 {"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
 {"click":{"entry":"$target","dir":"$root"},"button":3}
 {"wait":{"menu_items":{}},"message":"the context menu for '$target'"}
-{"wait":{"selected":["$target"],"dir":"$root"},"message":"the selection to become ['$target']"}
 {"key":"Escape"}
 {"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"selected":["$target"],"dir":"$root"},"message":"the selection to become ['$target']"}
 {"wait":{"focused":"$target"},"message":"keyboard focus to reach '$target'"}
 {"expect":{"panes":["$root"]},"message":"a folder context menu must not navigate"}
 {"key":"Left","modes":["icons"]}

@@ -44,6 +44,15 @@ pub fn screen_rect<B: Backend + ?Sized>(backend: &B, node: &B::Node) -> Result<R
     let frame = backend
         .frame(node)
         .ok_or_else(|| missing("the target is not on screen"))?;
+    screen_frame(backend, node, frame)
+}
+
+/// `frame` in `node`'s surface coordinates, moved by where that surface is on the screen.
+pub(crate) fn screen_frame<B: Backend + ?Sized>(
+    backend: &B,
+    node: &B::Node,
+    frame: Rect,
+) -> Result<Rect, LookupError> {
     let (x, y) = backend.origin(node).map_err(LookupError::Broken)?;
     Ok(Rect {
         x: x + frame.x,
@@ -120,12 +129,25 @@ pub fn locate<B: Backend>(
                     ))
                 })?;
             match entry.part {
-                Some(EntryPart::Label) => first_rendered(backend, &row, |node| {
-                    backend.role(node) == "label" && backend.name(node) == entry.entry
-                })
-                .ok_or_else(|| missing(format!("no name label on {:?}", entry.entry)))?,
-                Some(EntryPart::Icon) => icon(backend, &row)
-                    .ok_or_else(|| missing(format!("no icon on {:?}", entry.entry)))?,
+                Some(part @ (EntryPart::Label | EntryPart::Icon)) => {
+                    if let Some(frame) = backend.entry_part_frame(&row, part) {
+                        let rect = screen_frame(backend, &row, frame)?;
+                        return Ok(Located {
+                            node: row,
+                            rect,
+                            point: rect.point(at),
+                        });
+                    }
+                    match part {
+                        EntryPart::Label => first_rendered(backend, &row, |node| {
+                            backend.role(node) == "label" && backend.name(node) == entry.entry
+                        })
+                        .ok_or_else(|| missing(format!("no name label on {:?}", entry.entry)))?,
+                        EntryPart::Icon => icon(backend, &row)
+                            .ok_or_else(|| missing(format!("no icon on {:?}", entry.entry)))?,
+                        EntryPart::Metadata => unreachable!(),
+                    }
+                }
                 Some(EntryPart::Metadata) => first_rendered(backend, &row, |node| {
                     backend.role(node) == "label" && {
                         let name = backend.name(node);
@@ -347,7 +369,10 @@ pub fn focused<B: Backend>(backend: &B, window: &B::Node) -> Option<B::Node> {
 
 /// A file drag starts on the row's icon, not on the inert space in a wide row.
 fn drag_origin<B: Backend>(backend: &B, row: B::Node) -> Result<Located<B::Node>, LookupError> {
-    let rect = screen_rect(backend, icon(backend, &row).as_ref().unwrap_or(&row))?;
+    let rect = match backend.entry_part_frame(&row, EntryPart::Icon) {
+        Some(frame) => screen_frame(backend, &row, frame)?,
+        None => screen_rect(backend, icon(backend, &row).as_ref().unwrap_or(&row))?,
+    };
     Ok(Located {
         node: row,
         rect,
