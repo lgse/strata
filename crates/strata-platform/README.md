@@ -6,7 +6,7 @@ optional dependencies of its own behind its own cargo feature. Its API carries n
 names.
 
 In Strata's workspace the crate is a workspace member pinned to the same Rune rev as the root
-`Cargo.toml` (`67d73a5f18390686c8e9b8b3a32b3414ebd66db0`). Most shims correspond to upstream
+`Cargo.toml` (`11973effd419e271a19b71f59762e6a33cbe3151`). Most shims correspond to upstream
 Rune asks and are deprecated once Rune ships the capability natively; the GLib shims are outside
 Rune's scope.
 
@@ -16,7 +16,7 @@ None is enabled by default. Verify feature isolation with `mise run compile-feat
 
 | Feature | Module | What Rune lacks on Linux | Upstream issue |
 | --- | --- | --- | --- |
-| `dnd` | `dnd` | System drag and drop: Wayland (`wl_data_device`) and X11 (XDND) drag sources and drop targets with arbitrary MIME types (lazy writers), copy/move/ask/link actions, image or snapshot icons, outcomes, and typed intra-app payloads. Needs `libwayland-client` 1.23+ on Wayland. | [#171](https://github.com/anomalyco/rune/issues/171), [#424](https://github.com/anomalyco/rune/issues/424) |
+| `dnd` | `dnd` | System drag and drop: Wayland (`wl_data_device`) and X11 (XDND) drag sources and drop targets with arbitrary MIME types (lazy writers), copy/move/ask/link actions, image or snapshot icons, outcomes, and typed intra-app payloads. Needs `libwayland-client` 1.23+ on Wayland. | [#171](https://github.com/anomalyco/rune/issues/171), [#532](https://github.com/anomalyco/rune/issues/532) |
 | `clipboard` | `clipboard` | Custom MIME types, multi-format writes, typed reads with limits, app API for `PRIMARY`, change/loss notices, file-manager `Files` formats, and X11 clipboard-manager hand-off on exit, over Wayland data control, `wl_data_device`, or X11 selections. | — |
 | `csd` | `csd` | Borderless window controls on Wayland and X11, drag-move headers, and X11 edge resize, minimise, and window menu. | [#145](https://github.com/anomalyco/rune/issues/145), [#309](https://github.com/anomalyco/rune/issues/309), [#310](https://github.com/anomalyco/rune/issues/310), [#313](https://github.com/anomalyco/rune/issues/313) |
 | `foreign-parent` | `foreign_parent` | Parenting a portal/dialog window to another app's exported `wayland:` (`zxdg_importer_v2`) or `x11:` (`WM_TRANSIENT_FOR` / `_NET_WM_STATE_MODAL`) handle before mapping. Needs `libwayland-client` 1.23+ on Wayland. | — |
@@ -41,7 +41,7 @@ the shims degrade cleanly rather than failing.
 
 | Workspace | Rune rev | Rust |
 | --- | --- | --- |
-| `strata` | [`67d73a5f18390686c8e9b8b3a32b3414ebd66db0`](https://github.com/anomalyco/rune/commit/67d73a5f18390686c8e9b8b3a32b3414ebd66db0) | 1.99.1 |
+| `strata` | [`11973effd419e271a19b71f59762e6a33cbe3151`](https://github.com/anomalyco/rune/commit/11973effd419e271a19b71f59762e6a33cbe3151) | 1.99.1 |
 
 ## Shim lifecycle
 
