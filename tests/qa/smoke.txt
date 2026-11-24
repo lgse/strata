@@ -1,0 +1,20 @@
+# Critical-path QA smoke scenarios run on pull requests in CI (`./scripts/qa.sh --smoke`).
+# One scenario name per line; validated by tests/qa.rs.
+
+# Data safety: conflict dismissal, symlink permanent delete, keyboard Keep Both + undo
+dismissing-conflict-preserves-both
+delete-file-symlink-sizes-link
+keep-both-then-undo-remaining
+
+# External IPC, D-Bus, multi-window persistence, and preview sandbox
+provider-disconnect-never-replays
+preferences-sync-windows-restart
+device-rows-follow-plug-and-unplug
+markdown-preview-renders-media
+
+# Modal key routing
+modal-dialog-blocks-window-shortcuts
+
+# Real headless Wayland (sway): portal file chooser + foreign DnD, and clipboard formats
+chooser-sidebar-drops-survive-resize
+copy-offers-file-manager-formats

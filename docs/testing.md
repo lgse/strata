@@ -17,8 +17,9 @@ mise run test-platform                        # compositor, D-Bus, and window te
 mise run test-platform window::               # windowed binary tests (host, shell, key routing, QA session)
 ./scripts/quality.sh                          # formatting, Clippy, and all Rust tests in pinned container
 ./scripts/quality.sh test --jobs 4            # all Rust tests across 4 local lanes in pinned container
-./scripts/test-headless.py relevant::module   # native Rust selection in isolated display/bus environment
+./scripts/test-headless.py relevant::module   # native Rust selection in isolated headless environment
 ./scripts/qa.sh                               # every QA scenario, every mode
+./scripts/qa.sh --smoke                       # critical-path QA smoke list (tests/qa/smoke.txt)
 ./scripts/qa.sh copy-leaves-source            # one scenario, all of its runs
 ./scripts/qa.sh arrow-keys-move-focus/columns-arrows  # one run
 ```
@@ -210,8 +211,8 @@ one-second weight and always participate.
 
 Each **Rust tests shard N** verifies the checkout revision, source fingerprint,
 image inputs, executable checksums, and libtest inventory before running its
-assigned tests across parallel lanes. Each lane gets its own private display
-and private D-Bus session. The runner checks libtest's actual selection and
+assigned tests across parallel headless lanes with no display and an unreachable
+session bus. The runner checks libtest's actual selection and
 final passed/ignored counts before writing a success receipt; nonzero exits,
 empty runnable shards, or changed inventories fail.
 
@@ -250,11 +251,10 @@ shard/lane balancing. Refresh it after adding or substantially changing slow tes
 
 ### Keep Rust tests off the local desktop
 
-`mise run test` clears `DISPLAY`, `WAYLAND_SOCKET`, and `DBUS_SESSION_BUS_ADDRESS`
-and points `WAYLAND_DISPLAY` and the bus at nonexistent names so tests run purely
-headless on Rune's virtual clock with temporary `HOME`/XDG directories.
-
-For tests that need a private Xvfb display and isolated session bus on the host:
+`mise run test` and `./scripts/test-headless.py` clear `DISPLAY`, `WAYLAND_SOCKET`,
+and `DBUS_SESSION_BUS_ADDRESS` and point `WAYLAND_DISPLAY` and the bus at nonexistent
+names so tests run purely headless on Rune's virtual clock with temporary `HOME`/XDG
+directories:
 
 ```bash
 ./scripts/test-headless.py
@@ -262,8 +262,8 @@ For tests that need a private Xvfb display and isolated session bus on the host:
 ./scripts/test-headless.py relevant_module_or_test_name
 ```
 
-A startup failure aborts rather than falling back to the desktop display or
-inherited session bus.
+`test-headless.py` also sets `STRATA_REQUIRE_DEVICE_TESTS=1` and supports
+`STRATA_TEST_TMPDIR`.
 
 ### Private main contexts in Rust tests
 
@@ -280,16 +280,14 @@ process-wide default context hold `test_support::ASYNC_MAIN_CONTEXT_DEFAULT`.
 ### Native debugging dependencies
 
 These are installed inside the pinned image; only host runs of
-`scripts/test-headless.py` or `mise run test-platform` need them locally:
+`mise run test-platform` need them locally:
 
 | Purpose | Arch | Debian / Ubuntu |
 | --- | --- | --- |
 | Headless Wayland compositor (`test-platform`) | `sway`, `xorg-xwayland` | `sway`, `xwayland` |
 | Software Vulkan ICD (optional, for lavapipe) | `vulkan-swrast` | `mesa-vulkan-drivers` |
-| Headless X server (`test-headless.py`) | `xorg-server-xvfb` | `xvfb` |
-| Private session bus | `dbus` | `dbus-daemon`, `dbus-bin` |
-| Keyboard layouts | `xorg-setxkbmap` | `x11-xkb-utils` |
-| Screen capture | `imagemagick`, `grim` | `imagemagick`, `grim` |
+| Private session bus (`test-platform`) | `dbus` | `dbus-daemon`, `dbus-bin` |
+| Screen capture (`test-platform` / `qa` session runs) | `imagemagick`, `grim` | `imagemagick`, `grim` |
 
 ## QA scenarios (`--qa` mode)
 
@@ -300,6 +298,7 @@ and writes one JSON reply per line on stdout.
 
 ```bash
 ./scripts/qa.sh                                       # every scenario, every mode
+./scripts/qa.sh --smoke                               # critical-path smoke set (tests/qa/smoke.txt; runs on PRs in CI)
 ./scripts/qa.sh arrow-keys-move-focus                 # one scenario, all of its runs
 ./scripts/qa.sh arrow-keys-move-focus/columns-arrows  # one run of it
 STRATA_QA_KEEP_ARTIFACTS=1 ./scripts/qa.sh            # keep artifacts for passing runs too
@@ -368,8 +367,7 @@ Each run of a scenario gets:
   that cannot connect;
 - with `"volume_monitor": true` (and `"session_bus": true`), a fake GVfs volume
   monitor on that bus (see [Fake devices](#fake-devices));
-- for `"host": "session"` runs, a private headless `sway` compositor (and
-  optionally a private Xvfb/Xwayland display when peers need it).
+- for `"host": "session"` runs, a private headless `sway` compositor.
 
 `scripts/qa.sh` mounts a tmpfs on the container's `/tmp`, which holds every run's
 fixture, `HOME`, and runtime directory. Fixtures and `HOME` share one device so
@@ -485,7 +483,6 @@ subcommands run as fast container `exec` calls:
 ```bash
 ./scripts/qa-drive.sh start --tree '{"notes":{"plan.txt":"plan\n"}}' --pref browser_mode=list
 ./scripts/qa-drive.sh send '{"select":{"entry":"notes"}}' '{"query":"state"}'
-./scripts/qa-drive.sh screenshot menu.png      # target/qa-drive/menu.png
 ./scripts/qa-drive.sh restart --pref text_size=large
 ./scripts/qa-drive.sh exec 'ls -A; cat "$XDG_CONFIG_HOME/strata/settings.toml"'
 ./scripts/qa-drive.sh log
@@ -493,9 +490,9 @@ subcommands run as fast container `exec` calls:
 ```
 
 `send` writes each process command on stdin and prints its reply line. Runner
-steps (`fs`, `layout`, `screenshot`, `restart`, etc.) are driven by subcommands
+steps (`fs`, `layout`, `restart`, etc.) are driven by subcommands
 rather than `send`. Every exchange is appended to `target/qa-drive/transcript.jsonl`,
-and logs/screenshots land in `target/qa-drive/`. Because it shares the
+and logs land in `target/qa-drive/`. Because it shares the
 `target/qa-container` build cache with `scripts/qa.sh`, never run them concurrently.
 
 ### Proving a scenario catches a regression
