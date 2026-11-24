@@ -119,8 +119,7 @@ fn address_input(look: &Look, form: &Form, label: &str) -> El {
                     .expect("connect-server form")
                     .address
             })
-            .on_input_change(|app: &mut App, _: &mut Tx| clear_error(app))
-            .on_secondary_press(|_: &mut App, _, _| {});
+            .on_input_change(|app: &mut App, _: &mut Tx| clear_error(app));
     }
     if let Some(message) = &form.error {
         input = input.description(message.clone());

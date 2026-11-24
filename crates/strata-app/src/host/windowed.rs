@@ -6,8 +6,8 @@
 //! under a covered Wayland window and `wake_after` throttles to 4 Hz
 //! ([anomalyco/rune#139](https://github.com/anomalyco/rune/issues/139)).
 //!
-//! Refused closes: Rune cannot cancel a WM-initiated close, so `on_close` preserves state by
-//! moving `App` into a replacement window when `shell::close_guard` refuses closing.
+//! Refused closes: `App::on_close_request` returns `CloseResponse::Defer` when
+//! `shell::close_guard` refuses closing so the window stays open in place.
 
 use std::{
     cell::{OnceCell, RefCell},
@@ -17,7 +17,7 @@ use std::{
     },
 };
 
-use rune::{AppHandle, AppSpec, Tx, WindowHandle, WindowOptions, WindowSpec};
+use rune::{AppHandle, AppSpec, CloseResponse, Tx, WindowHandle, WindowOptions, WindowSpec};
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::{
     backdrop_blur::BackdropBlur,
@@ -26,14 +26,12 @@ use strata_platform::{
 };
 
 use crate::{
-    App, application, commands, folder_views, launch,
+    App, application, commands, folder_views, launch, menus,
     settings::Saved,
-    shell,
+    shell::{self, close_guard},
     slots::WeakLater,
     startup::{APPLICATION_ID, UiThread},
 };
-
-mod refused;
 
 const SIZE: (f32, f32) = (1200.0, 760.0);
 
@@ -179,7 +177,7 @@ fn open_asked(app: &App) {
     for application::Asked { opening, token } in asked {
         let settings = shell::share_settings(app);
         let initial = launch::initial_for(opening, &settings);
-        let window = window(ui, Start::New(Box::new((settings, initial))));
+        let window = window(ui, settings, initial);
         // A window whose app's handle has the token is created with it.
         if let Some(token) = token {
             window.handle().activate(token);
@@ -192,11 +190,6 @@ fn open_asked(app: &App) {
 fn next_key() -> String {
     static KEYS: AtomicU64 = AtomicU64::new(2);
     format!("window-{}", KEYS.fetch_add(1, Ordering::Relaxed))
-}
-
-enum Start {
-    New(Box<(Saved, launch::Initial)>),
-    Kept(Box<App>),
 }
 
 pub(crate) fn run(ui: UiThread, settings: Saved, initial: launch::Initial) -> Result<(), String> {
@@ -219,7 +212,21 @@ pub(crate) fn run_with(
     run_initial(ui, settings, initial, extend)
 }
 
-fn window(ui: UiThread, start: Start) -> rune::App<App> {
+fn on_close_request(app: &mut App, _: &mut Tx) -> CloseResponse {
+    let last = is_last_window(shell::window_id(app));
+    let Some(refusal) = close_guard::refusal(app, last) else {
+        return CloseResponse::Close;
+    };
+    close_guard::tell(app, refusal);
+    tracing::debug!(
+        ?refusal,
+        window = shell::window_id(app),
+        "the window manager's close was refused"
+    );
+    CloseResponse::Defer
+}
+
+fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<App> {
     let frame = Policy::Auto.frame();
     let clip =
         strata_platform::clipboard::Clipboard::<App>::new().on_change(crate::clipboard::changed);
@@ -236,10 +243,8 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
         ..AppSpec::new("Strata", SIZE, unused, shell::view)
     })
     .compositor(crate::fx::FxCompositor::new())
+    .on_close_request(on_close_request)
     .on_close(|app: &mut App, _: &mut Tx| {
-        if refused::keep_open(app) {
-            return;
-        }
         shell::detach_backdrop_blur(app);
         super::floating::close_with_browser(shell::window_id(app));
         folder_views::flush_at_exit(app);
@@ -254,6 +259,7 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
             shut_down();
         }
     })
+    .on_field_menu(menus::open_field_menu)
     .on_modifiers(shell::modifiers)
     .on_focus(focused)
     .on_visibility(shell::window_shown)
@@ -269,18 +275,8 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
     let handle = app.handle();
     let registered = handle.clone();
     app.init(move || {
-        let (mut app, initial) = match start {
-            Start::New(new) => {
-                let (settings, initial) = *new;
-                let csd = Csd::new(frame, Backend::from_env());
-                (App::new(&ui, csd, settings), Some(initial))
-            }
-            Start::Kept(app) => {
-                let mut app = *app;
-                shell::reopened(&mut app);
-                (app, None)
-            }
-        };
+        let csd = Csd::new(frame, Backend::from_env());
+        let mut app = App::new(&ui, csd, settings);
         crate::clipboard::bind(&mut app, clip_for_init);
         crate::dnd::bind(&mut app, dnd_for_init);
         shell::bind_backdrop_blur(&mut app, blur_for_init);
@@ -291,9 +287,7 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
             )));
         follow_queue(&app, registered.clone());
         opened(shell::window_id(&app), registered);
-        if let Some(initial) = initial {
-            app.start(initial);
-        }
+        app.start(initial);
         app
     })
     .on_window(move |window: &WindowHandle| {
@@ -314,8 +308,7 @@ fn run_initial(
     UI.with(|cell| cell.set(ui))
         .map_err(|_| "the windows are already running on this thread".to_owned())?;
     super::floating::bind(ui);
-    let app =
-        extend(window(ui, Start::New(Box::new((settings, initial))))).on_display_close(shut_down);
+    let app = extend(window(ui, settings, initial)).on_display_close(shut_down);
     let glib = GlibLoop::start(glib::MainContext::default(), notify)
         .map_err(|error| format!("unable to start the GLib loop: {error}"))?;
     GLIB.with(|cell| cell.set(glib))

@@ -833,3 +833,117 @@ fn every_entry_and_folder_menu_row_carries_its_gtk_icon() {
         .expect("Permanently delete");
     assert!(delete.danger, "Permanently delete is marked destructive");
 }
+
+#[test]
+fn right_clicking_a_dialog_text_field_opens_the_in_window_field_menu_and_resolves_actions() {
+    crate::test_support::in_own_process(
+        "menus::tests::right_clicking_a_dialog_text_field_opens_the_in_window_field_menu_and_resolves_actions",
+        &[],
+        || {
+            let ui = crate::startup::UiThread::claim().expect("the UI thread");
+            let mut host = Offscreen::with_field_menu(ui, crate::startup::load_settings());
+            let board = rune::clipboard::memory();
+            host.runtime().use_clipboard(&board);
+            host.runtime().update(|app, tx| {
+                commands::run(app, "connect-to-server", commands::On::Focus, tx);
+            });
+            let field_key = |host: &Offscreen| {
+                host.elements().into_iter().find_map(|el| {
+                    (!el.exiting)
+                        .then_some(el.key)
+                        .flatten()
+                        .filter(|k| k.starts_with("connect-server-") && k.ends_with("-address"))
+                })
+            };
+            assert!(host.run_until(PATIENCE, |h| field_key(h).is_some()));
+            let key = field_key(&host).expect("connect-server address field");
+
+            let center = |host: &mut Offscreen, target: &str| {
+                let el = host
+                    .runtime()
+                    .elements()
+                    .into_iter()
+                    .find(|el| !el.exiting && el.key.as_deref() == Some(target))
+                    .unwrap_or_else(|| panic!("missing element {target}"));
+                let [x, y, w, h] = el.visible;
+                (x + w / 2.0, y + h / 2.0)
+            };
+            let click_item = |host: &mut Offscreen, target: &str| {
+                let (x, y) = center(host, target);
+                host.runtime().pointer_move(x, y);
+                host.runtime().pointer_down(x, y);
+                host.runtime().pointer_up(x, y);
+                host.turn();
+                host.turn();
+            };
+            let open_menu = |host: &mut Offscreen, target: &str| {
+                let (x, y) = center(host, target);
+                host.runtime().pointer_move(x, y);
+                host.runtime().secondary_down(x, y);
+                host.runtime().secondary_up(x, y);
+                host.turn();
+                host.turn();
+            };
+            let field_text = |host: &mut Offscreen, target: &str| {
+                host.runtime()
+                    .elements()
+                    .into_iter()
+                    .find(|el| !el.exiting && el.key.as_deref() == Some(target))
+                    .and_then(|el| el.text)
+                    .unwrap_or_default()
+            };
+
+            for ch in "smb://nas/docs".chars() {
+                host.runtime()
+                    .key(KeyEvent::from(Key::Text(ch.to_string())));
+            }
+            host.turn();
+            assert_eq!(field_text(&mut host, &key), "smb://nas/docs");
+
+            open_menu(&mut host, &key);
+            assert!(host.runtime().popup_menu().is_none(), "no native popup");
+            assert!(
+                host.runtime().find("field-menu-menu").is_some(),
+                "in-window field menu opens over modal dialog"
+            );
+            // Select All (item 3: Cut, Copy, Paste, Select All)
+            click_item(&mut host, "field-menu-item3");
+            assert!(host.runtime().find("field-menu-menu").is_none());
+
+            // Open again via ContextMenu key (preserving selection) and pick Cut (item 0).
+            send_key(&mut host, KeyEvent::from(Key::ContextMenu));
+            host.turn();
+            host.turn();
+            assert!(host.runtime().find("field-menu-menu").is_some());
+            click_item(&mut host, "field-menu-item0");
+            assert!(
+                host.runtime().find("field-menu-menu").is_none(),
+                "Cut was enabled and closed the menu"
+            );
+            assert_eq!(field_text(&mut host, &key), "");
+            assert_eq!(
+                board.text().as_deref().map(String::as_str),
+                Some("smb://nas/docs")
+            );
+
+            // Reopen and pick Paste (item 2) to restore the text from clipboard.
+            open_menu(&mut host, &key);
+            click_item(&mut host, "field-menu-item2");
+            host.turn();
+            assert_eq!(field_text(&mut host, &key), "smb://nas/docs");
+
+            // Reopen and dismiss with Escape: focus returns to the text field.
+            open_menu(&mut host, &key);
+            assert!(host.runtime().find("field-menu-menu").is_some());
+            send_key(&mut host, KeyEvent::from(Key::Escape));
+            host.turn();
+            host.turn();
+            assert!(host.runtime().find("field-menu-menu").is_none());
+            assert_eq!(
+                host.runtime().presented_focus_key(),
+                Some(key.as_str()),
+                "Escape returns focus to the text field"
+            );
+        },
+    );
+}

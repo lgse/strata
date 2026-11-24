@@ -60,6 +60,29 @@ impl Offscreen {
         }
     }
 
+    /// Headless host built through `rune::App::headless_runtime` so `App::on_field_menu` is wired.
+    #[cfg(test)]
+    pub(crate) fn with_field_menu(ui: UiThread, settings: Saved) -> Self {
+        let csd = Csd::new(Policy::Auto.frame(), Backend::Headless);
+        let app = App::over(crate::PARTS, &ui, csd, settings);
+        let runtime = rune::App::new(rune::AppSpec {
+            poll: Some(shell::poll),
+            on_key: Some(commands::on_key),
+            fonts: FONTS,
+            families: FAMILIES,
+            ..rune::AppSpec::new("Strata", SIZE, || unreachable!(), shell::view)
+        })
+        .init(move || app)
+        .on_field_menu(crate::menus::open_field_menu)
+        .headless_runtime(SIZE, Env::new(true, 1.0));
+        Self {
+            runtime,
+            context: glib::MainContext::default(),
+            stepped: Instant::now(),
+            ui,
+        }
+    }
+
     pub(crate) fn app(&self) -> &App {
         &self.runtime.state
     }

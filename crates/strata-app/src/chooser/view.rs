@@ -125,8 +125,7 @@ fn build_name_input(active: &ActiveChooser, look: &Look) -> El {
         .invalid(invalid)
         .on_edit(|app: &mut App| &mut app.chooser.active.as_mut().expect("chooser name edit").name)
         .on_input_change(|app: &mut App, _: &mut Tx| state::name_changed(app))
-        .on_input_key(on_name_key)
-        .on_secondary_press(|_: &mut App, _, _| {});
+        .on_input_key(on_name_key);
     if let Some(error) = &active.name_error {
         input = input.description(error.clone());
     }

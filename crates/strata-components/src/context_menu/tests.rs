@@ -159,13 +159,17 @@ fn app_key(s: &mut Host, ev: &KeyEvent, _: &mut rune::Tx) -> bool {
     false
 }
 
-fn runtime() -> Runtime<Host> {
-    let mut rt = Runtime::new(Host::new(), view, (W, H), Env::new(false, 1.0));
+fn runtime_sized(w: f32, h: f32) -> Runtime<Host> {
+    let mut rt = Runtime::new(Host::new(), view, (w, h), Env::new(false, 1.0));
     rt.poll = Some(poll);
     rt.on_key = Some(app_key);
     rt.frame(0.0);
     rt.frame(1.0 / 60.0);
     rt
+}
+
+fn runtime() -> Runtime<Host> {
+    runtime_sized(W, H)
 }
 
 fn step(rt: &mut Runtime<Host>) {
@@ -1304,7 +1308,9 @@ fn the_chooser_minimum_counts_a_submenu_two_levels_in() {
             ])],
         ),
     ]));
-    let mut rt = runtime();
+    // Measure the three open levels in a viewport wide enough that Rune's anchored_fit
+    // clamping does not shrink the deepest submenu before comparing against chooser_minimum.
+    let mut rt = runtime_sized(1200.0, H);
     rt.update(|s, _| {
         s.menu.open(
             MenuTarget::Background,

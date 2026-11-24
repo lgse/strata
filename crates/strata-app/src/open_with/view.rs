@@ -263,8 +263,7 @@ fn search_field(look: &Look, form: &Form) -> El {
         .min_w(0.0)
         .on_edit(|app: &mut App| &mut app.open_with.form.as_mut().expect("open-with form").search)
         .on_input_change(|app: &mut App, _: &mut Tx| super::search_changed(app))
-        .on_input_key(super::search_key_pressed)
-        .on_secondary_press(|_: &mut App, _, _| {});
+        .on_input_key(super::search_key_pressed);
     let inner = row()
         .key(format!("{key}-frame"))
         .w_full()

@@ -277,19 +277,6 @@ fn hear(event: &BrowserEvent, _: &Browser, heard: &mut Heard<'_, App>) {
     }
 }
 
-pub(crate) fn reopened(app: &mut App) {
-    app.window.on_screen = true;
-    app.window.active = false;
-    presence::follow(app);
-    if transparency(app).varies_with_focus() {
-        follow_look(app);
-    }
-    window_later(app).then(|app, tx| {
-        retitle_now(app, tx);
-        true
-    });
-}
-
 /// Names the window for the shown tab, whether or not its location changed.
 fn retitle_now(app: &mut App, tx: &mut Tx) {
     app.window.location = None;
@@ -1125,6 +1112,9 @@ impl Placed {
         let footer = built(app, Slot::Footer, frame);
         let mut anchors = built(app, Slot::Overlays, frame);
         anchors.extend(built(app, Slot::Dialogs, frame));
+        if let Some(field_menu) = crate::menus::build_field_menu(app, frame) {
+            anchors.push(field_menu);
+        }
         Self {
             tabs,
             location,

@@ -97,8 +97,7 @@ fn password_field(look: &Look, form: &PasswordForm, label: String) -> El {
                 .expect("extract password form")
                 .password
         })
-        .on_input_change(|app: &mut App, _: &mut Tx| super::clear_error(app))
-        .on_secondary_press(|_: &mut App, _, _| {});
+        .on_input_change(|app: &mut App, _: &mut Tx| super::clear_error(app));
     if let Some(err) = form.error {
         input = input.description(tr(err));
     }
