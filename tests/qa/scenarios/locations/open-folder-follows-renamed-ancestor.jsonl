@@ -1,4 +1,4 @@
-{"scenario":"open-folder-follows-renamed-ancestor","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"outer/inner","mkdir":true,"parents":true}},{"fs":{"path":"outer/inner/one.txt","write":"1\n"}}],"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"an outside rename of the open folder's parent is followed without F5 in every view; the real-monitor logic is unit-tested in browser local_departures"}}
+{"scenario":"open-folder-follows-renamed-ancestor","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"outer/inner","mkdir":true,"parents":true}},{"fs":{"path":"outer/inner/one.txt","write":"1\n"}}],"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"outside rename of open folder's parent followed without F5 in all views; unit test pins model follow, GUI listing unique"}}
 {"key":"ctrl+l"}
 {"wait":{"field":{}},"message":"an editable field to take focus"}
 {"remember":{"field":true},"as":"field"}

@@ -1,4 +1,4 @@
-{"scenario":"keep-both-then-undo","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0},"quality":{"impact":4,"coverage":2,"criticality":4,"diagnostic":3,"score":17,"note":"Keep Both by click, then undo; subset of keep-both-then-undo-remaining, which repeats every assertion and adds keyboard route and default focus"}}
+{"scenario":"keep-both-then-undo","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0},"quality":{"impact":4,"coverage":2,"criticality":3,"diagnostic":3,"score":15,"note":"Keep Both by click, then undo; subset of keep-both-then-undo-remaining, which adds keyboard route and default focus"}}
 {"fs":{"path":"archive/todo.txt","write":"existing\n"}}
 {"fs":{"path":"archive/todo (1).txt","write":"previous copy\n"}}
 {"select":{"entry":"todo.txt"}}

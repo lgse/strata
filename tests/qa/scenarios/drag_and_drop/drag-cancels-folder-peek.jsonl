@@ -1,4 +1,4 @@
-{"scenario":"drag-cancels-folder-peek","modes":["icons","list"],"prefs":{"folder_peeking":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"icons":0.9,"list":0.9},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Folder peek closes when a drag starts over Icons and List; only scenario that starts a drag while a peek is open"}}
+{"scenario":"drag-cancels-folder-peek","modes":["icons","list"],"prefs":{"folder_peeking":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"icons":0.9,"list":0.9},"quality":{"impact":2,"coverage":2,"criticality":2,"diagnostic":4,"score":9,"note":"Folder peek closes as a drag starts; peek/tests.rs pins the same drag-close in List and Icons, only brief-hover negative is unique"}}
 {"move":{"pane":null},"at":[20,-20]}
 {"move":{"entry":"archive","part":"icon"}}
 {"during":{"peek":false},"ms":200,"every_ms":20,"message":"a brief hover must not open a folder peek"}

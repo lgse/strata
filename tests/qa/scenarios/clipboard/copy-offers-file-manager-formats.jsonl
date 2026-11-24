@@ -1,4 +1,4 @@
-{"scenario":"copy-offers-file-manager-formats","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":5,"score":41,"note":"Copy and cut publish the GNOME, KDE and uri-list clipboard formats other file managers paste from (#2028, #2034); read from a second display connection, so a missing format or wrong operation names the MIME type"},"host":"session"}
+{"scenario":"copy-offers-file-manager-formats","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":5,"score":36,"note":"Ctrl+C/X publish GNOME, KDE and uri-list formats; app key wiring unique, formats also pinned by gallery x3 and files/tests.rs"},"host":"session"}
 {"select":{"entry":"todo.txt"}}
 {"key":"ctrl+c"}
 {"clipboard":"copy\nfile://$fixture_quoted/todo.txt","mime":"x-special/gnome-copied-files","message":"copying must offer the GNOME file-manager format"}

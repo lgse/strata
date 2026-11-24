@@ -1,4 +1,4 @@
-{"scenario":"letter-bookmarks-save-replace-and-survive-restart","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":false,"list_folder_clicks":2},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"m saves the listed folder, ' jumps, a reused letter replaces; only test of bookmarks surviving an app restart"}}
+{"scenario":"letter-bookmarks-save-replace-and-survive-restart","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":false,"list_folder_clicks":2},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"bookmarks save, replace and jump after app restart; restart is the unique part, save/jump covered headless in tenxer/tests.rs"}}
 {"select":{"entry":"documents","dir":"$root"}}
 {"wait":{"focused":"documents"},"message":"keyboard focus to reach 'documents'"}
 {"key":"m"}

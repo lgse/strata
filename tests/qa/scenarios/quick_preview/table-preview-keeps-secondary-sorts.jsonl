@@ -1,4 +1,4 @@
-{"scenario":"table-preview-keeps-secondary-sorts","modes":["columns"],"prefs":{"single_click_previews":false},"tree":{"data.csv":"name,group\nb,1\na,1\nA,1\na,2\nb,2\n"}}
+{"scenario":"table-preview-keeps-secondary-sorts","modes":["columns"],"prefs":{"single_click_previews":false},"tree":{"data.csv":"name,group\nb,1\na,1\nA,1\na,2\nb,2\n"},"quality":{"impact":2,"coverage":3,"criticality":2,"diagnostic":4,"score":19,"note":"Preview table header sort keeps name tie-breaks across group/name reversals; GUI route only, logic unit-tested by secondary_sort_preserves_ties"}}
 {"select_with_keyboard":"data.csv"}
 {"key":"space"}
 {"wait":{"present":{"role":"column header","name":"group","within":{"preview":true}}},"message":"the table's sortable group header"}

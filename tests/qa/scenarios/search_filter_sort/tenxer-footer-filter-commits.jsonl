@@ -1,4 +1,4 @@
-{"scenario":"tenxer-footer-filter-commits","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false,"filter_include_subfolders":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.6,"icons":0.6,"list":0.6},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Footer filter committed by Enter, reopened with f pre-filled, then Escape clears it; only scenario reopening a committed filter to clear"}}
+{"scenario":"tenxer-footer-filter-commits","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false,"filter_include_subfolders":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.6,"icons":0.6,"list":0.6},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":4,"score":12,"note":"Committed footer filter cleared by Escape after f reopens pre-filled; Escape-clear shared with tenxer-escape-filter-preview-fill, only pre-fill is unique"}}
 {"select":{"entry":"readme.md","dir":"$root"}}
 {"key":"f"}
 {"wait":{"field":{}},"message":"an editable field to take focus"}

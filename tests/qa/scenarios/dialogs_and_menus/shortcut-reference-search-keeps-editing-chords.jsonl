@@ -1,4 +1,4 @@
-{"scenario":"shortcut-reference-search-keeps-editing-chords","modes":["columns"],"layout":"us","cost":{"columns":0.3},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"F1 reference search edits with Ctrl+Left and keeps Ctrl+, from opening Settings under real input; chooser/keys unit tests pin blocked commands only"}}
+{"scenario":"shortcut-reference-search-keeps-editing-chords","modes":["columns"],"layout":"us","cost":{"columns":0.3},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"F1 search keeps Ctrl+Left and blocks Ctrl+, from Settings under real input; unit test pins key classification, not window routing"}}
 {"key":"F1"}
 {"wait":{"present":{"role":"dialog","name":"Keyboard shortcuts"}},"message":"the shortcut reference to open (C19 names its dialog with the title, which it hides)"}
 {"wait":{"field":{}},"message":"the shortcut search to take focus"}

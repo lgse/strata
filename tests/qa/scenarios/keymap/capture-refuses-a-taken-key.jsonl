@@ -1,4 +1,4 @@
-{"scenario":"capture-refuses-a-taken-key","modes":["columns"],"cost":{"columns":1.8},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Ctrl+C on Rename refused naming Copy, capture stays armed, settings.toml untouched; error_finding_blocks_commit pins the page logic"}}
+{"scenario":"capture-refuses-a-taken-key","modes":["columns"],"cost":{"columns":1.8},"quality":{"impact":3,"coverage":2,"criticality":2,"diagnostic":4,"score":12,"note":"Ctrl+C refusal on Rename keeps capture armed, saves nothing; keyboard/tests.rs a_taken_key_is_refused pins it headless"}}
 {"fs":{"path":"$config/strata/settings.toml","keep_bytes":"before"}}
 {"click":{"role":"button","name":"Settings"}}
 {"wait":{"present":{"role":"button","name":"Keyboard settings"}},"message":"Settings to open"}

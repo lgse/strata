@@ -1,4 +1,4 @@
-{"scenario":"empty-column-clears-other-columns","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Click on an empty column clears all selection and keeps panes open; beside-last-column-clears covers blank space outside panes; navigation unit test covers paging, not click"}}
+{"scenario":"empty-column-clears-other-columns","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":4,"score":12,"note":"Empty column click clears selection, panes stay open; columns/tests.rs headless press test pins same route; column-background overlaps"}}
 {"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
 {"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
 {"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}

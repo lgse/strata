@@ -1,4 +1,4 @@
-{"scenario":"rename-survives-entry-listed-above","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"A file listed above the row being renamed while its name is typed; the edit keeps its text and Return renames. No other scenario changes the listing during an edit (lgse/strata#2277)"}}
+{"scenario":"rename-survives-entry-listed-above","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Typed name survives a file listed above mid-edit, then Return renames; columns rename unit test pins the logic, GUI wiring left"}}
 {"select":{"entry":"readme.md"}}
 {"select_with_keyboard":"todo.txt"}
 {"key":"F2"}

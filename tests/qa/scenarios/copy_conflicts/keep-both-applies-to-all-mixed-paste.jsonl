@@ -1,4 +1,4 @@
-{"scenario":"keep-both-applies-to-all-mixed-paste","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.3},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":4,"score":56,"note":"Apply to All checkbox + Keep Both on a mixed paste; only QA guard of the checkbox route (GTK tests check its visibility only)"}}
+{"scenario":"keep-both-applies-to-all-mixed-paste","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.3},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"Apply to All checkbox then Keep Both on mixed paste; only QA route; unit tests cover toggle and covered_by_answer, not collision apply"}}
 {"fs":{"path":"archive/notes.txt","write":"existing notes.txt\n"}}
 {"fs":{"path":"archive/report.md","write":"existing report.md\n"}}
 {"select":{"entry":"documents"}}

@@ -1,4 +1,4 @@
-{"scenario":"file-click-closes-deeper-column","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"previews-off","prefs":{"single_click_previews":false}},{"id":"previews-on","prefs":{"single_click_previews":true}}]}
+{"scenario":"file-click-closes-deeper-column","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"previews-off","prefs":{"single_click_previews":false}},{"id":"previews-on","prefs":{"single_click_previews":true}}],"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":4,"score":12,"note":"Plain file click in a parent column closes deeper column, previews on/off; unit a_click_selects_in_the_browser... pins close, preview variants unique"}}
 {"select":{"entry":"documents","dir":"$root"}}
 {"wait":{"entries":{"contains":["notes.txt"]},"dir":"documents"},"message":"the folder's child column to open"}
 {"click":{"entry":"todo.txt","dir":"$root"}}

@@ -1,4 +1,4 @@
-{"scenario":"modal-dialog-blocks-window-shortcuts","modes":["columns"],"prefs":{"arrow_navigation_scoped":true,"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.5},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":5,"score":54,"note":"Window shortcuts (Ctrl+K, Ctrl+Shift+K, Ctrl+\\) stay blocked over a modal dialog; window-accelerators-leave-rename covers only the inline rename editor"}}
+{"scenario":"modal-dialog-blocks-window-shortcuts","modes":["columns"],"prefs":{"arrow_navigation_scoped":true,"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.5},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":5,"score":54,"note":"Palette and Settings chords blocked over a modal; dismissed-overlays-return-focus covers them only without one"}}
 {"select":{"entry":"todo.txt"}}
 {"wait":{"focused":"todo.txt"},"message":"keyboard focus to reach 'todo.txt'"}
 {"key":"shift+Delete"}

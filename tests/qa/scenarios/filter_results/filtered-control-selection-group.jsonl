@@ -1,4 +1,4 @@
-{"scenario":"filtered-control-selection-group","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"match-note.txt":"root decoy\n","alpha":{"match-note.txt":"alpha source\n"},"beta":{"only-match.txt":"beta source\n"},"match-note-other.md":"other match\n"},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":3,"score":52,"note":"Ctrl-click add/remove in List filter results, group drag to sidebar Home moves only that pair; only multi-selection operation on filter results"}}
+{"scenario":"filtered-control-selection-group","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"match-note.txt":"root decoy\n","alpha":{"match-note.txt":"alpha source\n"},"beta":{"only-match.txt":"beta source\n"},"match-note-other.md":"other match\n"},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":3,"score":52,"note":"Ctrl-click add/remove and group drag of filter results to sidebar Home; only multi-selection drag over results (delete-trashes covers one ctrl-click)"}}
 {"key":"ctrl+f"}
 {"wait":{"field":{}},"message":"an editable field to take focus"}
 {"type":"match"}

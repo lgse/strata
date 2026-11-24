@@ -1,4 +1,4 @@
-{"scenario":"back-then-file-keys-target-focused-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"tree":{"alpha":{"a0":{},"sub":{"inner":{"x.txt":"x\n"}}},"beta":{}}}
+{"scenario":"back-then-file-keys-target-focused-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"tree":{"alpha":{"a0":{},"sub":{"inner":{"x.txt":"x\n"}}},"beta":{}},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"Restored Columns: Left walks focus across columns, F2/Delete hit the focused nested folder; alt-up-and-history lacks this"}}
 {"select":{"entry":"alpha","dir":"$root"}}
 {"wait":{"entry":"sub","dir":"alpha"},"message":"the 'alpha' column to list 'sub'"}
 {"select":{"entry":"sub","dir":"alpha"}}

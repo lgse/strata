@@ -1,4 +1,4 @@
-{"scenario":"pane-menu-directory-actions","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.4},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":4,"score":12,"note":"Pointer right-click on Columns pane background lists directory actions in order; keyboard-context-menu-owns-keys and entry-menu-named-actions overlap, unique part is full item order"}}
+{"scenario":"pane-menu-directory-actions","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.4},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Pane background right-click lists directory actions in order; unit test a_panes_menu_lists_the_gtk_menus_rows pins the same order"}}
 {"click":{"background":true},"button":3}
 {"wait":{"menu_items":{}},"message":"the pane context menu"}
 {"expect":{"menu_items":{"contains":["New Folder","Select All","Refresh"]}},"message":"unexpected pane menu"}

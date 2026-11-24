@@ -1,4 +1,4 @@
-{"scenario":"created-entry-completion-keeps-focus","modes":["columns"],"layout":"us","quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Columns new-entry rename completion by sibling click, Enter, sidebar keeps focus and child path; only focus-after-creation check, fix #760"}}
+{"scenario":"created-entry-completion-keeps-focus","modes":["columns"],"layout":"us","quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Columns new-entry commit by sibling or sidebar click and Return keeps focus, selection and child column; only focus check after creation (fix #760)"}}
 {"wait":{"focused":"archive"},"message":"keyboard focus on 'archive' at launch"}
 {"key":"Down"}
 {"wait":{"panes":["$root","documents"]},"message":"Down to 'documents' to open its child column"}

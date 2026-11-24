@@ -1,4 +1,4 @@
-{"scenario":"refresh-reconciles-external-changes","modes":["columns","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.3,"list":0.3},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"F5 reconciles an external file added and one removed in columns and list; other F5 scenarios check focus/cursor, not contents"}}
+{"scenario":"refresh-reconciles-external-changes","modes":["columns","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.3,"list":0.3},"quality":{"impact":3,"coverage":3,"criticality":2,"diagnostic":4,"score":23,"note":"F5 reconciles an external add and remove in columns and list; freshness unit tests pin the logic, GUI F5 wiring only here; filter-results-follow-external-changes differs (filtered)"}}
 {"wait":{"entry":"todo.txt"},"message":"the entry 'todo.txt' to appear"}
 {"fs":{"path":"appeared-later.txt","write":"new\n"}}
 {"fs":{"path":"todo.txt","remove":true}}

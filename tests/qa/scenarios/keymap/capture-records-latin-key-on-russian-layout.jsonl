@@ -1,4 +1,4 @@
-{"scenario":"capture-records-latin-key-on-russian-layout","modes":["columns"],"prefs":{"type_to_search":false},"variants":[{"id":"ru","vars":{"layout":"ru"}},{"id":"ru-only","vars":{"layout":"ru-only"}}],"cost":{"columns-ru":2.4,"columns-ru-only":2.4},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"capture on real ru and ru-only XKB layouts records Latin Ctrl+E and dispatches it; keys tests pin the mapping with synthetic tables only"}}
+{"scenario":"capture-records-latin-key-on-russian-layout","modes":["columns"],"prefs":{"type_to_search":false},"variants":[{"id":"ru","vars":{"layout":"ru"}},{"id":"ru-only","vars":{"layout":"ru-only"}}],"cost":{"columns-ru":2.4,"columns-ru-only":2.4},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Latin Ctrl+E captured on real ru and ru-only XKB and dispatched; settings-capture-rebinds-rename covers capture on US only; xkb unit tests pin tables"}}
 {"click":{"role":"button","name":"Settings"}}
 {"wait":{"present":{"role":"button","name":"Keyboard settings"}},"message":"Settings to open"}
 {"click":{"role":"button","name":"Keyboard settings"}}

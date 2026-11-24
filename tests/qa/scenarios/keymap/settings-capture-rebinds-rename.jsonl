@@ -1,4 +1,4 @@
-{"scenario":"settings-capture-rebinds-rename","modes":["columns"],"prefs":{"type_to_search":false},"cost":{"columns":2.8},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Settings capture adds Ctrl+E and chip removal drops F2 from default Rename under real input; capture logic pinned by settings::keyboard tests"}}
+{"scenario":"settings-capture-rebinds-rename","modes":["columns"],"prefs":{"type_to_search":false},"cost":{"columns":2.8},"quality":{"impact":3,"coverage":2,"criticality":2,"diagnostic":3,"score":10,"note":"F2 chip removal and Ctrl+E capture dispatch under real input; subset of keymap-tables-change-independently; keyboard tests pin save"}}
 {"click":{"role":"button","name":"Settings"}}
 {"wait":{"present":{"role":"button","name":"Keyboard settings"}},"message":"Settings to open"}
 {"click":{"role":"button","name":"Keyboard settings"}}

@@ -1,4 +1,4 @@
-{"scenario":"committed-rename-stays-visible","modes":["columns"],"layout":"us","tree":{"m-entry-{000..079}":"body\n"},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Committed rename keeps its cursor across Columns and List; delayed focus restoration must not undo subsequent arrow navigation"}}
+{"scenario":"committed-rename-stays-visible","modes":["columns"],"layout":"us","tree":{"m-entry-{000..079}":"body\n"},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Committed rename cursor and deferred focus restore vs later arrows in Columns and List; fix acb3a32f7 origin, only GUI route; columns rename unit test covers cursor only"}}
 {"wait":{"focused":"m-entry-000"},"message":"keyboard focus on the first of 80 entries"}
 {"key":"End"}
 {"wait":{"selected":["m-entry-079"],"dir":"$root"},"message":"End to select the last entry 'm-entry-079'"}

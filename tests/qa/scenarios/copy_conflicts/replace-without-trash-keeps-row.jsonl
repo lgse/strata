@@ -1,4 +1,4 @@
-{"scenario":"replace-without-trash-keeps-row","modes":["list"],"tree":{"note.txt":"replacement\n"},"setup":[{"fs":{"path":"no-trash","volume":"/dev/shm","prefix":"strata-no-trash-","with":{"note.txt":"original\n"}}}],"cost":{"list":1.4}}
+{"scenario":"replace-without-trash-keeps-row","modes":["list"],"tree":{"note.txt":"replacement\n"},"setup":[{"fs":{"path":"no-trash","volume":"/dev/shm","prefix":"strata-no-trash-","with":{"note.txt":"original\n"}}}],"cost":{"list":1.4},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Replace onto no-Trash copy keeps row listed without F5; exchange monitor unit-pinned, only GUI paste-Replace route"}}
 {"fs":{"path":"no-trash/note.txt","can_trash":false},"timeout_ms":0,"message":"precondition: the destination filesystem must not support Trash"}
 {"wait":{"entries":{"contains":["no-trash","note.txt"]}},"message":"the source and no-Trash destination to be listed"}
 {"select":{"entry":"note.txt"}}

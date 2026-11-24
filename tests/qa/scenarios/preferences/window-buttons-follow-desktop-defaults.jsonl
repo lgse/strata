@@ -1,5 +1,5 @@
-{"scenario":"window-buttons-follow-desktop-defaults","modes":["columns"],"env":{"XDG_CURRENT_DESKTOP":"GNOME"},"gtk_settings":{"gtk-decoration-layout":"appmenu:close"}}
-{"wait":{"all":[{"present":{"role":"button","name":"Minimize window"}},{"present":{"role":"button","name":"Maximize or restore window"}},{"present":{"role":"button","name":"Close window"}}]},"message":"GNOME to show all three window buttons before Settings opens despite a close-only GTK layout"}
+{"scenario":"window-buttons-follow-desktop-defaults","modes":["columns"],"env":{"XDG_CURRENT_DESKTOP":"GNOME"},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Desktop-default and saved window buttons across restart; shell/tests.rs pins the same logic, only Settings clicks are unique"}}
+{"wait":{"all":[{"present":{"role":"button","name":"Minimize window"}},{"present":{"role":"button","name":"Maximize or restore window"}},{"present":{"role":"button","name":"Close window"}}]},"message":"GNOME to show all three window buttons before Settings opens"}
 {"restart":{"env":{"XDG_CURRENT_DESKTOP":"KDE: hYpRlAnD "}}}
 {"wait":{"all":[{"absent":{"role":"button","name":"Minimize window"}},{"absent":{"role":"button","name":"Maximize or restore window"}},{"absent":{"role":"button","name":"Close window"}}]},"message":"a recognized tiler in a mixed case-insensitive desktop list to hide all three unsaved buttons"}
 {"activate":{"role":"button","name":"Settings"}}

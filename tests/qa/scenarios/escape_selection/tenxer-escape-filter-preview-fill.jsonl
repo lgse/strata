@@ -1,4 +1,4 @@
-{"scenario":"tenxer-escape-filter-preview-fill","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false,"filter_include_subfolders":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7,"icons":0.7,"list":0.7},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"10xer Esc ladder: filter clears while preview stays open, then preview, then selection; only test of this step"}}
+{"scenario":"tenxer-escape-filter-preview-fill","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false,"filter_include_subfolders":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7,"icons":0.7,"list":0.7},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"10xer Esc ladder: filter clears with preview open, then preview, then selection; escape-dismisses-transient lacks 10xer"}}
 {"select":{"entry":"readme.md","dir":"$root"}}
 {"key":"f"}
 {"wait":{"field":{}},"message":"an editable field to take focus"}

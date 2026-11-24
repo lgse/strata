@@ -1,4 +1,4 @@
-{"scenario":"settings-closes-on-an-outside-click","modes":["columns"],"layout":"us","mutation":null,"known_bug":null}
+{"scenario":"settings-closes-on-an-outside-click","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":2,"coverage":2,"criticality":2,"diagnostic":4,"score":9,"note":"Settings stays open on inside click, closes on outside click; headless settings_dialog ctrl_comma test pins same clicks"}}
 {"key":"ctrl+comma"}
 {"wait":{"present":{"role":"button","name":"Close settings"}},"message":"Ctrl+, to open Settings"}
 {"click":{"window":true},"at":[600,300]}

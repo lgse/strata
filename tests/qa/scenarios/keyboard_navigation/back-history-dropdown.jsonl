@@ -1,4 +1,4 @@
-{"scenario":"back-history-dropdown","modes":["icons","list"]}
+{"scenario":"back-history-dropdown","modes":["icons","list"],"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":4,"score":42,"note":"Back opens history by hold, right-click, Shift+F10 and Menu without navigating; unit test covers hold only, no other scenario targets Back's menu"}}
 {"wait":{"entries":{"contains":["documents","pictures"]},"dir":"$root"},"message":"the fixture listed"}
 {"expect":{"absent":{"role":"button","name_matches":"^Back","states":["sensitive"]}},"message":"Back is disabled before any navigation"}
 {"click":{"entry":"documents"},"count":2}

@@ -1,4 +1,4 @@
-{"scenario":"listing-names-descriptions-selection","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.4,"icons":0.4,"list":0.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Entry names, Folder/File descriptions and selected state in all views; unit test pins only kind labels; focusable overlaps focus-order-reaches-files"}}
+{"scenario":"listing-names-descriptions-selection","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.4,"icons":0.4,"list":0.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Entry Folder/File descriptions, focusable and selected states per view; unit test pins only kinds; focus-order shares Files name"}}
 {"wait":{"present":{"pane":"$root"}},"message":"the $root pane"}
 {"expect":{"description":{"target":{"pane":"$root"},"text":"$view view"}}}
 {"expect":{"present":{"container":"$root"}}}
