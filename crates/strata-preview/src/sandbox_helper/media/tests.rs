@@ -97,7 +97,6 @@ fn animated_gif(path: &Path, seconds: u32) {
     );
 }
 
-/// A looping test pattern WebP animation at ten frames per second.
 fn animated_webp(path: &Path, seconds: u32) {
     success(
         Command::new("ffmpeg")

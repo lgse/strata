@@ -265,8 +265,6 @@ const STILL_WEBP: &[u8] = b"RIFF\x16\0\0\0WEBPVP8X\x0a\0\0\0\x10\0\0\0\x07\0\0\x
 const ANIMATED_WEBP: &[u8] =
     b"RIFF\x24\0\0\0WEBPVP8X\x0a\0\0\0\x12\0\0\0\x07\0\0\x07\0\0ANIM\x06\0\0\0\0\0\0\0\0\0";
 
-/// Animated WebP plays in the media sandbox only where its FFmpeg (9.0 or newer)
-/// decodes it; elsewhere it keeps the still first-frame preview.
 #[test]
 fn animated_webps_play_as_media_only_where_ffmpeg_decodes_them() {
     let animated = || {
