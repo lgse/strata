@@ -326,11 +326,11 @@ fn short_gifs_loop_inside_the_bounded_decode_generation_and_seek_by_phase() {
     for (actual, expected) in loop_boundary.iter().zip(&frames[750..]) {
         assert_eq!(actual.pixels, expected.pixels);
     }
-    assert_long_gif_plays_once(&directory.path().join("long.gif"));
+    assert_long_animation_plays_once(&directory.path().join("long.gif"), animated_gif);
 }
 
-fn assert_long_gif_plays_once(long: &Path) {
-    animated_gif(long, 35);
+fn assert_long_animation_plays_once(long: &Path, animate: fn(&Path, u32)) {
+    animate(long, 35);
     let (header, frames, end) = decoded(long, "160x90", 0);
     assert_eq!(
         (header.duration_us, frames.len(), end),
@@ -363,16 +363,5 @@ fn short_animated_webps_loop_and_seek_by_phase_without_seeking_the_source() {
         frames[15].pixels == sought[0].pixels,
         "seek keeps the WebP phase"
     );
-    assert_long_webp_plays_once(&directory.path().join("long.webp"));
-}
-
-fn assert_long_webp_plays_once(long: &Path) {
-    animated_webp(long, 35);
-    let (header, frames, end) = decoded(long, "160x90", 0);
-    assert_eq!(
-        (header.duration_us, frames.len(), end),
-        (35_000_000, 1050, 35_000_000)
-    );
-    let (_, sought, _) = decoded(long, "160x90", 960);
-    assert_eq!(frames[960].pixels, sought[0].pixels);
+    assert_long_animation_plays_once(&directory.path().join("long.webp"), animated_webp);
 }

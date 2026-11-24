@@ -275,14 +275,13 @@ fn animated_webps_loop_only_within_the_frame_budget_and_never_seek_the_source() 
         ("unreadable timing", None, None, media::MAX_DURATION_US),
     ];
     for (name, animation, loop_frames, duration_us) in cases {
-        let input = metadata_with(
-            WEBP_ANIM,
-            MediaPreviewSize::new(520, 800),
-            15,
-            ProbeMode::Playback,
-            || animation,
-        )
-        .expect("animated WebP metadata");
+        let request = ProbeRequest {
+            size: MediaPreviewSize::new(520, 800),
+            start_tick: 15,
+            mode: ProbeMode::Playback,
+        };
+        let input =
+            metadata_with(WEBP_ANIM, request, || animation).expect("animated WebP metadata");
         assert_eq!(
             (input.loop_frames, input.header.duration_us),
             (loop_frames, duration_us),

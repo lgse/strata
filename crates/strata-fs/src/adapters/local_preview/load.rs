@@ -321,10 +321,14 @@ impl PreviewLoad {
         if let Some(sample) = &self.sample {
             reconcile_with_sample(&mut self.content_type, &mut self.content, sample);
         }
+        self.route_animated_webp().await;
+        Ok(())
+    }
+
+    async fn route_animated_webp(&mut self) {
         if self.is_local_animated_webp() && decodes_animated_webp().await {
             self.content = PreviewContent::Media;
         }
-        Ok(())
     }
 
     fn is_local_animated_webp(&self) -> bool {

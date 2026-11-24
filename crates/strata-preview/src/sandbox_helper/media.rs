@@ -47,6 +47,20 @@ struct Input {
     loop_frames: Option<u32>,
 }
 
+impl Input {
+    fn decodes_in_software(&self) -> bool {
+        self.video.is_none() || self.cover || self.is_animation()
+    }
+
+    fn is_animation(&self) -> bool {
+        self.gif_period_us.is_some() || self.seekless
+    }
+
+    fn loops_in_the_demuxer(&self) -> bool {
+        self.gif_period_us.is_some() && !self.seekless
+    }
+}
+
 /// Decoded source frames a filter-graph loop may hold, at four bytes per pixel.
 const LOOP_BUDGET_BYTES: u64 = 256 * 1024 * 1024;
 
@@ -77,11 +91,7 @@ fn stream(
         ProbeMode::Playback
     };
     let input_info = probe(input, size, start_tick, mode).map_err(|error| error.to_string())?;
-    let backends = if input_info.video.is_none()
-        || input_info.cover
-        || input_info.gif_period_us.is_some()
-        || input_info.seekless
-    {
+    let backends = if input_info.decodes_in_software() {
         vec![Backend::Software]
     } else {
         backends(&gpu_devices(Path::new("/dev"), policy), policy)
@@ -141,10 +151,21 @@ fn probe(
     start_tick: u32,
     mode: ProbeMode,
 ) -> io::Result<Input> {
-    metadata_with(&probe_json(path)?, size, start_tick, mode, || {
+    let request = ProbeRequest {
+        size,
+        start_tick,
+        mode,
+    };
+    metadata_with(&probe_json(path)?, request, || {
         let mut file = std::fs::File::open(path).ok()?;
         read_webp_animation(&mut file).ok().flatten()
     })
+}
+
+struct ProbeRequest {
+    size: MediaPreviewSize,
+    start_tick: u32,
+    mode: ProbeMode,
 }
 
 fn probe_json(path: &Path) -> io::Result<Vec<u8>> {
@@ -193,7 +214,12 @@ fn metadata(
     start_tick: u32,
     mode: ProbeMode,
 ) -> io::Result<Input> {
-    metadata_with(bytes, size, start_tick, mode, || None)
+    let request = ProbeRequest {
+        size,
+        start_tick,
+        mode,
+    };
+    metadata_with(bytes, request, || None)
 }
 
 struct Timing {
@@ -244,11 +270,14 @@ fn fits_loop_budget(animation: WebpAnimation) -> bool {
 
 fn metadata_with(
     bytes: &[u8],
-    size: MediaPreviewSize,
-    start_tick: u32,
-    mode: ProbeMode,
+    request: ProbeRequest,
     webp: impl FnOnce() -> Option<WebpAnimation>,
 ) -> io::Result<Input> {
+    let ProbeRequest {
+        size,
+        start_tick,
+        mode,
+    } = request;
     let value: serde_json::Value = serde_json::from_slice(bytes)?;
     let streams = value["streams"]
         .as_array()
@@ -437,7 +466,7 @@ pub(super) fn run_storyboard(input: &Path, output: &Path, cell_edge: u32) -> Res
     let Some(video) = info.video.filter(|_| !info.cover && !info.raw_video) else {
         return Err("The file has no seekable video stream".into());
     };
-    if info.gif_period_us.is_some() || info.seekless {
+    if info.is_animation() {
         return Err("Animations have no storyboard".into());
     }
     let duration_us = info.header.duration_us;
@@ -618,7 +647,7 @@ fn command(path: &Path, input: &Input, backend: &Backend, track: Track) -> Comma
         .gif_period_us
         .map_or(start_us, |period| start_us % period.max(1));
     let start = offset_us as f64 / 1_000_000.0;
-    if input.gif_period_us.is_some() && !input.seekless {
+    if input.loops_in_the_demuxer() {
         command.args(["-stream_loop", "-1"]);
     }
     let remaining =
