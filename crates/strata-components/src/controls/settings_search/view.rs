@@ -318,10 +318,6 @@ impl<S: 'static> SettingsSearch<S> {
     pub fn field(&self, s: &S, look: &Look) -> El {
         let k = &look.kit;
         let st = (self.get)(s);
-        let menu: MenuFn<S> = self
-            .on_menu
-            .clone()
-            .unwrap_or_else(|| Rc::new(|_: &mut S, _, _: &mut Tx| {}));
         let get_mut = self.get_mut;
         let (keys, change) = (self.clone(), self.clone());
         let handlers = Handlers {
@@ -332,7 +328,7 @@ impl<S: 'static> SettingsSearch<S> {
             change: Rc::new(move |s: &mut S, tx: &mut Tx| {
                 change.refresh(s, tx);
             }),
-            menu,
+            menu: self.on_menu.clone(),
         };
         let spec = Spec {
             key: &self.field_key(),

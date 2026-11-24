@@ -19,7 +19,6 @@ use crate::{App, slots::Frame};
 #[derive(Default)]
 pub(super) struct FieldMenu {
     state: ContextMenuState,
-    field_path: Option<String>,
     /// Deferred until the commit that unmounts the modal menu, because Rune's
     /// `field_menu_pick` checks `self.live(&path)` which rejects fields behind a modal.
     pending_pick: Option<String>,
@@ -29,13 +28,22 @@ impl FieldMenu {
     pub(super) fn is_open(&self) -> bool {
         self.state.is_open()
     }
+
+    /// True while the field menu is open or waiting one commit to deliver a picked action.
+    pub(super) fn holds_focus(&self) -> bool {
+        self.state.is_open() || self.pending_pick.is_some()
+    }
+}
+
+/// Whether the in-window text-field context menu is holding focus for its target field.
+pub(crate) fn is_open(app: &App) -> bool {
+    app.menu.field.holds_focus()
 }
 
 /// Opens Strata's styled, localized field menu for a `FieldMenuRequest` delivered by Rune.
 pub(crate) fn open(app: &mut App, request: FieldMenuRequest, tx: &mut Tx) {
     let model = map_menu(request.menu().entries());
     let point = request.point();
-    app.menu.field.field_path = Some(request.field_path().to_owned());
     app.menu.field.pending_pick = None;
     app.menu
         .field
@@ -71,16 +79,12 @@ pub(crate) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
 
 fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     let MenuIntent::Activate { action, .. } = intent;
-    app.menu.field.field_path = None;
     app.menu.field.pending_pick = Some((*action).to_owned());
     tx.wake_after(std::time::Duration::ZERO);
 }
 
-fn dismissed(app: &mut App, _: MenuTarget, tx: &mut Tx) {
+fn dismissed(_: &mut App, _: MenuTarget, tx: &mut Tx) {
     tx.resolve_field_menu(None);
-    if let Some(path) = app.menu.field.field_path.take() {
-        tx.focus(path, false);
-    }
 }
 
 fn map_menu(entries: &[PopupEntry]) -> MenuModel {

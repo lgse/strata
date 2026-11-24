@@ -276,18 +276,15 @@ impl<S: 'static, T: 'static> MountPrompts<S, T> {
         };
         let key = format!("{dk}-{part}");
         let (get_mut, after) = (self.get_mut.clone(), self.get_mut.clone());
-        let menu: field::MenuFn<S> = match &self.on_field_menu {
-            Some(f) => {
-                let f = f.clone();
-                Rc::new(move |s: &mut S, p: Point, tx: &mut Tx| f(s, which, p, tx))
-            }
-            None => Rc::new(|_: &mut S, _: Point, _: &mut Tx| {}),
-        };
+        let menu: Option<field::MenuFn<S>> = self.on_field_menu.as_ref().map(|f| {
+            let f = f.clone();
+            Rc::new(move |s: &mut S, p: Point, tx: &mut Tx| f(s, which, p, tx)) as field::MenuFn<S>
+        });
         let handlers = Handlers {
             edit: Rc::new(move |s: &mut S| get_mut(s).edit_mut(which)),
             key: Rc::new(|_: &mut S, _: &KeyEvent, _: &mut Tx| false),
             change: Rc::new(move |s: &mut S, _: &mut Tx| after(s).edited()),
-            menu: menu.clone(),
+            menu,
         };
         let spec = Spec {
             key: &key,

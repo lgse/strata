@@ -199,11 +199,11 @@ fn handlers<S: 'static>(bar: &Rc<FilterBar<S>>) -> Handlers<S> {
             let polled = (b_change.get_mut)(s).text_changed(|| before);
             b_change.route(s, polled, tx);
         }),
-        menu: Rc::new(move |s: &mut S, at, tx: &mut Tx| {
+        menu: Some(Rc::new(move |s: &mut S, at, tx: &mut Tx| {
             let mut polled = Polled::default();
             polled.push(FilterIntent::FieldMenu { at });
             b_menu.route(s, polled, tx);
-        }),
+        })),
     }
 }
 

@@ -482,10 +482,6 @@ impl<S: 'static> IconPicker<S> {
     fn field(&self, s: &S, look: &Look) -> El {
         let k = &look.kit;
         let st = (self.get)(s);
-        let menu: MenuFn<S> = self
-            .on_menu
-            .clone()
-            .unwrap_or_else(|| Rc::new(|_: &mut S, _, _: &mut Tx| {}));
         let get_mut = self.get_mut;
         let (keys, change) = (self.clone(), self.clone());
         let handlers = Handlers {
@@ -497,7 +493,7 @@ impl<S: 'static> IconPicker<S> {
                 let scope = change.grid_key();
                 (change.get_mut)(s).query_changed(Some((&scope, tx)));
             }),
-            menu: menu.clone(),
+            menu: self.on_menu.clone(),
         };
         let spec = Spec {
             key: &self.field_key(),

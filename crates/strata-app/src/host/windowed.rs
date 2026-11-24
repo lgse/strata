@@ -124,7 +124,7 @@ pub(super) fn handle_of(id: u64) -> Option<AppHandle<App>> {
     open.map(|(_, handle)| handle.clone())
 }
 
-/// Keeps window `id`'s handle, in place of one it had before.
+/// Registers window `id`'s handle while it is open.
 fn opened(id: u64, handle: AppHandle<App>) {
     let mut windows = WINDOWS
         .lock()

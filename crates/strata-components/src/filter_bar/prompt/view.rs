@@ -383,10 +383,10 @@ fn handlers<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static>(
             let polled = (p_change.get_mut)(s).edited();
             p_change.route(s, polled, tx);
         }),
-        menu: Rc::new(move |s: &mut S, at, tx: &mut Tx| {
+        menu: Some(Rc::new(move |s: &mut S, at, tx: &mut Tx| {
             let mut polled = Polled::default();
             polled.push(PromptIntent::FieldMenu { at });
             p_menu.route(s, polled, tx);
-        }),
+        })),
     }
 }

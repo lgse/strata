@@ -301,6 +301,13 @@ impl SettingsDialog {
         self.choice_bar.release();
     }
 
+    fn hold_number_fields(&mut self, held: bool) {
+        self.workers.hold(held);
+        self.video_start.hold(held);
+        self.text_size.hold(held);
+        self.roundness.hold(held);
+    }
+
     fn text_field_focused(&self) -> bool {
         self.search.edit().focused
             || self.theme_query.focused
@@ -375,6 +382,7 @@ pub(super) fn close_settings(app: &mut App) {
     state.open = false;
     state.open_choice = None;
     state.release_bars();
+    state.hold_number_fields(false);
     state.search = SettingsSearchState::new();
     state.theme_query.replace_text("");
     state.theme_filter = appearance_page::ThemeFilter::All;
@@ -444,6 +452,8 @@ impl Part for SettingsDialog {
             integrations::ensure_scanned(app);
         }
         changed |= controls::search_handle().tick(app, clock, tx);
+        let hold_fields = crate::menus::field_menu_open(app);
+        app.settings_dialog.hold_number_fields(hold_fields);
         changed |= general_more::workers_field().poll(app, tx);
         changed |= general::video_start_field().poll(app, tx);
         changed |= appearance_page::text_size_field().poll(app, tx);

@@ -63,6 +63,8 @@ pub struct LocationBarState {
     window_focused: bool,
     /// The entry has held focus since the edit began: only then does losing it end the edit.
     seen_focus: bool,
+    /// A context menu for the entry has the keyboard: losing it to the menu cancels nothing.
+    held: bool,
     menu: Option<(f32, f32)>,
     /// The ancestor crumb under the pointer.
     hovered: Option<usize>,
@@ -105,6 +107,7 @@ impl Default for LocationBarState {
             completion: Completion::default(),
             window_focused: true,
             seen_focus: false,
+            held: false,
             menu: None,
             hovered: None,
             drop: None,
@@ -284,12 +287,16 @@ impl LocationBarState {
         out
     }
 
+    pub fn hold(&mut self, held: bool) {
+        self.held = held;
+    }
+
     pub fn tick(&mut self, now: f64, tx: &mut Tx) -> Polled {
         let mut out = Polled::default();
         if self.editing {
             if self.edit.focused {
                 self.seen_focus = true;
-            } else if self.seen_focus {
+            } else if self.seen_focus && !self.held {
                 out.changed = true;
                 if self.close() {
                     out.push(LocationIntent::CancelCompletion);
@@ -449,6 +456,7 @@ impl LocationBarState {
     fn close(&mut self) -> bool {
         self.editing = false;
         self.seen_focus = false;
+        self.held = false;
         self.edit.focused = false;
         self.edit.cancel_composition();
         self.reveal = true;

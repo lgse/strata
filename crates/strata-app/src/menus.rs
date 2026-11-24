@@ -27,7 +27,9 @@ use crate::{
 
 mod field;
 
-pub(crate) use field::{build as build_field_menu, open as open_field_menu};
+pub(crate) use field::{
+    build as build_field_menu, is_open as field_menu_open, open as open_field_menu,
+};
 
 /// The one menu the window has open, and what it was opened on.
 pub(crate) struct Menu {

@@ -83,6 +83,10 @@ impl NumberFieldState {
         self.held = held;
     }
 
+    pub fn held(&self) -> bool {
+        self.held
+    }
+
     pub(super) fn parse(&self) -> Option<f64> {
         let mut t = self.edit.text.trim();
         let unit = self.suffix.trim();
