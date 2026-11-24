@@ -697,9 +697,15 @@ fn classify_file_drop(
         return None;
     }
     let (relation, is_noop) = state.classify(target, destination, sources.clone());
-    let source_actions = drop
+    let drop_actions = drop.as_ref().map(|drop| drop.actions());
+    let in_app_actions = drop
         .as_ref()
-        .map_or_else(|| target.actions(), |drop| drop.actions());
+        .and_then(|drop| drop.drag())
+        .map(|drag| drag.actions());
+    // GDK narrows a Wayland drop to the action last negotiated; an in-app drag keeps its source's offer.
+    let source_actions = in_app_actions
+        .or(drop_actions)
+        .unwrap_or_else(|| target.actions());
     let offered = offered_file_actions(target.actions(), source_actions);
     let strategy = current_cross_volume_drop_strategy();
     if commit {
@@ -713,7 +719,8 @@ fn classify_file_drop(
             ?strategy,
             event_mods = ?target.current_event_state(),
             keyboard_mods = ?drop_modifier_state(target),
-            drop_actions = ?drop.as_ref().map(|drop| drop.actions()),
+            ?drop_actions,
+            ?in_app_actions,
             ?offered,
             "drop action classified"
         );
