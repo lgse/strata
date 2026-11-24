@@ -360,9 +360,9 @@ The location bar (**Ctrl+L**) also accepts a path as a terminal writes it.
 Backslash escapes and `'…'`, `"…"` or `$'…'` quoting are read as a shell would,
 so `~/My\ Documents` and `'~/My Documents'` open the same folder, and a
 `file://` URI opens its local path. Text not written that way, such as a path
-with a backslash before a letter or an unquoted space, is read literally. A URI
-with another scheme only loses one pair of surrounding quotes, and a `file://`
-URI that names another host is rejected.
+with a backslash before a letter, an unquoted space, or an apostrophe inside a
+name, is read literally. A URI with another scheme only loses one pair of
+surrounding quotes, and a `file://` URI that names another host is rejected.
 
 ## 10xer mode
 

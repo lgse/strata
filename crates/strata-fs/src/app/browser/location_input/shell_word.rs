@@ -18,17 +18,38 @@ pub(super) fn unquoted(input: &str) -> Option<Vec<u8>> {
     }
     let mut word = Vec::with_capacity(input.len());
     let mut chars = input.chars().peekable();
+    // Shells and terminals open a quote at the start of a path component or next to
+    // other quoting, so one inside a name, as in `Mom's and Dad's`, is an apostrophe.
+    let mut inside_name = false;
     while let Some(character) = chars.next() {
+        if let Some(quoted) = quote_opened_by(character, &mut chars) {
+            if inside_name {
+                return None;
+            }
+            quoted(&mut chars, &mut word)?;
+            inside_name = false;
+            continue;
+        }
         match character {
             '\\' => push(&mut word, chars.next().filter(|&next| escapable(next))?),
-            '\'' => single_quoted(&mut chars, &mut word)?,
-            '"' => double_quoted(&mut chars, &mut word)?,
-            '$' if chars.next_if_eq(&'\'').is_some() => ansi_c_quoted(&mut chars, &mut word)?,
             character if splits_word(character) => return None,
             character => push(&mut word, character),
         }
+        inside_name = !matches!(character, '\\' | '/');
     }
-    Some(word)
+    // No path holds a NUL, and glib-rs panics converting one.
+    (!word.contains(&0)).then_some(word)
+}
+
+type Quoted = fn(&mut Peekable<Chars<'_>>, &mut Vec<u8>) -> Option<()>;
+
+fn quote_opened_by(character: char, chars: &mut Peekable<Chars<'_>>) -> Option<Quoted> {
+    match character {
+        '\'' => Some(single_quoted),
+        '"' => Some(double_quoted),
+        '$' if chars.next_if_eq(&'\'').is_some() => Some(ansi_c_quoted),
+        _ => None,
+    }
 }
 
 /// Characters that `printf %q`, shell completion and the former Copy path escape.

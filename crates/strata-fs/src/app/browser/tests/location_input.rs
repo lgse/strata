@@ -150,6 +150,7 @@ fn pasted_paths_read_shell_quoting_and_file_uris_as_the_literal_path() {
             b"/tmp/archive (final) v1.2.tar.gz",
         ),
         (r"'/tmp/it'\''s here'", b"/tmp/it's here"),
+        (r#"'/tmp/it'"'"'s here'"#, b"/tmp/it's here"),
         (
             r#""/tmp/\$draft \"v2\" \final""#,
             br#"/tmp/$draft "v2" \final"#,
@@ -175,6 +176,8 @@ fn pasted_paths_read_shell_quoting_and_file_uris_as_the_literal_path() {
         (r"/tmp/report\ (1).txt", br"/tmp/report\ (1).txt"),
         ("/tmp/$draft `v2` (1)", b"/tmp/$draft `v2` (1)"),
         ("/home/fixture/bob's notes", b"/home/fixture/bob's notes"),
+        ("/srv/Mom's and Dad's", b"/srv/Mom's and Dad's"),
+        (r"$'/tmp/nul\0byte'", br"$'/tmp/nul\0byte'"),
     ] {
         assert_eq!(
             location_from_input_with_home(input, None, home)
