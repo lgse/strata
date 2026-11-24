@@ -78,7 +78,7 @@ that applies:
 | 2 | files, symlinks, special files | `linkat`, then remove the old name once the new one reports the item's identity | creating a link fails if the name exists, on the server for NFS and SMB |
 | 3 | folders, except on a [FUSE daemon over remote storage](#fuse-daemons-over-remote-storage) | create an empty placeholder folder with `mkdirat`, then rename over it | a rename can only replace an empty folder; a filled or swapped placeholder fails with `ENOTEMPTY` or `ENOTDIR` |
 | 4 | symlinks | create a symlink with the same target, then remove the old one | creating a symlink fails if the name exists |
-| 5 | files, symlinks and special files that steps 2 and 4 cannot place, and folders that step 3 cannot place on mounts without usable hard links, once a probe has settled that `RENAME_NOREPLACE` is missing; folders whose name ntfs-3g would cut; folders on a FUSE daemon over remote storage | the [reserved-name step](#the-reserved-name-step-and-its-risk) | a file is renamed only over Strata's own empty placeholder, checked just before, and a folder only to a name just found free; see the step's narrow window |
+| 5 | files, symlinks and special files that steps 2 and 4 cannot place, and folders that step 3 cannot place on mounts without usable hard links, once a probe has settled that `RENAME_NOREPLACE` is missing; folders whose name ntfs-3g would cut; folders on a FUSE daemon over remote storage | the [reserved-name step](#the-reserved-name-step-and-its-risk) | a file is renamed only over Strata's own empty placeholder, checked just before; a folder, and a file on a FUSE daemon over remote storage, only to a name just found free; see the step's narrow window |
 | 6 | — | copy, then delete | only for a cross-device move (`EXDEV`), a move or restore from Trash that no step above can place, or a staged copy whose stage no step can place, which is copied again from the stage |
 
 `EEXIST` and `ENOTEMPTY` always mean the destination is taken. `EINVAL` from step 1 has three
@@ -137,8 +137,9 @@ Residual limits:
 - On SMB2/3, gvfsd-fuse and FUSE daemons that ignore rename flags, the no-replace check is made
   by the client kernel, so it protects against local processes but not against another client
   creating the same name at the same moment.
-- On rclone, s3fs and other FUSE daemons whose exclusive create is not enforced by the server, the
-  reserved-name step's placeholder protects only against local processes.
+- On rclone, s3fs and other [FUSE daemons over remote storage](#fuse-daemons-over-remote-storage),
+  the reserved-name step places a file without a placeholder, so an item created at the name
+  between its check and its rename is replaced.
 - On a case-insensitive SMB share without POSIX extensions, the Linux cifs client turns server
   inode numbers off for the whole mount once a folder is looked up under a second spelling, as the
   check before a case-only folder rename does ("Autodisabling the use of server inode numbers" in
@@ -172,6 +173,12 @@ missing. The daemon then gets a single rename to a free name, which rclone passe
 request where its storage can move a folder. A new folder is not staged there at all; see
 [Publishing a copy](#publishing-a-copy).
 
+Such a daemon may also send a new file to its storage only some time after it is closed. rclone
+with a VFS cache queues the empty placeholder of step 5 for upload, and that upload reaches the
+name once the item has been renamed over it (5 s later by default), replacing the item with an
+empty file. So on the same mounts a file takes step 5 without a placeholder, as a folder does: it
+is renamed once the name is found free.
+
 ### The reserved-name step and its risk
 
 Some mounts offer neither `RENAME_NOREPLACE` nor hard links that keep the item's identity: sshfs
@@ -199,9 +206,10 @@ does not run.
 
 For a file, Strata creates an empty placeholder at the destination with `O_CREAT | O_EXCL`, checks
 that the name still holds that placeholder (same inode, a regular file, still empty), then renames
-the item over it. For a folder, it checks that the name is free, then renames. If the rename
-fails with an errno that shows it did not happen, the placeholder is removed only while the name
-still holds it unchanged. After one that may hide a lost reply (`EIO`, `ETIMEDOUT`, `ENOENT` and
+the item over it. For a folder, and for a file on a
+[FUSE daemon over remote storage](#fuse-daemons-over-remote-storage), it checks that the name is
+free, then renames. If the rename fails with an errno that shows it did not happen, the
+placeholder is removed only while the name still holds it unchanged. After one that may hide a lost reply (`EIO`, `ETIMEDOUT`, `ENOENT` and
 the like), nothing is removed: the item counts as placed only if its old name is gone and the new
 one reports its identity, and otherwise the result is reported as unconfirmed. sshfs keeps a
 name's inode number when a rename's reply is lost, so the placeholder's number there proves
@@ -239,6 +247,10 @@ What it risks, and why that is low:
   folder that arrives in that instant is replaced, and ntfs-3g leaves an entry named after the
   cut beside it. rclone merges a folder into any folder that holds the name, so there one that
   arrives in that instant is merged into, and its files of the same name are replaced.
+- **A file on a FUSE daemon over remote storage is renamed only to a name just found free.** A
+  file created at the name between the check and the rename is replaced, even by a program that
+  creates it exclusively, as with GLib. The placeholder that closes this window elsewhere would
+  cost the placed file its contents there.
 
 Copying into a name created exclusively would protect an arrival completely, but it costs more than
 it protects. It rewrites every byte, and a file written during the copy stays behind at the source.
@@ -2056,7 +2068,7 @@ filesystem stores are under [Names](#names).
 | SMB/CIFS | client-side only | no | server-dependent | usually case-insensitive; a file unlinked while open stays as `.__smbfile_silly…` until its last handle closes, and a folder with a file open below it cannot be renamed (see [Files that are still open](#files-that-are-still-open)) |
 | sshfs | rejects flags | rejects flags | not used | each link reports its own inode number; reports "exists" as `EPERM`; files take the [reserved-name step](#the-reserved-name-step-and-its-risk); without the server's `posix-rename@openssh.com` extension its rename over the placeholder fails with `EPERM`, so moved, restored and staged files are copied, and file renames, archive publication and setting a file aside fail |
 | 9p (WSL2, QEMU), ceph, eCryptfs | rejects flags | rejects flags | yes | |
-| vboxsf, rclone, s3fs | rejects flags | rejects flags | no | files take the [reserved-name step](#the-reserved-name-step-and-its-risk); vboxsf refuses to rename over an empty folder, and rclone and s3fs are [FUSE daemons over remote storage](#fuse-daemons-over-remote-storage), so their folders take that step too, and a folder copied to rclone or s3fs is made under its final name |
+| vboxsf, rclone, s3fs | rejects flags | rejects flags | no | files take the [reserved-name step](#the-reserved-name-step-and-its-risk); vboxsf refuses to rename over an empty folder, and rclone and s3fs are [FUSE daemons over remote storage](#fuse-daemons-over-remote-storage), so their folders take that step too, their files take it without a placeholder, and a folder copied to rclone or s3fs is made under its final name |
 | mergerfs | rejects flags | rejects flags | within a branch | |
 | overlayfs | yes | yes | yes | lower-layer folders cannot be renamed without `redirect_dir` |
 
