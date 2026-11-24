@@ -482,8 +482,11 @@ past 100,000 entries the rest of the burst queues in order with the operations' 
 changes and publishes every 100 ms through the same batch path until an interval passes
 quietly, so thousands of files landing in an open folder, from a background copy or another
 program, splice a few batches instead of one row each. Changes the browser applies itself,
-such as staged deltas after a load, stay synchronous unless a batch waits ahead of them, and
-a starting operation publishes the waiting batch before it clears the queue.
+such as staged deltas after a load, stay synchronous unless a batch waits ahead of them. A
+starting operation publishes the waiting batch before it clears the queue, and a rescan
+publishes it before reloading its column at once. A live batch reports the cursor as a
+single change does, only when it removes the cursor's entry or the column has no cursor, so
+a burst does not scroll the listing back to the cursor.
 
 ### Browser staged publication
 

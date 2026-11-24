@@ -32,13 +32,17 @@ fn watched_browser() -> Watched {
     }
 }
 
-/// The monitor reports `BURST` new entries, then the removal of the first.
-fn report_burst(watched: &Watched) {
+fn report_new_entries(watched: &Watched, prefix: &str) {
     for index in 0..BURST {
         (watched.notify)(DirectoryChange::Upsert(batch_entry(&format!(
-            "new-{index:04}"
+            "{prefix}-{index:04}"
         ))));
     }
+}
+
+/// The monitor reports `BURST` new entries, then the removal of the first.
+fn report_burst(watched: &Watched) {
+    report_new_entries(watched, "new");
     (watched.notify)(DirectoryChange::Remove(batch_entry("new-0000").location));
 }
 
@@ -54,6 +58,22 @@ fn splice_count(events: &RefCell<Vec<BrowserEvent>>) -> usize {
         .iter()
         .filter(|event| matches!(event, BrowserEvent::EntriesSpliced { .. }))
         .count()
+}
+
+fn cursor_reports(events: &RefCell<Vec<BrowserEvent>>) -> Vec<&'static str> {
+    events
+        .borrow()
+        .iter()
+        .filter_map(|event| match event {
+            BrowserEvent::SelectionSetChanged { .. } => Some("selection"),
+            BrowserEvent::FocusChanged {
+                triggered_by_removal: true,
+                ..
+            } => Some("focus after removal"),
+            BrowserEvent::FocusChanged { .. } => Some("focus"),
+            _ => None,
+        })
+        .collect()
 }
 
 fn settle(browser: &Rc<Browser>) {
@@ -104,4 +124,45 @@ fn a_starting_file_operation_publishes_the_burst_queued_before_it() {
     let mut remaining = burst_result();
     remaining.retain(|name| name != "new-0001");
     assert_eq!(column_names(browser, 0), remaining);
+}
+
+#[test]
+fn a_burst_reports_the_cursor_only_when_it_removes_the_cursor_entry() {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
+    let watched = watched_browser();
+    let browser = &watched.browser;
+    report_burst(&watched);
+    settle(browser);
+    let cursor = column_names(browser, 0)
+        .iter()
+        .position(|name| name == "new-0001")
+        .expect("listed entry");
+    browser.select(0, cursor);
+    watched.events.borrow_mut().clear();
+
+    report_new_entries(&watched, "later");
+    assert!(browser.live_changes.batching.get());
+    settle(browser);
+    assert_eq!(cursor_reports(&watched.events), Vec::<&str>::new());
+
+    report_new_entries(&watched, "last");
+    (watched.notify)(DirectoryChange::Remove(batch_entry("new-0001").location));
+    settle(browser);
+    assert_eq!(
+        cursor_reports(&watched.events),
+        ["selection", "focus after removal"]
+    );
+}
+
+#[test]
+fn a_rescan_reported_during_a_burst_reloads_the_folder() {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
+    let watched = watched_browser();
+    let browser = &watched.browser;
+
+    report_burst(&watched);
+    (watched.notify)(DirectoryChange::Rescan);
+    settle(browser);
+
+    assert_eq!(column_names(browser, 0), ["child"]);
 }

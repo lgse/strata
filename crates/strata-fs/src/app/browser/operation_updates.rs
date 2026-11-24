@@ -33,6 +33,15 @@ struct BatchPublication {
     positions: Vec<usize>,
 }
 
+/// A live batch reports the cursor as single live changes do: not while it stays on its
+/// entry, so a burst does not scroll the listing back to it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BatchCursor {
+    Reported,
+    Kept,
+    Replaced,
+}
+
 impl OperationBatch {
     fn action(&self, state: &NavigationState) -> BatchAction {
         if self
@@ -58,6 +67,16 @@ impl OperationBatch {
             Some(path) => BatchAction::Restore(path),
             None => BatchAction::Apply,
         }
+    }
+
+    /// Where the entry at `cursor` is once the batch applies, unless the batch removes it.
+    fn follow(&self, cursor: Location) -> Location {
+        self.changes
+            .iter()
+            .fold(cursor, |cursor, (_, change)| match change {
+                DirectoryChange::Move { from, entry } if *from == cursor => entry.location.clone(),
+                _ => cursor,
+            })
     }
 
     fn apply(self, state: &mut NavigationState) -> Option<BatchPublication> {
@@ -195,27 +214,52 @@ impl Browser {
                 }
             }
             BatchAction::Restore(path) => self.restore_path(path),
-            BatchAction::Apply => {
-                let depth = batch.depth;
-                self.drain_publish(depth);
-                let application = batch.apply(&mut self.state.borrow_mut());
-                // The monitor reported these while the operation ran.
-                if let Some(publication) = application {
-                    self.publish_external_change(|| {
-                        self.publish_operation_batch(depth, publication);
-                    });
-                }
-            }
+            BatchAction::Apply => self.apply_batch_entries(batch),
         }
     }
 
-    fn publish_operation_batch(self: &Rc<Self>, depth: usize, publication: BatchPublication) {
+    fn apply_batch_entries(self: &Rc<Self>, batch: OperationBatch) {
+        let depth = batch.depth;
+        self.drain_publish(depth);
+        let live_cursor = self
+            .flushing_live_changes()
+            .then(|| self.cursor_location(depth))
+            .flatten()
+            .map(|cursor| batch.follow(cursor));
+        let application = batch.apply(&mut self.state.borrow_mut());
+        let Some(publication) = application else {
+            return;
+        };
+        let cursor = match live_cursor {
+            None => BatchCursor::Reported,
+            kept if kept == self.cursor_location(depth) => BatchCursor::Kept,
+            Some(_) => BatchCursor::Replaced,
+        };
+        // A monitor reported these, during an operation or in a live burst.
+        self.publish_external_change(|| {
+            self.publish_operation_batch(depth, publication, cursor);
+        });
+    }
+
+    fn cursor_location(&self, depth: usize) -> Option<Location> {
+        self.cursor_entry(depth).map(|entry| entry.location)
+    }
+
+    fn publish_operation_batch(
+        self: &Rc<Self>,
+        depth: usize,
+        publication: BatchPublication,
+        cursor: BatchCursor,
+    ) {
         self.invalidate_spliced_viewport_details(depth, &publication.splices);
         self.note_media_sort_changes(depth, &publication.splices);
         self.emit(BrowserEvent::EntriesSpliced {
             depth,
             splices: publication.splices,
         });
+        if cursor == BatchCursor::Kept {
+            return;
+        }
         if let Some(focused) = publication.focused {
             self.emit(BrowserEvent::SelectionSetChanged {
                 depth,
@@ -228,7 +272,7 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: publication.focused,
-                triggered_by_removal: false,
+                triggered_by_removal: cursor == BatchCursor::Replaced,
             });
         }
     }

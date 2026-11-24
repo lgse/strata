@@ -32,16 +32,18 @@ pub(super) struct LiveChanges {
 impl Browser {
     /// Once a monitor's changes outgrow `LIVE_CHANGE_BUDGET`, every live change
     /// queues behind them, keeping their order, until a flush interval passes quietly.
-    pub(super) fn coalesces_live_change(self: &Rc<Self>, depth: usize, monitored: bool) -> bool {
+    pub(super) fn spend_live_change_budget(&self, depth: usize) {
         let live = &self.live_changes;
-        if live.flushing.get() {
-            return false;
-        }
-        if !live.batching.get() {
-            if !monitored || self.live_change_within_budget(depth) {
-                return false;
-            }
+        let counted = !live.flushing.get() && !live.batching.get();
+        if counted && !self.live_change_within_budget(depth) {
             live.batching.set(true);
+        }
+    }
+
+    pub(super) fn queues_live_change(self: &Rc<Self>) -> bool {
+        let live = &self.live_changes;
+        if live.flushing.get() || !live.batching.get() {
+            return false;
         }
         self.schedule_live_change_flush();
         true
@@ -110,7 +112,8 @@ impl Browser {
         self.schedule_live_change_flush();
     }
 
-    /// A starting operation clears the queue, so the burst queued before it lands first.
+    /// The burst queued so far lands before a starting operation clears the queue, and
+    /// before a rescan reloads a column.
     pub(super) fn publish_queued_live_changes(&self) {
         let live = &self.live_changes;
         if !live.batching.get() {
@@ -128,10 +131,14 @@ impl Browser {
     }
 
     fn apply_queued_live_changes(self: &Rc<Self>, queued: DeferredDirectoryChanges) {
-        self.live_changes.flushing.set(true);
+        let nested = self.live_changes.flushing.replace(true);
         let ready = self.stage_loading_changes(queued);
         self.flush_deferred_file_operation_changes(ready);
-        self.live_changes.flushing.set(false);
+        self.live_changes.flushing.set(nested);
+    }
+
+    pub(super) fn flushing_live_changes(&self) -> bool {
+        self.live_changes.flushing.get()
     }
 
     /// Columns still loading record the changes the way a single live change would.
