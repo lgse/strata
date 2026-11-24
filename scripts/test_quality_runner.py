@@ -205,7 +205,7 @@ class QualityRunnerTests(unittest.TestCase):
                 if failure in ("fmt", "clippy"):
                     self.assertNotIn("quality_ci.py", text)
                 else:
-                    # Local shards start their own private displays; see test_quality_ci.
+                    # Local shards run headless lanes; see test_quality_ci.
                     self.assertIn("python3 scripts/quality_ci.py local --lanes 5", text)
                     self.assertNotIn("xvfb", text)
                     self.assertNotIn("test --locked", text)

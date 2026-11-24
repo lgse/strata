@@ -180,7 +180,7 @@ These run in the runner (`drive` in `tests/qa/drive.rs`), between process comman
 | `{"proc":{"gone":"$pids"}}`, `{"proc":{"parent_is_app":"$pid"},"timeout_ms":0}`, `{"proc":{"kill":"$pid"}}`, `{"proc":{"app_cwd":"/"}}` | Waits until noted pids exit; checks a pid's parent is the app; SIGKILLs an app child (only); waits until the app's working folder is the path. |
 | `{"launch":["$fixture/requested-missing"],"percent_path":true}` | Runs another `strata` with arguments in the fixture directory (needs `session_bus`, 30 s limit); it hands them to the running app over the bus and exits. `percent_path` turns `%XX` into raw bytes. |
 | `{"dbus_send":["--print-reply","--dest=...","/path","iface.Method","array:string:file://..."]}` | `dbus-send --session` on the private bus (needs `session_bus`); fails on a non-zero exit. |
-| `{"screenshot":"hover.png"}` | Captures the display output into the run's artifacts. |
+| `{"screenshot":"hover.png"}` | Writes the accessibility tree snapshot at this step as `<name>.txt` (e.g., `hover.txt`) in the run's artifacts. |
 
 ### Peers
 
@@ -506,8 +506,8 @@ A failed run, or every run with `STRATA_QA_KEEP_ARTIFACTS=1`, writes
 | `transcript.jsonl` | `{"command":..., "reply":...}` per step, starting with the `{"launch":true}` reply (and one per restart): the `app` snapshot after every step. |
 | `tree.txt` | The accessibility tree: `role#key role="..." name="..." description="..." (x,y wxh)`, headed by `focus: ...`. |
 | `state.json` | The snapshot after the last step, once two reads 250 ms apart agree (at most 5 s). |
-| `screenshot.png` | Captured sway output for session runs (absent for offscreen runs). |
+| `screenshot.txt` | Offscreen capture note referencing `tree.txt` (written by `tests/qa/screen.rs` on both offscreen and session hosts). |
 | `strata.log`, `sway.log` | The app's log and, for session runs, the compositor's log. |
 | `input.log` | Every synthetic event, as above. |
 | `fixture.txt` | The fixture listing with sizes and link targets. |
-| `<name>.png` | Explicit `screenshot` captures. |
+| `<name>.txt` | Explicit `screenshot` step captures (accessibility tree snapshot written under the step's `.png` stem). |

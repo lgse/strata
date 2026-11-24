@@ -199,11 +199,6 @@ PYTHON
     done
     exit
     ;;
-  _screenshot)
-    inside "$1"
-    echo "qa-drive.sh runs offscreen with no display server; inspect state with: send '{\"query\":\"tree\"}'" >&2
-    exit 1
-    ;;
   _restart)
     inside "$1"
     # Refuse a bad value while the app still runs, so a typo never leaves it stopped.
@@ -319,13 +314,8 @@ case "${1:-}" in
     run_inside "$name" bash /workspace/scripts/qa-drive.sh _send "$@"
     ;;
   screenshot)
-    file="${2:?screenshot needs a file name such as menu.png}"
-    if [[ "$file" == */* || "$file" != *.png ]]; then
-      echo "screenshot takes a plain file name ending in .png" >&2
-      exit 2
-    fi
-    need_session
-    run_inside "$name" bash /workspace/scripts/qa-drive.sh _screenshot "$file"
+    echo "qa-drive.sh runs offscreen with no display server; inspect state with: send '{\"query\":\"tree\"}'" >&2
+    exit 1
     ;;
   restart)
     shift
