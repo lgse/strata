@@ -207,9 +207,9 @@ fn a_wait_for_what_never_comes_fails_and_shows_the_tree() {
 }
 
 #[test]
-fn held_modifiers_reach_the_view_and_what_only_gtk_runs_says_so() {
+fn held_modifiers_reach_the_view_and_unsupported_commands_say_so() {
     staged(
-        "held_modifiers_reach_the_view_and_what_only_gtk_runs_says_so",
+        "held_modifiers_reach_the_view_and_unsupported_commands_say_so",
         None,
         |backend| {
             let _folder = launched(&backend);
@@ -241,11 +241,6 @@ fn held_modifiers_reach_the_view_and_what_only_gtk_runs_says_so() {
             assert_eq!(
                 read_unsupported.error.as_deref(),
                 Some("clipboard is not supported on this target")
-            );
-            let pixel = json!({ "expect": { "pixel": { "target": { "entry": "todo.txt" }, "rgb": [0, 0, 0] } } });
-            assert_eq!(
-                run(&backend, &kept, &pixel).error.as_deref(),
-                Some("pixel is not supported on this target")
             );
             let unknown = json!({ "keymap": { "layouts": "no-such-layout" } });
             assert!(run(&backend, &kept, &unknown).error.is_some());

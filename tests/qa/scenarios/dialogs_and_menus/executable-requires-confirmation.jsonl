@@ -1,4 +1,4 @@
-{"scenario":"executable-requires-confirmation","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"run-me","program":"true"}}],"cost":{"columns":1.2},"quality":{"impact":5,"coverage":3,"criticality":4,"diagnostic":4,"score":42,"note":"Unique double-click run route, initial Run focus and Close dismissal; menu Run and Cancel are in executable-menu-confirmed-run; Close never checks the program did not launch"}}
+{"scenario":"executable-requires-confirmation","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"run-me","program":"true"}}],"cost":{"columns":1.2},"quality":{"impact":5,"coverage":3,"criticality":3,"diagnostic":4,"score":38,"note":"Double-click run route, initial Run focus, Close dismissal; asks-then-Escape unit-tested via Alt+Enter in properties/tests.rs; menu/Cancel in executable-menu-confirmed-run"}}
 {"click":{"entry":"run-me"},"count":2}
 {"wait":{"dialog":true},"message":"a dialog to appear"}
 {"expect":{"mentions":{"target":{"dialog":true},"text":"Run this program?"}}}

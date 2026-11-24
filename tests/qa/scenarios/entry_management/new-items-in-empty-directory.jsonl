@@ -1,4 +1,4 @@
-{"scenario":"new-items-in-empty-directory","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","vars":{"kind":"file"}},{"id":"folder","vars":{"kind":"folder"}}],"cost":{"columns-file":1.5,"columns-folder":1.1},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"New file and folder in an empty directory via shortcut and context menu, rename-on-create and discard; GUI empty-state path, fs creation unit-tested in create_entry.rs"}}
+{"scenario":"new-items-in-empty-directory","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","vars":{"kind":"file"}},{"id":"folder","vars":{"kind":"folder"}}],"cost":{"columns-file":1.5,"columns-folder":1.1},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"New file/folder in empty folder via Ctrl+Shift+N and background menu; empty-state route unique, fs creation unit-tested"}}
 {"select":{"entry":"archive"}}
 {"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}
 {"settle":{"pane":"archive"}}

@@ -95,10 +95,8 @@ fn name_filters_compare_names_as_python_strings_do() {
 }
 
 #[test]
-fn screen_and_footer_predicates_parse_and_are_read_live() {
+fn live_window_predicates_parse_and_are_read_live() {
     for json in [
-        json!({ "pixel": { "target": { "result": "beta/thumb.png" }, "rgb": [230, 40, 60] } }),
-        json!({ "accent_pixels": { "target": { "field": "filter" }, "inset": 2, "more_than": 100 } }),
         json!({ "hit_path": { "mark": "search: txt", "hits": { "todo.txt": "todo.txt" }, "name": "todo.txt" } }),
         json!({ "focused_widget": { "contains": "Shortcuts" } }),
         json!({ "mentions": { "target": { "dialog": true }, "role": "label", "text": "permission" } }),

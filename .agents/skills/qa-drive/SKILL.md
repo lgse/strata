@@ -1,21 +1,21 @@
 ---
 name: qa-drive
 description: >
-  Drive the real Strata window by hand in QA mode to verify your own UI or
+  Drive Strata offscreen by hand in QA mode to verify your own UI or
   behaviour change: start a private session with ./scripts/qa-drive.sh, send
   `strata --qa` JSON commands one at a time, read each reply's widget state,
-  focus, selection, menus, dialogs, preferences and files, check accessible
-  names, and take and view screenshots. Use after changing UI, input handling,
-  focus, menus, dialogs, preferences or file operations; to reproduce a bug;
-  or to find targets and names before writing a QA scenario.
+  focus, selection, menus, dialogs, preferences and files, and inspect
+  accessible names and the accessibility tree. Use after changing UI, input
+  handling, focus, menus, dialogs, preferences or file operations; to
+  reproduce a bug; or to find targets and names before writing a QA scenario.
 ---
 
 # Drive Strata in QA mode
 
 `./scripts/qa-drive.sh` keeps one `strata --qa` session open inside the
-pinned container: an isolated display, a fresh HOME and XDG directories,
-a fixture tree, and either a private session bus or a bus address that
-cannot connect. You send one JSON command at a time; each `send` prints the
+pinned container: an offscreen host (no display server), a fresh HOME and XDG
+directories, a fixture tree, and either a private session bus or a bus address
+that cannot connect. You send one JSON command at a time; each `send` prints the
 reply and returns quickly. State is read from Strata's accessibility tree by
 accessible name and role.
 
@@ -48,11 +48,10 @@ command, target, and predicate.
 ```
 
 `start` builds the `qa` binary (the same build `qa.sh` makes), seeds HOME
-from `tests/fixtures/harness.json`, writes the fixture, starts Xvfb, launches
-the app, and prints the fixture path and the launch reply. It takes a few
-seconds when nothing changed, longer after source edits, and many minutes
-on a cold cache: give it a 10-minute timeout, or run it in the background
-and wait for it.
+from `tests/fixtures/harness.json`, writes the fixture, launches the offscreen
+app, and prints the fixture path and the launch reply. It takes a few seconds
+when nothing changed, longer after source edits, and many minutes on a cold
+cache: give it a 10-minute timeout, or run it in the background and wait for it.
 
 - `--tree` is a manifest tree name, inline JSON, or `@file`: an object whose
   string values are file contents and whose object values are folders. All
@@ -97,8 +96,11 @@ $ ./scripts/qa-drive.sh send '{"click":{"entry":"plan.txt","dir":"notes"},"butto
 $ ./scripts/qa-drive.sh send '{"expect":[{"description":{"target":{"menu_item":"Copy"},"text":"Ctrl+C"}}],"message":"Copy shows its shortcut"}'
 {"ok":true,…,"failures":[],"error":null}
 
-$ ./scripts/qa-drive.sh screenshot menu.png
-target/qa-drive/menu.png
+$ ./scripts/qa-drive.sh send '{"query":"tree"}' | jq -r .result
+focus: role="menu item" name="New Folder with Selection"
+…
+role="menu item" name="Copy" description="Ctrl+C" (29,269 294x26)
+…
 
 $ ./scripts/qa-drive.sh send '{"key":"Escape"}' '{"wait":{"menu_items":null},"message":"the menu stayed open"}'
 {"ok":true,"app":{…,"focused":"plan.txt","focused_pane":"notes",…,"menu":null,…},"changed":["focused","focused_pane","menu","panes"],…}
@@ -107,34 +109,30 @@ $ ./scripts/qa-drive.sh send '{"key":"Escape"}' '{"wait":{"menu_items":null},"me
 $ ./scripts/qa-drive.sh send '{"expect":[{"focused":"plan.txt"},{"state":{"target":{"entry":"plan.txt","dir":"notes"},"focused":true,"selected":true}}],"message":"focus returned to the row"}'
 {"ok":true,…,"failures":[],"error":null}
 
-$ ./scripts/qa-drive.sh screenshot after.png
-target/qa-drive/after.png
-
 $ ./scripts/qa-drive.sh stop
 stopped strata-qa-drive-cb491b96
 ```
 
-Then view `target/qa-drive/menu.png` with your image-capable file reader
-(in Claude Code, `Read` with the absolute path). It showed the menu headed
-`plan.txt` and its path, with the accelerators right-aligned. The reply
-already said what the picture confirms: the menu opened, focus left the
-pane while it was open, and Escape gave focus back to `plan.txt` in `notes`.
+The `tree` query shows the open menu's accessible roles, names, and
+descriptions (including the `Ctrl+C` shortcut on `Copy`) alongside the current
+`focus:` line. The replies confirm the full sequence: the menu opened, focus
+left the pane while it was open, and Escape gave focus back to `plan.txt` in
+`notes`.
 
 ## Subcommands
 
 | Command | Does |
 | --- | --- |
 | `send JSON...` | Sends each command in order and prints one reply line each. Exit 0 when a reply came back, whatever `ok` says; 1 when the app exited (with its log tail) or no reply came in 90 s (or the command's `timeout_ms` + 30 s), in which case that reply is skipped if it comes later; 2 for text that is not JSON. |
-| `screenshot NAME.png` | Captures the whole Xvfb screen to `target/qa-drive/NAME.png`. |
 | `restart [--pref K=V]... [--env N=V]...` | Closes the app's stdin, waits up to 10 s for it to quit, then signals its group; replaces those keys whole (arrays and tables too) in its saved `settings.toml`; relaunches on the same fixture and HOME and prints the launch reply. A value TOML cannot hold is refused before the app quits. |
-| `exec 'SHELL'` | Runs in the fixture directory with `$FIXTURE`, the session's `HOME`, `XDG_*_HOME`, `XDG_RUNTIME_DIR`, `DISPLAY`, and `DBUS_SESSION_BUS_ADDRESS`, so `gio` and similar tools see the session. |
+| `exec 'SHELL'` | Runs in the fixture directory with `$FIXTURE`, the session's `HOME`, `XDG_*_HOME`, `XDG_RUNTIME_DIR`, and `DBUS_SESSION_BUS_ADDRESS`, so `gio` and similar tools see the session. |
 | `log` | The application's log without colour codes. |
 | `stop` | Quits the app and removes the container. Safe to repeat. |
 
 Every exchange is appended to `target/qa-drive/transcript.jsonl` as
 `{"command":…,"reply":…}`. `target/qa-drive/` also holds `input.log` (every
-synthetic key and button event), `build.log`, the screenshots, and, after
-`stop`, `strata.log`. `start` empties the directory.
+synthetic key and button event), `build.log`, and, after `stop`, `strata.log`.
+`start` empties the directory.
 
 ## Read a reply
 
@@ -297,10 +295,8 @@ screen readers.
   check pass.
 - **`expect` does not wait.** Use it right after a `wait`, or give it
   `"timeout_ms"`.
-- **Xvfb is slow and software-rendered.** It is a debug build on `llvmpipe`.
-  A target lookup waits up to 15 s, so a wrong name costs 15 s before its
-  error. The window is 1200x760 on a 1440x900 screen; the black margin in
-  screenshots is normal.
+- **Target timeouts.** A target lookup waits up to 15 s, so a wrong name costs
+  15 s before its error. The offscreen window is 1200x760.
 - **Rebuilds.** `restart` reruns the binary already built. After an edit,
   `stop` then `start`.
 - **A stuck session.** If `send` reports no reply, read `log`, then `restart`,
@@ -326,8 +322,8 @@ Each process command is already a valid step. Then:
 
 - Put `--tree` into the header's `tree` and `--pref` into its `prefs`.
 - Replace the fixture name with `$root` and its path with `$fixture`.
-- Turn `exec` file changes into `fs` steps, `restart` into `{"restart":true}`,
-  and `screenshot` into `{"screenshot":"name.png"}`.
+- Turn `exec` file changes into `fs` steps and `restart` into
+  `{"restart":true}`.
 - Give every `wait` and `expect` a `message`, and drop exploratory queries.
 - Look for an existing scenario that owns the behaviour before adding a file,
   and follow that skill to run it and prove it can fail.
@@ -339,7 +335,6 @@ Each process command is already a valid step. Then:
 docker ps -a --filter name=strata-qa-drive      # nothing listed (or podman ps -a)
 ```
 
-`stop` removes the container and everything in its `/tmp`: Xvfb, the bus,
+`stop` removes the container and everything in its `/tmp`: the bus,
 HOME, and the fixture. `target/qa-drive/` stays until the next `start`; it is
-ignored by Git. Never commit screenshots or transcripts; attach evidence to
-the PR as the repository instructions say.
+ignored by Git. Never commit transcripts or logs.

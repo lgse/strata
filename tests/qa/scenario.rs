@@ -12,7 +12,7 @@ use serde_json::{Map, Value};
 use crate::{
     DEFAULT_LAYOUT, QA_ENVIRONMENT, REPOSITORY, RUNNER_COMMANDS, RUNNER_OWNED_ENVIRONMENT, STEP_IF,
     STEP_MODES, STEP_UNLESS, STEP_VARIANTS, STEP_WHEN, XDG_DIRECTORIES,
-    fixture::{expand_tree, fixed_fixture_name, gtk_settings, manifest},
+    fixture::{expand_tree, fixed_fixture_name, manifest},
     fs_check::FsStep,
     harness, protocol,
     run::run_scenario,
@@ -64,8 +64,6 @@ pub(crate) struct Header {
     pub(crate) tree: Option<Value>,
     #[serde(default)]
     pub(crate) images: BTreeMap<String, Image>,
-    #[serde(default)]
-    pub(crate) gtk_settings: BTreeMap<String, String>,
     #[serde(default)]
     pub(crate) setup: Vec<Value>,
     #[serde(default)]
@@ -358,7 +356,6 @@ pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
             ));
         }
     }
-    gtk_settings(&manifest().gtk_settings, &header.gtk_settings)?;
     check_cost(&header)?;
     if let Some(reason) = &header.skip
         && (reason.trim().is_empty() || header.mutation.is_some() || header.known_bug.is_some())

@@ -1,4 +1,4 @@
-{"scenario":"global-search-reveal","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$home/reveal-parent/zebrafold","mkdir":true,"parents":true}}],"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Global search result menu Open containing folder reveals a folder in Columns, selected and focused; only menu reveal route, Alt+Return is global-search-reveal-visited-list"}}
+{"scenario":"global-search-reveal","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$home/reveal-parent/zebrafold","mkdir":true,"parents":true}}],"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Global search result menu Open containing folder reveals, selects, focuses folder and closes palette; only menu route, Alt+Return is global-search-reveal-visited-list; reveal.rs unit tests pin selection"}}
 {"key":"ctrl+k"}
 {"wait":{"field":{}},"message":"an editable field to take focus"}
 {"type":"zebra"}

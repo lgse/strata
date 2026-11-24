@@ -1,4 +1,4 @@
-{"scenario":"undo-compression-trashes-archive","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"archive.zip","write":"original archive"}},{"fs":{"path":"archive (1).zip","write":"previous archive"}}],"cost":{"columns":1.6},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":3,"score":34,"note":"Keep Both compress then ctrl+z trashes only the numbered archive; unit test pins undo record only, collision covered by keep-both-numbered-archives"}}
+{"scenario":"undo-compression-trashes-archive","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"archive.zip","write":"original archive"}},{"fs":{"path":"archive (1).zip","write":"previous archive"}}],"cost":{"columns":1.6},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":3,"score":30,"note":"Pointer Keep Both then ctrl+z trashes only the numbered archive; keyboard route is keep-both-numbered-archives; undo unit-tested as record only"}}
 {"select":{"entry":"todo.txt"}}
 {"click":{"entry":"todo.txt"},"button":3}
 {"wait":{"menu_items":{}},"message":"the context menu for 'todo.txt'"}

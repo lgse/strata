@@ -22,16 +22,15 @@ BUNDLE = ROOT / "target/quality-bundle"
 REPORTS = ROOT / "target/quality-reports"
 LOCAL = ROOT / "target/quality-local"
 SHARDS = 4
-# Tests share libtest's threads, four on CI runners, so they cost a shard a fraction of their
-# serial time.
-PARALLEL_DISCOUNT = 4
-# Each lane of a shard owns a private Xvfb server and isolated D-Bus/Wayland environment.
-FIRST_DISPLAY = 99
-XVFB_SERVER = "-screen 0 1280x1024x24 -nolisten tcp -noreset"
-PRIVATE_TEST_ENV = ("WAYLAND_DISPLAY=strata-test-no-wayland", "GTK_A11Y=none", "NO_AT_BRIDGE=1")
+# Every test lane runs headless with no display and an unreachable session bus.
+PRIVATE_TEST_ENV = (
+    "WAYLAND_DISPLAY=strata-test-no-wayland",
+    "DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/strata-test-no-bus",
+    "NO_AT_BRIDGE=1",
+)
 # Parent libtest lines start a test; a subprocess repeats its name and prints no time of its own.
-TIMED = re.compile(r"^test (\S+) \.\.\. |\bok <(\d+(?:\.\d+)?)s>$", re.MULTILINE)
-TIMING_ARGS = ("-Z", "unstable-options", "--report-time", "--test-threads=1")
+TIMED = re.compile(r"^test (\S+)(?: - should panic)? \.\.\. |\bok <(\d+(?:\.\d+)?)s>$", re.MULTILINE)
+TIMING_ARGS = ("-Z", "unstable-options", "--report-time")
 SUMMARY = re.compile(
     r"^test result: ok\. (\d+) passed; 0 failed; (\d+) ignored; 0 measured; \d+ filtered out;.*$",
     re.MULTILINE,
@@ -173,22 +172,20 @@ def validate_plan(plan):
 
 
 def test_times(output):
-    """Each test's serial wall time, and whether it ran in an isolated GTK child."""
-    times, starts, current = {}, Counter(), None
+    """Each test's serial wall time."""
+    times, current = {}, None
     for match in TIMED.finditer(output):
         if match[1]:
             current = match[1]
-            starts[current] += 1
         elif current is not None:
             times[current] = float(match[2])
             current = None
-    return {name: dict(seconds=seconds, gtk=starts[name] > 1) for name, seconds in times.items()}
+    return times
 
 
 def balancing_weights(measured):
-    """Seconds each test occupies its shard; zero weights would all land on one shard."""
-    return {name: max(0.01, round(time["seconds"] / (1 if time["gtk"] else PARALLEL_DISCOUNT), 2))
-            for name, time in sorted(measured.items())}
+    """Seconds each test occupies its lane; zero weights would all land on one shard."""
+    return {name: max(0.01, round(seconds, 2)) for name, seconds in sorted(measured.items())}
 
 
 def balancing_hints():
@@ -199,9 +196,15 @@ def default_lanes():
     return max(1, len(os.sched_getaffinity(0)) // 2)
 
 
-def private_display(display, command):
-    return ["xvfb-run", "-n", str(display), "-s", XVFB_SERVER, "dbus-run-session", "--",
-            "env", "-u", "WAYLAND_SOCKET", *PRIVATE_TEST_ENV, *command]
+def isolated_command(command):
+    return [
+        "env",
+        "-u", "DISPLAY",
+        "-u", "WAYLAND_SOCKET",
+        "-u", "DBUS_STARTER_ADDRESS",
+        *PRIVATE_TEST_ENV,
+        *command,
+    ]
 
 
 def _bundled_bin_env(plan):
@@ -216,25 +219,24 @@ def _bundled_bin_env(plan):
     return bin_env
 
 
-def run_lane(lane, lanes, work, options):
-    """Run one lane's tests on displays no other lane uses; libtest must account for each batch."""
+def run_lane(lane, work, options):
+    """Run one lane's tests headless one at a time; libtest must account for each batch."""
     timings, log_path, bin_env = options["timings"], options["log_path"], options["bin_env"]
     started = time.monotonic()
-    displays = iter(range(FIRST_DISPLAY + lane, sys.maxsize, lanes))
     measured = {}
     with log_path.open("wb") as log:
         for binary, executable, tests in work:
             if not tests:
                 continue
-            command = [str(executable), "--exact", *tests, "--nocapture"]
+            command = [str(executable), "--exact", *tests, "--nocapture", "--test-threads=1"]
             environment = {**os.environ, **bin_env} if (bin_env or timings) else None
             if timings:
-                # Stable libtest reports times only behind -Z; one thread avoids contention.
+                # Stable libtest reports times only behind -Z.
                 command.extend(TIMING_ARGS)
                 environment["RUSTC_BOOTSTRAP"] = "1"
             log.flush()
             offset = log.tell()
-            code = subprocess.run(private_display(next(displays), command), cwd=ROOT,
+            code = subprocess.run(isolated_command(command), cwd=ROOT,
                                   stdout=log, stderr=subprocess.STDOUT, env=environment).returncode
             log.seek(0, os.SEEK_END)
             with log_path.open("rb") as written:
@@ -293,15 +295,13 @@ def run(shard, lanes=1, timings=False):
                                        ignored=ignored))
     # Lane output goes only to the logs, so a hung lane is diagnosed from them, not this console.
     logs = (REPORTS / f"shard-{shard}-lane-*.log").relative_to(ROOT)
-    print(f"Shard {shard}: running {lanes} lanes, each on its own display and session bus; "
-          f"output in {logs}", flush=True)
+    print(f"Shard {shard}: running {lanes} headless lanes; output in {logs}", flush=True)
     failed, measured = [], {}
     with ThreadPoolExecutor(lanes) as pool:
         futures = [
             pool.submit(
                 run_lane,
                 lane,
-                lanes,
                 tests,
                 dict(timings=timings, log_path=REPORTS / f"shard-{shard}-lane-{lane}.log", bin_env=bin_env),
             )
@@ -400,7 +400,7 @@ def main():
     parser.add_argument("--plan", type=Path, default=BUNDLE / "plan.json")
     parser.add_argument("--reports", type=Path, default=REPORTS)
     parser.add_argument("--lanes", type=int, default=None,
-                        help="concurrent displays on this machine (default: half the available CPUs)")
+                        help="concurrent test lanes on this machine (default: half the available CPUs)")
     parser.add_argument("--refresh-timings", action="store_true",
                         help="local only: measure every test and rewrite scripts/quality-durations.json")
     args = parser.parse_args()

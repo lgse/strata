@@ -1,4 +1,4 @@
-{"scenario":"breadcrumb-opens-new-tab","modes":["columns","list"]}
+{"scenario":"breadcrumb-opens-new-tab","modes":["columns","list"],"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Middle-click on a crumb opens its folder in a new selected tab, original kept; only GUI pointer route, intent unit-tested"}}
 {"select":{"entry":"documents","dir":"$root"}}
 {"key":"Return","modes":["list"]}
 {"wait":{"directory":"documents"},"message":"the original tab to be working in 'documents'"}

@@ -1,4 +1,4 @@
-{"scenario":"delete-file-symlink-sizes-link","modes":["list"],"tree":{},"setup":[{"fs":{"path":"payload.bin","truncate":100000}},{"fs":{"path":"link","symlink":"payload.bin"}}],"variants":[{"id":"name-sort","prefs":{"sort_key":"name"}},{"id":"size-sort","prefs":{"sort_key":"size"}}]}
+{"scenario":"delete-file-symlink-sizes-link","modes":["list"],"tree":{},"setup":[{"fs":{"path":"payload.bin","truncate":100000}},{"fs":{"path":"link","symlink":"payload.bin"}}],"variants":[{"id":"name-sort","prefs":{"sort_key":"name"}},{"id":"size-sort","prefs":{"sort_key":"size"}}],"quality":{"impact":5,"coverage":4,"criticality":4,"diagnostic":4,"score":63,"note":"Shift+Delete on file symlink: dialog sizes the link (11 B) not its target, deletes only the link; unique GUI check, origin fix #1880"}}
 {"wait":{"entries":["link","payload.bin"]},"message":"the file and its symlink to be listed"}
 {"select":{"entry":"link"}}
 {"wait":{"selected":["link"]},"message":"the file symlink to be selected"}

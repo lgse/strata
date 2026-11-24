@@ -8,7 +8,7 @@ use crate::{
         a_scenario_lives_in_a_feature_folder_and_names_its_runs,
         a_skipped_scenario_names_a_reason_and_no_mutation_or_known_bug,
         a_volume_monitor_run_needs_the_session_bus, every_scenario_file_is_planned_and_well_formed,
-        no_test_attribute_hides_a_runner_test,
+        no_test_attribute_hides_a_runner_test, smoke_list_names_active_scenarios,
         the_harness_starts_costly_runs_first_and_names_select_whole_scenarios,
     },
     step_tests::{
@@ -72,5 +72,6 @@ unit_tests! {
     the_harness_starts_costly_runs_first_and_names_select_whole_scenarios,
     waiting_for_exit_wakes_on_the_exit_and_gives_up_at_the_timeout,
     prefs_write_nested_tables_into_settings_toml,
+    smoke_list_names_active_scenarios,
     no_test_attribute_hides_a_runner_test,
 }

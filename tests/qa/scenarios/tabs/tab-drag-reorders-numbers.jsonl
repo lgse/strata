@@ -1,4 +1,4 @@
-{"scenario":"tab-drag-reorders-numbers","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Only QA scenario dragging a tab to reorder; reorder logic and numbered shortcuts are unit-tested, the drag gesture is not"}}
+{"scenario":"tab-drag-reorders-numbers","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Tab drag reorder by pointer and Ctrl+PageUp/Down cycling; reorder logic unit-tested, Ctrl+Shift+N shared with tenxer-tab-chords"}}
 {"key":"ctrl+t"}
 {"select":{"entry":"archive"}}
 {"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}

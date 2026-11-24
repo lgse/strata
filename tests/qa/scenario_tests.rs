@@ -438,6 +438,54 @@ pub(crate) fn the_harness_starts_costly_runs_first_and_names_select_whole_scenar
     }
 }
 
+pub(crate) fn smoke_list_names_active_scenarios() {
+    let smoke_path = Path::new(REPOSITORY).join("tests/qa/smoke.txt");
+    let text = fs::read_to_string(&smoke_path).expect("tests/qa/smoke.txt should be readable");
+    let scenarios: BTreeMap<String, Scenario> = scenario_files()
+        .into_iter()
+        .map(|path| {
+            let name = scenario_name(&path);
+            let scenario =
+                load_scenario(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            (name, scenario)
+        })
+        .collect();
+    let mut seen = BTreeMap::new();
+    for (index, raw) in text.lines().enumerate() {
+        let entry = raw.split('#').next().unwrap_or_default().trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let line_no = index + 1;
+        assert!(
+            seen.insert(entry.to_owned(), line_no).is_none(),
+            "{}:{line_no}: duplicate smoke scenario {entry:?}",
+            smoke_path.display()
+        );
+        let scenario = scenarios.get(entry).unwrap_or_else(|| {
+            panic!(
+                "{}:{line_no}: unknown smoke scenario {entry:?}",
+                smoke_path.display()
+            )
+        });
+        assert!(
+            scenario.header.skip.is_none(),
+            "{}:{line_no}: smoke scenario {entry:?} must not be skipped",
+            smoke_path.display()
+        );
+        assert!(
+            scenario.header.known_bug.is_none(),
+            "{}:{line_no}: smoke scenario {entry:?} must not be a known_bug",
+            smoke_path.display()
+        );
+    }
+    assert!(
+        !seen.is_empty(),
+        "{}: smoke list must contain at least one scenario",
+        smoke_path.display()
+    );
+}
+
 pub(crate) fn no_test_attribute_hides_a_runner_test() {
     let attributes = [concat!("#[", "test"), concat!("#[", "cfg(test)")];
     let mut sources = vec![Path::new(REPOSITORY).join("tests/qa.rs")];

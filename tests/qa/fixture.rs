@@ -19,7 +19,6 @@ pub(crate) struct Manifest {
     mtime: i64,
     trees: BTreeMap<String, Value>,
     pub(crate) preferences: OrderedMap,
-    pub(crate) gtk_settings: String,
     pub(crate) portal_offer_marker: String,
     pub(crate) environment: BTreeMap<String, String>,
     pub(crate) layouts: BTreeMap<String, Layout>,
@@ -129,25 +128,6 @@ pub(crate) static FIXED_FIXTURES: Mutex<()> = Mutex::new(());
 pub(crate) fn fixed_fixture_name(root: &str) -> Option<&str> {
     let name = root.strip_prefix("/tmp/")?;
     (!name.is_empty() && !name.contains('/') && name != "." && name != "..").then_some(name)
-}
-
-pub(crate) fn gtk_settings(
-    base: &str,
-    changes: &BTreeMap<String, String>,
-) -> Result<String, String> {
-    let mut lines: Vec<String> = base.lines().map(str::to_owned).collect();
-    for (key, value) in changes {
-        let line = lines
-            .iter_mut()
-            .find(|line| line.split_once('=').is_some_and(|(name, _)| name == key))
-            .ok_or_else(|| format!("the manifest's GTK settings have no {key}"))?;
-        *line = format!("{key}={value}");
-    }
-    let mut text = lines.join("\n");
-    if base.ends_with('\n') {
-        text.push('\n');
-    }
-    Ok(text)
 }
 
 pub(crate) fn expand_tree(tree: &Value, manifest: &Manifest) -> Result<Value, String> {

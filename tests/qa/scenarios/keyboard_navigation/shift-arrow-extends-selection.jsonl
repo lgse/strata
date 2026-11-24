@@ -1,4 +1,4 @@
-{"scenario":"shift-arrow-extends-selection","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.5,"icons":0.5,"list":0.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Shift+arrow extends and shrinks selection per view key; range logic unit-tested in navigation/tests.rs, per-view key routing is unique"}}
+{"scenario":"shift-arrow-extends-selection","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.5,"icons":0.5,"list":0.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Shift+arrow extends and shrinks selection per view; shift range logic unit-tested in collection/keyboard, per-view sideways key routing unique"}}
 {"select":{"entry":"readme.md"}}
 {"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
 {"key":"shift+Down","modes":["columns"]}

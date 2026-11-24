@@ -1,4 +1,4 @@
-{"scenario":"structural-aliases-act-as-enter-and-escape","modes":["list"],"prefs":{"type_to_search":false,"keymap":{"default":{"activate":["Return","o"],"escape":["Escape","<Control>bracketleft"]}}},"cost":{"list":0.9},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"o as Enter opens a folder, Ctrl+[ as Escape cancels a rename, o still types in the filter; alias routing unit-tested in keys::alias"}}
+{"scenario":"structural-aliases-act-as-enter-and-escape","modes":["list"],"prefs":{"type_to_search":false,"keymap":{"default":{"activate":["Return","o"],"escape":["Escape","<Control>bracketleft"]}}},"cost":{"list":0.9},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"o and Ctrl+[ as Enter/Escape aliases; unique is o typed in filter not opening; window_keys headless test covers aliases"}}
 {"select_with_keyboard":"documents","message":"keyboard focus to reach 'documents'"}
 {"key":"o"}
 {"wait":{"directory":"documents"},"message":"o, an Enter alias, to open 'documents'"}

@@ -1,4 +1,4 @@
-{"scenario":"menu-key-skips-scrolled-away-cursor","modes":["columns","icons"],"layout":"us","mutation":null,"tree":{"file-{000..199}.txt":"{}\n"},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":4,"score":56,"note":"Menu key and Shift+F10 open no menu for an off-screen cursor in Columns/Icons (List opens a wrong entry's, #2235); only Menu-key scenario"}}
+{"scenario":"menu-key-skips-scrolled-away-cursor","modes":["columns","icons"],"layout":"us","mutation":null,"tree":{"file-{000..199}.txt":"{}\n"},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"Menu/Shift+F10 open no menu for off-screen cursor, scroll kept; commands/tests/menu_key.rs pins it headless, real-window routing only here"}}
 {"select":{"entry":"file-000.txt","dir":"$root"}}
 {"wait":{"all":[{"focused":"file-000.txt"},{"selected":["file-000.txt"],"dir":"$root"}]},"message":"the cursor and selection to rest on 'file-000.txt'"}
 {"wheel":{"container":"$root"},"clicks":3,"direction":"down","until":{"absent":{"entry":"file-000.txt","dir":"$root"}},"tries":30}

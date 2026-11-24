@@ -1,4 +1,4 @@
-{"scenario":"sidebar-locations-open-new-tabs","modes":["columns"],"setup":[{"fs":{"path":"$config/gtk-3.0","mkdir":true,"parents":true}},{"fs":{"path":"$config/gtk-3.0/bookmarks","write":"file://$fixture_quoted/documents Pinned documents\nfile://$fixture_quoted/archive Pinned archive\nfile://$fixture_quoted/pictures Pinned pictures\n"}}]}
+{"scenario":"sidebar-locations-open-new-tabs","modes":["columns"],"setup":[{"fs":{"path":"$config/gtk-3.0","mkdir":true,"parents":true}},{"fs":{"path":"$config/gtk-3.0/bookmarks","write":"file://$fixture_quoted/documents Pinned documents\nfile://$fixture_quoted/archive Pinned archive\nfile://$fixture_quoted/pictures Pinned pictures\n"}}],"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Sidebar drag to Plus or before a tab; Plus drop shared with view-folders-open-new-tabs, menu and middle-click pinned headless"}}
 {"wait":{"present":{"sidebar":"Pinned documents"}},"message":"saved sidebar locations are ready"}
 {"select":{"entry":"readme.md","dir":"$root"}}
 {"wait":{"selected":["readme.md"],"dir":"$root"},"message":"the original tab keeps a selected file"}

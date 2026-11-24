@@ -1,4 +1,4 @@
-{"scenario":"icon-only-buttons-named","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null}
+{"scenario":"icon-only-buttons-named","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Icon-only toolbar, List Columns and Customize swatch names; swatch names and List Columns name only here, Copy path/Back unit-tested"}}
 {"expect":{"present":{"named":"Copy path","within":{"window":true}}},"message":"the path bar's copy button is unnamed"}
 {"expect":{"present":{"named":"Back (Alt+←)","within":{"window":true}}},"message":"'Back (Alt+←)' is unnamed","modes":["icons","list"]}
 {"expect":{"present":{"named":"Forward (Alt+→)","within":{"window":true}}},"message":"'Forward (Alt+→)' is unnamed","modes":["icons","list"]}

@@ -1,4 +1,4 @@
-{"scenario":"clicking-inside-keeps-new-entry","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","vars":{"kind":"file"}},{"id":"folder","vars":{"kind":"folder"}}],"cost":{"columns-file":1.1,"columns-folder":0.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Click inside the inline name field keeps the new entry and its exact padded name; pointer route only, setup shared with new-items-in-empty-directory"}}
+{"scenario":"clicking-inside-keeps-new-entry","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","vars":{"kind":"file"}},{"id":"folder","vars":{"kind":"folder"}}],"cost":{"columns-file":1.1,"columns-folder":0.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Click inside the pending name field keeps the entry and exact padded name; pointer-only route, rest shared with new-items-in-empty-directory"}}
 {"select":{"entry":"readme.md"},"variants":["folder"]}
 {"key":"ctrl+shift+n","variants":["folder"]}
 {"wait":{"field":{}},"message":"an editable field to take focus","variants":["folder"]}

@@ -1,4 +1,4 @@
-{"scenario":"multi-selection-drag-moves-every-entry","modes":["columns","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.1,"list":1.0},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"An icon drag preserves a Shift-selected file group in Columns/List; single-file cases do not verify group preservation"}}
+{"scenario":"multi-selection-drag-moves-every-entry","modes":["columns","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.1,"list":1.0},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Shift-selected group dragged onto a folder moves every file in Columns/List; group sidebar and tab drops differ; units pin selection only"}}
 {"select":{"entry":"readme.md"}}
 {"key":"shift+Down"}
 {"wait":{"selected":["readme.md","todo.txt"]},"message":"both files to be selected"}

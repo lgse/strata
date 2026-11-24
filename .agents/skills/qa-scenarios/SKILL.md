@@ -298,16 +298,16 @@ A failed run prints `<scenario>/<run> failed:` with each failure as
 
 The artifact directory holds `failures.txt`, `transcript.jsonl` (every
 command with its reply and `app` snapshot), `tree.txt`, `state.json`,
-`screenshot.png`, `strata.log`, `input.log`, `fixture.txt`, `xvfb.log`, and
-`result.json`. Pass `STRATA_QA_KEEP_ARTIFACTS=1` to keep them for a passing
-run.
+`screenshot.txt`, `strata.log`, `input.log`, `fixture.txt`, `sway.log` (for
+session runs), and `result.json`. Pass `STRATA_QA_KEEP_ARTIFACTS=1` to keep
+them for a passing run.
 
 - **A wait timed out.** The line reads `timed out after 15000 ms: <message>
   expected <predicate>, actual <value>`. Compare `actual` with what you
   expected; then read the `app` snapshot in `transcript.jsonl` for the steps
-  before it to find where the state diverged. Check `screenshot.png` for an
-  unexpected dialog or menu, and `strata.log` for errors. If the state is
-  right but named differently, fix the predicate from `tree.txt`.
+  before it to find where the state diverged. Check `screenshot.txt` and
+  `tree.txt` for an unexpected dialog or menu, and `strata.log` for errors. If
+  the state is right but named differently, fix the predicate from `tree.txt`.
 - **A target was not found.** Search `tree.txt` for the role and name. Names
   come from labels and `accessibility::set_label`, never tooltips; a widget
   scrolled away is not `present` (use `reveal`, or `"rendered":false` where

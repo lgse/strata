@@ -1,4 +1,4 @@
-{"scenario":"valid-name-commits-remaining","modes":["list"],"layout":"us","setup":[{"fs":{"path":"archive/marker.txt","write":"keep\n"}}],"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":4,"score":56,"note":"List folder click-away, Tab and Shift+Tab carrying the rename to the neighbouring entry and Tab on the last entry closing it, Icons Enter and new-folder sidebar commit; only icons/list commits; Columns Enter/click-away elsewhere"}}
+{"scenario":"valid-name-commits-remaining","modes":["list"],"layout":"us","setup":[{"fs":{"path":"archive/marker.txt","write":"keep\n"}}],"quality":{"impact":4,"coverage":4,"criticality":3,"diagnostic":3,"score":45,"note":"List click-away and Tab/Shift+Tab carry, Icons Enter, sidebar commit; only List/Icons commit routes; Columns Enter/Tab in rename-commits-on-enter, tab-renames-past-open-folder"}}
 {"select_with_keyboard":"archive"}
 {"key":"F2"}
 {"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus on 'archive'"}

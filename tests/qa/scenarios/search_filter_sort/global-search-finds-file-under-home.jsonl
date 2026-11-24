@@ -1,4 +1,4 @@
-{"scenario":"global-search-finds-file-under-home","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"us","vars":{"layout":"us"}},{"id":"ru-only","vars":{"layout":"ru-only"}}],"cost":{"columns-us":0.8,"columns-ru-only":0.8},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":3,"score":20,"note":"Ctrl+K finds a home file from another folder; ru-only variant is the only QA Ctrl+K on a non-Latin layout; home scope is unit-tested"}}
+{"scenario":"global-search-finds-file-under-home","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"us","vars":{"layout":"us"}},{"id":"ru-only","vars":{"layout":"ru-only"}}],"cost":{"columns-us":0.8,"columns-ru-only":0.8},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":3,"score":20,"note":"Ctrl+K multi-term global search finds home files and drops non-matching ext; ru-only is the sole Ctrl+K on non-Latin layout; scoring unit-tested"}}
 {"fs":{"path":"$home/reports","mkdir":true,"parents":true}}
 {"fs":{"path":"$home/reports/quarterly-summary.txt","write":"summary\n"}}
 {"fs":{"path":"$home/reports/quarterly-summary.md","write":"summary\n"}}

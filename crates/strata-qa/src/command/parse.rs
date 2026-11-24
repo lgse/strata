@@ -7,11 +7,10 @@ use serde_json::Value;
 use super::super::{Chord, DEFAULT_WAIT, Modifier, Predicate, StateName, Target};
 use super::{
     Accessor, ActivateFields, ActivateWindowFields, AdoptFields, ButtonDownFields, ButtonUpFields,
-    COMMANDS, CaptureFields, ClickFields, ClickResultRowsFields, ClipboardFields,
-    ClipboardSetFields, Command, DragFields, DropSamplesFields, DuringCheck, DuringFields,
-    ExpectFields, HoldsFields, KeepFields, KeyDownFields, KeyFields, KeyUpFields, KeymapFields,
-    KeysUntilFields, MeasureTextFields, MoveByFields, MoveFields, NoteFields, OpenMenuFields,
-    PressCheck, PressStepFields, QueryFields, RememberFields, Repeat, ResizeFields,
+    COMMANDS, ClickFields, ClickResultRowsFields, ClipboardFields, ClipboardSetFields, Command,
+    DragFields, DuringCheck, DuringFields, ExpectFields, HoldsFields, KeepFields, KeyDownFields,
+    KeyFields, KeyUpFields, KeymapFields, KeysUntilFields, MoveByFields, MoveFields, NoteFields,
+    OpenMenuFields, PressCheck, PressStepFields, QueryFields, RememberFields, Repeat, ResizeFields,
     RevealControlFields, RevealFields, RowStates, SelectFields, SelectWithKeyboardFields,
     SetScrollbarFields, SettleFields, SleepFields, TypeFields, WaitFields, WheelDirection,
     WheelFields,
@@ -187,40 +186,6 @@ pub fn parse_command(line: &str) -> Result<Command, String> {
                 checks,
                 duration: Duration::from_millis(fields.ms),
                 every: Duration::from_millis(fields.every_ms),
-            })
-        }
-        "capture" => {
-            let fields: CaptureFields = serde_json::from_value(fields).map_err(invalid)?;
-            if fields.name.is_empty() {
-                return Err("capture needs a name in as".to_owned());
-            }
-            Ok(Command::Capture {
-                target: fields.capture,
-                inset: fields.inset,
-                name: fields.name,
-            })
-        }
-        "measure_text" => {
-            let fields: MeasureTextFields = serde_json::from_value(fields).map_err(invalid)?;
-            if fields.name.is_empty() {
-                return Err("measure_text needs a name in as".to_owned());
-            }
-            Ok(Command::MeasureText {
-                kept: fields.measure_text,
-                name: fields.name,
-            })
-        }
-        "drop_samples" => {
-            let fields: DropSamplesFields = serde_json::from_value(fields).map_err(invalid)?;
-            if fields.name.is_empty() {
-                return Err("drop_samples needs a name in as".to_owned());
-            }
-            Ok(Command::DropSamples {
-                kept: fields.drop_samples,
-                resting: fields.resting,
-                dragging: fields.dragging,
-                escape: fields.escape,
-                name: fields.name,
             })
         }
         "key" => {

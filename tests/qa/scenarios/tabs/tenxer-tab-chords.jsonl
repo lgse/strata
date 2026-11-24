@@ -1,4 +1,4 @@
-{"scenario":"tenxer-tab-chords","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.9,"icons":2.1,"list":2.1},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"10xer bare-letter tab chords (t n, t 1/2, t x) in columns/icons/list plus literal tntt in location editor; unit tests cover only Ctrl+Page tab keys, zero-selects-tenth-tab covers t0"}}
+{"scenario":"tenxer-tab-chords","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.9,"icons":2.1,"list":2.1},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"10xer bare-letter tab chords (t n, t 1/2, t x, t t) in columns/icons/list plus literal tntt in location; unit tests miss bare chords; reopen-closed-tabs shares tabs setup only"}}
 {"select":{"entry":"todo.txt"}}
 {"key":"ctrl+l"}
 {"wait":{"present":{"role":"text","name":"Location (Ctrl+L)"}},"message":"location editor"}

@@ -1,4 +1,4 @@
-{"scenario":"tenxer-pin-feedback-identifies-slot","modes":["list"],"prefs":{"tenxer_mode":true},"cost":{"list":2.4},"tree":{"pin-a":{},"pin-b":{},"pin-c":{},"pin-d":{},"pin-e":{},"pin-f":{},"pin-g":{},"pin-h":{},"pin-i":{},"pin-j":{}}}
+{"scenario":"tenxer-pin-feedback-identifies-slot","modes":["list"],"prefs":{"tenxer_mode":true},"cost":{"list":2.4},"tree":{"pin-a":{},"pin-b":{},"pin-c":{},"pin-d":{},"pin-e":{},"pin-f":{},"pin-g":{},"pin-h":{},"pin-i":{},"pin-j":{}},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"Keyboard pin feedback names slot g 1-9, none for pin 10, and already-pinned flash; only scenario on keyboard pinning, no unit test"}}
 {"select":{"entry":"pin-a"}}
 {"wait":{"focused":"pin-a"},"message":"the first folder has keyboard focus"}
 {"key":"g"}

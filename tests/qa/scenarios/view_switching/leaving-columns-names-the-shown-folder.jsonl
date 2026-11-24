@@ -1,4 +1,4 @@
-{"scenario":"leaving-columns-names-the-shown-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Ctrl+L and Esc keep the mirrored child in Columns; breadcrumb and Ctrl+L name the List folder after Ctrl+3; location::tests pins the sync, only this drives keys"}}
+{"scenario":"leaving-columns-names-the-shown-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Ctrl+L prefills mirrored child, Esc restores it, Ctrl+3 List prefill; location::tests cover Esc focus, not the prefill"}}
 {"select_with_keyboard":"documents","message":"the cursor to reach 'documents'"}
 {"wait":{"panes":["$root","documents"]},"message":"'documents' to be mirrored in a child column"}
 {"wait":{"focused_pane":"$root"},"message":"focus to stay in the root column"}

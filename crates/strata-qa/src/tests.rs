@@ -4,7 +4,6 @@ mod checking;
 mod commands;
 mod fake;
 mod locating;
-mod pixels;
 mod predicates;
 mod scanning;
 mod serving;

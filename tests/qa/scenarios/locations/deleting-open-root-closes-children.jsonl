@@ -1,4 +1,4 @@
-{"scenario":"deleting-open-root-closes-children","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.6},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"deleting open root collapses its child columns to the root; deleting-open-folder-returns-to-parent columns-root-delete covers root removal without child columns"}}
+{"scenario":"deleting-open-root-closes-children","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"open root deleted on disk collapses child columns to the root via live monitor; unit test pins the logic, real-monitor GUI path is unique"}}
 {"fs":{"path":"documents/drafts","mkdir":true}}
 {"fs":{"path":"documents/drafts/draft.txt","write":"draft\n"}}
 {"key":"ctrl+l"}

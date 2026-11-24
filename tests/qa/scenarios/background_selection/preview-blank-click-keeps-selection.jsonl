@@ -1,4 +1,4 @@
-{"scenario":"preview-blank-click-keeps-selection","modes":["columns","icons","list"],"prefs":{"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.1,"icons":1.1,"list":1.2},"quality":{"impact":2,"coverage":4,"criticality":4,"diagnostic":3,"score":38,"note":"Blank preview click keeps selection and preview drag starts marquee; sole QA route through preview pane, fixed in batch 6"}}
+{"scenario":"preview-blank-click-keeps-selection","modes":["columns","icons","list"],"prefs":{"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.1,"icons":1.1,"list":1.2},"quality":{"impact":2,"coverage":4,"criticality":3,"diagnostic":3,"score":30,"note":"Blank preview-pane click keeps selection and preview marquee replaces it; sole QA route from preview; unit test checks focus only"}}
 {"fs":{"path":"photo.png","image":{"width":1600,"height":900,"rgb":[0,128,0]}}}
 {"wait":{"entry":"photo.png","dir":"$root"},"message":"the generated photo"}
 {"select":{"entry":"photo.png","dir":"$root"}}

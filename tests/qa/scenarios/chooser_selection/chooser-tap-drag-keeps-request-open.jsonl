@@ -1,4 +1,4 @@
-{"scenario":"chooser-tap-drag-keeps-request-open","modes":["columns","list","icons"],"portal":true,"session_bus":true,"cost":{"columns":0.5,"icons":0.5,"list":0.5},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Held second tap cannot accept a chooser before release; only portal route for drag-threshold cancellation"}}
+{"scenario":"chooser-tap-drag-keeps-request-open","modes":["columns","list","icons"],"portal":true,"session_bus":true,"cost":{"columns":0.5,"icons":0.5,"list":0.5},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Held tap-drag keeps single-select chooser open until double-click; sibling covers multi-select only, Icons mode unique"}}
 {"portal_open":"Tap drag selection test","options":{"current_folder":"$fixture","multiple":false}}
 {"adopt":"Tap drag selection test","message":"the file chooser to open"}
 {"click":{"entry":"todo.txt","part":"icon","dir":"$root"}}

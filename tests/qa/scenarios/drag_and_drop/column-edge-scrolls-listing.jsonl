@@ -1,4 +1,4 @@
-{"scenario":"column-edge-scrolls-listing","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.3},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Drag to a column's top edge edge-scrolls its listing; sole GUI guard of listing edge-scroll, unlike strip-edge-scrolls-columns-in (root axis)"}}
+{"scenario":"column-edge-scrolls-listing","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.3},"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Parked drag at a column's top edge scrolls its listing; GUI wiring over unit-tested drag_scroll logic; strip axis is strip-edge-scrolls-columns-in"}}
 {"fs":{"path":"documents/{000..299}.txt","write":"x\n"}}
 {"select":{"entry":"documents"}}
 {"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}

@@ -1,4 +1,4 @@
-{"scenario":"keep-both-then-undo-remaining","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":3,"score":52,"note":"Keep Both via keyboard from default Replace focus, then undo; superset of keep-both-then-undo, only keyboard route through the conflict dialog"}}
+{"scenario":"keep-both-then-undo-remaining","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0},"quality":{"impact":4,"coverage":4,"criticality":3,"diagnostic":3,"score":45,"note":"Keyboard Keep Both from Replace focus, then undo; only keyboard dialog route, overlaps keep-both-then-undo; default focus unit-tested, churn low"}}
 {"fs":{"path":"archive/todo.txt","write":"existing\n"}}
 {"fs":{"path":"archive/todo (1).txt","write":"previous copy\n"}}
 {"select":{"entry":"todo.txt"}}

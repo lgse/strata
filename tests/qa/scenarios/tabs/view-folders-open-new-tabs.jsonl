@@ -1,4 +1,4 @@
-{"scenario":"view-folders-open-new-tabs","modes":["columns","icons","list"],"layout":"us","cost":{"columns":1.2,"icons":1.2,"list":1.0}}
+{"scenario":"view-folders-open-new-tabs","modes":["columns","icons","list"],"layout":"us","cost":{"columns":1.2,"icons":1.2,"list":1.0},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"Folder drag from file view onto New tab or strip opens a tab and moves nothing; headless dnd tests pin the logic, GUI outcome and Escape cancel only here"}}
 {"wait":{"entries":{"contains":["documents","pictures","archive"]},"dir":"$root"},"message":"the original file view lists folders to drag"}
 {"drag":{"from":{"entry":"documents","dir":"$root"},"to":{"role":"button","name":"New tab"}}}
 {"wait":{"all":[{"directory":"documents"},{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}}]},"message":"dropping a folder on plus opens it in a new tab"}

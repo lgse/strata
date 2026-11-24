@@ -15,7 +15,6 @@ mod geometry;
 mod matchers;
 mod offset;
 mod outcome;
-pub mod pixels;
 mod predicate;
 mod scroll;
 mod shape;
@@ -24,8 +23,7 @@ mod target;
 
 pub use self::{
     backend::*, checks::*, chord::*, command::*, engine::*, expr::*, geometry::*, matchers::*,
-    offset::*, outcome::*, pixels::Capture, predicate::*, scroll::*, shape::*, snapshot::*,
-    target::*,
+    offset::*, outcome::*, predicate::*, scroll::*, shape::*, snapshot::*, target::*,
 };
 
 pub const DEFAULT_WAIT: Duration = Duration::from_millis(15_000);

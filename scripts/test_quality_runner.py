@@ -90,7 +90,7 @@ class QualityRunnerTests(unittest.TestCase):
         workflow = (REPOSITORY / ".github/workflows/ci.yml").read_text()
         jobs = dict(re.findall(r"^  ([\w-]+):\n(.*?)(?=^  [\w-]+:\n|\Z)",
                                workflow.split("\njobs:\n", 1)[1], re.M | re.S))
-        for name in ("quality-shard", "quality", "release-scripts"):
+        for name in ("quality-shard", "quality", "qa-smoke", "release-scripts"):
             with self.subTest(job=name):
                 condition = re.search(r"^    if: (.+)$", jobs[name], re.M).group(1)
                 self.assertIn("github.event_name != 'push'", condition)
@@ -205,7 +205,7 @@ class QualityRunnerTests(unittest.TestCase):
                 if failure in ("fmt", "clippy"):
                     self.assertNotIn("quality_ci.py", text)
                 else:
-                    # Local shards start their own private displays; see test_quality_ci.
+                    # Local shards run headless lanes; see test_quality_ci.
                     self.assertIn("python3 scripts/quality_ci.py local --lanes 5", text)
                     self.assertNotIn("xvfb", text)
                     self.assertNotIn("test --locked", text)

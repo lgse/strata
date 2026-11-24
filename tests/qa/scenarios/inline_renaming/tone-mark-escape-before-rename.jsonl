@@ -1,4 +1,4 @@
-{"scenario":"tone-mark-escape-before-rename","modes":["columns"],"layout":"us","mutation":null,"known_bug":"docs/rune/upstream/rune/98-escape-after-a-dead-key.md: Escape after a dead key ends rename instead of only the pending tone mark","known_bug_step":18,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Escape cancels only a pending tone-mark composition in rename; plain Escape is escape-preserves-name; keys/tests.rs pins preedit routing, not the rename field"}}
+{"scenario":"tone-mark-escape-before-rename","modes":["columns"],"layout":"us","mutation":null,"known_bug":"docs/rune/upstream/rune/98-escape-after-a-dead-key.md: Escape after a dead key ends rename instead of only the pending tone mark","known_bug_step":18,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Escape cancels a pending tone mark in rename; plain Escape is escape-preserves-name; unit tests pin composition, not window routing"}}
 {"select":{"entry":"readme.md"}}
 {"select_with_keyboard":"todo.txt"}
 {"key":"F2"}

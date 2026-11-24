@@ -1,4 +1,4 @@
-{"scenario":"global-search-arrows-keep-typing","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Arrows move global-search selection, typing refines it, Enter opens it; unit arrow_keys test covers focus, this adds Ctrl+K wiring and real index"}}
+{"scenario":"global-search-arrows-keep-typing","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.0},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Arrows move global-search selection, typing refines it, Enter opens; unit tests pin step logic, not Ctrl+K key routing into the field"}}
 {"fs":{"path":"$home/navigation-alpha","mkdir":true}}
 {"fs":{"path":"$home/navigation-beta","mkdir":true}}
 {"fs":{"path":"$home/navigation-final","mkdir":true}}

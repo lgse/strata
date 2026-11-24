@@ -148,6 +148,14 @@ class CiWorkflowTests(unittest.TestCase):
         pattern = re.search(r'if strings "target/\$TARGET/release/strata" \| grep -F "([^"]+)"; then', check).group(1)
         self.assertTrue(usage.startswith(pattern), (usage, pattern))
         self.assertIn(f'| grep -F "{pattern}"', self.jobs()["qa"])
+        self.assertIn(f'| grep -F "{pattern}"', self.jobs()["qa-smoke"])
+
+    def test_qa_smoke_job_runs_the_smoke_selection_on_pull_requests(self):
+        smoke = self.jobs()["qa-smoke"]
+        self.assertIn("needs: quality-build", smoke)
+        self.assertIn("github.event_name != 'push'", smoke)
+        self.assertIn("github.event_name != 'workflow_dispatch'", smoke)
+        self.assertIn("run: ./scripts/qa.sh --smoke", smoke)
 
 
 if __name__ == "__main__":

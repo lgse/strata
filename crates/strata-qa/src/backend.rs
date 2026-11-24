@@ -4,9 +4,7 @@
 
 use std::{path::PathBuf, time::Duration};
 
-use crate::{
-    Chord, Command, FieldState, Modifier, Orientation, Outcome, Predicate, Rect, Scope, Verdict,
-};
+use crate::{Chord, Command, FieldState, Modifier, Orientation, Outcome, Rect, Scope};
 
 /// What the application says a node is for, where its role and name do not.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -198,13 +196,6 @@ pub trait Backend {
     fn activate(&self, node: &Self::Node) -> bool;
 
     async fn command(&self, _scope: &Scope<'_, Self>, _command: &Command) -> Option<Outcome>
-    where
-        Self: Sized,
-    {
-        None
-    }
-
-    fn check(&self, _scope: &Scope<'_, Self>, _predicate: &Predicate) -> Option<Verdict>
     where
         Self: Sized,
     {

@@ -47,9 +47,6 @@ fn step_name(command: &Command) -> &'static str {
         Command::RevealControl { .. } => "reveal_control",
         Command::Reveal { .. } => "reveal",
         Command::SetScrollbar { .. } => "set_scrollbar",
-        Command::Capture { .. } => "capture",
-        Command::MeasureText { .. } => "measure_text",
-        Command::DropSamples { .. } => "drop_samples",
         Command::ClipboardSet(_) => "clipboard_set",
         Command::Clipboard { .. } => "clipboard",
         Command::Keymap(_) => "keymap",
@@ -579,9 +576,6 @@ impl<B: Backend> Scope<'_, B> {
             command @ (Command::RevealControl { .. }
             | Command::Reveal { .. }
             | Command::SetScrollbar { .. }
-            | Command::Capture { .. }
-            | Command::MeasureText { .. }
-            | Command::DropSamples { .. }
             | Command::ClipboardSet(_)
             | Command::Clipboard { .. }
             | Command::Keymap(_)

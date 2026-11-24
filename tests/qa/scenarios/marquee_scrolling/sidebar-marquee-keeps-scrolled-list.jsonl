@@ -1,4 +1,4 @@
-{"scenario":"sidebar-marquee-keeps-scrolled-list","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"list":1.6},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Sidebar marquee selects only the visible band of a scrolled list; sidebar start is also in sidebar-marquee-reaches-leading-pane"}}
+{"scenario":"sidebar-marquee-keeps-scrolled-list","modes":["list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"list":1.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Marquee from a sidebar row on a scrolled list selects the visible band, focus stays; headless blank-drag test pins scroll; row origin unique"}}
 {"fs":{"path":"scrolling","mkdir":true}}
 {"fs":{"path":"scrolling/{000..599}.txt","write":"{}\n"}}
 {"select_with_keyboard":"scrolling"}

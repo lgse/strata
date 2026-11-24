@@ -119,22 +119,6 @@ pub enum Command {
         duration: Duration,
         every: Duration,
     },
-    Capture {
-        target: Target,
-        inset: u16,
-        name: String,
-    },
-    MeasureText {
-        kept: String,
-        name: String,
-    },
-    DropSamples {
-        kept: String,
-        resting: String,
-        dragging: String,
-        escape: bool,
-        name: String,
-    },
     Drag {
         from: Target,
         to: Target,
@@ -186,7 +170,7 @@ pub enum Command {
     Invariants,
 }
 
-/// A keyboard layout as `setxkbmap` is given one, with the group and the lock that are on.
+/// A keyboard layout as XKB names it, with the group and the lock that are on.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Keymap {
@@ -199,7 +183,7 @@ pub struct Keymap {
     pub caps_lock: bool,
 }
 
-pub const COMMANDS: [&str; 38] = [
+pub const COMMANDS: [&str; 35] = [
     "key",
     "adopt",
     "activate_window",
@@ -213,9 +197,6 @@ pub const COMMANDS: [&str; 38] = [
     "key_down",
     "key_up",
     "during",
-    "capture",
-    "measure_text",
-    "drop_samples",
     "type",
     "click",
     "select",
@@ -345,36 +326,6 @@ struct DuringFields {
     #[serde(default = "poll_ms")]
     every_ms: u64,
     message: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CaptureFields {
-    capture: Target,
-    #[serde(default)]
-    inset: u16,
-    #[serde(rename = "as")]
-    name: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct MeasureTextFields {
-    measure_text: String,
-    #[serde(rename = "as")]
-    name: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct DropSamplesFields {
-    drop_samples: String,
-    resting: String,
-    dragging: String,
-    #[serde(default)]
-    escape: bool,
-    #[serde(rename = "as")]
-    name: String,
 }
 
 #[derive(Deserialize)]

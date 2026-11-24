@@ -313,6 +313,10 @@ impl ForeignSource {
             .args(arguments)
             .env_clear()
             .envs(environment.iter().map(|(key, value)| (key, value)))
+            .env("GDK_BACKEND", "wayland")
+            .env("GSK_RENDERER", "cairo")
+            .env("GTK_A11Y", "none")
+            .env("NO_AT_BRIDGE", "1")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(errors);

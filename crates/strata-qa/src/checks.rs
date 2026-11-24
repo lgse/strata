@@ -58,22 +58,6 @@ fn is_true(value: &bool) -> bool {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct PixelCheck {
-    pub target: Target,
-    pub rgb: [u8; 3],
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct AccentPixels {
-    pub target: Target,
-    #[serde(default)]
-    pub inset: u16,
-    pub more_than: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct HitPath {
     pub mark: String,
     pub hits: std::collections::BTreeMap<String, String>,
@@ -230,34 +214,6 @@ pub struct ContainsPoint {
 pub enum PointAxis {
     X,
     Y,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct FooterFill {
-    pub ends: Vec<String>,
-    pub total: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Repainted {
-    pub since: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ContrastBelow {
-    pub of: String,
-    pub to: String,
-    pub share: serde_json::Number,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct Elapsed {
-    pub since: String,
-    pub ms: u64,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]

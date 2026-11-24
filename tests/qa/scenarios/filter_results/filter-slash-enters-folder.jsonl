@@ -1,4 +1,4 @@
-{"scenario":"filter-slash-enters-folder","modes":["columns","icons","list"],"layout":"us","tree":{"Documents":{"Projects":{"plan.txt":"plan\n"},"notes.txt":"notes\n"},"archive":{"old.txt":"old\n"},"todo.txt":"todo\n"},"variants":[{"id":"folder","prefs":{"filter_include_subfolders":false}},{"id":"subfolders","prefs":{"filter_include_subfolders":true}}]}
+{"scenario":"filter-slash-enters-folder","modes":["columns","icons","list"],"layout":"us","tree":{"Documents":{"Projects":{"plan.txt":"plan\n"},"notes.txt":"notes\n"},"archive":{"old.txt":"old\n"},"todo.txt":"todo\n"},"variants":[{"id":"folder","prefs":{"filter_include_subfolders":false}},{"id":"subfolders","prefs":{"filter_include_subfolders":true}}],"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"filter / enters folder and keeps focus; only Icons and German Shift+7 routes, Columns/List are hosted unit tests"}}
 {"wait":{"entries":{"contains":["Documents","archive","todo.txt"]},"dir":"$root"},"message":"the fixture listed"}
 {"key":"ctrl+f"}
 {"wait":{"field":{}},"message":"the filter field to take focus"}

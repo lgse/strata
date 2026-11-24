@@ -1,4 +1,4 @@
-{"scenario":"folder-named-like-archive-no-extract","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.5},"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":4,"score":12,"note":"Folder photos.zip shows no Extract actions on right-click; GTK unit test archive_extraction_actions_follow_build_support pins the same menu for this entry, so only the real-window pointer route is unique"}}
+{"scenario":"folder-named-like-archive-no-extract","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.5},"quality":{"impact":2,"coverage":3,"criticality":2,"diagnostic":4,"score":19,"note":"Folder named photos.zip gets no Extract rows in the real context menu; menus unit test pins only archive files, not folders"}}
 {"fs":{"path":"photos.zip","mkdir":true}}
 {"key":"ctrl+r"}
 {"click":{"entry":"photos.zip"},"button":3}

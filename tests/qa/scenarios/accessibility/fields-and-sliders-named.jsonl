@@ -1,4 +1,4 @@
-{"scenario":"fields-and-sliders-named","modes":["columns","icons"],"layout":"us","mutation":null,"known_bug":null}
+{"scenario":"fields-and-sliders-named","modes":["columns","icons"],"layout":"us","mutation":null,"known_bug":null,"quality":{"impact":3,"coverage":2,"criticality":2,"diagnostic":4,"score":12,"note":"Accessible names of filter, search, shortcut, Connect, Compress and thumbnail slider fields; headless tests pin most names, real-window routes unique"}}
 {"key":"ctrl+f"}
 {"wait":{"field":{}},"message":"Ctrl+F to open the filter field"}
 {"wait":{"present":{"role":"text","name":"Filter this pane (Ctrl+F)"}},"message":"the filter field is unnamed","modes":["columns"]}

@@ -1,4 +1,4 @@
-{"scenario":"language-selection-after-relaunch","modes":["columns"],"prefs":{"language":"fr"},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.8},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"Only QA check of language persistence across relaunch (manual Japanese, then auto-detect back to English); restart notice in running language is unique; pointer route only; i18n catalog unit tests do not cover the saved-choice flow"}}
+{"scenario":"language-selection-after-relaunch","modes":["columns"],"prefs":{"language":"fr"},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Settings language pick, restart notice and auto-detect over relaunch; saved-language startup headless-tested, selector only here"}}
 {"wait":{"present":{"role":"button","name":"Paramètres"}},"message":"saved French language before opening Settings"}
 {"click":{"role":"button","name":"Paramètres"}}
 {"wait":{"present":{"role":"button","name":"Langue"}},"message":"French language selector"}

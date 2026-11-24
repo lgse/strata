@@ -118,9 +118,6 @@ def merge(settings: str, changes: list[tuple[str, object]]) -> str:
 def seed(session: str, fixture: str, prefs: str) -> None:
     manifest = json.load(open(MANIFEST, encoding="utf-8"))
     home = f"{session}/home"
-    os.makedirs(f"{home}/config/gtk-4.0", exist_ok=True)
-    with open(f"{home}/config/gtk-4.0/settings.ini", "w") as file:
-        file.write(manifest["gtk_settings"])
     os.makedirs(f"{home}/config/strata", exist_ok=True)
     with open(f"{home}/config/strata/{manifest['portal_offer_marker']}", "w") as file:
         file.write("1\n")

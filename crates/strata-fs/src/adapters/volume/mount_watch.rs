@@ -280,7 +280,7 @@ static PUBLISHED_FOR_TEST: Mutex<Option<MountTable>> = Mutex::new(None);
 #[cfg(any(test, feature = "test-support"))]
 pub fn publish_for_isolated_test(table: Option<MountTable>) {
     assert!(
-        std::env::var_os("STRATA_ISOLATED_GTK_TEST").is_some(),
+        std::env::var_os("STRATA_ISOLATED_TEST").is_some(),
         "the published mount table override needs an isolated test process"
     );
     *PUBLISHED_FOR_TEST

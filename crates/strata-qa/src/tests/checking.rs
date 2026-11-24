@@ -101,23 +101,3 @@ fn a_moved_check_compares_against_the_box_an_earlier_step_kept() {
     );
     assert_eq!(check(&fake, &kept, moved), Ok(Ok(())));
 }
-
-#[test]
-fn a_predicate_the_toolkit_cannot_answer_says_so() {
-    let mut fake = Fake::new();
-    toolbar(&mut fake);
-    let kept = Remembered::default();
-    let pixel = json!({ "pixel": {
-        "target": { "role": "toggle button", "name": "Show hidden files" },
-        "rgb": [0, 0, 0]
-    } });
-    assert_eq!(
-        check(&fake, &kept, pixel.clone()),
-        Err("pixel is not supported on this target".to_owned())
-    );
-    assert_eq!(
-        check(&fake, &kept, json!({ "not": pixel })),
-        Err("pixel is not supported on this target".to_owned()),
-        "a negation does not turn an unsupported predicate into one that holds"
-    );
-}

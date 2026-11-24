@@ -8,7 +8,7 @@ use strata_platform::csd::{Backend, Csd, Policy};
 
 use crate::{App, commands, settings::Saved, shell, slots::Entry, startup::UiThread};
 
-/// The QA runner's screen (`tests/qa/`: Xvfb at 1440x900): what the tests draw on.
+/// The QA runner's offscreen viewport (1440x900): what the tests draw on.
 #[cfg(test)]
 const SIZE: (f32, f32) = (1440.0, 900.0);
 

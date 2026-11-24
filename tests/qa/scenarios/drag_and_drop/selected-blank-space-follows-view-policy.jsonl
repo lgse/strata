@@ -1,4 +1,4 @@
-{"scenario":"selected-blank-space-follows-view-policy","modes":["columns","icons","list"],"prefs":{"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.1,"icons":1.1,"list":1.0},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Selected List Name space selects without moving; selected Columns/Icons space still transfers; native ownership routes differ"}}
+{"scenario":"selected-blank-space-follows-view-policy","modes":["columns","icons","list"],"prefs":{"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.1,"icons":1.1,"list":1.0},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Selected blank space: List selects, Columns/Icons still transfer; pointer unit tests pin policy, native per-view transfer unique; row-padding is unselected"}}
 {"click":{"entry":"todo.txt"}}
 {"wait":{"selected":{"contains":["todo.txt"]}},"message":"source selection"}
 {"drag":{"from":{"entry":"todo.txt","part":"icon"},"from_at":["start-6","50%"],"to":{"entry":"archive"}},"modes":["icons"]}

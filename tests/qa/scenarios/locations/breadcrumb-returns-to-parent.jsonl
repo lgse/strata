@@ -1,4 +1,4 @@
-{"scenario":"breadcrumb-returns-to-parent","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Click parent breadcrumb in Columns returns to ancestor; current-breadcrumb-opens-hierarchy clicks an ancestor breadcrumb and asserts the same directory change"}}
+{"scenario":"breadcrumb-returns-to-parent","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Click root breadcrumb in Columns returns to ancestor; scrolled-away-crumbs-... clicks same crumb, navigation.rs pins ancestor logic"}}
 {"select":{"entry":"documents"}}
 {"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
 {"settle":{"pane":"documents"}}

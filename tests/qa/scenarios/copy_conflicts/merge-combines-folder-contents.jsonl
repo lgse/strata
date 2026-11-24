@@ -1,4 +1,4 @@
-{"scenario":"merge-combines-folder-contents","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":3,"score":34,"note":"Merge button from a copy-paste conflict: shared names overwritten, undo restores originals; only GUI check of Merge, merge logic and undo unit-tested"}}
+{"scenario":"merge-combines-folder-contents","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.2},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":3,"score":30,"note":"paste-conflict Merge overwrites shared names, Ctrl+Z restores them; drag-folder-merges covers drag Merge only, merge logic unit-tested"}}
 {"fs":{"path":"folder","mkdir":true}}
 {"fs":{"path":"folder/incoming.txt","write":"from source\n"}}
 {"fs":{"path":"folder/shared.txt","write":"incoming\n"}}

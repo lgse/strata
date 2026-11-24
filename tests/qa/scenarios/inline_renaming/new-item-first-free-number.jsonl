@@ -1,4 +1,4 @@
-{"scenario":"new-item-first-free-number","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":5,"coverage":3,"criticality":2,"diagnostic":4,"score":33,"note":"New File proposes first free name past occupied file, dangling link and dir without overwrite; adapter unit tests pin numbering, GUI editor proposal unique"}}
+{"scenario":"new-item-first-free-number","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":5,"coverage":3,"criticality":2,"diagnostic":4,"score":33,"note":"New File proposes first free name past a file, dangling link and folder without overwrite; numbering unit-tested, GUI proposal unique"}}
 {"fs":{"path":"new file","write":"keep\n"}}
 {"fs":{"path":"new file (1)","symlink":"missing"}}
 {"fs":{"path":"new file (2)","mkdir":true}}

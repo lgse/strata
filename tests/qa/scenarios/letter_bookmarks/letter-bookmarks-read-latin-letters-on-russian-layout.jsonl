@@ -1,4 +1,4 @@
-{"scenario":"letter-bookmarks-read-latin-letters-on-russian-layout","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":false},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"m z and ' z on a real Russian XKB layout read the Latin fallback; fallback logic is unit-tested on fake keymaps only"}}
+{"scenario":"letter-bookmarks-read-latin-letters-on-russian-layout","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":false},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Bookmark save m-z and jump '-z on ru layout read Latin keys; only QA bookmark route on ru, chord fallback unit-tested"}}
 {"select":{"entry":"readme.md","dir":"$root"}}
 {"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
 {"layout":"ru"}

@@ -1,4 +1,4 @@
-{"scenario":"strip-edge-scrolls-columns-in","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.8},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Parked drag at the strip edge scrolls the root column into view and release drops there; sole GUI guard of strip-level edge-scroll (listing edge-scroll is column-edge-scrolls-listing, a different axis); narrow fixture shared with drop-on-partially-visible-column"}}
+{"scenario":"strip-edge-scrolls-columns-in","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.8},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Strip edge-scroll reveals root column, drop lands there; only GUI strip-axis guard, generic edge logic unit-tested; listing is column-edge-scrolls-listing"}}
 {"fs":{"path":"documents/deep/deeper","mkdir":true,"parents":true}}
 {"fs":{"path":"documents/deep/deeper/cargo.txt","write":"cargo\n"}}
 {"resize":{"width":640,"height":360}}

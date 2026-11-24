@@ -1,4 +1,4 @@
-{"scenario":"path-completion-dismisses-on-window-switch","modes":["columns"],"layout":"us","session_bus":true,"quality":{"impact":2,"coverage":3,"criticality":3,"diagnostic":4,"score":23,"note":"Second window taking activation closes the first window's path suggestion and keeps the typed path; location unit tests call set_presence directly, this is the only route through real window activation"}}
+{"scenario":"path-completion-dismisses-on-window-switch","modes":["columns"],"layout":"us","session_bus":true,"quality":{"impact":2,"coverage":2,"criticality":3,"diagnostic":4,"score":12,"note":"Inactive window dismisses path suggestion, keeps typed path; headless window_focus test covers logic; real second-window route only"}}
 {"key":"ctrl+l"}
 {"wait":{"field":{"name":"Location (Ctrl+L)","focused":true}},"message":"the location entry to take focus"}
 {"key":"ctrl+a"}
