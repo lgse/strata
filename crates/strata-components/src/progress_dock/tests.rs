@@ -663,12 +663,18 @@ fn running_cards_and_job_rows_mark_themselves_busy_until_they_finish() {
         )
     }
 
-    fn is_busy(rt: &rune::Runtime<Host>, key: &str) -> Option<bool> {
+    fn a11y_node(rt: &rune::Runtime<Host>, key: &str) -> Option<(String, String, bool)> {
         let tree = rt.accessibility_tree();
         tree.nodes
             .iter()
             .find(|(_, n)| n.author_id() == Some(key))
-            .map(|(_, n)| n.is_busy())
+            .map(|(_, n)| {
+                (
+                    n.label().unwrap_or_default().to_owned(),
+                    n.description().unwrap_or_default().to_owned(),
+                    n.is_busy(),
+                )
+            })
     }
 
     let mut host = Host {
@@ -686,17 +692,30 @@ fn running_cards_and_job_rows_mark_themselves_busy_until_they_finish() {
     let mut rt = rune::Runtime::new(host, view, (640.0, 480.0), rune::Env::new(false, 1.0));
     rt.frame(0.0);
     rt.frame(1.0 / 60.0);
-    assert_eq!(is_busy(&rt, "dock-card-1"), Some(true));
+    assert_eq!(a11y_node(&rt, "dock-card-1").map(|n| n.2), Some(true));
+    assert_eq!(
+        a11y_node(&rt, "jobs").map(|(label, desc, _)| (label, desc)),
+        Some((
+            "1 job running · 1 queued".to_owned(),
+            "Show background jobs".to_owned(),
+        ))
+    );
 
     rt.update(|s, tx| {
         s.dock.complete(1, "Copy complete", tx);
     });
     rt.frame(1.0 / 60.0);
-    assert_eq!(is_busy(&rt, "dock-card-1"), Some(false));
+    assert_eq!(a11y_node(&rt, "dock-card-1").map(|n| n.2), Some(false));
 
     rt.update(|s, tx| s.jobs_ui.open(tx));
     rt.frame(1.0 / 60.0);
-    assert_eq!(is_busy(&rt, "jobs-row-1"), Some(true));
-    assert_eq!(is_busy(&rt, "jobs-row-2"), Some(false));
-    assert_eq!(is_busy(&rt, "jobs-row-3"), Some(false));
+    let row1 = a11y_node(&rt, "jobs-row-1").expect("jobs-row-1");
+    let row2 = a11y_node(&rt, "jobs-row-2").expect("jobs-row-2");
+    let row3 = a11y_node(&rt, "jobs-row-3").expect("jobs-row-3");
+    assert_eq!((row1.0.as_str(), row1.2), ("Resize", true));
+    assert!(row1.1.contains("Running for "), "{:?}", row1.1);
+    assert_eq!((row2.0.as_str(), row2.2), ("Archive", false));
+    assert!(row2.1.contains("Queued"), "{:?}", row2.1);
+    assert_eq!((row3.0.as_str(), row3.2), ("Rename", false));
+    assert!(row3.1.contains("Done in "), "{:?}", row3.1);
 }

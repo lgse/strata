@@ -341,14 +341,24 @@ pub(crate) fn badge_pixels(app: &App, id: EntryId) -> Option<Pixels> {
         .and_then(|p| p.badge.clone())
 }
 
-#[cfg(feature = "qa")]
-pub(crate) fn presented_descriptions(app: &App) -> HashMap<EntryId, String> {
+pub(crate) fn badge_description(app: &App, id: EntryId) -> Option<&str> {
     app.file_providers
         .presented
-        .iter()
-        .filter(|(_, p)| !p.description.is_empty())
-        .map(|(id, p)| (*id, p.description.clone()))
-        .collect()
+        .get(&id)
+        .map(|p| p.description.as_str())
+        .filter(|d| !d.is_empty())
+}
+
+pub(crate) fn combine_description(base: Option<String>, extra: Option<&str>) -> Option<String> {
+    match (
+        base.filter(|b| !b.is_empty()),
+        extra.filter(|e| !e.is_empty()),
+    ) {
+        (Some(base), Some(extra)) => Some(format!("{base}, {extra}")),
+        (Some(base), None) => Some(base),
+        (None, Some(extra)) => Some(extra.to_owned()),
+        (None, None) => None,
+    }
 }
 
 impl Part for FileProviders {

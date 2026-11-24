@@ -5,7 +5,7 @@ use std::{collections::HashMap, time::Instant};
 use rune::Pixels;
 use strata_components::{
     context_menu::{ContextMenuState, Item, MenuModel, MenuTarget, Section},
-    contract::{EntryId, Point},
+    contract::{EntryId, EntrySource, Point},
 };
 use strata_fs::services::file_providers::{
     self as protocol, Decoration, Feedback, Manifest, MenuAction, OutcomeStatus, Registration,
@@ -334,6 +334,60 @@ fn reload_retires_providers_with_waiting_activations_and_clears_presentations() 
                     .badge
                     .is_none()
             );
+        },
+    );
+}
+
+#[test]
+fn provider_descriptions_appear_on_entry_accesskit_nodes_and_clear_on_withdrawal() {
+    crate::test_support::hosted(
+        "file_providers::tests",
+        "provider_descriptions_appear_on_entry_accesskit_nodes_and_clear_on_withdrawal",
+        |mut host| {
+            let folder = crate::test_support::fixture();
+            let todo_path = folder.path().join("todo.txt");
+            let todo_loc = strata_core::model::Location::local(&todo_path);
+            host.app()
+                .open(strata_core::model::Location::local(folder.path()));
+            assert!(host.run_until(crate::test_support::PATIENCE, |h| {
+                h.app().columns.listing(0).is_some_and(|c| !c.is_empty())
+            }));
+            while host.turn() {}
+            let entry_id = crate::shell::known_id(host.app(), &todo_loc).expect("todo.txt id");
+            let todo_desc = |host: &mut crate::host::offscreen::Offscreen| {
+                let tree = host.runtime().accessibility_tree();
+                tree.nodes
+                    .iter()
+                    .find(|(_, n)| n.label() == Some("todo.txt"))
+                    .and_then(|(_, n)| n.description().map(str::to_owned))
+            };
+            let base = todo_desc(&mut host).expect("base description");
+            assert!(base.starts_with("File"), "unexpected base: {base}");
+
+            host.runtime().update(|app, _| {
+                app.file_providers.next_version += 1;
+                let version = app.file_providers.next_version;
+                app.file_providers.presented.insert(
+                    entry_id,
+                    super::Presented {
+                        version,
+                        badge_key: Some(("example".to_owned(), "badge".to_owned())),
+                        badge: Some(Pixels::new()),
+                        description: "example: Available offline".to_owned(),
+                    },
+                );
+            });
+            host.turn();
+            assert_eq!(
+                todo_desc(&mut host).as_deref(),
+                Some(format!("{base}, example: Available offline").as_str())
+            );
+
+            host.runtime().update(|app, _| {
+                app.file_providers.clear_all_presentations();
+            });
+            host.turn();
+            assert_eq!(todo_desc(&mut host).as_deref(), Some(base.as_str()));
         },
     );
 }
