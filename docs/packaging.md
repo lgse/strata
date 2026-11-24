@@ -145,7 +145,7 @@ scripts/
   test_build_srpm.py
 .github/workflows/
   publish-copr.yml            submits a release to COPR
-  rpm.yml                     builds, lints, and installs the RPM for every change it depends on
+  rpm.yml                     builds, lints, and installs the RPM
 ```
 
 Unlike the AUR packages, nothing rendered is committed: the source RPM is built from the tagged commit itself, so the only reviewed inputs are the template and the script.
@@ -195,7 +195,7 @@ rpmbuild --rebuild target/rpm/strata-*.src.rpm
 rpmlint target/rpm/strata-*.src.rpm ~/rpmbuild/RPMS/*/strata-*.rpm
 ```
 
-`--ref` packages any commit under a release tag's identity, which `.github/workflows/rpm.yml` uses to build pull requests. That workflow runs on every change to the package's inputs, including the workspace's `Cargo.toml` files and `Cargo.lock`, because a dependency update can add a crate under a license COPR does not accept. It builds on `x86_64` with the newest Fedora only; the COPR builds at release time cover the other releases and `aarch64`, and a failed one can be retried with `publish-copr.yml`. `--release` raises the RPM release number to rebuild a version that is already published.
+`--ref` packages any commit under a release tag's identity, which `.github/workflows/rpm.yml` uses to build pull requests. Pull requests run it only when they change the packaging itself: the spec template, `build_srpm.py` and the scripts it imports, or the RPM workflows, because a full build takes about 20 minutes. Every push to `main` that changes any of the package's inputs, including the workspace's `Cargo.toml` files and `Cargo.lock`, runs it too, so a dependency update that adds a crate under a license COPR does not accept fails there, before a release. It builds on `x86_64` with the newest Fedora only; the COPR builds at release time cover the other releases and `aarch64`, and a failed one can be retried with `publish-copr.yml`. `--release` raises the RPM release number to rebuild a version that is already published.
 
 ### Publishing
 
