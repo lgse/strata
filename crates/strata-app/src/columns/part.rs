@@ -140,7 +140,7 @@ impl Part for Columns {
         app.columns.caught_up();
     }
 
-    fn tab_shown(app: &mut App, _: &mut Tx) {
+    fn tab_shown(app: &mut App, tx: &mut Tx) {
         let saved = shell::preferences(app);
         app.columns.refresh_mirror_preferences(saved);
         let format = DateFormat::parse(&saved.date_format);
@@ -150,6 +150,7 @@ impl Part for Columns {
         app.columns.show_sizes(sizes);
         app.columns.state.set_default_width(width);
         app.columns.set_worn(&worn);
+        restore_scroll(&app.columns.state, tx);
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
@@ -157,6 +158,30 @@ impl Part for Columns {
         let pruned = thumbs::poll(app, clock, tx);
         fills::poll(app, clock, tx);
         view(app).tick(app, clock, tx) | said | pruned | redate(app, clock, tx)
+    }
+}
+
+/// Restores the strip and column scroll offsets after a tab remounts.
+fn restore_scroll(state: &strata_components::columns::ColumnsState, tx: &mut Tx) {
+    let strip_x = state.strip_offset();
+    if strip_x > 0.0 {
+        tx.scroll_to_instant(strata_components::columns::keys::strip(VIEW), strip_x, 0.0);
+    }
+    for depth in 0..state.len() {
+        let Some(key) = state.column_key(depth) else {
+            continue;
+        };
+        let Some(column) = state.column(depth) else {
+            continue;
+        };
+        let y = column.collection.scroll_offset();
+        if y > 0.0 {
+            tx.scroll_to_instant(
+                strata_components::collection::element::viewport_path(&key),
+                0.0,
+                y,
+            );
+        }
     }
 }
 

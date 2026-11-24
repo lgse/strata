@@ -128,7 +128,7 @@ fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p
         .center_y()
         .border_sides([0.0, 1.0, 0.0, 0.0], kit.c.border_muted)
         .child(heading_content(column, look, sorted))
-        .on_drag(reorder(shared, resolved, id.clone(), column.sortable));
+        .on_drag(reorder(shared, resolved, id.clone()));
     h = h.cursor(match drag {
         Some(_) => Cursor::Grabbing,
         None if column.sortable => Cursor::Pointer,
@@ -142,11 +142,6 @@ fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p
             .hover(kit.c.hover)
             .press(kit.c.pressed)
             .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                let st = (sort_shared.table_mut)(s);
-                if st.suppress_press.replace(false) {
-                    tx.live_only();
-                    return;
-                }
                 let dir = next_direction((sort_shared.parts)(s).sort.as_ref(), &sort_id);
                 if let Some(f) = &sort_shared.on_sort {
                     f(
@@ -195,7 +190,6 @@ fn reorder<S: 'static>(
     shared: &Rc<Shared<S>>,
     resolved: &Rc<Resolved>,
     id: super::ColumnId,
-    sortable: bool,
 ) -> impl Fn(&mut S, &mut Drag, &mut Tx) + 'static {
     let shared = shared.clone();
     let resolved = resolved.clone();
@@ -212,7 +206,6 @@ fn reorder<S: 'static>(
         match d.phase {
             Phase::Down => {
                 let st = (shared.table_mut)(s);
-                st.suppress_press.set(false);
                 st.drag = Some(HeadingDrag {
                     column: id.clone(),
                     active: false,
@@ -250,7 +243,6 @@ fn reorder<S: 'static>(
                 if d.cancelled() {
                     return;
                 }
-                st.suppress_press.set(sortable);
                 let moved = site.and_then(|site| (shared.parts)(s).layout.moved(&id, &site));
                 if let (Some(layout), Some(f)) = (moved, &shared.on_layout) {
                     f(

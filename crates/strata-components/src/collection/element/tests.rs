@@ -791,22 +791,6 @@ fn a_selection_change_rebuilds_only_the_rows_whose_state_changed() {
 }
 
 #[test]
-fn a_layout_after_an_empty_report_tells_the_host_the_rows_in_view() {
-    let mut rt = runtime(Host::new(50));
-    settle(&mut rt);
-    let reported = rt.state.coll.visible_range();
-    assert!(!reported.is_empty(), "Rune reports the rows in view");
-    // As the stale report leaves it.
-    rt.state.coll.visible = 0..0;
-    rt.state.heard_visible.clear();
-    rt.state.width = W - 100.0;
-    rt.invalidate();
-    settle(&mut rt);
-    assert_eq!(rt.state.coll.visible_range(), reported);
-    assert_eq!(rt.state.heard_visible, [reported]);
-}
-
-#[test]
 fn scrolling_runs_no_view() {
     thread_local! { static VIEWS: Cell<usize> = const { Cell::new(0) }; }
     fn counted(s: &Host, cx: &mut Cx<Host>) -> El {
@@ -2525,22 +2509,6 @@ fn revealing_an_entry_keeps_it_clear_of_the_stuck_header() {
         "going down, the entry at the bottom"
     );
 
-    // Own-viewport reveals (Columns' U-C2-4 path) land at the same offsets, grouped and packed.
-    rt.update(|s, _| s.coll.set_own_viewport_reveals(true));
-    scroll_to(&mut rt, 900.0 * h);
-    assert_eq!(reveal(&mut rt, 503), (line_of(503) - 1.0) * h);
-    assert_eq!(reveal(&mut rt, 0), 0.0);
-    assert_eq!(reveal(&mut rt, 80) + vh, (line_of(80) + 1.0) * h);
-    let mut packed = runtime(Host::new(200));
-    let ph = row_h(&packed);
-    packed.update(|s, _| s.coll.set_own_viewport_reveals(true));
-    scroll_to(&mut packed, 100.0 * ph);
-    assert_eq!(
-        reveal(&mut packed, 40),
-        40.0 * ph,
-        "ungrouped: entry at top"
-    );
-
     // A key that moves the cursor up onto the line the stuck header covers.
     let mut host = grouped(1_000, 10);
     host.coll.controllers.keyboard = Some(Box::new(Step));
@@ -2825,16 +2793,28 @@ fn a_grid_collapsed_and_back_at_another_width_reveals_its_cursor() {
 }
 
 #[test]
-fn a_press_while_the_stuck_header_hides_is_on_the_row_drawn_there() {
+fn a_jump_relabels_the_stuck_header_in_the_same_frame() {
     let mut rt = runtime(grouped(1_000, 10));
     let h = row_h(&rt);
     // Entry 503 (line 554) at the top of the view, in group 50.
     rt.update(move |_, tx| tx.scroll_to_instant(keys::viewport_path(SCOPE), 0.0, 554.0 * h));
     rt.frame(1.0 / 60.0);
-    assert!(stuck(&rt).1[3] < 0.5, "hidden until the relabelling build");
+    let (label, rect) = stuck(&rt);
+    assert_eq!(
+        label.as_deref(),
+        Some("Group 50"),
+        "relabelled in the jump's own frame"
+    );
+    assert!(rect[3] >= h - 0.5, "visible at full height: {rect:?}");
     let vp = rt.state.coll.viewport();
     click_at(&mut rt, vp.x + 40.0, vp.y + h / 2.0);
-    assert_eq!(rt.state.coll.selection.cursor(), Some(id(503)));
+    assert_eq!(
+        rt.state.coll.selection.cursor(),
+        None,
+        "press on the stuck header selects no row behind it"
+    );
+    click_at(&mut rt, vp.x + 40.0, vp.y + h + h / 2.0);
+    assert_eq!(rt.state.coll.selection.cursor(), Some(id(504)));
 }
 
 /// Two collections keyed by their host under one focus stop that routes keys to the active one.
@@ -3156,9 +3136,8 @@ fn view_in_strip(s: &Host, _: &mut Cx<Host>) -> El {
 }
 
 /// Reveals entry 50 and reports where the strip's spacer and the row then stand.
-fn reveal_in_strip(own: bool) -> (f32, bool) {
-    let mut host = Host::new(200);
-    host.coll.set_own_viewport_reveals(own);
+fn reveal_in_strip() -> (f32, bool) {
+    let host = Host::new(200);
     let mut rt = Runtime::new(host, view_in_strip, (W, H), Env::new(false, 1.0));
     rt.frame(0.0);
     settle(&mut rt);
@@ -3171,14 +3150,10 @@ fn reveal_in_strip(own: bool) -> (f32, bool) {
 }
 
 #[test]
-fn own_viewport_reveals_leave_a_sideways_strip_around_the_collection_where_it_is() {
-    let (spacer, shown) = reveal_in_strip(true);
+fn scoped_reveals_leave_a_sideways_strip_around_the_collection_where_it_is() {
+    let (spacer, shown) = reveal_in_strip();
     assert_eq!(spacer, 0.0, "the strip stays");
     assert!(shown, "the row shows in the listing, its full height");
-    // Without them, Rune's reveal request also scrolls the strip, at once (Rune draft U-C2-4).
-    let (spacer, shown) = reveal_in_strip(false);
-    assert!(spacer < -100.0, "the strip jumped: {spacer}");
-    assert!(shown);
 }
 
 fn wake_until(rt: &mut Runtime<Host>, limit: f64, done: impl Fn(&Host) -> bool) -> f64 {

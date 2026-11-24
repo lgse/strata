@@ -1170,8 +1170,8 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         .w_full()
         .h_full()
         .children(placed.tabs)
-        .child(tab)
-        .children(crate::dnd::keep_alive(app));
+        .children(crate::dnd::keep_alive(app))
+        .child(tab);
     let window = csd::decorate(
         header::frame("window-frame", content, look, &chrome),
         &app.window.csd,
@@ -1180,7 +1180,7 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
     rune_kit::root(window, layer)
         .on_key(commands::from_element)
         .on_layout(record_window_size)
-        // The window's zoom wheel, for what no scroll view holds (`appearance::wheel`).
+        // The window's zoom wheel, bubbling up from any scroll view (`appearance::wheel`).
         .on_wheel(crate::appearance::wheel::heard)
         .on_window_focus(|app: &mut App, focused, tx: &mut Tx| {
             let focus_changed = app.window.active != focused;

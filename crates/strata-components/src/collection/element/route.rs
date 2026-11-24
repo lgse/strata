@@ -683,27 +683,9 @@ pub(super) fn on_layout<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, r: [f32; 4],
     {
         st.reveal(&cfg.key, src, index, tx);
     }
-    let caught_up = catch_up_visible(cfg, s);
-    if !changed && !caught_up {
+    if !changed {
         tx.live_only();
     }
-}
-
-fn catch_up_visible<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S) -> bool {
-    let (src, st) = (cfg.get)(s);
-    let len = src.len();
-    if !st.visible.is_empty() || len == 0 {
-        return false;
-    }
-    let map = st.line_map(len);
-    let Some(lines) = st.lines_in_view(map.count(len)) else {
-        return false;
-    };
-    if map.entries_in(lines.clone(), len).is_empty() {
-        return false;
-    }
-    let shown = st.stuck_shown.get();
-    on_visible(cfg, s, lines, &map, shown)
 }
 
 pub(super) fn on_visible<S: 'static>(

@@ -2,18 +2,17 @@
 
 //! Multi-MIME drag and drop shim on Wayland and X11 for Rune apps.
 //!
-//! Rune lacks Linux `drag_out`, arbitrary MIME types with lazy writers, ask-action negotiation,
-//! Wayland drop delivery with hover/motion positions, a native display handle, and a public way
-//! to end a pointer capture ([anomalyco/rune#171](https://github.com/anomalyco/rune/issues/171),
-//! [#424](https://github.com/anomalyco/rune/issues/424)).
+//! Rune lacks Linux `drag_out`, arbitrary MIME types with lazy writers, copy/move/ask/link
+//! negotiation, a native display handle, and a public way to end a pointer capture
+//! ([anomalyco/rune#171](https://github.com/anomalyco/rune/issues/171),
+//! [#532](https://github.com/anomalyco/rune/issues/532)).
 //!
 //! Call [`shutdown`] on the UI thread before the event loop ends (from `App::on_quit` and the
 //! last window's `on_close`) while winit's display is still alive.
 //!
 //! Wayland capture workaround: once the compositor confirms it took the pointer grab, this shim
 //! sends Escape via `Tx::send_key` (swallowing the cancelled `Up`) so Rune drops its held press
-//! capture. Drag sources must stay mounted at the same path and keep `on_drag` until `on_end`,
-//! and callers must not mount a modal while a drag starts.
+//! capture.
 
 mod api;
 mod hub;

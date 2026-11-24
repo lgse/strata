@@ -123,8 +123,7 @@ fn column_collection(app: &App, depth: usize, collection: Collection<App>) -> Co
             app.columns.thumbs.see(depth, range.clone());
             app.columns.fills.see(depth, range);
             false
-        })
-        .on_wheel(crate::appearance::wheel::heard);
+        });
     let collection = match status(app, depth) {
         Some((said, _)) => collection.description(said.into_owned()),
         None => collection,

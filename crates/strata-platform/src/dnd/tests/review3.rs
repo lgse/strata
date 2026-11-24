@@ -225,13 +225,16 @@ fn a_source_whose_centre_is_clipped_still_gets_its_escape() {
 }
 
 #[test]
-fn known_limit_a_source_that_loses_its_on_drag_lets_one_escape_through() {
+fn a_source_that_loses_its_on_drag_clears_capture_without_leaking_escape() {
     let (mut rt, _) = runtime(Mode::LosesHandler);
     let (x, y) = rt.find("tile").expect("tile");
     start(&mut rt, x, y);
+    // Drain the cancelled Phase::Up Rune queued when the source lost its on_drag handler.
+    rt.frame(0.0);
+    assert!(!rt.pressing(), "losing on_drag ended the capture");
     holding(&mut rt);
-    assert_eq!(rt.state.keys, vec!["Escape".to_owned()]);
-    assert!(rt.pressing());
+    assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
+    assert!(!rt.pressing());
 }
 
 mod modal {
@@ -360,7 +363,7 @@ mod modal_at_start {
     }
 
     #[test]
-    fn known_limit_a_modal_opened_in_on_start_takes_the_escape() {
+    fn a_modal_opened_in_on_start_is_not_dismissed_by_a_stray_escape() {
         FAKE_START.set(Some(Release::Escape));
         let st = M {
             dnd: Dnd::new(),
@@ -385,6 +388,7 @@ mod modal_at_start {
         });
         rt.frame(0.0);
         rt.frame(0.0);
-        assert!(!rt.state.dialog, "the Escape closed the modal");
+        assert!(rt.state.dialog, "the modal stays open");
+        assert!(rt.state.keys.is_empty(), "{:?}", rt.state.keys);
     }
 }

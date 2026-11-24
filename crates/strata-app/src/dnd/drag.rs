@@ -68,30 +68,7 @@ pub(super) struct InWindowDrag {
     pub(super) seq: u64,
     pub(super) origin_tab: TabKey,
     pub(super) tab_tail: Option<Vec<String>>,
-    /// Where the stand-in that keeps Rune's held press alive is ([`StandIn`]).
-    pub(super) stand_in: StandIn,
     pub(super) on_end: Option<EndFn>,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) enum StandIn {
-    /// The source is drawn; no stand-in.
-    #[default]
-    Waiting,
-    /// The source left in this frame's commit: the stand-in comes in the next.
-    Due,
-    /// The stand-in is mounted.
-    Mounted,
-}
-
-impl StandIn {
-    pub(super) fn step(self, needed: bool) -> (Self, bool) {
-        match (self, needed) {
-            (_, false) => (Self::Waiting, false),
-            (Self::Waiting, true) => (Self::Due, false),
-            (Self::Due | Self::Mounted, true) => (Self::Mounted, self == Self::Due),
-        }
-    }
 }
 
 /// Where to look for the drag source's path in the tree, to keep it mounted while the drag runs.

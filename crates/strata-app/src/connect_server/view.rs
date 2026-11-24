@@ -35,7 +35,7 @@ pub(super) fn primary_key(generation: u64) -> String {
 pub(super) fn build_dialog(app: &App, form: &Form, open: bool, layer: &mut Vec<El>) {
     let look = &app.look;
     let key = dialog_key(form.generation);
-    StrataDialog::new(key, tr("Connect to server"), cancel)
+    let mut dialog = StrataDialog::new(key, tr("Connect to server"), cancel)
         .open(open)
         .subtitle(tr("Connect to a share or remote server"))
         .icon(IconName::Network)
@@ -47,8 +47,11 @@ pub(super) fn build_dialog(app: &App, form: &Form, open: bool, layer: &mut Vec<E
         .secondary(tr("Cancel"), cancel)
         .primary_enabled(!form.connecting)
         .primary_tx(tr("Connect"), submit)
-        .close_label(tr("Close dialog"))
-        .build(look, layer);
+        .close_label(tr("Close dialog"));
+    if let Some(target) = &form.return_focus {
+        dialog = dialog.return_focus(target.clone());
+    }
+    dialog.build(look, layer);
 }
 
 fn address_section(look: &Look, form: &Form) -> El {

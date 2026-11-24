@@ -413,7 +413,7 @@ impl CodeState {
         gutter::poll_gutter_drag(self, tx);
         let mut changed = self.doc.as_mut().is_some_and(CodeDoc::poll);
         if let Some(row) = self.reveal_again.take() {
-            tx.scroll_center_in(self.list_key(), format!("{row}/current"));
+            tx.scroll_center_in(self.scroll_key(), format!("{row}/current"));
         }
         for r in std::mem::take(&mut self.pending) {
             changed = true;
@@ -421,7 +421,7 @@ impl CodeState {
                 Request::Select(key, range) => tx.select_text(key, range),
                 Request::Clear => tx.clear_text_selection(),
                 Request::Reveal(row) => {
-                    tx.scroll_center_in(self.list_key(), format!("{row}/current"));
+                    tx.scroll_center_in(self.scroll_key(), format!("{row}/current"));
                     self.reveal_again = Some(row);
                     tx.wake_after(std::time::Duration::ZERO);
                 }

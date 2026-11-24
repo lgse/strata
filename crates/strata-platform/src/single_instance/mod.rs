@@ -5,8 +5,7 @@
 //! Rune lacks session-bus single-instance registration (`org.freedesktop.Application` /
 //! GApplication wire interop), arbitrary byte-string arguments, forwarded `cwd` and activation
 //! tokens, remote exit status, and `org.freedesktop.FileManager1`
-//! ([anomalyco/rune#22](https://github.com/anomalyco/rune/issues/22)). On X11, Rune's
-//! `activate(token)` on an already-open window also drops `DESKTOP_STARTUP_ID`.
+//! ([anomalyco/rune#22](https://github.com/anomalyco/rune/issues/22)).
 
 mod app_id;
 mod event;

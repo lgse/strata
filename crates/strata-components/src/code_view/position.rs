@@ -469,7 +469,7 @@ impl Position {
                 i.pending.set(None);
                 self.place(at, tx);
             } else {
-                tx.scroll_into_view_in(keys.list, format!("{}{r}", keys.row_prefix));
+                tx.scroll_into_view_in(keys.scroll, format!("{}{r}", keys.row_prefix));
                 i.pending.set(Some(at));
             }
         }

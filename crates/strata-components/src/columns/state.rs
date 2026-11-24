@@ -386,7 +386,6 @@ impl ColumnsState {
         )));
         collection.controllers.keyboard = Some(Box::new(Keyboard::new(keys.clone())));
         collection.controllers.marquee = Some(Box::new(Marquee::new()));
-        collection.set_own_viewport_reveals(true);
         let scale = width::scale(look);
         // A saved width wider than the area opens narrowed to it; the setting stays.
         let limit = self

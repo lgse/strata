@@ -89,9 +89,7 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look, sca
             move |s: &S, i| page_row(&rows_ctx, get(s), i),
         )
         .virtual_rows_version((st.queue.generation, st.zoom_gen))
-        .on_visible_rows(move |s: &mut S, r| get_mut(s).set_visible(r))
-        // Ctrl+wheel over the pages: a wheel goes no further out than its scroll viewport.
-        .on_wheel(move |s: &mut S, e: WheelEvent, tx: &mut Tx| wheel(get_mut(s), e, tx));
+        .on_visible_rows(move |s: &mut S, r| get_mut(s).set_visible(r));
     let feed = st.feed.clone();
     let (bar, sideways) = (st.bar.clone(), st.sideways.clone());
     let viewport = col()
@@ -156,7 +154,7 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look, sca
                 tx.live_only();
             }
         })
-        // Over the bars, which sit outside the scroll viewport.
+        // Ctrl+wheel bubbles past the scroll viewport and covers the bars too.
         .on_wheel(move |s: &mut S, e: WheelEvent, tx: &mut Tx| wheel(get_mut(s), e, tx))
         .on_pointer_move_local(move |s: &mut S, e: PointerEvent, tx: &mut Tx| {
             if !get_mut(s).hover([e.window_x, e.window_y]) {
