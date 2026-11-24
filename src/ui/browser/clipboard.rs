@@ -19,13 +19,14 @@ use formats::ClipboardFiles;
 use gtk::prelude::*;
 use gtk::{glib, graphene};
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
-use std::os::unix::ffi::OsStrExt;
-use std::path::Path;
+use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 pub(crate) mod formats;
+mod matching;
+
+use matching::{LocationSet, same_locations};
 
 const DRAG_PROXY_PADDING: f64 = 3.0;
 const DRAG_PROXY_STACK_OFFSET: f64 = 5.0;
@@ -696,9 +697,15 @@ fn classify_file_drop(
         return None;
     }
     let (relation, is_noop) = state.classify(target, destination, sources.clone());
-    let source_actions = drop
+    let drop_actions = drop.as_ref().map(|drop| drop.actions());
+    let in_app_actions = drop
         .as_ref()
-        .map_or_else(|| target.actions(), |drop| drop.actions());
+        .and_then(|drop| drop.drag())
+        .map(|drag| drag.actions());
+    // GDK narrows a Wayland drop to the action last negotiated; an in-app drag keeps its source's offer.
+    let source_actions = in_app_actions
+        .or(drop_actions)
+        .unwrap_or_else(|| target.actions());
     let offered = offered_file_actions(target.actions(), source_actions);
     let strategy = current_cross_volume_drop_strategy();
     if commit {
@@ -712,7 +719,8 @@ fn classify_file_drop(
             ?strategy,
             event_mods = ?target.current_event_state(),
             keyboard_mods = ?drop_modifier_state(target),
-            drop_actions = ?drop.as_ref().map(|drop| drop.actions()),
+            ?drop_actions,
+            ?in_app_actions,
             ?offered,
             "drop action classified"
         );
@@ -879,102 +887,18 @@ pub(super) fn copy_names(entries: &[FileEntry]) {
 }
 
 pub(super) fn copy_path_text(location: &Location, is_directory: bool) -> String {
-    match location.native_path() {
-        Some(path) => {
-            let mut path = shell_escape_path(path);
-            if is_directory && !path.ends_with(std::path::MAIN_SEPARATOR) {
-                path.push(std::path::MAIN_SEPARATOR);
-            }
-            path
-        }
-        None => location.display_path(),
-    }
-}
-
-fn shell_escape_path(path: &Path) -> String {
-    let bytes = path.as_os_str().as_bytes();
-    let Ok(path) = std::str::from_utf8(bytes) else {
-        return bytes
-            .split(|&byte| byte == b'/')
-            .map(|segment| match std::str::from_utf8(segment) {
-                Ok(segment) if !segment.contains('\n') => backslash_escape(segment),
-                _ => ansi_c_quote(segment),
-            })
-            .collect::<Vec<_>>()
-            .join("/");
+    let Some(path) = location.native_path() else {
+        return location.display_path();
     };
-    if path.contains('\n') {
-        return format!("'{}'", path.replace('\'', "'\\''"));
+    // Clipboard text is UTF-8; a file URI preserves otherwise unrepresentable bytes.
+    let mut text = path.to_str().map_or_else(
+        || gio_file_for_location(location).uri().to_string(),
+        str::to_owned,
+    );
+    if is_directory && !text.ends_with(std::path::MAIN_SEPARATOR) {
+        text.push(std::path::MAIN_SEPARATOR);
     }
-    backslash_escape(path)
-}
-
-fn backslash_escape(text: &str) -> String {
-    let mut escaped = String::with_capacity(text.len());
-    for c in text.chars() {
-        if needs_shell_escape(c) {
-            escaped.push('\\');
-        }
-        escaped.push(c);
-    }
-    escaped
-}
-
-fn ansi_c_quote(bytes: &[u8]) -> String {
-    let mut quoted = String::from("$'");
-    for chunk in bytes.utf8_chunks() {
-        for c in chunk.valid().chars() {
-            match c {
-                '\'' | '\\' => {
-                    quoted.push('\\');
-                    quoted.push(c);
-                }
-                c if c.is_control() => {
-                    push_hex_escapes(&mut quoted, c.encode_utf8(&mut [0; 4]).as_bytes())
-                }
-                c => quoted.push(c),
-            }
-        }
-        push_hex_escapes(&mut quoted, chunk.invalid());
-    }
-    quoted.push('\'');
-    quoted
-}
-
-fn push_hex_escapes(text: &mut String, bytes: &[u8]) {
-    use std::fmt::Write;
-
-    for byte in bytes {
-        let _ = write!(text, "\\x{byte:02x}");
-    }
-}
-
-fn needs_shell_escape(c: char) -> bool {
-    c.is_whitespace()
-        || c.is_control()
-        || matches!(
-            c,
-            '"' | '\''
-                | '\\'
-                | '$'
-                | '`'
-                | '!'
-                | '#'
-                | '&'
-                | '*'
-                | ';'
-                | '<'
-                | '>'
-                | '?'
-                | '['
-                | ']'
-                | '{'
-                | '}'
-                | '('
-                | ')'
-                | '|'
-                | '~'
-        )
+    text
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -1151,7 +1075,7 @@ pub(super) fn clipboard_may_paste() -> bool {
     })
 }
 
-fn retain_shared_untransferred(transferred: &[Location]) {
+fn retain_shared_untransferred(transferred: &LocationSet<'_>) {
     SHARED_CUT_LOCATIONS.with(|cut| retain_untransferred(&mut cut.borrow_mut(), transferred));
     refresh_cut_views();
 }
@@ -1199,35 +1123,8 @@ pub(super) fn locations_equal(left: &Location, right: &Location) -> bool {
     left == right || gio_file_for_location(left).equal(&gio_file_for_location(right))
 }
 
-fn same_locations(left: &[Location], right: &[Location]) -> bool {
-    if left.is_empty() || left.len() != right.len() {
-        return false;
-    }
-    let left_set: HashSet<_> = left.iter().collect();
-    let right_set: HashSet<_> = right.iter().collect();
-    if left_set.len() == right_set.len() && left_set == right_set {
-        return true;
-    }
-    let mut used = vec![false; right.len()];
-    left.iter().all(|location| {
-        let Some((index, _)) = right
-            .iter()
-            .enumerate()
-            .find(|(index, candidate)| !used[*index] && locations_equal(location, candidate))
-        else {
-            return false;
-        };
-        used[index] = true;
-        true
-    })
-}
-
-fn retain_untransferred(cut: &mut Vec<Location>, transferred: &[Location]) {
-    cut.retain(|location| {
-        !transferred
-            .iter()
-            .any(|moved| locations_equal(location, moved))
-    });
+fn retain_untransferred(cut: &mut Vec<Location>, transferred: &LocationSet<'_>) {
+    cut.retain(|location| !transferred.contains(location));
 }
 
 impl ViewState {
@@ -1263,13 +1160,14 @@ impl ViewState {
     }
 
     pub(super) fn complete_cut_transfer(&self, transferred: &[Location]) {
+        let transferred = LocationSet::new(transferred);
         let consumed = shared_cut_locations()
             .iter()
-            .any(|cut| transferred.iter().any(|moved| locations_equal(cut, moved)));
+            .any(|cut| transferred.contains(cut));
         if !consumed {
             return;
         }
-        retain_shared_untransferred(transferred);
+        retain_shared_untransferred(&transferred);
         let remaining = shared_cut_locations();
         let Some(display) = gtk::gdk::Display::default() else {
             return;

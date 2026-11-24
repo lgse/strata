@@ -216,7 +216,8 @@ fn detected_nautilus() -> Option<String> {
         .into_iter()
         .find(|id| {
             gio_unix::DesktopAppInfo::new(id)
-                .is_some_and(|app| glib::find_program_in_path(app.executable()).is_some())
+                .and_then(|app| app.executable())
+                .is_some_and(|executable| glib::find_program_in_path(executable).is_some())
         })
         .map(str::to_owned)
 }

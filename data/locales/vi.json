@@ -680,6 +680,7 @@
   "Only relative local images are loaded; remote images are blocked for privacy": "Chỉ tải hình ảnh cục bộ theo đường dẫn tương đối; hình ảnh từ xa bị chặn để bảo vệ quyền riêng tư",
   "Only used when running per item": "Chỉ dùng khi chạy theo từng mục",
   "Only ~ and ~/ paths are supported for the current user's home directory.": "Chỉ hỗ trợ đường dẫn ~ và ~/ cho thư mục chính của người dùng hiện tại.",
+  "A file:// URI must name a file on this computer. Use smb:// or sftp:// for another computer.": "URI file:// phải trỏ đến một tệp trên máy tính này. Với máy tính khác, hãy dùng smb:// hoặc sftp://.",
   "Open": "Mở",
   "Open AUR Update": "Mở bản cập nhật AUR",
   "Open Files": "Mở tệp",

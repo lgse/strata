@@ -680,6 +680,7 @@
   "Only relative local images are loaded; remote images are blocked for privacy": "상대 경로의 로컬 이미지만 불러옵니다. 원격 이미지는 개인정보 보호를 위해 차단됩니다",
   "Only used when running per item": "항목별로 실행할 때만 사용됨",
   "Only ~ and ~/ paths are supported for the current user's home directory.": "현재 사용자의 홈 디렉터리에는 ~ 및 ~/ 경로만 지원됩니다.",
+  "A file:// URI must name a file on this computer. Use smb:// or sftp:// for another computer.": "file:// URI는 이 컴퓨터의 파일을 가리켜야 합니다. 다른 컴퓨터에는 smb:// 또는 sftp://를 사용하세요.",
   "Open": "열기",
   "Open AUR Update": "AUR 업데이트 열기",
   "Open Files": "파일 열기",
