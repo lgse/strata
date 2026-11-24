@@ -470,6 +470,12 @@ pub(super) fn media_family(content_type: &str) -> Option<MediaFamily> {
     }
 }
 
+/// Images reach the media player only as GIFs or animated WebPs, so any image
+/// type there loops from the start with play/pause as its only control.
+pub(super) fn is_animation(content_type: &str) -> bool {
+    content_type.starts_with("image/")
+}
+
 /// Cached per extension: stepping scans whole folders on the main thread. An entry whose
 /// metadata probe found no media drops out of the sequence whatever its name says.
 pub(super) fn entry_family(entry: &FileEntry) -> Option<MediaFamily> {

@@ -113,7 +113,10 @@ isolation, resource limits, or the other narrow optional runtime mounts.
 
 - GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
   images to dimension- and size-bounded PNG images. WebP is decoded first by the
-  built-in decoder, so it needs no system pixbuf loader or ImageMagick.
+  built-in decoder, so it needs no system pixbuf loader or ImageMagick. A local
+  WebP whose header declares an animation plays in the media sandbox instead, when
+  the runtime FFmpeg lists the `webp_anim` decoder (FFmpeg 9.0 or newer, asked once
+  per process); with an older FFmpeg it keeps the still first-frame preview.
 - `ffmpegthumbnailer` (or the software FFmpeg fallback) produces bounded media thumbnails. Browser thumbnails and
   media details share the bounded, reusable sandbox supervisors described below.
   Duplicate requests share work, obsolete targets detach, and thumbnail failures
@@ -657,6 +660,14 @@ covering that point. Short GIFs still batch loops into a 30-second generation,
 with seeks mapped to their animation phase to avoid restarting a process every
 cycle; this does not truncate the animation. Longer GIFs play their complete
 animation before looping.
+
+Animated WebP follows the same rules, with two differences because FFmpeg's
+`webp_anim` demuxer reports no duration and cannot seek. The period is the sum of
+the container's frame durations, read from the ANMF chunk headers without decoding.
+A short animation loops in the filter graph (`loop`, ahead of the 30-fps conversion,
+holding at most 256 MiB of decoded source frames and 32,767 frames); one beyond that
+budget plays once. Every offset is reached by decoding from the start and trimming
+rather than `-ss`, and decoding stays in software.
 
 Files without a reported duration play until decoded EOF. Their timeline remains
 unknown and seeking is disabled until the actual end is established; pause/idle

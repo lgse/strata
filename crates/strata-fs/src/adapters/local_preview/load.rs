@@ -121,6 +121,13 @@ pub(super) struct PreviewLoad {
     thumbnail: Option<Thumbnail>,
 }
 
+/// The first answer runs FFmpeg once, so it stays off the main loop.
+async fn decodes_animated_webp() -> bool {
+    gio::spawn_blocking(crate::sandbox::decodes_animated_webp)
+        .await
+        .unwrap_or(false)
+}
+
 fn empty_text() -> PreviewContent {
     PreviewContent::Text {
         content: String::new(),
@@ -314,7 +321,23 @@ impl PreviewLoad {
         if let Some(sample) = &self.sample {
             reconcile_with_sample(&mut self.content_type, &mut self.content, sample);
         }
+        self.route_animated_webp().await;
         Ok(())
+    }
+
+    async fn route_animated_webp(&mut self) {
+        if self.is_local_animated_webp() && decodes_animated_webp().await {
+            self.content = PreviewContent::Media;
+        }
+    }
+
+    fn is_local_animated_webp(&self) -> bool {
+        matches!(self.content, PreviewContent::Image)
+            && self.entry.location.native_path().is_some()
+            && self
+                .sample
+                .as_deref()
+                .is_some_and(crate::services::webp_animation::is_animated_webp)
     }
 
     fn adopt_plain_text_hint(&mut self) {

@@ -97,6 +97,17 @@ fn animated_gif(path: &Path, seconds: u32) {
     );
 }
 
+fn animated_webp(path: &Path, seconds: u32) {
+    success(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .arg(format!("testsrc2=size=64x48:rate=10:duration={seconds}"))
+            .args(["-c:v", "libwebp_anim", "-lossless", "1", "-loop", "0"])
+            .args(["-threads", "1"])
+            .arg(path),
+    );
+}
+
 fn decoded(input: &Path, size: &str, start: u32) -> (Header, Vec<Frame>, u64) {
     let mut bytes = Vec::new();
     stream(
@@ -242,5 +253,7 @@ fn sample_input(start_tick: u32, raw_video: bool) -> Input {
         cover: false,
         gif_period_us: None,
         raw_video,
+        seekless: false,
+        loop_frames: None,
     }
 }

@@ -136,6 +136,21 @@ fn media_families_split_audio_and_video_and_skip_gifs() {
 }
 
 #[test]
+fn images_in_the_media_player_are_looping_animations() {
+    for (content_type, expected) in [
+        ("image/gif", true),
+        ("image/webp", true),
+        // An animated WebP keeps the type its name suggests.
+        ("image/png", true),
+        ("video/mp4", false),
+        ("video/x-h264", false),
+        ("audio/mpeg", false),
+    ] {
+        assert_eq!(is_animation(content_type), expected, "{content_type}");
+    }
+}
+
+#[test]
 fn video_steps_reuse_one_view_and_keep_playback() {
     crate::test_support::gtk_test(
         "ui::preview::tests::video::video_steps_reuse_one_view_and_keep_playback",

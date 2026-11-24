@@ -231,11 +231,10 @@ fn text_subclassed_names_resolve_their_preview_from_the_type_hierarchy() {
     });
 }
 
-#[test]
-fn preview_families_follow_file_bytes_not_names() {
+fn assert_families_resolve(cases: &[(&'static str, &[u8], Resolved<'static>)]) {
     with_default_main_context(|provider, context| {
         let directory = tempfile::tempdir().expect("preview fixture directory");
-        for (name, bytes, expected) in PREVIEW_FAMILY_CASES {
+        for (name, bytes, expected) in cases {
             let name = *name;
             let path = write_fixture(&directory, name, bytes);
             let request = PreviewRequest {
@@ -255,6 +254,31 @@ fn preview_families_follow_file_bytes_not_names() {
             assert_eq!(resolve(content, &path, name), *expected, "{name}");
         }
     });
+}
+
+#[test]
+fn preview_families_follow_file_bytes_not_names() {
+    assert_families_resolve(PREVIEW_FAMILY_CASES);
+}
+
+const STILL_WEBP: &[u8] = b"RIFF\x16\0\0\0WEBPVP8X\x0a\0\0\0\x10\0\0\0\x07\0\0\x07\0\0";
+const ANIMATED_WEBP: &[u8] =
+    b"RIFF\x24\0\0\0WEBPVP8X\x0a\0\0\0\x12\0\0\0\x07\0\0\x07\0\0ANIM\x06\0\0\0\0\0\0\0\0\0";
+
+#[test]
+fn animated_webps_play_as_media_only_where_ffmpeg_decodes_them() {
+    let animated = || {
+        if crate::sandbox::decodes_animated_webp() {
+            Resolved::Media
+        } else {
+            Resolved::Image
+        }
+    };
+    assert_families_resolve(&[
+        ("still.webp", STILL_WEBP, Resolved::Image),
+        ("loop.webp", ANIMATED_WEBP, animated()),
+        ("loop.png", ANIMATED_WEBP, animated()),
+    ]);
 }
 
 #[test]

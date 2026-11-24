@@ -61,7 +61,7 @@ use media_render::SandboxedPreview;
 pub(super) use media_session::ListingPosition;
 use media_session::{
     AudioPreview, MediaFamily, MediaTrack, PlaybackContinuation, VideoPreview, entry_family,
-    media_family,
+    is_animation, media_family,
 };
 #[cfg(test)]
 use pdf::{pdf_apply_ranges, pdf_desired_ranges, pdf_drop_unselected_layer, pdf_selected_text};

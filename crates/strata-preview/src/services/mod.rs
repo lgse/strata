@@ -11,6 +11,7 @@ mod preview;
 pub mod route_preview;
 pub(crate) mod rtf;
 pub mod table;
+pub mod webp_animation;
 
 pub use strata_core::file_activity;
 

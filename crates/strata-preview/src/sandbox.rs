@@ -27,6 +27,7 @@ pub mod raw_metadata;
 pub mod runtime;
 
 mod command;
+mod decoders;
 mod operation;
 mod output;
 mod process;
@@ -37,6 +38,7 @@ use command::polaris_gpu_available_at;
 use command::sandbox_input_path;
 use command::{SandboxCommand, runtime_command, sandbox_command};
 pub use command::{gpu_devices, numbered_name, polaris_gpu_available, sandbox_tool};
+pub use decoders::decodes_animated_webp;
 pub use operation::{
     CoverFormat, DocumentFormat, MediaPreviewBackend, PDF_PASSWORD_PROTECTED, ParseOperation,
     PdfPreviewError, PdfRenderSize,
