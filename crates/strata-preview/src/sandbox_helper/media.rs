@@ -236,9 +236,9 @@ fn timing(
 
 fn fits_loop_budget(animation: WebpAnimation) -> bool {
     u64::from(animation.frames)
-        * u64::from(animation.canvas_width)
-        * u64::from(animation.canvas_height)
-        * 4
+        .saturating_mul(u64::from(animation.canvas_width))
+        .saturating_mul(u64::from(animation.canvas_height))
+        .saturating_mul(4)
         <= LOOP_BUDGET_BYTES
 }
 

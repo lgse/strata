@@ -252,6 +252,12 @@ fn animated_webps_loop_only_within_the_frame_budget_and_never_seek_the_source() 
         canvas_height: 4096,
         ..SMALL_ANIMATION
     };
+    let wrapping = WebpAnimation {
+        canvas_width: 1 << 24,
+        canvas_height: 1 << 24,
+        frames: 1 << 14,
+        ..SMALL_ANIMATION
+    };
     let cases = [
         (
             "fits the budget",
@@ -260,6 +266,12 @@ fn animated_webps_loop_only_within_the_frame_budget_and_never_seek_the_source() 
             30_000_000,
         ),
         ("beyond the budget", Some(oversized), None, 1_000_000),
+        (
+            "byte count wraps to zero in 64 bits",
+            Some(wrapping),
+            None,
+            1_000_000,
+        ),
         ("unreadable timing", None, None, media::MAX_DURATION_US),
     ];
     for (name, animation, loop_frames, duration_us) in cases {
