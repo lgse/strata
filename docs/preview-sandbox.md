@@ -983,10 +983,11 @@ Image/PDF parsing has a 512-MiB input cap, 2-GiB address-space cap, 512-MiB file
 cap, 32-MiB parent output cap, 12-second wall limit and 10-second CPU limit.
 Media has no input-file size cap, playback-duration policy cap, or cumulative CPU
 limit; per-record sizes, queue limits, and progress deadlines bound active work. Each software FFmpeg process has a 2-GiB
-address-space limit; all decoding processes disable core dumps and cap files and
-individual media allocations at 512 MiB and source frames at 50 million pixels.
-Accelerated decoders retain the existing exemption from the address-space limit
-because drivers reserve large virtual ranges; this is not a hardware RSS cap.
+address-space limit and a 512-MiB file limit; all decoding processes disable core
+dumps and cap individual media allocations at 512 MiB and source frames at 50
+million pixels. Accelerated decoders are exempt from the address-space and file
+limits because drivers reserve large virtual ranges and sparse memfds; this is
+not a hardware RSS cap.
 
 Automatic tries VA-API, then Vulkan, then software. Explicit VA-API/Vulkan falls
 directly back to software when its hardware attempts fail before output begins.
