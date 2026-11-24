@@ -29,6 +29,11 @@
 {"wait":{"menu_items":null},"message":"the history menu to close"}
 {"click":{"role":"button","name_matches":"^Back"},"button":3}
 {"wait":{"present":{"role":"menu item","name":"documents"}},"message":"right-clicking Back to list the back history"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the history menu to close"}
+{"expect":{"panes":["pictures"]},"message":"a right-click on Back must not go back"}
+{"click":{"role":"button","name_matches":"^Back"},"button":3}
+{"wait":{"present":{"role":"menu item","name":"documents"}},"message":"right-clicking Back to list the back history"}
 {"expect":{"present":{"role":"menu item","name":"documents","description":"$fixture/documents"}},"message":"the entry shows the folder's path"}
 {"settle":{"role":"menu item","name":"documents"}}
 {"click":{"role":"menu item","name":"documents"}}

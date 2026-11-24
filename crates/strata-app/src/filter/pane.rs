@@ -350,7 +350,7 @@ pub(crate) fn reveal<V: crate::single::SinglePane>(app: &App, id: EntryId, tx: &
     }
 }
 
-pub(crate) fn path_of(app: &App, id: EntryId) -> Option<String> {
+pub(crate) fn relative_path_of(app: &App, id: EntryId) -> Option<&std::path::Path> {
     if !app.filter.pane.recursive {
         return None;
     }
@@ -358,10 +358,9 @@ pub(crate) fn path_of(app: &App, id: EntryId) -> Option<String> {
     let root = open.folder.native_path()?;
     let entry = app.filter.found.get(&id)?;
     let path = entry.location.native_path()?;
-    Some(
-        path.strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .into_owned(),
-    )
+    Some(path.strip_prefix(root).unwrap_or(path))
+}
+
+pub(crate) fn path_of(app: &App, id: EntryId) -> Option<String> {
+    relative_path_of(app, id).map(|path| path.to_string_lossy().into_owned())
 }

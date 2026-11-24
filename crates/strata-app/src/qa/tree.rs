@@ -13,7 +13,7 @@ use strata_qa::{EntryPart, Mark, Orientation, Rect};
 pub(super) use super::kept::Scrolled;
 pub(crate) use super::kept::{Kept, Node};
 use super::{
-    kept::{SCROLLS_AT_LEAST, is_entry_key},
+    kept::{SCROLLS_AT_LEAST, entry_id_of},
     roles,
 };
 
@@ -71,6 +71,7 @@ pub(super) struct Seen {
     /// A scroll view's offsets and limits.
     pub(super) scroll: Option<Scrolled>,
     pub(super) mark: Option<Mark>,
+    pub(super) parts: Option<EntryParts>,
 }
 
 impl Seen {
@@ -93,7 +94,6 @@ impl Seen {
 pub(super) struct Snapshot {
     nodes: Vec<Seen>,
     index: HashMap<Node, usize>,
-    parts: HashMap<EntryId, EntryParts>,
     focus: Option<usize>,
     outlined: Option<EntryId>,
 }
@@ -186,10 +186,7 @@ impl Snapshot {
     }
 
     pub(super) fn read_named(root_key: &str, tree: &Value, drawn: &Drawn) -> Self {
-        let mut snapshot = Self {
-            parts: drawn.parts.clone(),
-            ..Self::default()
-        };
+        let mut snapshot = Self::default();
         if tree.is_object() {
             snapshot.add(tree, None, root_key.to_owned());
             super::submenus::nest(&mut snapshot.nodes);
@@ -198,7 +195,7 @@ impl Snapshot {
         snapshot.apply_drawn_states(drawn);
         if let Some(view) = &drawn.view {
             for list in &drawn.lists {
-                snapshot.mark_column(list, view);
+                snapshot.mark_column(list, view, &drawn.parts);
             }
         }
         snapshot
@@ -211,12 +208,7 @@ impl Snapshot {
 
     /// The drawn label or icon box of an entry row, in window coordinates.
     pub(super) fn entry_part_frame(&self, node: &Node, part: EntryPart) -> Option<Rect> {
-        let seen = self.get(node)?;
-        if seen.mark != Some(Mark::Entry) {
-            return None;
-        }
-        let id = self.keep(node).entry()?;
-        let parts = self.parts.get(&id)?;
+        let parts = self.get(node)?.parts?;
         match part {
             EntryPart::Label => parts.label,
             EntryPart::Icon => parts.icon,
@@ -247,6 +239,7 @@ impl Snapshot {
             busy: false,
             scroll: scrolled(value),
             mark: None,
+            parts: None,
         });
         let children = value["children"].as_array().map_or(&[][..], Vec::as_slice);
         let mut taken: Vec<String> = Vec::new();
@@ -311,7 +304,7 @@ impl Snapshot {
         found
     }
 
-    fn mark_column(&mut self, list: &str, view: &Shape) {
+    fn mark_column(&mut self, list: &str, view: &Shape, parts: &HashMap<EntryId, EntryParts>) {
         let is_list = |seen: &Seen| seen.role == view.list && seen.key.as_deref() == Some(list);
         let Some(container) = self.nodes.iter().position(is_list) else {
             return;
@@ -319,8 +312,11 @@ impl Snapshot {
         self.nodes[container].mark = Some(Mark::EntryContainer);
         for index in self.below(container) {
             let seen = &mut self.nodes[index];
-            if seen.role == view.entry && seen.key.as_deref().is_some_and(is_entry_key) {
+            if seen.role == view.entry
+                && let Some(id) = seen.key.as_deref().and_then(entry_id_of)
+            {
                 seen.mark = Some(Mark::Entry);
+                seen.parts = parts.get(&id).copied();
             }
         }
         let above = std::iter::successors(self.nodes[container].parent, |index| {
@@ -351,12 +347,9 @@ impl Snapshot {
                 .iter()
                 .map(|(node, at)| (node.clone(), at + offset)),
         );
-        let mut parts = self.parts.clone();
-        parts.extend(other.parts.iter().map(|(id, p)| (*id, *p)));
         Snapshot {
             nodes: self.nodes.iter().cloned().chain(moved).collect(),
             index,
-            parts,
             focus: other.focus.map(|focus| focus + offset),
             outlined: self.outlined,
         }

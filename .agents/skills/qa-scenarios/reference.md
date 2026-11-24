@@ -317,8 +317,10 @@ and `strata-app` for screen readers:
   carry their text rather than synthetic child `label` nodes.
 - While a modal dialog or menu is open, Rune's AccessKit tree contains only the
   modal surface; check background panes or selection before opening or after
-  dismissing the modal (or `remember` a target beforehand when hovering/clicking
-  outside a modal).
+  dismissing the modal. To hover or click a background target while a modal is
+  open, save its box beforehand (with `remember`, `settle`, or `keep`) and aim
+  at `{"kept":"..."}` (cached screen rect, works behind modals) rather than
+  `{"remembered":"..."}` (live node recall, absent behind modals).
 - A pane is labelled with its directory and described with its presentation;
   an empty, unreadable, or loading pane's focusable surface is labelled with
   its directory and described with its status text.

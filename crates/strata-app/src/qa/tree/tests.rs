@@ -117,6 +117,78 @@ fn entry_part_frames_resolve_without_injecting_synthetic_tree_nodes() {
 }
 
 #[test]
+fn merged_windows_keep_distinct_entry_parts_for_matching_entry_ids() {
+    let window_tree = |name: &str| {
+        json!({
+            "role": "window",
+            "children": [
+                { "role": "group", "name": "folder", "children": [
+                    { "role": "list-box", "key": "columns-col-1", "children": [
+                        { "role": "list-box-option", "key": "row-1", "name": name },
+                    ] },
+                ] },
+            ],
+        })
+    };
+    let drawn_with = |label: Rect, icon: Rect| Drawn {
+        view: Some(COLUMNS),
+        lists: vec!["columns-col-1".to_owned()],
+        parts: HashMap::from([(
+            EntryId::new(1),
+            EntryParts {
+                label: Some(label),
+                icon: Some(icon),
+            },
+        )]),
+        ..Drawn::default()
+    };
+    let first_label = bounds(30.0);
+    let first_icon = bounds(4.0);
+    let second_label = bounds(430.0);
+    let second_icon = bounds(404.0);
+
+    let first = Snapshot::read_named(
+        "window",
+        &window_tree("first-window-row"),
+        &drawn_with(first_label, first_icon),
+    );
+    let second = Snapshot::read_named(
+        "window-2",
+        &window_tree("second-window-row"),
+        &drawn_with(second_label, second_icon),
+    );
+    let merged = first.with_window_behind(&second);
+
+    let node_named = |name: &str| {
+        (0..)
+            .map_while(|i| merged.at(i))
+            .find(|seen| seen.name == name)
+            .and_then(|seen| seen.node.as_ref())
+            .expect("merged row")
+            .clone()
+    };
+    let first_node = node_named("first-window-row");
+    let second_node = node_named("second-window-row");
+
+    assert_eq!(
+        merged.entry_part_frame(&first_node, EntryPart::Label),
+        Some(first_label)
+    );
+    assert_eq!(
+        merged.entry_part_frame(&first_node, EntryPart::Icon),
+        Some(first_icon)
+    );
+    assert_eq!(
+        merged.entry_part_frame(&second_node, EntryPart::Label),
+        Some(second_label)
+    );
+    assert_eq!(
+        merged.entry_part_frame(&second_node, EntryPart::Icon),
+        Some(second_icon)
+    );
+}
+
+#[test]
 fn menu_row_shortcuts_read_as_descriptions_unless_already_described() {
     let menu = json!({
         "role": "window",

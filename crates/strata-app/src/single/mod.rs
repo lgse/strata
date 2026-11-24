@@ -296,7 +296,7 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
         |app: &App, row| {
             use std::hash::{DefaultHasher, Hash as _, Hasher as _};
             let mut hasher = DefaultHasher::new();
-            crate::filter::pane::path_of(app, row.entry.id).hash(&mut hasher);
+            crate::filter::pane::relative_path_of(app, row.entry.id).hash(&mut hasher);
             crate::file_providers::badge_version(app, row.entry.id).hash(&mut hasher);
             hasher.finish()
         },
