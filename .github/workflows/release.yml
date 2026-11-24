@@ -621,5 +621,7 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/publish-copr.yml
+    # Without this the called job sees no secrets, not even its environment's COPR_CONFIG.
+    secrets: inherit
     with:
       version: ${{ needs.prepare.outputs.version }}
