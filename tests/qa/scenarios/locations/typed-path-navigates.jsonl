@@ -1,10 +1,10 @@
-{"scenario":"typed-path-navigates","modes":["columns"],"layout":"us","mutation":"location-entry","known_bug":null,"tree":{"my docs":{"notes.txt":"notes\n"},"readme.md":"# Readme\n"},"variants":[{"id":"plain","vars":{"open":"","folder":"my docs","close":""}},{"id":"escaped","vars":{"open":"","folder":"my\\ docs","close":""}},{"id":"quoted","vars":{"open":"'","folder":"my docs","close":"'"}},{"id":"file-uri","vars":{"open":"file://","folder":"my%20docs","close":""}}],"cost":{"columns-plain":1.3,"columns-escaped":1.3,"columns-quoted":1.3,"columns-file-uri":1.3},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Ctrl+L opens a folder typed plain, shell-escaped, quoted, or as a file:// URI in Columns; typed-dot-segments-resolve runs the same route with dot segments in both modes, and location_input unit tests pin parsing"}}
+{"scenario":"typed-path-navigates","modes":["columns"],"layout":"us","mutation":"location-entry","known_bug":null,"tree":{"my docs":{"notes.txt":"notes\n"},"readme.md":"# Readme\n"},"variants":[{"id":"plain","vars":{"folder":"my docs"}},{"id":"escaped","vars":{"folder":"my\\ docs"}}],"cost":{"columns-plain":1.3,"columns-escaped":1.3},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Ctrl+L opens a folder typed plain or shell-escaped in Columns; typed-dot-segments-resolve runs the same route with dot segments in both modes, and location_input unit tests pin parsing of every pasted form"}}
 {"key":"ctrl+l"}
 {"wait":{"field":{}},"message":"an editable field to take focus"}
 {"remember":{"field":true},"as":"location"}
 {"key":"ctrl+a"}
-{"type":"$open$fixture/$folder$close"}
-{"wait":{"field":{"of":"location","text":{"ends_with":"$folder$close"}}},"message":"the path to be typed into the address bar"}
+{"type":"$fixture/$folder"}
+{"wait":{"field":{"of":"location","text":{"ends_with":"$folder"}}},"message":"the path to be typed into the address bar"}
 {"key":"Return"}
 {"wait":{"directory":"my docs"},"message":"the browser to be working in 'my docs'"}
 {"settle":{"pane":"my docs"}}
