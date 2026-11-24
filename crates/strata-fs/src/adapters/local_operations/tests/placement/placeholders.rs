@@ -71,11 +71,27 @@ fn an_empty_own_placeholder_rejected_means_unsupported() -> Result<(), Box<dyn E
     Ok(())
 }
 
+fn arrive(path: &Path, folder: bool) -> io::Result<()> {
+    if folder {
+        fs::create_dir(path)
+    } else {
+        fs::write(path, b"theirs")
+    }
+}
+
+fn arrival_untouched(path: &Path, folder: bool) -> io::Result<bool> {
+    Ok(if folder {
+        names(path)?.is_empty()
+    } else {
+        fs::read(path)? == b"theirs"
+    })
+}
+
 #[test]
 fn a_daemon_over_remote_storage_gets_no_placeholder() -> Result<(), Box<dyn Error>> {
     use Placed::{AfterCheck, ReservedDirectory};
     type Row = (&'static str, Preset, bool, bool, Result<Placed, PlaceError>);
-    let rows: [Row; 4] = [
+    let rows: [Row; 5] = [
         ("rclone folder", Quirks::rclone, true, false, Ok(AfterCheck)),
         (
             "rclone folder, name taken meanwhile",
@@ -86,6 +102,13 @@ fn a_daemon_over_remote_storage_gets_no_placeholder() -> Result<(), Box<dyn Erro
         ),
         // rclone uploads an empty reserving file after the rename, over the file (#2639).
         ("rclone file", Quirks::rclone, false, false, Ok(AfterCheck)),
+        (
+            "rclone file, name taken meanwhile",
+            Quirks::rclone,
+            false,
+            true,
+            Err(PlaceError::Exists),
+        ),
         (
             "sshfs folder",
             Quirks::sshfs,
@@ -101,7 +124,7 @@ fn a_daemon_over_remote_storage_gets_no_placeholder() -> Result<(), Box<dyn Erro
         let mut quirks = preset();
         if arrives {
             let arrival = target.clone();
-            let racer: Racer = Box::new(move || fs::create_dir(&arrival).expect("arrival"));
+            let racer: Racer = Box::new(move || arrive(&arrival, folder).expect("arrival"));
             quirks.after.push((Op::Rename, "target", 0, racer));
         }
         let _scope = FsQuirks::install(root.path(), quirks);
@@ -117,7 +140,7 @@ fn a_daemon_over_remote_storage_gets_no_placeholder() -> Result<(), Box<dyn Erro
         if arrives {
             assert_eq!(names(root.path())?, ["source", "target"], "{row}");
             assert_eq!(identity(&source), original, "{row}");
-            assert!(names(&target)?.is_empty(), "{row}");
+            assert!(arrival_untouched(&target, folder)?, "{row}");
         } else {
             assert_only(root.path(), "target", original, row)?;
         }
