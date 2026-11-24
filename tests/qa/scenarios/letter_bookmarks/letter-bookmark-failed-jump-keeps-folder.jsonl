@@ -4,8 +4,8 @@
 {"fs":{"path":"bookmark-parent","remove":true}}
 {"wait":{"entry_gone":"bookmark-parent"},"message":"the removed parent to leave the listing"}
 {"key":"apostrophe"}
-{"wait":{"present":{"role":"label","name":"$fixture/bookmark-parent/target"}},"message":"the ' menu to list the saved bookmark"}
+{"wait":{"present":{"role":"list item","name":"a: $fixture/bookmark-parent/target"}},"message":"the ' menu to list the saved bookmark"}
 {"key":"a"}
-{"wait":{"present":{"role":"label","name":"Bookmark a is unavailable"}},"message":"' a to report the missing folder"}
+{"wait":{"present":{"role":"status bar","name":"Bookmark a is unavailable"}},"message":"' a to report the missing folder"}
 {"expect":{"directory":"$root"},"message":"a failed jump must not navigate"}
 {"expect":{"selected":["readme.md"],"dir":"$root"},"message":"a failed jump must keep the selection"}

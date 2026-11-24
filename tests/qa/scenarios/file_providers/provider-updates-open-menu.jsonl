@@ -5,16 +5,20 @@
 {"wait":{"present":{"role":"label","name":"Example Cloud"}},"message":"provider group heading"}
 {"expect":{"menu_items":{"excludes":["Example Cloud"]}},"message":"provider heading is not an action"}
 {"fs":{"path":"$config/strata/providers/example/state","write":"kept"}}
-{"wait":{"present":{"role":"image","description":"example: Available offline"}},"message":"badge accessibility after state event"}
 {"wait":{"menu_items":{"contains":["Release test pin"]}},"message":"event refresh of open menu"}
 {"expect":{"any":[{"menu_items":null},{"menu_items":{"excludes":["Keep test pin"]}}]}}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"description":{"target":{"entry":"todo.txt"},"text":{"contains":"example: Available offline"}}},"message":"badge accessibility after state event"}
+{"click":{"entry":"todo.txt"},"button":3}
+{"wait":{"menu_items":{"contains":["Release test pin"]}},"message":"reopened menu retains refreshed provider action"}
 {"fs":{"path":"$config/strata/providers/example/state","write":"offline"}}
 {"wait":{"any":[{"menu_items":null},{"menu_items":{"excludes":["Release test pin"]}}]},"message":"provider withdrawal"}
 {"wait":{"absent":{"role":"label","name":"Example Cloud"}},"message":"empty provider group withdrawn"}
 {"expect":{"menu_items":{"contains":["Open","Cut","Copy"]}},"message":"provider withdrawal preserves built-in commands"}
-{"wait":{"absent":{"role":"image","description":"example: Available offline"}},"message":"badges withdrawn"}
 {"key":"Escape"}
 {"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"not":{"description":{"target":{"entry":"todo.txt"},"text":{"contains":"example: Available offline"}}}},"message":"badges withdrawn"}
 {"fs":{"path":"$config/strata/providers/example/state","write":"on-demand"}}
 {"select":{"entry":"todo.txt"}}
 {"click":{"entry":"local-only.txt"},"mods":["ctrl"]}

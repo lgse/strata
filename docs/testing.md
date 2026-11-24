@@ -421,14 +421,19 @@ The `qa-scenarios` skill beside it covers writing, running, and debugging scenar
 
 ### Accessible names are product surface
 
-The runner locates entries and controls through Strata's accessibility tree.
-Those accessible names and roles exist for screen readers first: entry rows carry
-their name and `Folder`/`File` description, panes carry their directory and
-presentation, menu items carry menu roles and shortcut descriptions, and modal
-dialogs carry the dialog role and title. When a scenario cannot identify a
-control, name it properly in the application instead of working around
-accessibility. Locate controls by role and name, synchronize on conditions
-(`wait`, `fs` with timeout), and verify both UI state and filesystem outcomes.
+The runner locates entries and controls directly through Strata's native Rune
+AccessKit tree (with roles mapped to AT-SPI names and open submenus nested under
+their owning menu item). Those accessible names and roles exist for screen
+readers first: entry rows carry their name and `Folder`/`File` description
+(along with Columns size/count badges, subfolder filter paths, and file-provider
+status descriptions), single-leaf controls (options, tabs, menu items,
+checkboxes, radios, switches) carry their text directly in their own `name` and
+`description`, panes carry their directory and presentation, menu items carry
+menu roles and shortcut descriptions, and modal dialogs and menus occlude
+background surfaces while open. When a scenario cannot identify a control, name
+it properly in the application instead of working around accessibility. Locate
+controls by role and name, synchronize on conditions (`wait`, `fs` with
+timeout), and verify both UI state and filesystem outcomes.
 
 ### Keyboard layouts
 

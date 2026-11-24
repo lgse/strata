@@ -10,7 +10,7 @@
 {"wait":{"entries":{"contains":["remaining.txt"]}},"message":"loaded folder"}
 {"key":"ctrl+k"}
 {"type":"preview-deletion-fixture"}
-{"wait":{"present":{"role":"label","name":"preview-deletion-fixture.txt"}},"message":"indexed search result"}
+{"wait":{"present":{"role":"list item","name_ends_with":["/preview-deletion-fixture.txt"]}},"message":"indexed search result"}
 {"key":"Return"}
 {"wait":{"preview":"search preview deletion fixture"},"message":"search result preview"}
 {"fs":{"path":"$home/preview-deletion/preview-deletion-fixture.txt","remove":true}}

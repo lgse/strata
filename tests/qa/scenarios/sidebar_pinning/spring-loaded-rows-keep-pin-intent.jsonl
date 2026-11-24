@@ -2,8 +2,8 @@
 {"drag":{"from":{"entry":"archive"},"to":{"sidebar":"First"}},"steps":8,"release":false}
 {"wait":{"directory":"documents"},"message":"hovering the pinned row 'First' to spring-load 'documents'"}
 {"move":{"sidebar":"Second"}}
-{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"the Pinned insertion targets"}
-{"move":{"role":"grouping","name":"PINNED","nth":1}}
+{"wait":{"present":{"role":"button","name":"PINNED"}},"message":"the Pinned insertion targets"}
+{"move":{"point":[{"of":{"sidebar":"First"}},{"mid":[{"of":{"sidebar":"First"},"at":"100%"},{"of":{"sidebar":"Second"},"at":0}]}]}}
 {"during":{"directory":"documents"},"ms":900,"every_ms":50,"message":"a departed row must not spring-load later"}
 {"button_up":1}
 {"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["file://$fixture_quoted/documents First","file://$fixture_quoted/archive archive","file://$fixture_quoted/pictures Second"]},"message":"the gap to pin rather than transfer the folder"}

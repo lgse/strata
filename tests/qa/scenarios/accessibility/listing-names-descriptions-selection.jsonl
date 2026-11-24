@@ -5,15 +5,15 @@
 {"expect":{"name":{"target":{"container":"$root"},"text":"$root"}}}
 {"expect":{"description":{"target":{"container":"$root"},"text":"Files"}}}
 {"expect":{"entries":["archive","documents","pictures","readme.md","todo.txt"],"dir":"$root"}}
-{"expect":{"description":{"target":{"entry":"archive","dir":"$root"},"text":"Folder"}},"message":"archive should be described as a Folder"}
+{"expect":{"description":{"target":{"entry":"archive","dir":"$root"},"text":{"starts_with":"Folder"}}},"message":"archive should be described as a Folder"}
 {"expect":{"state":{"target":{"entry":"archive","dir":"$root"},"focusable":true}},"message":"archive should be focusable"}
-{"expect":{"description":{"target":{"entry":"documents","dir":"$root"},"text":"Folder"}},"message":"documents should be described as a Folder"}
+{"expect":{"description":{"target":{"entry":"documents","dir":"$root"},"text":{"starts_with":"Folder"}}},"message":"documents should be described as a Folder"}
 {"expect":{"state":{"target":{"entry":"documents","dir":"$root"},"focusable":true}},"message":"documents should be focusable"}
-{"expect":{"description":{"target":{"entry":"pictures","dir":"$root"},"text":"Folder"}},"message":"pictures should be described as a Folder"}
+{"expect":{"description":{"target":{"entry":"pictures","dir":"$root"},"text":{"starts_with":"Folder"}}},"message":"pictures should be described as a Folder"}
 {"expect":{"state":{"target":{"entry":"pictures","dir":"$root"},"focusable":true}},"message":"pictures should be focusable"}
-{"expect":{"description":{"target":{"entry":"readme.md","dir":"$root"},"text":"File"}},"message":"readme.md should be described as a File"}
+{"expect":{"description":{"target":{"entry":"readme.md","dir":"$root"},"text":{"starts_with":"File"}}},"message":"readme.md should be described as a File"}
 {"expect":{"state":{"target":{"entry":"readme.md","dir":"$root"},"focusable":true}},"message":"readme.md should be focusable"}
-{"expect":{"description":{"target":{"entry":"todo.txt","dir":"$root"},"text":"File"}},"message":"todo.txt should be described as a File"}
+{"expect":{"description":{"target":{"entry":"todo.txt","dir":"$root"},"text":{"starts_with":"File"}}},"message":"todo.txt should be described as a File"}
 {"expect":{"state":{"target":{"entry":"todo.txt","dir":"$root"},"focusable":true}},"message":"todo.txt should be focusable"}
 {"select":{"entry":"todo.txt","dir":"$root"}}
 {"expect":{"state":{"target":{"entry":"todo.txt","dir":"$root"},"selected":true}}}

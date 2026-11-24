@@ -7,7 +7,7 @@
 {"wait":{"field":{"name":"Location (Ctrl+L)","text":"tntt"}},"message":"tab chord letters to remain literal text"}
 {"key":"Escape"}
 {"key":"t"}
-{"wait":{"present":{"role":"label","name":"t-"}},"message":"tab chord options"}
+{"wait":{"present":{"role":"status bar","name":"t-"}},"message":"tab chord options"}
 {"key":"Escape"}
 {"key":"n"}
 {"wait":{"selected":["todo.txt"],"dir":"$root"},"message":"the selection to become ['todo.txt']"}

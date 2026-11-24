@@ -6,7 +6,7 @@
 {"wait":{"dialog":"Unable to mount volume"},"message":"a failed mount to show Unable to mount volume"}
 {"wait":{"present":{"named":"The medium in QA Stick could not be read","within":{"dialog":true}}},"message":"the dialog to show the volume monitor's error text"}
 {"fs":{"path":"$environment/volume-monitor.calls","lines_equal":["VolumeMount stick"]},"timeout_ms":0,"message":"the click to have asked for one mount"}
-{"expect":{"panes":["$root"]},"message":"a failed mount to leave the browser where it was"}
 {"key":"Escape"}
 {"wait":{"dialog":null},"message":"Escape to close the error"}
+{"expect":{"panes":["$root"]},"message":"a failed mount to leave the browser where it was"}
 {"expect":{"present":{"sidebar":"QA Stick"}},"message":"the stick to keep its row after the failure"}
