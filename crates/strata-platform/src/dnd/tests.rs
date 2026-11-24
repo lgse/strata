@@ -26,14 +26,8 @@ fn view(s: &S, _: &mut Cx<S>) -> El {
                 if d.phase == Phase::Move && d.dx > 8.0 && s.started == 0 {
                     s.started += 1;
                     let dnd = s.dnd.clone();
-                    dnd.start_drag(
-                        tx,
-                        d,
-                        "own",
-                        DragItem::new().text("own"),
-                        |_: &mut S, _, _| {},
-                    )
-                    .expect("the fake start");
+                    dnd.start_drag(tx, DragItem::new().text("own"), |_: &mut S, _, _| {})
+                        .expect("the fake start");
                 }
             });
     col()

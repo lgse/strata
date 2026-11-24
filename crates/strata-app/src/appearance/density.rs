@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use rune::{El, KeyEvent, TextStyle, Tx, col, row, text};
+use rune::{El, TextStyle, Tx, col, row, text};
 use strata_components::controls::slider::{Range, Slider, SliderChange, SliderState, Snap};
 use strata_core::i18n::tr;
 use strata_desktop::settings::{DensityPresets, Preferences, store_density_px, stored_density_px};
 use strata_kit::density::Scale;
 
-use crate::{App, buttons, shell};
+use crate::{App, shell};
 
 /// One of the two densities: its scale, where it is saved, and its slider's keys.
 pub(crate) struct Density {
@@ -179,10 +179,6 @@ impl Density {
 }
 
 pub(super) fn sliders(app: &App) -> El {
-    let snaps: Vec<&'static str> = [&FRAME, &CONTENT]
-        .iter()
-        .flat_map(|density| density.keys[1..].iter().copied())
-        .collect();
     col()
         .w_full()
         .gap(app.look.space.md)
@@ -190,8 +186,4 @@ pub(super) fn sliders(app: &App) -> El {
         .py(app.look.space.xxs)
         .child(FRAME.slider(app))
         .child(CONTENT.slider(app))
-        .on_key(move |_: &mut App, event: &KeyEvent, tx: &mut Tx| {
-            let on_snap = tx.focused().is_some_and(|key| snaps.contains(&key));
-            on_snap && buttons::pressed(event, tx)
-        })
 }

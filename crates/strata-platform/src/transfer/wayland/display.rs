@@ -18,13 +18,13 @@ use super::super::error::{Error, Unsupported};
 
 /// winit's `wl_display`, from the window's display handle. Call it on the UI thread.
 ///
-/// With `as_if_old`, behaves as if winit's display were unreachable (for fallback tests).
+/// With `as_if_no_shared_display`, behaves as if winit's display were unreachable (for fallback tests).
 pub(super) fn winit_display(
     window: &WindowHandle,
-    as_if_old: bool,
+    as_if_no_shared_display: bool,
 ) -> Result<NonNull<c_void>, Error> {
-    if as_if_old {
-        return Err(Error::from(Unsupported::LibwaylandBelow1_23));
+    if as_if_no_shared_display {
+        return Err(Error::from(Unsupported::NoSharedDisplay));
     }
     window
         .with_raw_display_handle(|h| match h.as_raw() {

@@ -215,8 +215,7 @@ impl PeekState {
         let Some(o) = &self.open else {
             return Change::None;
         };
-        let placed = o.place.x - super::place::CARD_GAP;
-        if (x - placed).abs() > 0.5 {
+        if (x - o.place.x).abs() > 0.5 {
             self.close();
             Change::Closed
         } else {

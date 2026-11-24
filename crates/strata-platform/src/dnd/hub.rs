@@ -180,8 +180,8 @@ fn with<R>(f: impl FnOnce(&mut Hub) -> R) -> Option<R> {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TestRoute {
-    /// Behave as on libwayland < 1.23: winit's display is out of reach.
-    pub as_if_libwayland_below_1_23: bool,
+    /// Behave as if winit's shared display handle were unavailable.
+    pub as_if_no_shared_display: bool,
     /// Behave as on a compositor with no data control (mutter).
     pub as_if_no_data_control: bool,
 }
@@ -198,7 +198,7 @@ pub(crate) fn attach(
         let turn_poster = poster.clone();
         let turn: Turn = Arc::new(move |f| turn_poster(Job::Run(f)));
         let wants = Wants {
-            as_if_libwayland_below_1_23: test.as_if_libwayland_below_1_23,
+            as_if_no_shared_display: test.as_if_no_shared_display,
             as_if_no_data_control: test.as_if_no_data_control,
             ..Wants::default()
         };

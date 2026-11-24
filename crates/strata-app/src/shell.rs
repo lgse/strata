@@ -114,6 +114,8 @@ pub(crate) struct Window {
     labels: Labels,
     applied: (u64, u64),
     thumbnails: ThumbnailStore,
+    /// Shared image cache for mipmapped uploads (`ImageCache::rgba_into`); `None` in headless tests.
+    image_cache: Option<std::sync::Arc<rune::ImageCache>>,
     /// The store's place in the process's budget ([`thumbnail_budget`]).
     _thumbnail_share: thumbnail_budget::Share,
     /// The per-folder views, one store for the process ([`crate::folder_views`]).
@@ -644,6 +646,7 @@ impl Window {
             labels: Labels::translated(),
             applied: (0, 0),
             thumbnails,
+            image_cache: None,
             _thumbnail_share: thumbnail_share,
             folder_views: first.folder_views,
             themes: services.themes,
@@ -661,6 +664,16 @@ impl Window {
         &mut self.thumbnails
     }
 
+    /// Binds a shared [`rune::ImageCache`] for mipmapped thumbnail and preview uploads.
+    pub(crate) fn set_image_cache(&mut self, cache: std::sync::Arc<rune::ImageCache>) {
+        self.thumbnails.set_cache(std::sync::Arc::clone(&cache));
+        self.image_cache = Some(cache);
+    }
+
+    pub(crate) fn image_cache(&self) -> Option<&std::sync::Arc<rune::ImageCache>> {
+        self.image_cache.as_ref()
+    }
+
     pub(crate) fn folder_views(&self) -> &folder_views::Kept {
         &self.folder_views
     }
@@ -671,6 +684,20 @@ impl Window {
 
     pub(crate) fn themes_mut(&mut self) -> &mut crate::theme::ThemeEngine {
         &mut self.themes
+    }
+}
+
+/// Uploads straight-alpha RGBA8 pixels into `pixels`, generating mipmaps via `cache` when available.
+pub(crate) fn upload_rgba(
+    cache: Option<&rune::ImageCache>,
+    pixels: &rune::Pixels,
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+) {
+    match cache {
+        Some(cache) => cache.rgba_into(pixels, width, height, rgba),
+        None => pixels.set(width, height, rgba),
     }
 }
 

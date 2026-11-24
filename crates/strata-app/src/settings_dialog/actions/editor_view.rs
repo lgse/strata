@@ -394,10 +394,10 @@ fn arguments_section(look: &Look, session: &EditorSession) -> El {
         &mut editor_mut(app).arguments
     })
     .label(tr("Arguments"))
+    .description(tr("One argument per line; {path}, {paths}, or {parent}"))
     .rows(8)
     .build(kit)
-    .key(EDITOR_ARGUMENTS_KEY)
-    .description(tr("One argument per line; {path}, {paths}, or {parent}"));
+    .key(EDITOR_ARGUMENTS_KEY);
     col().w_full().gap(8.0).child(heading).child(area)
 }
 
@@ -683,12 +683,12 @@ fn single_line_input(look: &Look, spec: InputSpec<'_>) -> El {
     let mut input = TextInput::new(spec.edit)
         .label(spec.label)
         .placeholder(spec.placeholder)
+        .description(spec.description)
         .width(spec.width)
         .disabled(spec.disabled)
         .on_edit(spec.on_edit)
         .build(&look.kit)
-        .key(spec.key)
-        .description(spec.description);
+        .key(spec.key);
     if spec.disabled {
         input = input.disabled(true);
     }

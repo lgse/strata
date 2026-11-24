@@ -206,6 +206,7 @@ fn show(
         let entry = viewer_mut(app, id).map(|model| model.entry.clone());
         entry.map(|entry| file(app, &entry, ModelKind::Embedded))
     });
+    let image_cache = app.window.image_cache().cloned();
     let Some(model) = viewer_mut(app, id) else {
         return false;
     };
@@ -220,7 +221,13 @@ fn show(
         model.state.open(file);
     }
     let (width, height) = image.dimensions();
-    model.pixels.set(width, height, image.into_raw());
+    crate::shell::upload_rgba(
+        image_cache.as_deref(),
+        &model.pixels,
+        width,
+        height,
+        image.into_raw(),
+    );
     let size = [width as f32, height as f32];
     let _ = model.state.image(size, mesh.map(mesh_of));
     true

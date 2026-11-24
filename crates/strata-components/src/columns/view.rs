@@ -1024,6 +1024,7 @@ fn drive<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, now: f64, tx: &mut Tx) -> bo
             tx.scroll_to_with(strip, x, 0.0, super::drag_scroll::GLIDE);
         }
         Some(Scroll::Instant(x)) => tx.scroll_to_instant(strip, x, 0.0),
+        Some(Scroll::Stop) => tx.stop_scroll(strip),
         None => {}
     }
     if let Some((depth, scroll)) = step.listing
@@ -1032,6 +1033,7 @@ fn drive<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, now: f64, tx: &mut Tx) -> bo
         match scroll {
             Scroll::Glide(y) => tx.scroll_to_with(path, 0.0, y, super::drag_scroll::GLIDE),
             Scroll::Instant(y) => tx.scroll_to_instant(path, 0.0, y),
+            Scroll::Stop => tx.stop_scroll(path),
         }
     }
     if step.wake {

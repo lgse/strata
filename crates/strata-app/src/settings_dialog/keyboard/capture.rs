@@ -117,7 +117,7 @@ fn end_to_add(app: &mut App, tx: &mut Tx) {
 }
 
 fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
-    let press = commands::read_pressed(app, event, tx);
+    let press = commands::read_pressed(event, tx);
     if press.is_modifier() {
         return false;
     }

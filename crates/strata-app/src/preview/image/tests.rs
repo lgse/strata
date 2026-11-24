@@ -48,8 +48,8 @@ fn image_entry(name: &str) -> FileEntry {
 }
 
 fn mount_viewer(width: u32, height: u32, window: (f32, f32)) -> Runtime<Host> {
-    let viewer =
-        ImageViewer::from_png(&image_entry("sample.png"), &png_bytes(width, height)).expect("png");
+    let viewer = ImageViewer::from_png(&image_entry("sample.png"), &png_bytes(width, height), None)
+        .expect("png");
     let host = Host {
         viewer,
         look: Look::fallback(true),

@@ -286,8 +286,7 @@ fn window(ui: UiThread, start: Start) -> rune::App<App> {
         shell::bind_backdrop_blur(&mut app, blur_for_init);
         let wake = registered.clone();
         app.window
-            .thumbnails_mut()
-            .set_cache(std::sync::Arc::new(rune::ImageCache::new(
+            .set_image_cache(std::sync::Arc::new(rune::ImageCache::new(
                 std::sync::Arc::new(move || wake.wake()),
             )));
         follow_queue(&app, registered.clone());

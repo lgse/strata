@@ -161,7 +161,7 @@ impl Surface for On<'_, '_> {
             Outcome::Glide { y, spring } | Outcome::StopGlide { y, spring } => {
                 self.cx.emit(Effect::Glide { y, spring });
             }
-            Outcome::StopScroll { .. } => self.cx.emit(Effect::StopScroll),
+            Outcome::StopScroll => self.cx.emit(Effect::StopScroll),
             Outcome::WakeAfter(d) => self.cx.emit(Effect::WakeAfter(d)),
             Outcome::Repaint => self.cx.repaint(),
         }

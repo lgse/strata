@@ -5,7 +5,7 @@ use std::fmt;
 /// Why a route or the whole substrate is missing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Unsupported {
-    LibwaylandBelow1_23,
+    NoSharedDisplay,
     /// The window is neither Wayland nor X11.
     NotLinux(String),
     /// The compositor lacks a protocol this route needs.
@@ -17,9 +17,9 @@ pub enum Unsupported {
 impl fmt::Display for Unsupported {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Unsupported::LibwaylandBelow1_23 => f.write_str(
-                "libwayland < 1.23: no wl_proxy_get_display, so winit's display is out of reach",
-            ),
+            Unsupported::NoSharedDisplay => {
+                f.write_str("winit's Wayland display handle is unavailable")
+            }
             Unsupported::NotLinux(kind) => write!(f, "not a Wayland or X11 window: {kind}"),
             Unsupported::NoProtocol(p) => write!(f, "the compositor has no {p}"),
             Unsupported::NothingWanted => f.write_str("no route asked for is available"),

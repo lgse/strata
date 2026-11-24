@@ -217,11 +217,7 @@ impl Wiring {
         let Some((drag, key)) = self.0.phase.borrow_mut().take() else {
             return Err("no drag phase to start from".to_owned());
         };
-        let gesture = Gesture {
-            drag: &drag,
-            source: &key,
-        };
-        if self.0.windowed.get() && self.start_p1(gesture, &mut launch, tx)? {
+        if self.0.windowed.get() && self.start_p1(&mut launch, tx)? {
             return Ok(());
         }
         let in_window = self.in_window_drag(app, &key, launch);
@@ -229,25 +225,18 @@ impl Wiring {
         Ok(())
     }
 
-    fn start_p1(
-        &self,
-        gesture: Gesture<'_>,
-        launch: &mut Launch,
-        tx: &mut Tx,
-    ) -> Result<bool, String> {
+    fn start_p1(&self, launch: &mut Launch, tx: &mut Tx) -> Result<bool, String> {
         let item = drag_item(&launch.payload, launch.icon.take());
         let end = launch.on_end.clone();
         set_running(Some(launch.payload.clone()));
-        let res = self.0.p1.borrow().start_drag(
-            tx,
-            gesture.drag,
-            gesture.source,
-            item,
-            move |app: &mut App, outcome, tx| {
+        let res = self
+            .0
+            .p1
+            .borrow()
+            .start_drag(tx, item, move |app: &mut App, outcome, tx| {
                 set_running(None);
                 end(app, outcome, tx);
-            },
-        );
+            });
         match res {
             Ok(()) => Ok(true),
             Err(P1Error::NotAttached) => {

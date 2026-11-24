@@ -265,8 +265,6 @@ impl<S: 'static> Dnd<S> {
     pub fn start_drag(
         &self,
         tx: &mut Tx,
-        _drag: &Drag,
-        _key: &str,
         item: DragItem,
         on_end: impl Fn(&mut S, DragOutcome, &mut Tx) + 'static,
     ) -> Result<(), Error> {

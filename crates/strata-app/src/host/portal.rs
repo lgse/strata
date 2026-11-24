@@ -308,6 +308,12 @@ fn open_chooser_window(
     shell::bind_backdrop_blur(&mut state, blur);
     state.open(initial);
     let handle = app.handle();
+    let wake = handle.clone();
+    state
+        .window
+        .set_image_cache(Arc::new(rune::ImageCache::new(Arc::new(move || {
+            wake.wake();
+        }))));
     let window = rune::open_window(WindowSpec::from_app(&token, app).state(state));
     if cancelled.load(Ordering::SeqCst) {
         handle.update_if(crate::chooser::cancel);

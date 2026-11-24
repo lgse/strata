@@ -75,6 +75,7 @@ pub(super) fn build_popover(look: &Look, session: &EditorSession, layer: &mut Ve
             }
         })
         .modal_tx(true, close_popover)
+        .modal_wheel_outside(true)
         .children(rows);
     let surface = strata_kit::transparency::raised_popover(look, body, look.round(8.0));
     layer.push(popover::anchored(

@@ -52,8 +52,10 @@ pub struct ColumnGeometry {
 pub enum Scroll {
     /// Glide to this offset (a lead ahead of where the view is).
     Glide(f32),
-    /// Jump here: a step with animations off, or a dead stop where the view is.
+    /// Jump here: a step with animations off.
     Instant(f32),
+    /// Stop an active scroll glide dead where the view is.
+    Stop,
 }
 
 /// What a frame does.
@@ -134,12 +136,12 @@ impl DragScroll {
         let mut step = Step::default();
         let Some(p) = self.pointer else {
             if self.burst_x.take().is_some() {
-                step.strip = Some(Scroll::Instant(geo.offset));
+                step.strip = Some(Scroll::Stop);
             }
             if let Some((_, _, depth)) = self.burst_y.take()
-                && let Some(c) = geo.columns.get(depth)
+                && geo.columns.get(depth).is_some()
             {
-                step.listing = Some((depth, Scroll::Instant(c.offset)));
+                step.listing = Some((depth, Scroll::Stop));
             }
             self.ticked = None;
             return step;
@@ -167,7 +169,7 @@ impl DragScroll {
         match sign(dx) {
             0 => {
                 if self.burst_x.take().is_some() {
-                    step.strip = Some(Scroll::Instant(geo.offset));
+                    step.strip = Some(Scroll::Stop);
                 }
             }
             s => {
@@ -196,19 +198,19 @@ impl DragScroll {
         match vertical {
             None => {
                 if let Some((_, _, depth)) = self.burst_y.take()
-                    && let Some(c) = geo.columns.get(depth)
+                    && geo.columns.get(depth).is_some()
                 {
-                    step.listing = Some((depth, Scroll::Instant(c.offset)));
+                    step.listing = Some((depth, Scroll::Stop));
                 }
             }
             Some((depth, dy)) => {
                 let s = sign(dy);
                 if let Some((_, _, was)) = self.burst_y
                     && was != depth
-                    && let Some(c) = geo.columns.get(was)
+                    && geo.columns.get(was).is_some()
                 {
                     self.burst_y = None;
-                    step.listing = Some((was, Scroll::Instant(c.offset)));
+                    step.listing = Some((was, Scroll::Stop));
                     step.wake = true;
                     return step;
                 }

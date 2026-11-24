@@ -602,6 +602,7 @@ fn build_rendered_body(
         document_path: entry.location.native_path().map(Path::to_path_buf),
         blocks,
         later,
+        image_cache: app.window.image_cache().cloned(),
         palette: diagram_palette(&app.look),
     });
     RenderedBody::Document(Box::new(doc))

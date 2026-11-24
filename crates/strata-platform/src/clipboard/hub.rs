@@ -149,7 +149,7 @@ pub(super) fn attach(
         let turn_poster = poster.clone();
         let turn: Turn = Arc::new(move |f| turn_poster(Job::Run(f)));
         let wants = Wants {
-            as_if_libwayland_below_1_23: test.as_if_libwayland_below_1_23,
+            as_if_no_shared_display: test.as_if_no_shared_display,
             as_if_no_data_control: test.as_if_no_data_control,
             // Where Wayland has no route, X11 selections through Xwayland.
             x11_fallback: true,

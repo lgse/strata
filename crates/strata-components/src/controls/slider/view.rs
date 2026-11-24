@@ -373,6 +373,7 @@ impl<S: 'static> Slider<S> {
                     .hover(k.c.hover)
                     .press(k.c.pressed)
                     .focus_ring(2.0, 0.0, k.c.border_focus)
+                    .press_on_return()
                     .on_press_tx(move |s: &mut S, tx: &mut Tx| {
                         if get_mut(s).set(value)
                             && let Some(f) = &report

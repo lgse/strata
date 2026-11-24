@@ -21,7 +21,14 @@ const ITEM_GROUPS: [&str; 5] = ["list", "listbox", "menu", "tree", "grid"];
 /// Buttons left to Rune's Return for now, each with why.
 const EXCEPTIONS: [&str; 3] = ["header-minimize", "header-maximize", "header-close"];
 
-const IN_THEIR_COMPONENT: [&str; 3] = ["location-crumb-", "location-copy", "preview-"];
+const IN_THEIR_COMPONENT: [&str; 6] = [
+    "footer-shortcuts",
+    "list-columns-button",
+    "location-crumb-",
+    "location-copy",
+    "preview-",
+    "tabs-new",
+];
 
 fn c15_dialog(elements: &[rune::ElementInfo], element: &rune::ElementInfo) -> bool {
     let key = element.key.as_deref().unwrap_or_default();

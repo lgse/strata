@@ -169,7 +169,7 @@ fn navigation(app: &App, view: &str, button: &Button) -> El {
     if !app.browser.can_go_back() {
         return buttons::on_return(key, built);
     }
-    buttons::taking_return(key, built)
+    buttons::on_return(key, built)
         .on_layout_tx(|app: &mut App, rect, _: &mut Tx| app.pane_header.back = rect)
         .on_drag(held)
         .on_secondary_press_local(|app: &mut App, _: PointerEvent, _: &mut Tx| open(app))
@@ -209,7 +209,7 @@ fn back_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
         }
         return true;
     }
-    menu_chord(event).is_some() || buttons::pressed(event, tx)
+    menu_chord(event).is_some()
 }
 
 /// Opens the back history under Back.

@@ -349,7 +349,7 @@ mod demo {
         rune::tooling::set_app_id("strata-clipboard-demo");
         let route = TestRoute {
             as_if_no_data_control: flag("--as-if-no-data-control"),
-            as_if_libwayland_below_1_23: flag("--as-if-libwayland-1-22"),
+            as_if_no_shared_display: flag("--as-if-no-shared-display"),
         };
         let clip = Clipboard::<State>::new()
             .test_route(route)
@@ -382,7 +382,8 @@ mod demo {
                 _dnd: state_dnd,
             })
             .on_quit(|_, _| shutdown("on-quit"))
-            .on_close(on_close);
+            .on_close(on_close)
+            .on_display_close(|| shutdown("display-close"));
         let handle: AppHandle<State> = app.handle();
         spawn_stdin(handle.clone());
         rune::orderly_exit();

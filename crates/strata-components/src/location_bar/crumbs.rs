@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use rune::{
-    Anim, Cursor, Curve, Easing, El, Key, KeyEvent, Mods, PointerEvent, Tx, WheelEvent, col, el,
-    icon, row, text,
+    Anim, Cursor, Curve, Easing, El, PointerEvent, Tx, WheelEvent, col, el, icon, row, text,
 };
 use strata_kit::icons::IconName;
 
@@ -180,19 +179,12 @@ fn ancestor<S: 'static>(cx: &Ctx<'_, S>, i: usize, crumb: &Crumb) -> El {
     ancestor_handlers(cx, button, i, &crumb.id)
 }
 
-fn has_command_mod(mods: Mods) -> bool {
-    mods.ctrl || mods.alt || mods.cmd
-}
-
-fn is_plain_return(ev: &KeyEvent) -> bool {
-    ev.key == Key::Enter && !has_command_mod(ev.mods)
-}
-
 fn ancestor_handlers<S: 'static>(cx: &Ctx<'_, S>, button: El, i: usize, id: &str) -> El {
-    let (press_id, key_id) = (id.to_owned(), id.to_owned());
-    let (emit, key_emit) = (cx.emit.clone(), cx.emit.clone());
+    let press_id = id.to_owned();
+    let emit = cx.emit.clone();
     let access = cx.access;
     let mut button = button
+        .press_on_return()
         .on_hover_change(move |s: &mut S, over: bool, _: &mut Tx| access(s).hover_crumb(i, over))
         .on_press_tx(move |s: &mut S, tx: &mut Tx| {
             emit(
@@ -203,20 +195,6 @@ fn ancestor_handlers<S: 'static>(cx: &Ctx<'_, S>, button: El, i: usize, id: &str
                 },
                 tx,
             );
-        })
-        .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
-            if is_plain_return(ev) {
-                key_emit(
-                    s,
-                    LocationIntent::Open {
-                        id: key_id.clone(),
-                        via: Via::Click,
-                    },
-                    tx,
-                );
-                return true;
-            }
-            false
         });
     if cx.open_in_new {
         let middle_id = id.to_owned();

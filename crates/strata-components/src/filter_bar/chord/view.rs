@@ -3,11 +3,10 @@
 //! The chord's footer pill, and its panel of next keys above it.
 
 use rune::{El, LiveRegion, col, row, text};
-use rune_kit::{Placement, popover};
+use rune_kit::{Keybind, Placement, popover};
 use strata_kit::look::Look;
 
 use super::state::ChordState;
-use crate::filter_bar::keycap::keycap;
 
 /// The pill's key under `key`.
 pub fn pill_key(key: &str) -> String {
@@ -53,7 +52,12 @@ pub fn panel<A: Clone>(look: &Look, key: &str, state: &ChordState<A>) -> Option<
                     .position_in_set(i + 1, n)
                     .gap(look.space.sm)
                     .items_center()
-                    .child(keycap(look, &o.keycap))
+                    .child(
+                        Keybind::new(&[o.keycap.as_str()])
+                            .keep_case()
+                            .build(k)
+                            .a11y_hidden(),
+                    )
                     .child(
                         text(o.label.clone())
                             .font(k.ty.small)

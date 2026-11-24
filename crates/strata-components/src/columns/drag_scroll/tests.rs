@@ -102,22 +102,19 @@ fn autoscroll_stops_on_leaving_the_edge_the_strip_or_the_end_and_when_the_drag_g
     start(&mut m);
     m.over(Some(Point::new(450.0, 300.0)));
     let step = m.step(0.016, &geo, true);
-    assert_eq!(step.strip, Some(Scroll::Instant(300.0)));
+    assert_eq!(step.strip, Some(Scroll::Stop));
     assert!(!step.wake);
     // Leaves the strip (below it).
     let mut m = DragScroll::new();
     start(&mut m);
     m.over(Some(Point::new(5.0, 700.0)));
-    assert_eq!(
-        m.step(0.016, &geo, true).strip,
-        Some(Scroll::Instant(300.0))
-    );
+    assert_eq!(m.step(0.016, &geo, true).strip, Some(Scroll::Stop));
     // Drops or ends.
     let mut m = DragScroll::new();
     start(&mut m);
     assert!(m.over(None), "a frame to stop in");
     let step = m.step(0.016, &geo, true);
-    assert_eq!(step.strip, Some(Scroll::Instant(300.0)));
+    assert_eq!(step.strip, Some(Scroll::Stop));
     assert!(!m.scrolling());
     // At the end: nothing to do.
     let mut m = DragScroll::new();

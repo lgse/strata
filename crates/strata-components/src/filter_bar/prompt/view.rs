@@ -11,7 +11,6 @@ use strata_kit::look::Look;
 use super::state::{Polled, PromptIntent, PromptState};
 use crate::contract::MatchedText;
 use crate::filter_bar::field::{self, Handlers, Spec};
-use crate::filter_bar::keycap::keycap;
 
 /// The most candidate rows the list shows before it scrolls (Strata's 280 px).
 const ROWS_SHOWN: f32 = 8.0;
@@ -320,7 +319,12 @@ impl<S: 'static, K: Copy + PartialEq + std::fmt::Debug + 'static> FooterPrompt<S
                     row()
                         .gap(look.space.xs)
                         .items_center()
-                        .child(keycap(look, cap))
+                        .child(
+                            rune_kit::Keybind::new(&[cap.as_str()])
+                                .keep_case()
+                                .build(k)
+                                .a11y_hidden(),
+                        )
                         .child(text(word.clone()).font(k.ty.small).color(k.c.text_muted)),
                 );
             }

@@ -205,7 +205,7 @@ fn returns_to<S>(cfg: &RenameEditor<S>, rcx: &RowCx<'_>) -> String {
     named.unwrap_or_else(|| rcx.scope.to_owned())
 }
 
-/// The field's menu press, on the field and on the box around it.
+/// The field's menu press.
 fn menu_press<S: 'static>(
     cfg: &Rc<RenameEditor<S>>,
 ) -> impl Fn(&mut S, PointerPress, &mut Tx) + 'static {

@@ -193,7 +193,7 @@ fn build(app: &App, close: Option<El>, frame: &mut Frame<'_, App>) -> Option<El>
     });
     let band = strip.build_layered(&app.look, frame.cx, frame.layer);
     debug_assert_eq!(new_tab_key(app.tab_strip.state.key()), "tabs-new");
-    Some(buttons::on_return_within("tabs-new", band.children(close)))
+    Some(band.children(close))
 }
 
 fn badges_shown(app: &App) -> bool {

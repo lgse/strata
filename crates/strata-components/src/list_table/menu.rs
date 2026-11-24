@@ -124,7 +124,8 @@ pub(super) fn button<S: 'static>(shared: &Rc<Shared<S>>, s: &S, layer: &mut Vec<
         .help(shared.labels.button.clone())
         .on_press(move |s: &mut S| (open.table_mut)(s).menu = Some(MenuAt::Button))
         .build(&look.accent_icon_kit())
-        .key(button_key(&shared.key));
+        .key(button_key(&shared.key))
+        .press_on_return();
     let is_open = parts.table.menu == Some(MenuAt::Button);
     let menu = Menu::new(button_menu_key(&shared.key))
         .trigger(trigger)

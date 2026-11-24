@@ -467,7 +467,7 @@ impl CollectionState {
             Some(offset) => tx.scroll_to_instant(viewport_path(scope), 0.0, offset),
             None => match self.selection.cursor_index(source) {
                 Some(index) if self.shows_line(index, source.len()) => {
-                    tx.scroll_to_instant(viewport_path(scope), 0.0, self.scroll.get());
+                    tx.stop_scroll(viewport_path(scope));
                 }
                 Some(index) => self.reveal(scope, source, index, tx),
                 None => tx.scroll_to_instant(viewport_path(scope), 0.0, 0.0),

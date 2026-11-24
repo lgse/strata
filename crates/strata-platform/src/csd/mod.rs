@@ -12,8 +12,6 @@
 //!   ([anomalyco/rune#310](https://github.com/anomalyco/rune/issues/310)).
 //! - Linux window menu and `wm_capabilities`
 //!   ([anomalyco/rune#313](https://github.com/anomalyco/rune/issues/313)).
-//! - Exposing winit's native display connection (needed to release X11 grabs before
-//!   `_NET_WM_MOVERESIZE`) and desktop double-click interval inside `.window_drag()`.
 
 mod edge;
 mod frame;

@@ -482,7 +482,8 @@ fn a_release_without_a_press_on_a_row_runs_nothing() {
     let [x, y, w, h] = live(&rt, "m-item7").unwrap().rect;
     rt.pointer_up(x + w / 2.0, y + h / 2.0);
     step(&mut rt);
-    rt.secondary_down(x - 50.0, y);
+    let [sx, sy, sw, sh] = live(&rt, "m-item6").unwrap().rect;
+    rt.secondary_down(sx + sw / 2.0, sy + sh / 2.0);
     step(&mut rt);
     rt.pointer_move(x + w / 2.0, y + h / 2.0);
     step(&mut rt);
@@ -1381,18 +1382,14 @@ fn a_clipboard_read_for_an_earlier_menu_is_dropped() {
 }
 
 #[test]
-fn a_right_click_outside_an_open_menu_leaves_it_open_on_its_target() {
+fn a_right_click_outside_an_open_menu_dismisses_it() {
     let mut rt = opened();
     rt.secondary_down(W - 10.0, H - 10.0);
     step(&mut rt);
     rt.secondary_up(W - 10.0, H - 10.0);
     step(&mut rt);
-    assert!(rt.state.menu.is_open());
-    assert_eq!(
-        rt.state.menu.target(),
-        Some(&MenuTarget::Entry(EntryId::new(4)))
-    );
-    assert_eq!(rt.state.dismissed, 0);
+    assert!(!rt.state.menu.is_open());
+    assert_eq!(rt.state.dismissed, 1);
 }
 
 #[test]

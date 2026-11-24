@@ -46,7 +46,7 @@ pub enum DataControl {
     Off,
     /// On winit's display only.
     Shared,
-    /// On a connection of our own, which needs neither winit's display nor libwayland 1.23.
+    /// On a connection of our own, which needs no shared display.
     Own,
     /// On winit's display, else on a connection of our own.
     #[default]
@@ -62,7 +62,7 @@ pub struct Wants {
     pub prefer: Prefer,
     pub x11_fallback: bool,
     #[doc(hidden)]
-    pub as_if_libwayland_below_1_23: bool,
+    pub as_if_no_shared_display: bool,
     #[doc(hidden)]
     pub as_if_no_data_control: bool,
 }
@@ -74,7 +74,7 @@ impl Default for Wants {
             data_control: DataControl::default(),
             prefer: Prefer::default(),
             x11_fallback: false,
-            as_if_libwayland_below_1_23: false,
+            as_if_no_shared_display: false,
             as_if_no_data_control: false,
         }
     }
@@ -463,7 +463,7 @@ fn wayland_backend(
             windows.clone(),
             subs.clone(),
             control,
-            wants.as_if_libwayland_below_1_23,
+            wants.as_if_no_shared_display,
         ) {
             Ok(c) => Some(c),
             Err(Error::Unsupported(u)) => {

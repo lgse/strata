@@ -363,7 +363,7 @@ pub(crate) fn read(app: &App, event: &KeyEvent, at: &Situation, tx: &Tx) -> KeyP
     keys::rewrite(press, Context { typing })
 }
 
-pub(crate) fn read_pressed(_app: &App, event: &KeyEvent, tx: &Tx) -> KeyPress {
+pub(crate) fn read_pressed(event: &KeyEvent, tx: &Tx) -> KeyPress {
     press::read(event, press::Origin::of(tx))
 }
 

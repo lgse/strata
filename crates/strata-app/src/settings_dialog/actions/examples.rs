@@ -108,6 +108,7 @@ pub(super) fn build_popover(look: &Look, session: &EditorSession, layer: &mut Ve
             popover_key(app, ev, tx, first_match)
         })
         .modal_tx(true, close_popover)
+        .modal_wheel_outside(true)
         .child(search_bar(look, &session.examples_query, divider))
         .child(category_bar(look, session.examples_category, divider))
         .child(template_list(look, &session.examples_bar, &visible));

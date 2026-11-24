@@ -22,7 +22,7 @@ pub(super) struct Keyboard {
     layout: Option<Layout>,
     /// The dead-key sequence in progress under a layout that has dead keys.
     compose: Option<Compose>,
-    /// The physical origin of the last non-US press, for `commands::read` (packet entry 97).
+    /// The physical origin of the last non-US press, for `commands::read`.
     origin: Cell<Option<Origin>>,
 }
 

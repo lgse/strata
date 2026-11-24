@@ -11,7 +11,7 @@ use strata_desktop::keys::{
 };
 
 use crate::{
-    App, buttons, clipboard, filter,
+    App, clipboard, filter,
     location::labels::with_keys,
     shell,
     slots::{Frame, Listener, Part, Place, Setup},
@@ -71,9 +71,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         .count(count::shown(app))
         .labels(labels());
     debug_assert_eq!(footer.shortcuts_key(), SHORTCUTS);
-    footer
-        .build(app, &app.look)
-        .map(|footer| buttons::on_return_within(SHORTCUTS, footer))
+    footer.build(app, &app.look)
 }
 
 fn labels() -> FooterLabels {

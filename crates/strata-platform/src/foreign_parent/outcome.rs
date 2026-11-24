@@ -88,9 +88,7 @@ impl fmt::Display for Reason {
                 write!(f, "the parent is on {parent} and the window on {window}")
             }
             Reason::NoImporter => f.write_str("the compositor has no zxdg_importer_v2"),
-            Reason::NoDisplay => f.write_str(
-                "libwayland < 1.23: no wl_proxy_get_display, so winit's display is out of reach",
-            ),
+            Reason::NoDisplay => f.write_str("winit's Wayland display handle is unavailable"),
             Reason::Destroyed => f.write_str("the compositor refused the handle"),
             Reason::BadXid => f.write_str("the parent X11 id names no window that can be a parent"),
             Reason::WindowClosed => f.write_str("the window is closed"),

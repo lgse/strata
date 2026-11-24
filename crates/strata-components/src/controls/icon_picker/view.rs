@@ -273,7 +273,8 @@ impl<S: 'static> IconPicker<S> {
             let body = self
                 .body(s, look, &m, columns)
                 .role("none")
-                .modal_tx(true, move |s: &mut S, tx: &mut Tx| dismiss.close(s, tx));
+                .modal_tx(true, move |s: &mut S, tx: &mut Tx| dismiss.close(s, tx))
+                .modal_wheel_outside(true);
             popover = popover.child(body);
         }
         row().child(popover.build(k, layer))

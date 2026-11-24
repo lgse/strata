@@ -62,7 +62,7 @@ If glib-rs binds `query` with a safe poll, this exception should be removed.
 
 Locations:
 
-- `crates/strata-platform/src/transfer/wayland/display.rs` (`wl_proxy_get_display` via `dlopen`/`dlsym`)
+- `crates/strata-platform/src/transfer/wayland/display.rs` (`Backend::from_foreign_display` and `ObjectId::from_ptr` on winit's Wayland handles)
 - `crates/strata-platform/src/transfer/pipe.rs` (`pipe2`, `fcntl`, `poll` via `libc`)
 - `crates/strata-platform/src/dnd/wayland.rs` (`memfd_create` for drag-icon shared memory)
 - `crates/strata-platform/src/media/pulse.rs` and `crates/strata-platform/src/media/alsa.rs` (`dlopen`/`dlsym` of `libpulse-simple` and `libasound` for zero-GStreamer Linux PCM audio output)

@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use rune::{Cx, El, Pixels, Tx};
+use rune::{Cx, El, ImageCache, Pixels, Tx};
 use strata_components::{
     code_view::highlight::CodeBlocks,
     document_view::{
@@ -92,8 +92,10 @@ struct TintedMedia {
 }
 
 impl TintedMedia {
-    fn apply(&self, palette: DiagramPalette) {
-        self.pixels.set(
+    fn apply(&self, palette: DiagramPalette, cache: Option<&ImageCache>) {
+        crate::shell::upload_rgba(
+            cache,
+            &self.pixels,
             self.width,
             self.height,
             tint_diagram_rgba(&self.raw, palette),
@@ -118,6 +120,7 @@ pub(super) struct RenderedDocument {
     pending: VecDeque<MediaTask>,
     running: usize,
     later: Later<App>,
+    image_cache: Option<Arc<ImageCache>>,
     palette: DiagramPalette,
     tinted: Vec<TintedMedia>,
 }
@@ -136,6 +139,7 @@ pub(super) struct DocumentSpec {
     pub(super) document_path: Option<PathBuf>,
     pub(super) blocks: CodeBlocks,
     pub(super) later: Later<App>,
+    pub(super) image_cache: Option<Arc<ImageCache>>,
     pub(super) palette: DiagramPalette,
 }
 
@@ -191,6 +195,7 @@ impl RenderedDocument {
             pending,
             running: 0,
             later: spec.later,
+            image_cache: spec.image_cache,
             palette: spec.palette,
             tinted: Vec::new(),
         }
@@ -207,8 +212,9 @@ impl RenderedDocument {
             return false;
         }
         self.palette = next;
+        let cache = self.image_cache.as_deref();
         for media in &self.tinted {
-            media.apply(next);
+            media.apply(next, cache);
         }
         !self.tinted.is_empty()
     }
@@ -238,6 +244,7 @@ impl RenderedDocument {
 
     fn install_media(&mut self, task: &MediaTask, width: u32, height: u32, raw: Vec<u8>) {
         let pixels = Pixels::new();
+        let cache = self.image_cache.as_deref();
         if is_tinted_media(&task.source) {
             let entry = TintedMedia {
                 width,
@@ -245,10 +252,10 @@ impl RenderedDocument {
                 raw,
                 pixels: pixels.clone(),
             };
-            entry.apply(self.palette);
+            entry.apply(self.palette, cache);
             self.tinted.push(entry);
         } else {
-            pixels.set(width, height, raw);
+            crate::shell::upload_rgba(cache, &pixels, width, height, raw);
         }
         self.state.set_media(task.unit, MediaState::Ready(pixels));
     }

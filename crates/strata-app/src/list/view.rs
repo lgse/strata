@@ -12,7 +12,7 @@ use strata_components::{
 use strata_kit::look::Look;
 
 use super::{List, VIEW, columns};
-use crate::{App, buttons, details, single, slots::Frame};
+use crate::{App, details, single, slots::Frame};
 
 pub(super) fn table(app: &App) -> ListTable<App> {
     ListTable::new(
@@ -143,8 +143,6 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     Some(single::group::<List>(app, body, Some(columns)))
 }
 
-const COLUMNS_BUTTON: &str = "list-columns-button";
-
 fn columns_button(app: &App, layer: &mut Vec<El>) -> El {
-    buttons::on_return_within(COLUMNS_BUTTON, table(app).columns_button(app, layer))
+    table(app).columns_button(app, layer)
 }
