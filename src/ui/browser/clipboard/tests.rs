@@ -548,6 +548,14 @@ fn cut_matches_gio_equivalent_representations() {
         std::slice::from_ref(&native),
         std::slice::from_ref(&Location::uri("file:///fixture/other"))
     ));
+    assert!(same_locations(
+        &[native.clone(), uri.clone()],
+        &[uri.clone(), native.clone()]
+    ));
+    assert!(!same_locations(
+        &[native.clone(), uri.clone()],
+        &[uri, Location::local("/fixture/second")]
+    ));
 }
 
 fn result_row(widget: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
@@ -702,7 +710,10 @@ fn row_marks_match_gio_equivalent_representations() {
 fn completed_moves_match_gio_equivalent_cut_entries() {
     let mut cut = vec![Location::local("/fixture/first")];
 
-    retain_untransferred(&mut cut, &[Location::uri("file:///fixture/first")]);
+    retain_untransferred(
+        &mut cut,
+        &LocationSet::new(&[Location::uri("file:///fixture/first")]),
+    );
 
     assert!(cut.is_empty());
 }
@@ -714,9 +725,41 @@ fn completed_moves_are_removed_from_the_cut_list() {
     let third = Location::local("/fixture/third");
     let mut cut = vec![first.clone(), second.clone(), third.clone()];
 
-    retain_untransferred(&mut cut, &[first, third]);
+    retain_untransferred(&mut cut, &LocationSet::new(&[first, third]));
 
     assert_eq!(cut, vec![second]);
+}
+
+#[test]
+fn large_cut_lists_reconcile_without_pairwise_comparison() {
+    let cut: Vec<_> = (0..20_000)
+        .map(|index| Location::local(format!("/fixture/large/{index:05}.png")))
+        .collect();
+    let mut pasted: Vec<_> = cut
+        .iter()
+        .rev()
+        .map(|location| {
+            let path = location.native_path().expect("native fixture");
+            Location::uri(gio::File::for_path(path).uri().to_string())
+        })
+        .collect();
+    let moved: Vec<_> = pasted.iter().step_by(2).cloned().collect();
+    set_shared_cut(&cut);
+
+    let started = std::time::Instant::now();
+    assert!(same_locations(&pasted, &cut));
+    retain_shared_untransferred(&LocationSet::new(&moved));
+    pasted[0] = Location::uri("file:///fixture/large/other.png");
+    assert!(!same_locations(&pasted, &cut));
+    let elapsed = started.elapsed();
+
+    let expected: Vec<_> = cut.iter().step_by(2).cloned().collect();
+    assert_eq!(shared_cut_locations(), expected);
+    assert!(
+        elapsed < Duration::from_secs(20),
+        "reconciling took {elapsed:?}"
+    );
+    clear_shared_marks();
 }
 
 #[test]

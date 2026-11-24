@@ -120,6 +120,7 @@ impl Browser {
         self.transfer_report.take();
         self.deletion_operation.set(false);
         self.deletion_permanent.set(false);
+        self.publish_queued_live_changes();
         self.deferred_file_operation_changes.borrow_mut().clear();
         self.operation_rescan_depths.borrow_mut().clear();
         self.restoration_operation.set(false);
