@@ -858,11 +858,9 @@ pub(super) fn wrap(
                     };
                     let items = eligible_results(
                         &browser,
-                        &state.session,
-                        &batch.query,
                         batch.items,
-                        batch.has_more,
-                        batch.candidates,
+                        batch.has_more.then_some(batch.candidates),
+                        |count| state.session.query_candidates(&batch.query, count),
                     );
                     let is_empty = items.is_empty();
                     state.set_empty_state(is_empty);
@@ -920,11 +918,9 @@ fn update_results(state: &State, items: Vec<SearchItem>, recursive: bool, keep_s
 
 pub(super) fn eligible_results(
     browser: &Browser,
-    handle: &super::search_session::SearchSession,
-    query: &str,
     items: Vec<SearchItem>,
-    has_more: bool,
-    candidates: usize,
+    more_candidates: Option<usize>,
+    extend: impl FnOnce(usize),
 ) -> Vec<SearchItem> {
     let items = items
         .into_iter()
@@ -933,8 +929,10 @@ pub(super) fn eligible_results(
         .collect::<Vec<_>>();
     // Type/folder predicates run on GTK's thread, after ranking but before the display cap.
     // Continue through lower-ranked candidates rather than starving eligible matches.
-    if has_more && items.len() < crate::services::SEARCH_RESULT_LIMIT {
-        handle.query_candidates(query, candidates.saturating_mul(2));
+    if let Some(candidates) = more_candidates
+        && items.len() < crate::services::SEARCH_RESULT_LIMIT
+    {
+        extend(candidates.saturating_mul(2));
     }
     items
 }

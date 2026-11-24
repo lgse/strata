@@ -6,6 +6,7 @@ mod geometry;
 mod image_conversion;
 mod layout;
 mod options;
+mod search;
 mod shortcuts;
 mod source;
 mod state;

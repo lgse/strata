@@ -40,7 +40,10 @@ pub(super) fn build_chooser_hosted(
         source.root_limit.is_some(),
     );
     let (footer, footer_holder) = chooser_footer(&view, &theme);
-    footer.set_chooser(chooser_reference(&request.kind));
+    footer.set_chooser(chooser_reference(
+        &request.kind,
+        source.root_limit.is_some(),
+    ));
 
     let details = ChooserDetails::build(&request, &filters, selected_filter, &source, &view);
     let actions = ChooserActions::build(&request, &theme);
@@ -62,6 +65,7 @@ pub(super) fn build_chooser_hosted(
         window: window.clone(),
         destination_host: host,
         view: view.clone(),
+        search: Default::default(),
         filename: details.filename.clone(),
         filename_selection: RefCell::new(Vec::new()),
         filename_edited: Cell::new(false),
@@ -809,7 +813,10 @@ pub(super) fn save_hints(
     Some(row)
 }
 
-pub(super) fn chooser_reference(kind: &ChooserKind) -> crate::ui::shortcut_reference::ChooserScope {
+pub(super) fn chooser_reference(
+    kind: &ChooserKind,
+    confined: bool,
+) -> crate::ui::shortcut_reference::ChooserScope {
     use crate::ui::shortcut_reference::{ChooserRequest, ChooserScope};
     let (request, multiple) = match kind {
         ChooserKind::Open {
@@ -823,7 +830,11 @@ pub(super) fn chooser_reference(kind: &ChooserKind) -> crate::ui::shortcut_refer
         ChooserKind::SaveFile { .. } => (ChooserRequest::SaveFile, false),
         ChooserKind::SaveFiles { .. } => (ChooserRequest::SaveFiles, false),
     };
-    ChooserScope { request, multiple }
+    ChooserScope {
+        request,
+        multiple,
+        confined,
+    }
 }
 
 pub(super) fn chooser_footer(

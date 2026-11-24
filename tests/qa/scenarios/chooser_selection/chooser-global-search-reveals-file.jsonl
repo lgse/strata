@@ -1,0 +1,22 @@
+{"scenario":"chooser-global-search-reveals-file","modes":["list"],"prefs":{"search_open_files_directly":true},"portal":true,"session_bus":true,"variants":[{"id":"default","vars":{"search_key":"ctrl+k"}},{"id":"tenxer-rebound","prefs":{"tenxer_mode":true,"keymap":{"tenxer":{"search":["<Control><Alt>k"]}}},"vars":{"search_key":"ctrl+alt+k"}}]}
+{"fs":{"path":"$home/reports","mkdir":true,"parents":true}}
+{"fs":{"path":"$home/reports/quarterly.txt","write":"summary"}}
+{"fs":{"path":"$home/reports/quarterly.png","write":"excluded"}}
+{"portal_open":"Find a report","options":{"current_folder":"$fixture","filters":[["Text",[[0,"*.txt"]]]]}}
+{"adopt":"Find a report","message":"the file chooser"}
+{"wait":{"present":{"row":"todo.txt"}},"message":"the original folder listing"}
+{"key":"$search_key"}
+{"wait":{"field":{"name":"Search files and folders…"}},"message":"the chooser search palette to take focus"}
+{"key":"Escape"}
+{"wait":{"absent":{"role":"text","name":"Search files and folders…"}},"message":"Escape to dismiss only search"}
+{"portal_response":{"done":false},"message":"the request to stay open after Escape"}
+{"key":"$search_key"}
+{"wait":{"field":{"name":"Search files and folders…"}},"message":"the search palette to reopen"}
+{"type":"quarterly"}
+{"wait":{"present":{"role":"label","name":"quarterly.txt"}},"message":"the text file outside the starting folder to be found"}
+{"expect":{"absent":{"role":"label","name":"quarterly.png"}},"message":"the active portal filter to exclude the PNG"}
+{"key":"Return"}
+{"wait":{"focused":"quarterly.txt"},"message":"the search hit to be revealed in its containing folder"}
+{"portal_response":{"done":false},"message":"revealing the file must not submit the request"}
+{"activate":{"role":"button","name":"Open"}}
+{"portal_response":{"done":true,"status":0,"paths":["$home/reports/quarterly.txt"]},"message":"Open to return the revealed file"}

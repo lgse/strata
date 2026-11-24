@@ -52,11 +52,9 @@ impl SearchBatches {
         };
         let items = crate::ui::inline_search::eligible_results(
             &browser,
-            &session,
-            &batch.query,
             batch.items,
-            batch.has_more,
-            batch.candidates,
+            batch.has_more.then_some(batch.candidates),
+            |count| session.query_candidates(&batch.query, count),
         );
         self.hits.hits.replace(ColumnHits {
             ranges: if self.scope.fuzzy() {

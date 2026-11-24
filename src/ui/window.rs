@@ -57,8 +57,8 @@ pub(crate) use device_lock::crypto_password_uuid_for_volume;
 #[cfg(test)]
 pub(super) use devices::offer_removable_destinations_for_test;
 pub(super) use devices::{
-    RemovableDestination, RemovableWatch, removable_destination_root, removable_destinations,
-    send_to_recent_folders, watch_removable_destinations,
+    RemovableDestination, RemovableWatch, global_search_roots, removable_destination_root,
+    removable_destinations, send_to_recent_folders, watch_removable_destinations,
 };
 pub(crate) use gio_devices::gio_volume_is_encrypted;
 pub(super) use gio_devices::gio_volume_unix_device;

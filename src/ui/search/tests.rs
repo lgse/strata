@@ -510,7 +510,7 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
             );
             let window = gtk::Window::builder().child(&dialog.widget()).build();
             window.present();
-            dialog.show(vec![home.clone(), usb.clone()], false);
+            dialog.show(vec![home.clone(), usb.clone()], false, None);
             assert_eq!(
                 dialog
                     .state
@@ -536,7 +536,7 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
                 assert!(row.tooltip_text().is_none());
             }
 
-            dialog.show(vec![home.clone()], false);
+            dialog.show(vec![home.clone()], false, None);
             assert!(dialog.state.visible_results.borrow().is_empty());
             assert!(dialog.state.field.tooltip_text().is_none());
             dialog.state.field.set_text("needle");
@@ -568,7 +568,7 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
             assert!(!dialog.state.truncated_hint.is_visible());
             assert!(dialog.state.truncated_hint.tooltip_text().is_none());
 
-            dialog.show(vec![home, usb.clone()], false);
+            dialog.show(vec![home, usb.clone()], false, None);
             dialog.state.field.set_text("needle");
             wait_until(|| dialog.state.visible_results.borrow().len() == 2);
             let usb_position = dialog
@@ -626,7 +626,7 @@ fn global_search_reads_saved_exclusions_before_settings_and_on_each_window_invoc
                     });
                 }
                 for (dialog, _) in &dialogs {
-                    dialog.show(vec![root.to_path_buf()], false);
+                    dialog.show(vec![root.to_path_buf()], false, None);
                     dialog.state.field.set_text("needle");
                     wait_until(|| {
                         !dialog.state.indexing_spinner.is_visible()
@@ -704,7 +704,7 @@ fn global_search_reads_saved_limits_before_settings_and_on_each_invocation() {
                     .as_ref()
                     .is_some_and(|current| current.shares_index_with(handle))
             };
-            dialog.show(vec![root.clone()], false);
+            dialog.show(vec![root.clone()], false, None);
             assert!(
                 dialog_shares(&unlimited),
                 "saved limits apply before Settings opens"
@@ -712,7 +712,7 @@ fn global_search_reads_saved_limits_before_settings_and_on_each_invocation() {
             manager.set_search_time_limit(10);
             manager.set_search_entry_limit(200_000);
             let capped = index_with_current_limits();
-            dialog.show(vec![root.clone()], false);
+            dialog.show(vec![root.clone()], false, None);
             assert!(
                 dialog_shares(&capped),
                 "a changed limit applies to the next search"

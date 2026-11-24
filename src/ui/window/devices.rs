@@ -908,7 +908,7 @@ fn device_mount_roots() -> Vec<PathBuf> {
     local_device_roots(volume_mounts, other_mounts)
 }
 
-pub(super) fn global_search_roots() -> Vec<PathBuf> {
+pub(in crate::ui) fn global_search_roots() -> Vec<PathBuf> {
     search_roots(&super::home_directory(), device_mount_roots())
 }
 

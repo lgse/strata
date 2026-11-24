@@ -1007,6 +1007,46 @@ fn save_name_and_location_do_not_dispatch_listing_shortcuts() {
 }
 
 #[test]
+fn global_search_enters_a_folder_without_submitting_the_save_name() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::keyboard::global_search_enters_a_folder_without_submitting_the_save_name",
+        || {
+            let destination = home_directory().join("report-archive");
+            std::fs::create_dir_all(&destination).expect("search destination");
+            let chooser = Chooser::open_configured(BrowserMode::List, &[], true, save_report);
+            chooser.state.edit_name();
+            let name = chooser.state.filename.as_ref().expect("Save name");
+            name.set_text("new-report.md");
+            assert!(chooser.press_with(Key::k, ModifierType::CONTROL_MASK));
+            let layer = visible_modal_layer(&chooser.state.window).expect("global search");
+            let field = widget_with_class(&layer, "search-field")
+                .and_downcast::<gtk::Entry>()
+                .expect("search field");
+            let results = widget_with_class(&layer, "search-results")
+                .and_downcast::<gtk::ListBox>()
+                .expect("search results");
+            field.set_text("report-archive");
+            wait_until(|| results.selected_row().is_some());
+            field.emit_activate();
+            wait_until(|| {
+                !layer.is_visible()
+                    && chooser.state.view.browser().active_location()
+                        == Some(Location::local(&destination))
+            });
+            assert!(chooser.open_request());
+            assert_eq!(name.text(), "new-report.md");
+            chooser.state.accept_button.emit_clicked();
+            assert_eq!(
+                chooser.chosen(),
+                [gio::File::for_path(destination.join("new-report.md"))
+                    .uri()
+                    .to_string()]
+            );
+        },
+    );
+}
+
+#[test]
 fn save_file_initial_name_selection_stops_before_the_dot() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::keyboard::save_file_initial_name_selection_stops_before_the_dot",

@@ -34,6 +34,8 @@ Image processing is cancellable and limited to 32 MiB input, 16 megapixels, 16,3
 
 Cancel or conversion failure leaves the chooser open without returning the incompatible original. Clicking Open again on the same URL reuses the downloaded file. Changing the name or selected filter invalidates pending image processing or confirmation. After successful conversion, both the cached original and the returned PNG remain in their temporary folders until the one-day sweep; closing the chooser does not remove either file.
 
+**Ctrl+K** opens the main window’s global search palette over Home and mounted local drives. Enter on a file reveals it in the chooser; Enter on a folder navigates there. Neither submits the request. Escape returns to the chooser without changing the selection. **Ctrl+F** remains the default folder filter, and confined device choosers do not offer global search.
+
 Folder-only requests hide regular files in both directory listings and recursive results. File requests keep folders available for navigation. Changing a file-type filter refreshes the current results without clearing the search query; selection and acceptance follow the new filter.
 
 In Save dialogs, selecting a file copies its name into the name input without accepting the dialog. Names that are not valid UTF-8 display with replacement characters, but Save still targets the selected file's exact name while the name input shows it unchanged. The automatic initial selection does not change the suggested name or destination. Selecting a folder changes the destination without changing the name. In Recent, select a file to save in its containing folder, or navigate to a local folder first.

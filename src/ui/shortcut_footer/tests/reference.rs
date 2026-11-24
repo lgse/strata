@@ -308,6 +308,7 @@ fn a_chooser_footer_refuses_unavailable_rows(manager: &PreferenceManager) {
     chooser.set_chooser(crate::ui::shortcut_reference::ChooserScope {
         request: crate::ui::shortcut_reference::ChooserRequest::Files,
         multiple: false,
+        confined: false,
     });
     let refused = reference_labels(&chooser);
     assert!(reference_pairs(
@@ -316,12 +317,12 @@ fn a_chooser_footer_refuses_unavailable_rows(manager: &PreferenceManager) {
         "Choose the file"
     ));
     assert!(has_label(&refused, "Toggle 10xer mode"));
+    assert!(reference_pairs(&refused, "Ctrl+K", "Open global search"));
     for unavailable in [
         "Yank / cut the selection, or the focused item",
         "Close the current window",
         "Toggle folder peek for the focused directory",
         "Toggle the focused item and move down",
-        "Open global search",
     ] {
         assert!(
             !has_label(&refused, unavailable),

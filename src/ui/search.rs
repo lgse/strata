@@ -18,6 +18,7 @@ use super::keys::{
     self, KeyPress,
     bindings::{DOWN, ENTER_ANY_SHIFT, ESCAPE_ANY, OPEN_CONTAINING_FOLDER, UP},
 };
+use crate::app::Browser;
 use crate::services::{
     NavigationHistory, SearchCoverage, SearchEvent, SearchHandle, SearchItem,
     index_trees_with_exclusions,
@@ -114,9 +115,16 @@ impl SearchDialog {
         self.state.layer.clone().upcast()
     }
 
-    pub fn show(&self, roots: Vec<PathBuf>, show_hidden: bool) {
+    pub(super) fn show_global(&self, chooser: Option<Rc<Browser>>) {
+        let show_hidden = chooser.as_ref().map_or_else(
+            || self.state.preferences.sort_preferences().show_hidden,
+            |browser| browser.preferences().show_hidden,
+        );
+        self.show(super::window::global_search_roots(), show_hidden, chooser);
+    }
+
+    fn show(&self, roots: Vec<PathBuf>, show_hidden: bool, chooser: Option<Rc<Browser>>) {
         self.state.generation.set(self.state.generation.get() + 1);
-        let generation = self.state.generation.get();
         self.state.search.borrow_mut().take();
         self.state.history.borrow_mut().take();
         reset_for_search(&self.state, &roots);
@@ -124,7 +132,7 @@ impl SearchDialog {
             show_no_locations(&self.state);
             return;
         }
-        start_search(&self.state, roots, show_hidden, generation);
+        start_search(&self.state, roots, show_hidden, chooser);
     }
 
     pub(crate) fn show_history(&self, history: Rc<NavigationHistory>) {
@@ -347,7 +355,13 @@ fn show_indexing(state: &SearchState, indexing: bool) {
     }
 }
 
-fn start_search(state: &Rc<SearchState>, roots: Vec<PathBuf>, show_hidden: bool, generation: u64) {
+fn start_search(
+    state: &Rc<SearchState>,
+    roots: Vec<PathBuf>,
+    show_hidden: bool,
+    chooser: Option<Rc<Browser>>,
+) {
+    let generation = state.generation.get();
     let exclusions = state.preferences.search_exclusions();
     let limits = state.preferences.search_limits();
     let (handle, receiver) = index_trees_with_exclusions(roots, show_hidden, exclusions, limits);
@@ -364,7 +378,7 @@ fn start_search(state: &Rc<SearchState>, roots: Vec<PathBuf>, show_hidden: bool,
             return glib::ControlFlow::Break;
         };
         if let Some(event) = latest {
-            apply_search_event(&state, event);
+            apply_search_event(&state, event, chooser.as_deref());
         }
         glib::ControlFlow::Continue
     });
@@ -383,13 +397,14 @@ fn latest_event(receiver: &Receiver<SearchEvent>) -> Result<Option<SearchEvent>,
     Ok(latest)
 }
 
-fn apply_search_event(state: &Rc<SearchState>, event: SearchEvent) {
+fn apply_search_event(state: &Rc<SearchState>, event: SearchEvent, chooser: Option<&Browser>) {
     let SearchEvent::Results {
         query,
         items,
         indexing,
         coverage,
-        ..
+        has_more,
+        candidates,
     } = event;
     show_indexing(state, indexing);
     let current = query == state.field.text().trim();
@@ -397,6 +412,20 @@ fn apply_search_event(state: &Rc<SearchState>, event: SearchEvent) {
         show_coverage(&state.truncated_hint, coverage);
     }
     if current && !query.is_empty() {
+        let items = if let Some(browser) = chooser {
+            super::inline_search::eligible_results(
+                browser,
+                items,
+                has_more.then_some(candidates),
+                |count| {
+                    if let Some(handle) = state.search.borrow().as_ref() {
+                        handle.query_candidates(&query, count);
+                    }
+                },
+            )
+        } else {
+            items
+        };
         render_results(state, items, indexing, coverage);
     }
 }
