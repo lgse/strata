@@ -4,6 +4,7 @@ use super::*;
 use crate::{
     adapters::{Births, FsOp, FsQuirks, Quirks, evict},
     services::{InodeNumbers, ItemIdentity},
+    test_support::MainContextGuard,
 };
 
 fn load_stamp(events: &[DirectoryEvent]) -> Option<DirectoryStamp> {
@@ -26,11 +27,21 @@ fn names_digest(events: &[DirectoryEvent]) -> Option<u64> {
 }
 
 fn listed_stamp(path: &Path) -> Result<DirectoryStamp, &'static str> {
-    load_stamp(&run_enumerate(listing_request(path, 100))).ok_or("no stamp")
+    listed_stamp_holding(&serial(), path)
+}
+
+fn listed_stamp_holding(
+    serial: &MainContextGuard<'_>,
+    path: &Path,
+) -> Result<DirectoryStamp, &'static str> {
+    load_stamp(&run_enumerate_holding(serial, listing_request(path, 100))).ok_or("no stamp")
 }
 
 fn probed_stamp(path: &Path) -> StampAnswer {
-    let _serial = serial();
+    probed_stamp_holding(&serial(), path)
+}
+
+fn probed_stamp_holding(_serial: &MainContextGuard<'_>, path: &Path) -> StampAnswer {
     let answer = Rc::new(RefCell::new(None));
     let slot = answer.clone();
     let _probe = LocalFileSource.probe_stamp(
@@ -191,14 +202,15 @@ fn a_load_reports_its_stamp_first_and_a_digest_of_its_names_last() -> Result<(),
 
 #[test]
 fn a_check_sees_a_change_the_attribute_cache_hides() -> Result<(), Box<dyn Error>> {
+    let real_clock = serial();
     for checked_by_a_load in [false, true] {
         let root = tempfile::tempdir()?;
         let share = root.path().join("share");
         fs::create_dir(&share)?;
         let _scope = FsQuirks::install(&share, Quirks::nfs42());
         let check = || match checked_by_a_load {
-            true => listed_stamp(&share),
-            false => Ok(stamp_of(probed_stamp(&share))),
+            true => listed_stamp_holding(&real_clock, &share),
+            false => Ok(stamp_of(probed_stamp_holding(&real_clock, &share))),
         };
 
         let baseline = check()?;
