@@ -44,7 +44,7 @@ pub(super) enum Placed {
     ReservedDirectory,
     RecreatedSymlink,
     OverReservedFile,
-    /// A plain rename of a folder to a name found free.
+    /// A plain rename to a name found free.
     AfterCheck,
 }
 

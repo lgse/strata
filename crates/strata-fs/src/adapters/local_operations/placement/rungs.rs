@@ -107,8 +107,8 @@ impl Rung<'_> {
     }
 
     fn over_reserved_name(&self, directory: bool) -> Result<Placed, PlaceError> {
-        if directory {
-            return self.folder_after_check();
+        if directory || self.mount.uploads_reservations_late() {
+            return self.after_check();
         }
         if self.mount.renames_over(self.placing.to.name) {
             return self.over_reserved_file();
@@ -302,7 +302,7 @@ impl Rung<'_> {
         let Placing { fs, from, to } = self.placing;
         if !self.mount.renames_folder_over(to.name) {
             return if self.mount.capabilities().no_replace == Some(false) {
-                self.folder_after_check()
+                self.after_check()
             } else {
                 Err(PlaceError::Unsupported)
             };
@@ -438,7 +438,7 @@ impl Rung<'_> {
         }
     }
 
-    fn folder_after_check(&self) -> Result<Placed, PlaceError> {
+    fn after_check(&self) -> Result<Placed, PlaceError> {
         let Placing { fs, from, to } = self.placing;
         if exists(fs, to)? {
             return Err(PlaceError::Exists);
