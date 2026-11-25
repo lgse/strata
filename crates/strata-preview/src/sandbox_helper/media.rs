@@ -283,9 +283,10 @@ pub(super) fn lower_background_priority(operation: &str) {
 
 fn ffmpeg_command(backend: &Backend) -> Command {
     let mut command = Command::new(&runtime::current().prlimit);
-    command.args(["--core=0", "--fsize=536870912"]);
+    command.arg("--core=0");
+    // GPU drivers reserve sparse memfds and large virtual ranges.
     if *backend == Backend::Software {
-        command.arg("--as=2147483648");
+        command.args(["--fsize=536870912", "--as=2147483648"]);
     }
     command.args([
         "--",
