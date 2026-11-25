@@ -667,6 +667,7 @@
   "Only relative local images are loaded; remote images are blocked for privacy": "僅載入相對路徑的本機圖片；為保護隱私，遠端圖片會被封鎖。",
   "Only used when running per item": "僅在逐項目執行時使用",
   "Only ~ and ~/ paths are supported for the current user's home directory.": "目前使用者的主目錄僅支援 ~ 與 ~/ 路徑。",
+  "A file:// URI must name a file on this computer. Use smb:// or sftp:// for another computer.": "file:// URI 必須指向這台電腦上的檔案。存取另一台電腦時，請使用 smb:// 或 sftp://。",
   "Open": "開啟",
   "Open AUR Update": "開啟 AUR 更新",
   "Open Files": "開啟檔案",

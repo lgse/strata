@@ -154,3 +154,65 @@ fn drop_targets_follow_drawn_columns_through_a_width_spring() {
         "first shrinking frame still hits column 0's drawn folder row past its 300 pt target"
     );
 }
+
+fn row_fill_in_column(rt: &Runtime<Host>, col_key: &str, id: EntryId) -> Option<rune::Color> {
+    let row_key = crate::collection::element::row_key(id);
+    let prefix = format!("{col_key}/");
+    let row = rt
+        .elements()
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some(row_key.as_str()) && e.path.contains(&prefix))?
+        .path;
+    let row_prefix = format!("{row}/");
+    rt.elements()
+        .into_iter()
+        .find(|e| e.path.starts_with(&row_prefix) && e.fill != rune::Color::TRANSPARENT)
+        .map(|e| e.fill)
+}
+
+#[test]
+fn open_ancestor_and_parent_folders_keep_distinct_fills_without_selection() {
+    use strata_kit::slots::collection::{active_parent_fill, active_path_fill};
+
+    let look = Look::fallback(false);
+    let mut state = Host {
+        sources: Sources(vec![listing(0), listing(1), listing(2)]),
+        columns: ColumnsState::new("t", Autoscroll::new()),
+        look,
+    };
+    let mut tx = Tx::default();
+    for depth in 0..3 {
+        let source = &state.sources.0[depth];
+        state.columns.push(
+            Opening::new(source, Listing::Complete),
+            Focus::No,
+            &state.look,
+            &mut tx,
+        );
+    }
+    state.columns.set_active(2, &state.look, &mut tx);
+    let mut rt = Runtime::new(state, view, (W, H), Env::new(false, 1.0));
+    rt.set_system_reduced_motion(false);
+    rt.frame(0.0);
+    for _ in 0..24 {
+        rt.frame(DT);
+    }
+
+    let col0 = rt.state.columns.column_key(0).expect("col 0");
+    let col1 = rt.state.columns.column_key(1).expect("col 1");
+    assert_eq!(
+        row_fill_in_column(&rt, &col0, EntryId::new(1)),
+        Some(active_path_fill(&rt.state.look)),
+        "open ancestor folder gets active_path_fill even when unselected"
+    );
+    assert_eq!(
+        row_fill_in_column(&rt, &col0, EntryId::new(2)),
+        None,
+        "ordinary unselected sibling has no fill"
+    );
+    assert_eq!(
+        row_fill_in_column(&rt, &col1, EntryId::new(101)),
+        Some(active_parent_fill(&rt.state.look)),
+        "immediate parent of active column gets active_parent_fill"
+    );
+}

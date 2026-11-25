@@ -6,7 +6,10 @@ use strata_components::{
     location_bar::{LocationIntent, Polled, Via},
 };
 use strata_core::model::Location;
-use strata_fs::services::{LocationValidationError, sanitize_uri_credentials};
+use strata_fs::{
+    app::typed_location_uri,
+    services::{LocationValidationError, sanitize_uri_credentials},
+};
 
 use crate::{
     App,
@@ -111,11 +114,11 @@ fn submit(app: &mut App, text: &str, tx: &mut Tx) {
     }
 }
 
-fn typed(text: &str) -> Result<String, LocationValidationError> {
-    if !text.contains("://") {
+pub(super) fn typed(text: &str) -> Result<String, LocationValidationError> {
+    let Some(uri) = typed_location_uri(text).filter(|uri| uri.contains("://")) else {
         return Ok(text.to_owned());
-    }
-    sanitize_uri_credentials(text).map(|(sanitized, _)| sanitized)
+    };
+    sanitize_uri_credentials(uri).map(|(sanitized, _)| sanitized)
 }
 
 /// The keyboard goes back to the shown view (`browser.focus_active()`).

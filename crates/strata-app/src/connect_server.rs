@@ -11,6 +11,7 @@ use strata_core::model::Location;
 use strata_fs::{
     adapters::{bookmarks, gio_file_for_location, location_for_file},
     app::BrowserEvent,
+    app::typed_location_uri,
     services::{LocationValidationError, sanitize_uri_credentials},
 };
 
@@ -229,10 +230,10 @@ fn complete_open(app: &mut App, location: Location, pin: bool, tx: &mut Tx) {
 }
 
 fn sanitize_input(input: &str) -> Result<String, LocationValidationError> {
-    if !input.contains("://") {
+    let Some(uri) = typed_location_uri(input).filter(|uri| uri.contains("://")) else {
         return Ok(input.to_owned());
-    }
-    sanitize_uri_credentials(input).map(|(sanitized, _)| sanitized)
+    };
+    sanitize_uri_credentials(uri).map(|(sanitized, _)| sanitized)
 }
 
 pub(super) fn clear_error(app: &mut App) {

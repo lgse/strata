@@ -686,6 +686,7 @@
   "Only relative local images are loaded; remote images are blocked for privacy": "読み込まれるのは相対パスのローカル画像のみです。リモート画像はプライバシー保護のためブロックされます",
   "Only used when running per item": "項目ごとに実行する場合のみ使用",
   "Only ~ and ~/ paths are supported for the current user's home directory.": "現在のユーザーのホームディレクトリには ~ と ~/ のパスのみ使用できます。",
+  "A file:// URI must name a file on this computer. Use smb:// or sftp:// for another computer.": "file:// URI には、このコンピューター上のファイルを指定してください。別のコンピューターには smb:// または sftp:// を使用してください。",
   "Open": "開く",
   "Open AUR Update": "AUR の更新を開く",
   "Open Files": "ファイルを開く",
