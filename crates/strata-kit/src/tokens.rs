@@ -279,6 +279,7 @@ const _: fn(Kit) = |Kit {
                         ring: _,
                         invalid_text: _,
                         forced: _,
+                        metrics: _,
                     }| {};
 
 macro_rules! colors {
