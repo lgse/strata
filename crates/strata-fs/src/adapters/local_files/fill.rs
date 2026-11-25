@@ -68,7 +68,7 @@ pub(super) fn unknown_update(location: &Location) -> MetadataUpdate {
     }
 }
 
-const COALESCE_BATCH_SIZE: usize = 32;
+const COALESCE_BATCH_SIZE: usize = 16;
 const COALESCE_WINDOW: Duration = Duration::from_millis(24);
 
 /// Batches cheap stat updates per worker before sending to the coalescing receiver.
@@ -241,7 +241,7 @@ async fn next_coalesced_batch(
     }
     let deadline = Instant::now() + COALESCE_WINDOW;
     loop {
-        loop {
+        while batch.len() < COALESCE_BATCH_SIZE {
             match rx.try_recv() {
                 Ok(more) => batch.extend(more),
                 Err(futures_channel::mpsc::TryRecvError::Empty) => break,
