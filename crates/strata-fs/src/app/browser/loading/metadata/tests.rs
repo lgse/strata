@@ -26,7 +26,7 @@ fn install_fill(fixture: &Fixture, full_sort: bool) -> RequestId {
         ViewportFill {
             depth: 0,
             directory_request: fixture.request(),
-            tokens: vec![(1, fixture.entry("beta").location)],
+            tokens: HashMap::from([(fixture.entry("beta").location, 1)]),
             include_icon_details: false,
         },
     );
@@ -194,7 +194,7 @@ fn positioned_updates_keep_token_membership_and_update_order() {
         ..update.clone()
     };
     let positioned = position_updates(
-        &[(1, fixture_location.clone()), (3, fixture_location)],
+        &HashMap::from([(fixture_location, 3)]),
         vec![update, other, later],
     );
     assert_eq!(positioned.len(), 2);

@@ -210,7 +210,9 @@ fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, l
         .cursor(Cursor::ResizeColumn)
         .a11y_hidden()
         .paint_order(1);
-    if overlaps_window_edge {
+    if overlaps_window_edge
+        && (st.edge_lit == Some(depth) || st.edge_hover == Some(depth) || resizing)
+    {
         handle = handle.raise();
     }
     handle = handle

@@ -320,6 +320,11 @@ impl PointerMachine {
         true
     }
 
+    /// Whether a slow-click rename timer is pending.
+    pub fn has_pending_rename(&self) -> bool {
+        self.rename.is_some()
+    }
+
     /// Runs a pending rename once its interval has passed. True when it renamed.
     pub fn tick(&mut self, now: f64, s: &mut dyn Surface) -> bool {
         let Some(pending) = self.rename else {

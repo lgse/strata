@@ -145,6 +145,7 @@ impl NavigationState {
             .map(|entry| entry.location.clone());
         column.preferences = preferences;
         column.metadata_positions = None;
+        column.location_index.take();
         if preferences.sort_key != SortKey::DeviceOrder {
             column.entries = sort_entries(std::mem::take(&mut column.entries), preferences);
             column.leftovers.take();

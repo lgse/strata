@@ -20,6 +20,11 @@ fn find(app: &App) -> Option<&str> {
         .flatten()
 }
 
+/// Whether 10xer mode currently highlights a find query on listing rows.
+pub(crate) fn has_find(app: &App) -> bool {
+    find(app).is_some()
+}
+
 /// `marks` with listing row `name`'s highlight (`highlight_listing_name`).
 pub(crate) fn listing_marks(app: &App, name: Option<&str>, mut marks: RowMarks) -> RowMarks {
     if let (Some(query), Some(name)) = (find(app), name) {

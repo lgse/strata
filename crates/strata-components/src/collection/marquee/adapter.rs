@@ -106,6 +106,10 @@ impl MarqueeController for Marquee {
         }
     }
 
+    fn needs_tick(&self) -> bool {
+        self.machine.is_active()
+    }
+
     fn reset(&mut self) {
         self.machine.reset();
     }

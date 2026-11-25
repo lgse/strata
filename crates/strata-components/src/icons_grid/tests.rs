@@ -270,3 +270,67 @@ fn caption_cache_with_hint_matches_unseeded_cut() {
         assert_eq!(cached, exact, "hinted cut differed for {name:?}");
     }
 }
+
+#[test]
+fn flush_thumbs_returns_false_when_visible_entries_have_no_thumbnails() {
+    use super::{IconsGrid, IconsGridState, IconsParts};
+    use crate::collection::element::{Collection, CollectionState};
+    use crate::contract::{EntryId, EntryKind, ListEntry, ListSource};
+    use crate::thumbnails::{Settings, ThumbnailStore, ViewerId};
+
+    struct Host {
+        source: ListSource,
+        collection: CollectionState,
+        grid: IconsGridState,
+        look: Look,
+        store: ThumbnailStore,
+        viewer: ViewerId,
+    }
+
+    let entries = (1..=20)
+        .map(|i| ListEntry::new(EntryId::new(i), format!("dir-{i}"), EntryKind::Folder, ""))
+        .collect();
+    let mut store = ThumbnailStore::new(Settings::default());
+    let viewer = store.viewer();
+    let mut host = Host {
+        source: ListSource::new(entries),
+        collection: CollectionState::new(),
+        grid: IconsGridState::new(),
+        look: Look::fallback(false),
+        store,
+        viewer,
+    };
+    host.grid.size.set(Some(64.0));
+    host.grid.pending_thumbs = Some(0..20);
+
+    let grid = IconsGrid::new(
+        "grid",
+        |_s: &Host| {
+            Collection::new(
+                "grid",
+                |s: &Host| (&s.source, &s.collection),
+                |s: &mut Host| (&s.source, &mut s.collection),
+                |s: &Host| &s.look,
+                |_s: &Host| 1,
+            )
+        },
+        |s: &Host| IconsParts {
+            source: &s.source,
+            collection: &s.collection,
+            grid: &s.grid,
+            size: 64.0,
+            listing: 1,
+            look: &s.look,
+            thumbs: Some((&s.store, s.viewer)),
+        },
+        |s: &mut Host| &mut s.grid,
+    )
+    .thumbs_mut(|s: &mut Host| Some((&mut s.store, s.viewer, &s.source)));
+
+    let mut tx = rune::Tx::default();
+    assert!(
+        !grid.poll(&mut host, &mut tx),
+        "flushing deferred thumbs for folders with no thumbnails should not force a view rebuild"
+    );
+    assert!(host.grid.pending_thumbs.is_none());
+}

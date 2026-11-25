@@ -65,6 +65,10 @@ impl PointerController for PointerIntent {
         }
     }
 
+    fn needs_tick(&self) -> bool {
+        self.machine.has_pending_rename()
+    }
+
     fn key_seen(&mut self, _input: &KeyInput<'_>) {
         self.machine.interrupt();
     }

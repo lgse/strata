@@ -128,6 +128,12 @@ impl FileProviders {
         let first = badges.first();
         let badge_key = first.map(|b| (b.provider.to_owned(), b.icon_id.to_owned()));
         let badge = first.map(|b| b.pixels.clone());
+        if badge_key.is_none() && description.is_empty() {
+            return self
+                .presented
+                .remove(&id)
+                .is_some_and(|entry| entry.is_decorated());
+        }
         let entry = self.presented.entry(id).or_default();
         if entry.badge_key == badge_key && entry.description == description {
             return false;
@@ -142,16 +148,15 @@ impl FileProviders {
 
     fn clear_unseen(&mut self, seen_ids: &HashSet<EntryId>) -> bool {
         let mut changed = false;
-        for (id, entry) in &mut self.presented {
-            if !seen_ids.contains(id) && entry.is_decorated() {
-                self.next_version += 1;
-                entry.version = self.next_version;
-                entry.badge_key = None;
-                entry.badge = None;
-                entry.description.clear();
+        self.presented.retain(|id, entry| {
+            if seen_ids.contains(id) {
+                return true;
+            }
+            if entry.is_decorated() {
                 changed = true;
             }
-        }
+            false
+        });
         changed
     }
 }

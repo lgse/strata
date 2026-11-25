@@ -12,8 +12,14 @@ use crate::collection::element::{Collection, Rest, RowCx};
 use crate::contract::Rect;
 
 pub(super) fn rows<S: 'static>(sh: &Rc<Shared<S>>, base: Collection<S>) -> Collection<S> {
-    let (delays, report, version, part, view) =
-        (sh.clone(), sh.clone(), sh.clone(), sh.clone(), sh.clone());
+    let (delays, report, version, part, view, active) = (
+        sh.clone(),
+        sh.clone(),
+        sh.clone(),
+        sh.clone(),
+        sh.clone(),
+        sh.clone(),
+    );
     let drawn = sh.clone();
     base.rest(
         Rest::new(
@@ -39,16 +45,19 @@ pub(super) fn rows<S: 'static>(sh: &Rc<Shared<S>>, base: Collection<S>) -> Colle
                 report.changed(s, change, tx);
             },
         )
-        .on_view(move |s: &mut S, v| {
-            let change = (view.get_mut)(s).view(&v);
-            if change == Change::None {
-                return false;
-            }
-            if let Some(f) = &view.on_change {
-                f(s, change, &mut rune::Tx::default());
-            }
-            true
-        })
+        .on_view_when(
+            move |s: &S| (active.get)(s).target().is_some(),
+            move |s: &mut S, v| {
+                let change = (view.get_mut)(s).view(&v);
+                if change == Change::None {
+                    return false;
+                }
+                if let Some(f) = &view.on_change {
+                    f(s, change, &mut rune::Tx::default());
+                }
+                true
+            },
+        )
         .part(
             move |s: &S, rcx: &RowCx<'_>| {
                 let mut h = std::hash::DefaultHasher::new();

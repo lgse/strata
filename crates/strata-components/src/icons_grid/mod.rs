@@ -469,8 +469,7 @@ fn flush_thumbs<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S, tx: &mut Tx) -> b
     let Some(range) = ready else {
         return false;
     };
-    let _ = sync_thumbs(shared, s, Some(range));
-    true
+    sync_thumbs(shared, s, Some(range))
 }
 
 fn sync_thumbs<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S, range: Option<Range<usize>>) -> bool {

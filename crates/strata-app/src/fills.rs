@@ -276,7 +276,7 @@ impl Fills {
     }
 
     fn due(&mut self, depth: usize, listing: &Column) -> bool {
-        let seen = (depth, listing.location().clone(), listing.version());
+        let seen = (depth, listing.location().clone(), listing.key_version());
         let same_folder = self
             .seen
             .as_ref()

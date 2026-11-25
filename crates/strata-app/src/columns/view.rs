@@ -103,12 +103,14 @@ pub(crate) fn row_marks(app: &App, depth: usize, id: EntryId) -> RowMarks {
     let marks = filter::marks(app, depth, id);
     let marks = if app.columns.shows_hits(depth) {
         highlight::hit_marks(app, id, marks)
-    } else {
+    } else if highlight::has_find(app) {
         let row = app
             .columns
             .listing(depth)
             .and_then(|column| column.row_of(id));
         highlight::listing_marks(app, row.map(crate::listing::Row::name), marks)
+    } else {
+        marks
     };
     crate::dnd::with_marks(app, id, crate::clipboard::with_marks(app, id, marks))
 }

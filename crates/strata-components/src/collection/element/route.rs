@@ -764,8 +764,12 @@ pub(super) fn on_visible<S: 'static>(
     if st.pending.is_some() && (st.scroll.get() - st.pending_offset).abs() > 0.5 {
         st.pending = None;
     }
-    let rest = match cfg.rest.as_ref().and_then(|r| r.view.as_ref()) {
-        Some(f) => {
+    let rest = match cfg.rest.as_ref().and_then(|r| {
+        let f = r.view.as_ref()?;
+        Some((r.view_active.as_ref(), f))
+    }) {
+        Some((active, f)) if active.is_none_or(|check| check(s)) => {
+            let src = (cfg.get)(s).0;
             let visible = range.clone().map(|i| src.id_at(i)).collect();
             let view = super::RestView {
                 collection: cfg.key.clone(),
@@ -773,7 +777,7 @@ pub(super) fn on_visible<S: 'static>(
             };
             f(s, view)
         }
-        None => false,
+        _ => false,
     };
     let host = match &cfg.on_visible {
         Some(f) => f(s, range),

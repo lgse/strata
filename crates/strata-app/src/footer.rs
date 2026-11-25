@@ -39,8 +39,8 @@ impl Part for Footer {
         Some(count::listener())
     }
 
-    fn poll(app: &mut App, _: f64, _: &mut Tx) -> bool {
-        count::poll(app)
+    fn poll(app: &mut App, clock: f64, _: &mut Tx) -> bool {
+        count::poll(app, clock)
     }
 }
 

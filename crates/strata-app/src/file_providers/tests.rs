@@ -175,6 +175,54 @@ fn badges_sort_by_priority_descending_then_provider_id_ascending() {
 }
 
 #[test]
+fn presented_skips_undecorated_rows_and_prunes_unseen_entries() {
+    let mut state = FileProviders {
+        later: crate::slots::Inbox::new().later(),
+        started: true,
+        timer: None,
+        hub: Hub::new(),
+        open_menu: OpenMenu::default(),
+        presented: HashMap::new(),
+        next_version: 0,
+    };
+    let mut provider = dummy_provider("example", "Example Cloud");
+    let decorated_path = "/work/synced.txt".to_owned();
+    provider.cache.insert(
+        decorated_path.clone(),
+        Answer {
+            at: Instant::now(),
+            generation: 0,
+            value: Decoration {
+                path: decorated_path.clone(),
+                badge: Some("badge".to_owned()),
+                description: "Synced".to_owned(),
+                priority: 1,
+            },
+        },
+    );
+    state.hub.providers = vec![provider];
+
+    let plain: Vec<(EntryId, String)> = (1..=100)
+        .map(|n| (EntryId::new(n), format!("/work/plain-{n}")))
+        .collect();
+    assert!(!state.update_presentations(&plain));
+    assert!(
+        state.presented.is_empty(),
+        "undecorated rows must not accumulate in presented"
+    );
+
+    let synced_id = EntryId::new(200);
+    assert!(state.update_presentations(&[(synced_id, decorated_path)]));
+    assert_eq!(state.presented.len(), 1);
+
+    assert!(state.update_presentations(&plain));
+    assert!(
+        state.presented.is_empty(),
+        "scrolled-away decorated rows must be pruned from presented"
+    );
+}
+
+#[test]
 fn open_menu_replaces_context_token_in_place_without_rebuilding() {
     let providers = vec![dummy_provider("example", "Example Cloud")];
     let (mut open_menu, mut menu_state) = open_fixture_menu(&providers);

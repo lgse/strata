@@ -121,6 +121,10 @@ impl PointerController for AutoscrollPointer {
         }
     }
 
+    fn needs_tick(&self) -> bool {
+        self.inner.as_ref().is_some_and(|p| p.needs_tick())
+    }
+
     fn key_seen(&mut self, input: &KeyInput<'_>) {
         if let Some(p) = self.inner.as_mut() {
             p.key_seen(input);

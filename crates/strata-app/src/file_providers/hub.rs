@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::mpsc,
     time::{Duration, Instant},
 };
@@ -178,8 +178,9 @@ impl Provider {
                 },
             );
         }
+        let requested: HashSet<&str> = paths.iter().map(String::as_str).collect();
         for decoration in decorations {
-            if paths.contains(&decoration.path) {
+            if requested.contains(decoration.path.as_str()) {
                 self.cache.insert(
                     decoration.path.clone(),
                     Answer {

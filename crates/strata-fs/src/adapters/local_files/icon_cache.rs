@@ -5,7 +5,7 @@ use super::*;
 
 pub(super) const MAX_ICON_DETAILS_CACHE_ENTRIES: usize = 10_000;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct IconDetailsFingerprint {
     pub(super) size: u64,
     pub(super) modified_seconds: i64,
@@ -23,6 +23,31 @@ impl IconDetailsFingerprint {
             modified_nanoseconds: metadata.mtime_nsec(),
             changed_seconds: metadata.ctime(),
             changed_nanoseconds: metadata.ctime_nsec(),
+        })
+    }
+
+    pub(super) fn from_info(info: &gio::FileInfo) -> Option<Self> {
+        if !info.has_attribute(gio::FILE_ATTRIBUTE_STANDARD_SIZE)
+            || !info.has_attribute(gio::FILE_ATTRIBUTE_TIME_MODIFIED)
+            || !info.has_attribute("time::modified-nsec")
+            || !info.has_attribute(gio::FILE_ATTRIBUTE_TIME_CHANGED)
+            || !info.has_attribute("time::changed-nsec")
+        {
+            return None;
+        }
+        let size = u64::try_from(info.size()).ok()?;
+        let modified_seconds =
+            i64::try_from(info.attribute_uint64(gio::FILE_ATTRIBUTE_TIME_MODIFIED)).ok()?;
+        let modified_nanoseconds = i64::from(info.attribute_uint32("time::modified-nsec"));
+        let changed_seconds =
+            i64::try_from(info.attribute_uint64(gio::FILE_ATTRIBUTE_TIME_CHANGED)).ok()?;
+        let changed_nanoseconds = i64::from(info.attribute_uint32("time::changed-nsec"));
+        Some(Self {
+            size,
+            modified_seconds,
+            modified_nanoseconds,
+            changed_seconds,
+            changed_nanoseconds,
         })
     }
 

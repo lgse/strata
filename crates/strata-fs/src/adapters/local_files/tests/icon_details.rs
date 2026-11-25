@@ -324,3 +324,64 @@ fn cancelled_or_withheld_media_details_are_not_cached_as_unavailable() {
         );
     }
 }
+
+#[test]
+fn fingerprint_from_file_info_matches_filesystem_metadata() {
+    let root = tempfile::tempdir().expect("fixture directory");
+    let file = root.path().join("sample.txt");
+    fs::write(&file, b"hello").expect("sample file");
+    let dir = root.path().join("subdir");
+    fs::create_dir(&dir).expect("subdir");
+    for path in [&file, &dir] {
+        let info = gio::File::for_path(path)
+            .query_info(
+                METADATA_ATTRIBUTES,
+                gio::FileQueryInfoFlags::NONE,
+                None::<&gio::Cancellable>,
+            )
+            .expect("file info");
+        assert_eq!(
+            IconDetailsFingerprint::from_info(&info),
+            IconDetailsFingerprint::read(path),
+            "{path:?}"
+        );
+    }
+}
+
+#[test]
+fn parallel_fill_coalesces_folder_detail_updates() {
+    let root = tempfile::tempdir().expect("fixture directory");
+    let entries: Vec<Location> = (0..16)
+        .map(|i| {
+            let dir = root.path().join(format!("dir-{i:02}"));
+            fs::create_dir(&dir).expect("subdir");
+            Location::local(dir)
+        })
+        .collect();
+    let events = run_fill(MetadataRequest {
+        id: RequestId(1),
+        entries,
+        full: false,
+        include_icon_details: true,
+        time_budget: Duration::from_secs(10),
+    });
+    assert_eq!(fill_outcome(&events), COMPLETE);
+    let filled_events = events
+        .iter()
+        .filter(|event| matches!(event, DirectoryEvent::MetadataFilled { .. }))
+        .count();
+    assert!(
+        filled_events <= 4,
+        "expected coalesced MetadataFilled events for 16 folders, got {filled_events}"
+    );
+    let counted = events
+        .iter()
+        .filter_map(|event| match event {
+            DirectoryEvent::MetadataFilled { updates, .. } => Some(updates.iter()),
+            _ => None,
+        })
+        .flatten()
+        .filter(|update| update.child_count == MetadataValue::Known(0))
+        .count();
+    assert_eq!(counted, 16, "all 16 folders should report child_count=0");
+}
