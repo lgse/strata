@@ -12,13 +12,17 @@ fn built() -> Bar {
 }
 use rune::ScrollPos;
 
-fn pos(offset: f32, max: f32, h: f32) -> ScrollPos {
+fn pos_in(w: f32, offset: f32, max: f32, h: f32) -> ScrollPos {
     let mut p = ScrollPos::default();
     p.offset = [0.0, offset];
     p.max = [0.0, max];
-    p.viewport = [800.0, h];
+    p.viewport = [w, h];
     p.drawn = p.viewport;
     p
+}
+
+fn pos(offset: f32, max: f32, h: f32) -> ScrollPos {
+    pos_in(800.0, offset, max, h)
 }
 
 #[test]
@@ -96,59 +100,54 @@ fn all_bar_looks_share_the_same_default_resting_width() {
     }
 }
 
-#[test]
-fn hover_expands_bar_inward_tracks_scroll_and_contracts_on_leave() {
-    let mut look = Look::fallback(false);
-    look.slots.scroll.hover_width = Some(16.0);
-    let bar = Bar::new();
-    let _ = bar.build::<()>("bar", "viewport", BarLook::listing(&look));
-    bar.follow(pos(0.0, 5000.0, 600.0));
-
-    let rest_band = bar.0.band.get();
-    let rest_trough = bar.0.trough.get();
-    let rest_thumb = bar.0.thumb.get();
-    assert_eq!(rest_band[2], 4.0);
-    assert_eq!(rest_trough[2], 4.0);
-    assert_eq!(rest_thumb[2], 4.0);
-    let outer_edge = rest_band[0] + rest_band[2];
-
-    bar.0.hover(true);
-    let hovered_band = bar.0.band.get();
-    let hovered_trough = bar.0.trough.get();
-    let hovered_thumb = bar.0.thumb.get();
-    assert_eq!(hovered_band[2], 16.0);
-    assert_eq!(hovered_band[0] + hovered_band[2], outer_edge);
-    assert_eq!(hovered_trough[2], 16.0);
-    assert_eq!(hovered_thumb[2], 16.0);
-
-    // Scroll tracking updates thumb position immediately while staying expanded.
-    bar.follow(pos(2500.0, 5000.0, 600.0));
-    let scrolled_thumb = bar.0.thumb.get();
-    assert!(scrolled_thumb[1] > hovered_thumb[1]);
-    assert_eq!(scrolled_thumb[2], 16.0);
-
-    bar.0.hover(false);
-    assert_eq!(bar.0.band.get()[2], 4.0);
-    assert_eq!(bar.0.trough.get()[2], 4.0);
-    assert_eq!(bar.0.thumb.get()[2], 4.0);
+fn assert_vertical_spans(bar: &Bar, band: (f32, f32), trough: (f32, f32), thumb_w: f32) {
+    let b = bar.0.band.get();
+    let t = bar.0.trough.get();
+    assert_eq!((b[0], b[2]), band);
+    assert_eq!(
+        (b[0] + t[0], t[2], bar.0.thumb.get()[2]),
+        (trough.0, trough.1, thumb_w),
+    );
 }
 
-#[test]
-fn runtime_drag_keeps_expanded_width_until_release_and_overrides_grab_cursor() {
-    struct Host {
-        bar: Bar,
-        look: Look,
-    }
+fn assert_strip_spans(bar: &Bar, band: (f32, f32), backdrop: (f32, f32), trough: (f32, f32)) {
+    let b = bar.0.band.get();
+    let bg = bar.0.backdrop.get();
+    let t = bar.0.trough.get();
+    assert_eq!((b[1], b[3]), band);
+    assert_eq!((b[1] + bg[1], bg[3]), backdrop);
+    assert_eq!(
+        (b[1] + t[1], t[3], bar.0.thumb.get()[3]),
+        (trough.0, trough.1, trough.1),
+    );
+}
 
+fn assert_zero_length(bar: &Bar, len_idx: usize) {
+    assert!(!bar.overflows());
+    assert_eq!(
+        (
+            bar.0.band.get()[len_idx],
+            bar.0.backdrop.get()[len_idx],
+            bar.0.trough.get()[len_idx],
+        ),
+        (0.0, 0.0, 0.0),
+    );
+}
+
+struct RuntimeHost {
+    bar: Bar,
+    look: Look,
+}
+
+fn hover_runtime(hover_width: Option<f32>) -> rune::Runtime<RuntimeHost> {
     let mut look = Look::fallback(false);
     look.animations = false;
-    look.slots.scroll.hover_width = Some(16.0);
+    look.slots.scroll.hover_width = hover_width;
     let bar = Bar::new();
     bar.set_mode(BarMode::Always);
-
     let mut rt = rune::Runtime::new(
-        Host { bar, look },
-        |h: &Host, _: &mut rune::Cx<Host>| {
+        RuntimeHost { bar, look },
+        |h: &RuntimeHost, _: &mut rune::Cx<RuntimeHost>| {
             let content = rune::col().w_full().h(2000.0);
             let viewport = rune::col()
                 .key("vp")
@@ -159,7 +158,9 @@ fn runtime_drag_keeps_expanded_width_until_release_and_overrides_grab_cursor() {
                 })
                 .on_scroll_offset(h.bar.watch())
                 .child(content);
-            let bar_el = h.bar.build::<Host>("bar", "vp", BarLook::app(&h.look));
+            let bar_el = h
+                .bar
+                .build::<RuntimeHost>("bar", "vp", BarLook::app(&h.look));
             rune::col()
                 .w_full()
                 .h_full()
@@ -173,31 +174,61 @@ fn runtime_drag_keeps_expanded_width_until_release_and_overrides_grab_cursor() {
     for _ in 0..4 {
         rt.frame(0.016);
     }
-    assert_eq!(rt.state.bar.0.band.get()[2], 4.0);
+    rt
+}
+
+#[test]
+fn hover_expands_bar_inward_tracks_scroll_and_contracts_on_leave() {
+    let mut look = Look::fallback(false);
+    look.slots.scroll.hover_width = Some(16.0);
+    let bar = Bar::new();
+    let _ = bar.build::<()>("bar", "viewport", BarLook::listing(&look));
+    bar.follow(pos_in(300.0, 0.0, 5000.0, 600.0));
+    assert_vertical_spans(&bar, (284.0, 16.0), (296.0, 4.0), 4.0);
+
+    bar.0.hover(true);
+    assert_vertical_spans(&bar, (284.0, 16.0), (284.0, 16.0), 16.0);
+    let hovered_thumb_y = bar.0.thumb.get()[1];
+
+    // Scroll tracking updates thumb position immediately while staying expanded.
+    bar.follow(pos_in(300.0, 2500.0, 5000.0, 600.0));
+    let scrolled_thumb = bar.0.thumb.get();
+    assert!(scrolled_thumb[1] > hovered_thumb_y);
+    assert_eq!(scrolled_thumb[2], 16.0);
+
+    bar.0.hover(false);
+    assert_vertical_spans(&bar, (284.0, 16.0), (296.0, 4.0), 4.0);
+}
+
+#[test]
+fn runtime_drag_keeps_expanded_width_until_release_and_overrides_grab_cursor() {
+    let mut rt = hover_runtime(Some(16.0));
+    assert_vertical_spans(&rt.state.bar, (284.0, 16.0), (296.0, 4.0), 4.0);
 
     // Over the viewport itself, the parent's Grab cursor applies.
     rt.pointer_move(100.0, 100.0);
     rt.frame(0.016);
     assert_eq!(rt.cursor(), rune::Cursor::Grab);
 
-    // Moving onto the scrollbar expands it inward and resets the cursor to Default.
-    rt.pointer_move(298.0, 20.0);
+    // Entering the expanded hit zone (284..300), outside the 4 px collapsed bar (296..300),
+    // immediately triggers hover expansion and switches the cursor to Default.
+    rt.pointer_move(286.0, 20.0);
     rt.frame(0.016);
-    assert_eq!(rt.state.bar.0.band.get()[2], 16.0);
+    assert_vertical_spans(&rt.state.bar, (284.0, 16.0), (284.0, 16.0), 16.0);
     assert_eq!(rt.cursor(), rune::Cursor::Default);
 
-    // Starting a drag and moving the pointer away keeps the bar expanded until release.
-    rt.pointer_down(298.0, 20.0);
+    // Starting a drag inside the expanded hit zone and dragging away keeps the bar expanded until release.
+    rt.pointer_down(286.0, 20.0);
     rt.frame(0.016);
     rt.pointer_move(100.0, 100.0);
     rt.frame(0.016);
     assert!(rt.state.bar.is_dragging());
-    assert_eq!(rt.state.bar.0.band.get()[2], 16.0);
+    assert_vertical_spans(&rt.state.bar, (284.0, 16.0), (284.0, 16.0), 16.0);
 
     rt.pointer_up(100.0, 100.0);
     rt.frame(0.016);
     assert!(!rt.state.bar.is_dragging());
-    assert_eq!(rt.state.bar.0.band.get()[2], 4.0);
+    assert_vertical_spans(&rt.state.bar, (284.0, 16.0), (296.0, 4.0), 4.0);
 }
 
 #[test]
@@ -228,28 +259,42 @@ fn horizontal_bar_expands_upward_from_bottom_edge() {
     p.viewport = [800.0, 400.0];
     p.drawn = p.viewport;
     bar.follow(p);
-
-    let rest_band = bar.0.band.get();
-    let bottom_edge = rest_band[1] + rest_band[3];
-    assert_eq!(bar.0.trough.get()[3], 4.0);
+    assert_strip_spans(&bar, (380.0, 20.0), (390.0, 10.0), (393.0, 4.0));
 
     bar.0.hover(true);
-    let expanded_band = bar.0.band.get();
-    assert_eq!(bar.0.trough.get()[3], 14.0);
-    assert_eq!(bar.0.thumb.get()[3], 14.0);
-    assert_eq!(expanded_band[1] + expanded_band[3], bottom_edge);
+    assert_strip_spans(&bar, (380.0, 20.0), (380.0, 20.0), (383.0, 14.0));
 
     bar.release();
-    assert_eq!(bar.0.trough.get()[3], 4.0);
-    assert_eq!(bar.0.band.get(), rest_band);
+    assert_strip_spans(&bar, (380.0, 20.0), (390.0, 10.0), (393.0, 4.0));
+}
+
+#[test]
+fn non_overflowing_expandable_bar_has_zero_hit_length() {
+    let mut look = Look::fallback(false);
+    look.slots.scroll.hover_width = Some(16.0);
+
+    let vertical = Bar::new();
+    let _ = vertical.build::<()>("vbar", "viewport", BarLook::app(&look));
+    vertical.follow(pos_in(300.0, 0.0, 0.0, 200.0));
+    assert_zero_length(&vertical, 3);
+
+    let horizontal = Bar::new();
+    let _ = horizontal.build::<()>("hbar", "viewport", BarLook::strip(&look));
+    let mut p = ScrollPos::default();
+    p.viewport = [800.0, 400.0];
+    p.drawn = p.viewport;
+    horizontal.follow(p);
+    assert_zero_length(&horizontal, 2);
 }
 
 #[test]
 fn unset_or_narrower_hover_thickness_keeps_rest_width() {
-    // Default (None): hovering leaves width unchanged.
+    // Default (None): hovering leaves width unchanged and band matches rest width.
     let bar = built();
     bar.follow(pos(0.0, 5000.0, 600.0));
     let rest_band = bar.0.band.get();
+    assert_eq!(rest_band[2], 4.0);
+    assert_eq!(bar.0.trough.get()[0], 0.0);
     bar.0.hover(true);
     assert_eq!(bar.0.band.get(), rest_band);
 
@@ -262,13 +307,14 @@ fn unset_or_narrower_hover_thickness_keeps_rest_width() {
         let listing_bar = Bar::new();
         let _ = listing_bar.build::<()>("bar", "viewport", BarLook::listing(&look));
         listing_bar.follow(pos(0.0, 5000.0, 600.0));
+        assert_eq!(listing_bar.0.band.get()[2], 9.0);
         listing_bar.0.hover(true);
         assert_eq!(listing_bar.0.band.get()[2], 9.0);
         assert_eq!(listing_bar.0.trough.get()[2], 9.0);
         assert_eq!(listing_bar.0.thumb.get()[2], 7.0);
     }
 
-    // Live restyle while hovered updates the expanded width immediately.
+    // Live restyle while hovered updates both hit band and visual width immediately.
     let mut look = Look::fallback(false);
     look.slots.scroll.hover_width = Some(12.0);
     let live_bar = Bar::new();
@@ -276,12 +322,15 @@ fn unset_or_narrower_hover_thickness_keeps_rest_width() {
     live_bar.follow(pos(0.0, 5000.0, 600.0));
     live_bar.0.hover(true);
     assert_eq!(live_bar.0.band.get()[2], 12.0);
+    assert_eq!(live_bar.0.trough.get()[2], 12.0);
 
     look.slots.scroll.hover_width = Some(20.0);
     let _ = live_bar.build::<()>("bar", "viewport", BarLook::app(&look));
     assert_eq!(live_bar.0.band.get()[2], 20.0);
+    assert_eq!(live_bar.0.trough.get()[2], 20.0);
 
     look.slots.scroll.hover_width = None;
     let _ = live_bar.build::<()>("bar", "viewport", BarLook::app(&look));
     assert_eq!(live_bar.0.band.get()[2], 4.0);
+    assert_eq!(live_bar.0.trough.get()[2], 4.0);
 }
