@@ -143,7 +143,7 @@ impl EntryDeletion {
             self.expected,
             in_deleted_folder,
         )
-        .map_err(|message| LocalDeleteError::failed(message, self.child_path()))
+        .map_err(|error| error.at(self.child_path()))
     }
 
     fn child_path(&self) -> Option<PathBuf> {
@@ -237,18 +237,13 @@ fn refuse_directory(
 ) {
     let open = matches!(refused, Refused::StillOpen(_));
     let still_open = open.then(|| leftovers::still_open(fs(), folder)).flatten();
-    let message = rust_i18n::t!(
-        "Could not delete “%{name}”: %{error}",
-        name = removal.name.to_string_lossy(),
-        error = still_open.map_or_else(
-            || os_error_detail(refused.errno()),
-            crate::services::error_detail
-        )
-    )
-    .into_owned();
+    let reason = still_open.map_or_else(
+        || os_error_detail(refused.errno()),
+        crate::services::error_detail,
+    );
     let relative =
         (!removal.relative.as_os_str().is_empty()).then(|| removal.relative.to_path_buf());
-    let error = LocalDeleteError::failed(message, relative);
+    let error = LocalDeleteError::refused(&removal.name, reason).at(relative);
     // A folder kept only by open files leaves its parent in place but nothing else, so
     // what the delete removes does not depend on which worker reached it first.
     if open {

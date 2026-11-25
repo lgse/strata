@@ -10,7 +10,8 @@ use crate::{
     ui::{
         browser::ViewState,
         modal::{
-            DeleteRetry, show_delete_error_dialog, show_error_dialog, show_partial_failure_dialog,
+            DeleteErrorAction, show_delete_error_dialog, show_error_dialog,
+            show_partial_failure_dialog,
         },
     },
 };
@@ -32,7 +33,7 @@ impl ViewState {
             (retry.run)(self, retry.entries);
             return;
         }
-        let reveal = blocker.map(|blocker| self.delete_blocker_action(blocker));
+        let reveal = blocker.map(|blocker| self.delete_reveal_action(blocker));
         let retry = (!retry.entries.is_empty()).then(|| self.delete_retry_action(retry));
         if reveal.is_none() && retry.is_none() {
             show_partial_failure_dialog(&self.overlay, message);
@@ -41,9 +42,9 @@ impl ViewState {
         }
     }
 
-    fn delete_retry_action(self: &Rc<Self>, retry: DeleteErrorRetry) -> DeleteRetry {
+    fn delete_retry_action(self: &Rc<Self>, retry: DeleteErrorRetry) -> DeleteErrorAction {
         let weak = Rc::downgrade(self);
-        DeleteRetry {
+        DeleteErrorAction {
             label: super::delete_retry_label(&retry.entries),
             run: Rc::new(move || {
                 if let Some(state) = weak.upgrade() {
@@ -53,13 +54,16 @@ impl ViewState {
         }
     }
 
-    fn delete_blocker_action(self: &Rc<Self>, blocker: DeleteBlocker) -> Rc<dyn Fn()> {
+    fn delete_reveal_action(self: &Rc<Self>, blocker: DeleteBlocker) -> DeleteErrorAction {
         let weak = Rc::downgrade(self);
-        Rc::new(move || {
-            if let Some(state) = weak.upgrade() {
-                state.reveal_delete_blocker(blocker.clone());
-            }
-        })
+        DeleteErrorAction {
+            label: reveal_label(&blocker),
+            run: Rc::new(move || {
+                if let Some(state) = weak.upgrade() {
+                    state.reveal_delete_blocker(blocker.clone());
+                }
+            }),
+        }
     }
 
     fn reveal_delete_blocker(self: &Rc<Self>, blocker: DeleteBlocker) {
@@ -84,3 +88,15 @@ impl ViewState {
         });
     }
 }
+
+fn reveal_label(blocker: &DeleteBlocker) -> String {
+    match blocker.child.file_name() {
+        Some(name) if blocker.one_of_several => {
+            rust_i18n::t!("Show “%{name}” in Folder", name = name.to_string_lossy()).into_owned()
+        }
+        _ => crate::i18n::tr("Show in Folder"),
+    }
+}
+
+#[cfg(test)]
+mod tests;

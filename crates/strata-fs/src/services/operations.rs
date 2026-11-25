@@ -525,8 +525,10 @@ pub enum PasswordFailure {
 /// A nested native entry reported by a failed deletion.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeleteBlocker {
-    pub(crate) root: PathBuf,
-    pub(crate) child: PathBuf,
+    pub root: PathBuf,
+    pub child: PathBuf,
+    /// Whether the message lists other failures too, so an action has to name this one.
+    pub one_of_several: bool,
 }
 
 #[derive(Clone, Debug)]

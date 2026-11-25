@@ -310,7 +310,7 @@ impl Progress {
 #[derive(Default)]
 struct Outcome {
     errors: Vec<String>,
-    blocker: Option<DeleteBlocker>,
+    blockers: Vec<DeleteBlocker>,
     deleted_locations: Vec<Location>,
     failed_locations: Vec<Location>,
     retryable_locations: Vec<Location>,
@@ -430,13 +430,13 @@ impl Deletion {
         let Some(child) = &error.child else {
             return target.display_name.as_str().into();
         };
-        if self.outcome.blocker.is_none()
-            && self.outcome.errors.len() < ITEM_ERROR_DETAIL_LIMIT
+        if self.outcome.errors.len() < ITEM_ERROR_DETAIL_LIMIT
             && let Some(root) = target.location.native_path()
         {
-            self.outcome.blocker = Some(DeleteBlocker {
+            self.outcome.blockers.push(DeleteBlocker {
                 root: root.to_owned(),
                 child: child.clone(),
+                one_of_several: false,
             });
         }
         format!("{}/{}", target.display_name, child.display()).into()
@@ -504,10 +504,13 @@ impl Deletion {
             message.push_str("\n\n");
             message.push_str(&crate::i18n::tr("Some entries were already deleted."));
         }
-        let blocker = match outcome.blocker {
-            Some(blocker) if blocker.reveal_target().await.is_some() => Some(blocker),
-            _ => None,
-        };
+        let one_of_several = outcome.errors.len() > 1;
+        let blocker = DeleteBlocker::first_revealable(outcome.blockers)
+            .await
+            .map(|blocker| DeleteBlocker {
+                one_of_several,
+                ..blocker
+            });
         (self.emit)(OperationEvent::CompletedWithErrors {
             request_id: self.request_id,
             deleted_locations: outcome.deleted_locations,

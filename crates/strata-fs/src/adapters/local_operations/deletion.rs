@@ -8,6 +8,8 @@ mod queue;
 mod run;
 mod workers;
 
+#[cfg(test)]
+pub(super) use gio_delete::permanently_delete_counted;
 pub(super) use gio_delete::{permanently_delete, permanently_delete_keeping};
 pub(super) use parallel::{
     local_file_identity, parallel_delete_local, parallel_delete_local_blocking_with_workers,

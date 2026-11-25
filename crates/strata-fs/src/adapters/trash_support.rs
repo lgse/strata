@@ -68,6 +68,15 @@ impl TrashError {
         }
     }
 
+    /// The same failure as seen from the folder that holds `name`.
+    pub(crate) fn below(self, name: PathBuf) -> Self {
+        let child = Some(match &self.child {
+            Some(child) => name.join(child),
+            None => name,
+        });
+        Self { child, ..self }
+    }
+
     pub(crate) fn is_unsupported(&self) -> bool {
         matches!(self.failure, TrashFailure::Unsupported(_))
     }
@@ -154,10 +163,7 @@ pub(crate) async fn attempt(
         Ok(identity) => return Ok(identity),
         Err(error) => error,
     };
-    let child = file
-        .path()
-        .filter(|_| file.is_native())
-        .and_then(|path| reported_trash_child(&path, &error));
+    let child = refused_child(file, &error).await;
     // A refusal to remove a child is not a refusal of the Trash protocol.
     let (failure, mount) = if child.is_some() {
         (TrashFailure::Other, None)
@@ -174,23 +180,44 @@ pub(crate) async fn attempt(
     })
 }
 
+async fn refused_child(file: &gio::File, error: &glib::Error) -> Option<PathBuf> {
+    let path = native_path(file)?;
+    let error = error.clone();
+    gio::spawn_blocking(move || reported_trash_child(&path, &error))
+        .await
+        .ok()
+        .flatten()
+}
+
 /// Blocking counterpart of [`trash_with_cleanup`] for worker threads.
 pub(crate) fn verified_with_cleanup(
     path: &Path,
     attempt: impl FnOnce() -> Result<(), glib::Error>,
 ) -> Result<(), TrashError> {
-    let mounts = super::volume::mount_watch::latest();
-    let home = glib::home_dir();
+    verified_with_cleanup_in(
+        &super::volume::mount_watch::latest(),
+        &glib::home_dir(),
+        path,
+        attempt,
+    )
+}
+
+fn verified_with_cleanup_in(
+    mounts: &MountTable,
+    home: &Path,
+    path: &Path,
+    attempt: impl FnOnce() -> Result<(), glib::Error>,
+) -> Result<(), TrashError> {
     let mount = path
         .parent()
-        .and_then(|parent| resolved_mount(&mounts, parent))
+        .and_then(|parent| resolved_mount(mounts, parent))
         .filter(|mount| is_fuse_fs_type(&mount.fs_type))
         .filter(|_| {
             let parent_device = path
                 .parent()
                 .and_then(|parent| std::fs::metadata(parent).ok())
                 .map(|metadata| metadata.dev());
-            let home_device = std::fs::metadata(&home).ok().map(|metadata| metadata.dev());
+            let home_device = std::fs::metadata(home).ok().map(|metadata| metadata.dev());
             parent_device.is_some() && parent_device != home_device
         });
     let snapshot = mount
@@ -209,7 +236,7 @@ pub(crate) fn verified_with_cleanup(
     }
     let facts = mount
         .as_ref()
-        .map(|mount| FuseFacts::gather(path, &mount.mount_point, &home));
+        .map(|mount| FuseFacts::gather(path, &mount.mount_point, home));
     let failure = decide(
         &error,
         mount.as_ref().map(|mount| mount.fs_type.as_str()),
@@ -331,8 +358,16 @@ fn may_remove_from(parent: &std::fs::Metadata, item: &std::fs::Metadata) -> bool
         } else {
             mode & 0o002 != 0
         };
-    let sticky_allows = mode & 0o1000 == 0 || uid == 0 || parent.uid() == uid || item.uid() == uid;
-    writable && sticky_allows
+    writable && sticky_allows(parent, item)
+}
+
+pub(super) fn sticky_allows(parent: &std::fs::Metadata, item: &std::fs::Metadata) -> bool {
+    let uid = rustix::process::geteuid().as_raw();
+    sticky_lets(uid, parent.mode(), [parent.uid(), item.uid()])
+}
+
+fn sticky_lets(uid: u32, parent_mode: u32, owners: [u32; 2]) -> bool {
+    parent_mode & 0o1000 == 0 || uid == 0 || owners.contains(&uid)
 }
 
 #[derive(Clone, Copy)]

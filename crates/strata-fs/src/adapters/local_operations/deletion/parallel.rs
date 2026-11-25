@@ -276,9 +276,7 @@ pub(super) async fn permanently_delete_maybe_local_with_workers(
     if let Some(path) = file.path().filter(|_| file.is_native()) {
         return delete_local_path(path, None, cancellable, workers).await;
     }
-    permanently_delete_counted(file, directory, cancellable, workers.deadline)
-        .await
-        .map_err(TrashError::permanent)
+    permanently_delete_counted(file, directory, cancellable, workers.deadline).await
 }
 
 pub(in crate::adapters::local_operations) fn permanently_delete_maybe_local_if_unchanged(

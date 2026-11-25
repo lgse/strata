@@ -267,7 +267,7 @@ pub(in crate::ui) fn show_error_dialog_with_action(
     focus_button(&layout.confirm);
 }
 
-pub(in crate::ui) struct DeleteRetry {
+pub(in crate::ui) struct DeleteErrorAction {
     pub label: String,
     pub run: Rc<dyn Fn()>,
 }
@@ -275,8 +275,8 @@ pub(in crate::ui) struct DeleteRetry {
 pub(in crate::ui) fn show_delete_error_dialog(
     parent: &impl IsA<gtk::Widget>,
     detail: &str,
-    retry: Option<DeleteRetry>,
-    reveal: Option<Rc<dyn Fn()>>,
+    retry: Option<DeleteErrorAction>,
+    reveal: Option<DeleteErrorAction>,
 ) {
     let Some(ModalHost {
         overlay,
@@ -323,17 +323,26 @@ pub(in crate::ui) fn show_delete_error_dialog(
         retry.map(|action| action.run),
     );
     if let Some(reveal) = reveal {
-        let button = gtk::Button::with_label(&crate::i18n::tr("Show in Folder"));
-        button.add_css_class("action-dialog-cancel");
+        let button = reveal_button(&reveal.label);
         layout
             .actions
             .insert_child_after(&button, layout.actions.first_child().as_ref());
-        connect_delete_error_action(&button, dismiss.clone(), Some(reveal));
+        connect_delete_error_action(&button, dismiss.clone(), Some(reveal.run));
     }
     close_on_escape(&layer, move || {
         dismiss();
     });
     focus_button(&layout.confirm);
+}
+
+fn reveal_button(label: &str) -> gtk::Button {
+    let button = gtk::Button::with_label(label);
+    button.add_css_class("action-dialog-cancel");
+    if let Some(label) = button.child().and_downcast::<gtk::Label>() {
+        label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        label.set_max_width_chars(36);
+    }
+    button
 }
 
 fn connect_delete_error_action(
