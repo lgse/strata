@@ -462,25 +462,46 @@ pub(crate) fn limits(preferences: &strata_desktop::settings::Preferences) -> Sea
     }
 }
 
+/// The local path of filter result `id`, for thumbnails of hits not in an open browser column.
+pub(crate) fn native_path(app: &App, id: EntryId) -> Option<PathBuf> {
+    app.filter
+        .found
+        .get(&id)?
+        .location
+        .native_path()
+        .map(std::path::Path::to_path_buf)
+}
+
+fn build_hits(
+    listing: Option<&Column>,
+    ids: &Ids,
+    items: &[SearchItem],
+) -> (Vec<Row>, HashMap<EntryId, FileEntry>) {
+    let mut rows = Vec::with_capacity(items.len());
+    let mut found = HashMap::with_capacity(items.len());
+    for item in items {
+        let entry = hits::entry_of(item);
+        let id = ids.of(&entry.location);
+        let mut row = Row::of_with_id(&entry, id);
+        if let Some(existing) = listing.and_then(|column| column.row_of(id)) {
+            row.keep_key_of(existing);
+        }
+        rows.push(row);
+        found.insert(id, entry);
+    }
+    (rows, found)
+}
+
 /// Builds the results `Column`, updates `found`, and settles any pending rename for `batch`.
 fn hits_for_batch(
     filter: &mut Filter,
     folder: Location,
     items: &[SearchItem],
+    (rows, found): (Vec<Row>, HashMap<EntryId, FileEntry>),
     batch: &Batch,
 ) -> HitsUpdate {
     filter.items = items.to_vec();
-    let rows: Vec<Row> = items
-        .iter()
-        .map(|item| Row::of(&hits::entry_of(item), &filter.ids))
-        .collect();
-    filter.found = items
-        .iter()
-        .map(|item| {
-            let entry = hits::entry_of(item);
-            (filter.ids.of(&entry.location), entry)
-        })
-        .collect();
+    filter.found = found;
     let mut hits = Column::new(folder, true, None);
     hits.apply(Edit::Replace(rows));
     hits.set_load(Load::Listed);
@@ -505,7 +526,8 @@ fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
         return false;
     }
     let items = eligible(app, &batch);
-    let update = hits_for_batch(&mut app.filter, open.folder.clone(), &items, &batch);
+    let built = build_hits(open.place.listing(app, open.depth), &app.filter.ids, &items);
+    let update = hits_for_batch(&mut app.filter, open.folder.clone(), &items, built, &batch);
     open.show_hits(app, update, tx);
     tenxer::results_arrived(app, tx);
     if let Some(index) = take_reveal(app) {
@@ -622,18 +644,9 @@ fn apply_pruned_results(app: &mut App, gone: &HashSet<PathBuf>, tx: &mut Tx) -> 
         })
         .cloned()
         .collect();
-    app.filter.items.clone_from(&items);
-    let rows: Vec<Row> = items
-        .iter()
-        .map(|item| Row::of(&hits::entry_of(item), &app.filter.ids))
-        .collect();
-    app.filter.found = items
-        .iter()
-        .map(|item| {
-            let entry = hits::entry_of(item);
-            (app.filter.ids.of(&entry.location), entry)
-        })
-        .collect();
+    let (rows, found) = build_hits(open.place.listing(app, open.depth), &app.filter.ids, &items);
+    app.filter.items = items;
+    app.filter.found = found;
     let mut hits = Column::new(open.folder.clone(), true, None);
     hits.apply(Edit::Replace(rows));
     hits.set_load(Load::Listed);

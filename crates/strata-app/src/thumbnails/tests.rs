@@ -399,8 +399,9 @@ fn a_report_of_no_rows_in_a_listed_folder_cancels_no_render() {
     let mut synced = Synced::default();
     let poll = |synced: &mut Synced, store: &mut ThumbnailStore, range| {
         synced.range = Some(range);
-        let sync = synced.next(column.location(), column.version(), column.len(), false);
-        let _ = sync.tell(store, id, &column, Step::new(64));
+        let version = column.version();
+        let sync = synced.next(column.location(), version, column.len(), false);
+        let _ = sync.tell(store, id, &column, version, Step::new(64));
     };
     poll(&mut synced, &mut store, 0..3);
     for request in viewer.take_requests(&mut store, 0.0) {

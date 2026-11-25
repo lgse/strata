@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, path::PathBuf};
 
 use rune::Tx;
 use strata_components::{
@@ -141,11 +138,15 @@ impl Viewer {
     }
 }
 
-/// The local file of entry `id`, through the browser.
+/// The local file of entry `id`, through the browser or the active filter results.
 fn file(app: &App, locate: Locate, id: EntryId) -> Option<PathBuf> {
-    let (depth, position) = locate(app, id)?;
-    let entry = app.browser.entry_at(depth, position)?;
-    entry.location.native_path().map(Path::to_path_buf)
+    if let Some((depth, position)) = locate(app, id)
+        && let Some(entry) = app.browser.entry_at(depth, position)
+        && let Some(path) = entry.location.native_path()
+    {
+        return Some(path.to_path_buf());
+    }
+    crate::filter::native_path(app, id)
 }
 
 fn publish(app: &App, locate: Locate, sent: &Sent, metadata: &MediaMetadata) {

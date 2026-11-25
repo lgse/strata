@@ -47,9 +47,9 @@ impl Sync {
         store: &mut ThumbnailStore,
         id: ViewerId,
         listing: &Column,
+        version: u64,
         step: Step,
     ) -> bool {
-        let version = listing.thumb_version();
         match self {
             Self::View(range) => {
                 store.sync(id, listing, Viewport::new(range, step).listing(version))
@@ -213,10 +213,10 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let mut wake: Option<f64> = None;
     let mut deferred = false;
     let listings = &app.columns.listings;
-    for (depth, listing) in listings.columns.iter().enumerate().take(open) {
-        if listings.hits_at(depth) {
+    for depth in 0..open {
+        let Some(listing) = listings.shown(depth) else {
             continue;
-        }
+        };
         let (Some(id), Some(column)) = (thumbs.viewer.id_at(depth), thumbs.columns.get_mut(depth))
         else {
             continue;
@@ -227,14 +227,10 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
             deferred = true;
             continue;
         }
+        let version = listings.thumb_version(depth);
         pruned |= column
-            .next(
-                listing.location(),
-                listing.thumb_version(),
-                listing.len(),
-                restep,
-            )
-            .tell(store, id, listing, step);
+            .next(listing.location(), version, listing.len(), restep)
+            .tell(store, id, listing, version, step);
     }
     if let Some(left) = wake {
         tx.wake_after(Duration::from_secs_f64(left));

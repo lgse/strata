@@ -200,7 +200,7 @@ pub(crate) struct Row {
 }
 
 impl Row {
-    fn keep_key_of(&mut self, previous: &Row) {
+    pub(crate) fn keep_key_of(&mut self, previous: &Row) {
         if self.same_file_as(previous) {
             self.thumbnail = previous.thumbnail;
             self.keyed = previous.keyed.learning(&self.facts);

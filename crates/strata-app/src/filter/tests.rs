@@ -290,3 +290,5 @@ mod hosted {
         );
     }
 }
+
+mod thumbs;
