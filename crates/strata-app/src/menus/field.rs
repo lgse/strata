@@ -19,46 +19,28 @@ use crate::{App, slots::Frame};
 #[derive(Default)]
 pub(super) struct FieldMenu {
     state: ContextMenuState,
-    /// Deferred until the commit that unmounts the modal menu, because Rune's
-    /// `field_menu_pick` checks `self.live(&path)` which rejects fields behind a modal.
-    pending_pick: Option<String>,
 }
 
 impl FieldMenu {
     pub(super) fn is_open(&self) -> bool {
         self.state.is_open()
     }
-
-    /// True while the field menu is open or waiting one commit to deliver a picked action.
-    pub(super) fn holds_focus(&self) -> bool {
-        self.state.is_open() || self.pending_pick.is_some()
-    }
 }
 
 /// Whether the in-window text-field context menu is holding focus for its target field.
 pub(crate) fn is_open(app: &App) -> bool {
-    app.menu.field.holds_focus()
+    app.menu.field.is_open()
 }
 
 /// Opens Strata's styled, localized field menu for a `FieldMenuRequest` delivered by Rune.
 pub(crate) fn open(app: &mut App, request: FieldMenuRequest, tx: &mut Tx) {
     let model = map_menu(request.menu().entries());
     let point = request.point();
-    app.menu.field.pending_pick = None;
     app.menu
         .field
         .state
         .open(MenuTarget::Background, Point::new(point.x, point.y), model);
     tx.focus("field-menu-menu", false);
-}
-
-/// Delivers a picked field-menu action once the modal menu has unmounted.
-pub(super) fn poll(app: &mut App, tx: &mut Tx) -> bool {
-    let Some(action) = app.menu.field.pending_pick.take() else {
-        return false;
-    };
-    tx.resolve_field_menu(Some(&action));
-    true
 }
 
 /// Renders the field menu above dialogs so it stays interactive over modal forms.
@@ -77,10 +59,9 @@ pub(crate) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     Some(menu.build(app, &app.look, frame.layer))
 }
 
-fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
+fn chosen(_: &mut App, intent: MenuIntent, tx: &mut Tx) {
     let MenuIntent::Activate { action, .. } = intent;
-    app.menu.field.pending_pick = Some((*action).to_owned());
-    tx.wake_after(std::time::Duration::ZERO);
+    tx.resolve_field_menu(Some(&action));
 }
 
 fn dismissed(_: &mut App, _: MenuTarget, tx: &mut Tx) {

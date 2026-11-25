@@ -5,7 +5,8 @@
 //! Rune lacks user icon-theme resolution (`Inherits`, `index.theme` size/scale matching),
 //! lookup by icon/MIME name with fallbacks, and distinguishing missing icons from decode
 //! failures ([anomalyco/rune#21](https://github.com/anomalyco/rune/issues/21)). Symbolic icons
-//! are not recoloured because Rune cannot tint `Pixels` dynamically.
+//! decode as-is (`LoadedIcon::is_symbolic`); callers can tint them dynamically with
+//! `rune::El::pixels_tint`.
 
 mod index;
 mod loader;
