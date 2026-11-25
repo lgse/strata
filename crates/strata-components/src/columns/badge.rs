@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-use rune::{Anim, Curve, Easing, El, col, el, icon, row, text};
+use rune::{Align, Anim, Curve, Easing, El, col, el, icon, row, text};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 use strata_kit::slots::columns as tokens;
@@ -227,10 +227,13 @@ fn chip(look: &Look, t: &str, rcx: &RowCx<'_>, hover_live: bool) -> El {
         kit.c.surface_raised
     };
     let inset = tokens::badge_inset(look);
-    let h = (look.row.columns - 2.0 * inset).max(1.0);
+    let inner_h = look.row.columns - 2.0 * super::view::ROW_GAP_Y;
+    let h = (inner_h - 2.0 * inset).max(1.0);
     text(t.to_owned())
         .key(BADGE)
-        .font(kit.ty.small.lh(h))
+        .font(kit.ty.small)
+        .align_y(Align::Center)
+        .h(h)
         .color(kit.c.text_muted)
         .pin(None, Some(inset), Some(0.0), None)
         .px(tokens::badge_pad(look))

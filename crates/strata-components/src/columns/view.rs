@@ -447,6 +447,9 @@ fn clears_selection_on_press(phase: Phase, clears: bool, m: Mods) -> bool {
     phase == Phase::Down && clears && is_plain_mods(m)
 }
 
+/// Vertical gap on each side of a column row inside its `look.row.columns` slot.
+pub(super) const ROW_GAP_Y: f32 = 1.0;
+
 fn row_height<S: 'static>(sh: &Shared<S>, s: &S, serial: u64, look: &Look) -> f32 {
     let p = (sh.parts)(s);
     let details = p
@@ -496,7 +499,7 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
     let c = c
         .name(title)
         .row_height(move |s: &S, l: &Look| row_height(&tall, s, serial, l))
-        .row_gap_y(1.0)
+        .row_gap_y(ROW_GAP_Y)
         .keys_by_host()
         .settings(pointer)
         .settings(autoscroll)
