@@ -164,10 +164,15 @@ impl Viewer {
         matches!(self, Self::ArchivePrompt(prompt) if prompt.edit.focused)
     }
 
+    pub(super) fn is_page_input_focused(&self) -> bool {
+        matches!(self, Self::Pdf(pdf) if pdf.state.is_page_input_focused())
+    }
+
     pub(super) fn leaves_on_left(&self) -> bool {
         match self {
             Self::Archive(state) => state.at_root(),
             Self::ArchivePrompt(prompt) => !prompt.edit.focused,
+            Self::Pdf(pdf) => !pdf.state.is_page_input_focused(),
             _ => true,
         }
     }

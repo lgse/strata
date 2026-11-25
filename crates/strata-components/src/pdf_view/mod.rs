@@ -4,6 +4,7 @@ mod find;
 mod layer;
 mod message;
 mod model;
+mod page_nav;
 mod queue;
 mod render;
 mod selection;
@@ -54,6 +55,11 @@ pub struct PdfLabels {
     pub locked: String,
     pub open: String,
     pub page_text: String,
+    pub page_navigation: String,
+    pub page_indicator: String,
+    pub go_to_page: String,
+    pub previous_page: String,
+    pub next_page: String,
 }
 
 impl Default for PdfLabels {
@@ -68,6 +74,11 @@ impl Default for PdfLabels {
             locked: "This PDF is password protected.".into(),
             open: "Open".into(),
             page_text: String::new(),
+            page_navigation: "Page navigation".into(),
+            page_indicator: "Page {input} / {pages}".into(),
+            go_to_page: "Go to page".into(),
+            previous_page: "Previous page".into(),
+            next_page: "Next page".into(),
         }
     }
 }

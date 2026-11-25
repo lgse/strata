@@ -216,3 +216,105 @@ fn escape_closes_a_pdf_preview_under_the_pointer() {
         },
     );
 }
+
+fn current_page(host: &crate::host::offscreen::Offscreen) -> usize {
+    match &host.app().preview.viewer {
+        super::Viewer::Pdf(pdf) => pdf.state.current_page(),
+        _ => panic!("the PDF preview"),
+    }
+}
+
+fn page_input_text(host: &crate::host::offscreen::Offscreen) -> String {
+    match &host.app().preview.viewer {
+        super::Viewer::Pdf(pdf) => pdf.state.page_input_text().to_owned(),
+        _ => panic!("the PDF preview"),
+    }
+}
+
+fn page_input_focused(host: &crate::host::offscreen::Offscreen) -> bool {
+    match &host.app().preview.viewer {
+        super::Viewer::Pdf(pdf) => pdf.state.is_page_input_focused(),
+        _ => panic!("the PDF preview"),
+    }
+}
+
+fn focus_key(host: &mut crate::host::offscreen::Offscreen, key: &str) {
+    let key = key.to_owned();
+    host.runtime().update(move |_: &mut App, tx: &mut Tx| {
+        tx.focus(key, true);
+    });
+    while host.turn() {}
+}
+
+fn click_key(host: &mut crate::host::offscreen::Offscreen, key: &str) {
+    let target = host
+        .runtime()
+        .elements()
+        .into_iter()
+        .find(|el| !el.exiting && el.key.as_deref() == Some(key))
+        .unwrap_or_else(|| panic!("element `{key}` should be mounted"));
+    let [x, y, w, h] = target.visible;
+    host.runtime().pointer_move(x + w / 2.0, y + h / 2.0);
+    host.runtime().pointer_down(x + w / 2.0, y + h / 2.0);
+    host.runtime().pointer_up(x + w / 2.0, y + h / 2.0);
+    for _ in 0..8 {
+        host.turn();
+    }
+}
+
+#[test]
+fn jump_to_page_box_navigates_and_escape_cancels_without_closing_preview() {
+    hosted(
+        MODULE,
+        "pdf::jump_to_page_box_navigates_and_escape_cancels_without_closing_preview",
+        |mut host| {
+            let _folder = show_pdf(&mut host, &Recorded::default());
+            let input_key = format!("{}-page-input", pdf::PDF_KEY);
+            let next_key = format!("{}-page-next", pdf::PDF_KEY);
+
+            assert_eq!(current_page(&host), 0);
+            assert_eq!(page_input_text(&host), "1");
+
+            // Focus page input, type "15", press Enter -> jumps to page 15 and refocuses PDF.
+            focus_key(&mut host, &input_key);
+            assert!(page_input_focused(&host));
+            for ch in ['1', '5'] {
+                press(&mut host, Key::Text(ch.to_string()), Mods::default());
+            }
+            press(&mut host, Key::Enter, Mods::default());
+            for _ in 0..8 {
+                host.turn();
+            }
+            assert_eq!(current_page(&host), 14, "jumped to page 15 (0-based 14)");
+            assert_eq!(page_input_text(&host), "15");
+            assert!(!page_input_focused(&host));
+            assert!(host.app().preview.enabled, "preview remains open");
+
+            // Next button steps to page 16.
+            click_key(&mut host, &next_key);
+            assert_eq!(current_page(&host), 15);
+            assert_eq!(page_input_text(&host), "16");
+
+            // Typing into page input and pressing Escape cancels edit without closing preview.
+            focus_key(&mut host, &input_key);
+            press(&mut host, Key::Text("2".into()), Mods::default());
+            press(&mut host, Key::Escape, Mods::default());
+            while host.turn() {}
+            assert!(
+                host.app().preview.enabled,
+                "Escape while editing page input must not close the preview drawer"
+            );
+            assert!(!page_input_focused(&host));
+            assert_eq!(current_page(&host), 15);
+            assert_eq!(page_input_text(&host), "16");
+
+            // A subsequent Escape (outside the page input) closes the preview drawer.
+            press(&mut host, Key::Escape, Mods::default());
+            while host.turn() {}
+            assert!(
+                !host.app().preview.enabled,
+                "Escape outside page input closes the preview drawer"
+            );
+        },
+    );
+}
