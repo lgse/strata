@@ -94,9 +94,10 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
     let look = &app.look;
     let navigation = BUTTONS
         .iter()
-        .fold(row().items_center(), |buttons, button| {
-            buttons.child(navigation(app, view, button))
-        })
+        .fold(
+            row().gap(look.frame.inset).mr(look.space.xs).items_center(),
+            |buttons, button| buttons.child(navigation(app, view, button)),
+        )
         .on_drag(|_: &mut App, _: &mut Drag, tx: &mut Tx| tx.live_only())
         .focusable(false)
         .preserve_focus_on_press(true);
@@ -116,6 +117,7 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
         .preserve_focus_on_press(true);
     let mut actions = row()
         .key(format!("{view}-header-actions"))
+        .gap(look.frame.inset)
         .items_center()
         .children(actions::pane(app, view));
     if view == crate::icons::VIEW {
@@ -133,7 +135,7 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
         .w_full()
         .h(look.frame.bar + 2.0 * look.frame.inset)
         .px(look.space.sm)
-        .gap(look.space.sm)
+        .gap(look.space.md)
         .items_center()
         .fill(look.kit.c.bg_deep)
         .border_sides(

@@ -73,7 +73,7 @@ pub(super) fn pane(app: &App, view: &str) -> Vec<El> {
 pub(crate) fn column(app: &App, cx: &HeaderCx) -> Option<El> {
     let depth = cx.depth;
     let tenxer = shell::preferences(app).tenxer_mode;
-    let mut actions = row().items_center();
+    let mut actions = row().gap(app.look.frame.inset).items_center();
     let mut any = false;
     if let Some(button) = empty_trash::built(app, depth) {
         let key = format!("columns-empty-trash-{depth}");
