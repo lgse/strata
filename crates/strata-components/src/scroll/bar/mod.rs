@@ -145,14 +145,22 @@ impl BarLook {
         self.thickness + 2.0 * self.margin
     }
 
+    /// Expanded trough thickness when hover expansion is active and wider than rest.
+    fn expanded_thickness(&self) -> f32 {
+        self.hover_thickness
+            .filter(|&w| w.is_finite() && w > self.thickness)
+            .unwrap_or(self.thickness)
+    }
+
     /// Effective `(thickness, thumb_width)` for rest vs. hovered/dragged state.
     fn active_widths(&self, held: bool) -> (f32, f32) {
-        let Some(thickness) = self
-            .hover_thickness
-            .filter(|&w| held && w.is_finite() && w > self.thickness)
-        else {
+        if !held {
             return (self.thickness, self.thumb_width);
-        };
+        }
+        let thickness = self.expanded_thickness();
+        if thickness <= self.thickness {
+            return (self.thickness, self.thumb_width);
+        }
         let inset = (self.thickness - self.thumb_width).max(0.0);
         let thumb_width = (thickness - inset).max(self.thumb_width);
         (thickness, thumb_width)
@@ -176,6 +184,13 @@ pub enum BarMode {
     Always,
 }
 
+struct BarRects {
+    band: [f32; 4],
+    backdrop: [f32; 4],
+    trough: [f32; 4],
+    thumb: [f32; 4],
+}
+
 struct Inner {
     look: Cell<Option<BarLook>>,
     mode: Cell<BarMode>,
@@ -186,6 +201,7 @@ struct Inner {
     dragging: Cell<bool>,
     grab: Cell<f32>,
     band: Live<[f32; 4]>,
+    backdrop: Live<[f32; 4]>,
     trough: Live<[f32; 4]>,
     thumb: Live<[f32; 4]>,
     fill: Live<Color>,
@@ -214,6 +230,7 @@ impl Bar {
             dragging: Cell::new(false),
             grab: Cell::new(0.0),
             band: Live::new([0.0; 4]),
+            backdrop: Live::new([0.0; 4]),
             trough: Live::new([0.0; 4]),
             thumb: Live::new([0.0; 4]),
             fill: Live::new(Color::TRANSPARENT),
@@ -321,7 +338,7 @@ impl Bar {
         let mut band = col()
             .key(key.to_owned())
             .absolute(0.0, 0.0)
-            .live_rect(bind_rect(&inner.band))
+            .live_rect(&inner.band)
             .live_opacity(inner.opacity.smooth(fade).rest(fade))
             .cursor(Cursor::Default)
             .a11y_hidden()
@@ -329,7 +346,13 @@ impl Bar {
             .on_middle_press(|_: &mut S, tx: &mut rune::Tx| tx.live_only())
             .on_secondary_press(|_: &mut S, _, tx: &mut rune::Tx| tx.live_only());
         if let Some(base) = look.base {
-            band = band.fill(base);
+            band = band.child(
+                col()
+                    .key("backdrop")
+                    .absolute(0.0, 0.0)
+                    .live_rect(bind_rect(&inner.backdrop))
+                    .fill(base),
+            );
         }
         let (hover, drag) = (self.clone(), self.clone());
         band.on_hover_change_any(move |inside, tx| {
@@ -400,32 +423,37 @@ impl Inner {
         self.over.get() || self.dragging.get()
     }
 
-    fn rects(&self, look: BarLook) -> ([f32; 4], [f32; 4], [f32; 4]) {
+    fn rects(&self, look: BarLook) -> BarRects {
         let p = self.pos.get();
         let a = look.along();
         let (trough, track, shows) = self.track();
         let (trough, track) = if shows { (trough, track) } else { (0.0, 0.0) };
-        let (thickness, thumb_width) = look.active_widths(self.held());
-        let band = thickness + 2.0 * look.margin;
-        let across = self.width_across(a, p) - look.edge - band;
+        let hit_thickness = look.expanded_thickness();
+        let hit_band = hit_thickness + 2.0 * look.margin;
+        let (vis_thickness, vis_thumb_width) = look.active_widths(self.held());
+        let vis_band = vis_thickness + 2.0 * look.margin;
+        let across = self.width_across(a, p) - look.edge - hit_band;
+        let vis_offset = hit_band - vis_band;
         let (start, len) = thumb(p.offset[a], p.max[a], p.viewport[a], track, look.min_length);
-        let inset = (thickness - thumb_width) / 2.0;
-        (
-            look.turned([across, look.start, band, trough]),
-            look.turned([look.margin, 0.0, thickness, trough]),
-            look.turned([inset, look.ends + start, thumb_width, len]),
-        )
+        let inset = (vis_thickness - vis_thumb_width) / 2.0;
+        BarRects {
+            band: look.turned([across, look.start, hit_band, trough]),
+            backdrop: look.turned([vis_offset, 0.0, vis_band, trough]),
+            trough: look.turned([vis_offset + look.margin, 0.0, vis_thickness, trough]),
+            thumb: look.turned([inset, look.ends + start, vis_thumb_width, len]),
+        }
     }
 
-    /// Lays the band, trough and thumb out instantaneously (scroll tracking, resize, restyle).
+    /// Lays the band, backdrop, trough and thumb out instantaneously (scroll tracking, resize, restyle).
     fn layout(&self) {
         let Some(look) = self.look() else {
             return;
         };
-        let (band, trough, thumb) = self.rects(look);
-        self.band.snap(band);
-        self.trough.snap(trough);
-        self.thumb.snap(thumb);
+        let rects = self.rects(look);
+        self.band.snap(rects.band);
+        self.backdrop.snap(rects.backdrop);
+        self.trough.snap(rects.trough);
+        self.thumb.snap(rects.thumb);
     }
 
     /// Smoothly expands or contracts the bar across its thickness axis when hover/drag flips.
@@ -436,15 +464,16 @@ impl Inner {
         if look.hover_thickness.is_none() {
             return;
         }
-        let (band, trough, thumb) = self.rects(look);
+        let rects = self.rects(look);
+        self.band.snap(rects.band);
         if look.animations {
-            self.band.set(band);
-            self.trough.set(trough);
-            self.thumb.set(thumb);
+            self.backdrop.set(rects.backdrop);
+            self.trough.set(rects.trough);
+            self.thumb.set(rects.thumb);
         } else {
-            self.band.snap(band);
-            self.trough.snap(trough);
-            self.thumb.snap(thumb);
+            self.backdrop.snap(rects.backdrop);
+            self.trough.snap(rects.trough);
+            self.thumb.snap(rects.thumb);
         }
     }
 
