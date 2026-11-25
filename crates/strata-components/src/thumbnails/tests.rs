@@ -1455,3 +1455,49 @@ fn existing_lookup_does_not_allocate_until_synced() {
         "ensured entry moves past the absent sentinel so memoized rows rebind"
     );
 }
+
+#[test]
+fn emoji_glyph_qualifies_only_text_default_emoji() {
+    use crate::contract::{Entry, EntryGlyph, EntryId, EntryKind};
+
+    struct Case {
+        look: strata_kit::look::Look,
+        kind: EntryKind,
+        input: &'static str,
+    }
+    fn view(c: &Case, _: &mut rune::Cx<Case>) -> rune::El {
+        let entry =
+            Entry::new(EntryId::new(1), "item", c.kind, "").glyph(EntryGlyph::Emoji(c.input));
+        entry_glyph(&c.look, entry, 32.0, c.look.kit.c.icon_accent)
+    }
+
+    let look = strata_kit::look::Look::fallback(false);
+    let cases = [
+        ("🚀", "🚀", "Emoji_Presentation needs no U+FE0F"),
+        ("♈", "♈", "Emoji_Presentation symbol needs no U+FE0F"),
+        ("🧑\u{200d}🚀", "🧑\u{200d}🚀", "ZWJ sequence stays intact"),
+        ("❤", "❤\u{fe0f}", "unqualified text-default emoji qualifies"),
+        ("❤\u{fe0f}", "❤\u{fe0f}", "already qualified stays as-is"),
+    ];
+    for kind in [EntryKind::File, EntryKind::Folder] {
+        for (input, expected, note) in cases {
+            let mut rt = rune::Runtime::new(
+                Case {
+                    look: look.clone(),
+                    kind,
+                    input,
+                },
+                view,
+                (100.0, 100.0),
+                rune::Env::new(false, 1.0),
+            );
+            rt.frame(0.0);
+            let drawn = rt
+                .elements()
+                .into_iter()
+                .find_map(|el| el.text)
+                .expect("emoji text element");
+            assert_eq!(drawn, expected, "{kind:?}: {note}");
+        }
+    }
+}

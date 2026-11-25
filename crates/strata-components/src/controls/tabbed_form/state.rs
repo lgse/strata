@@ -49,39 +49,13 @@ pub struct TabbedFormState {
     carry: Option<Carry>,
 }
 
-/// Keyboard focus carry across page switches: handles Rune's focus rescue when the old page
-/// unmounts or becomes inert (`anomalyco/rune#1298`, `#1302`), and restores tab focus if a
-/// remounted `TextEdit` kept `focused = true` across unmount.
+/// Focus carry across page switches: enters the newly shown panel once mounted (staying on its
+/// tab if the panel holds nothing focusable), or restores tab focus if a remounted `TextEdit`
+/// kept `focused = true` across unmount.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Carry {
-    Page {
-        /// Where focus was when the switch was asked for; `None` once the carry is on the tab.
-        from: Option<String>,
-        panel: String,
-        tab: String,
-        tabs_prefix: String,
-        ring: bool,
-    },
-    Tab {
-        key: String,
-        ring: bool,
-    },
-}
-
-fn is_form_tab(focused: &str, prefix: &str) -> bool {
-    focused
-        .strip_prefix(prefix)
-        .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()))
-}
-
-/// Targets for [`TabbedFormState::carry_page`] when a keyboard page switch hides the old page.
-pub(super) struct PageCarry {
-    /// The key focused when the switch was asked for.
-    pub from: String,
-    pub panel: String,
-    pub tab: String,
-    pub tabs_prefix: String,
-    pub ring: bool,
+    Panel { panel: String, ring: bool },
+    Tab { key: String, ring: bool },
 }
 
 impl TabbedFormState {
@@ -103,14 +77,8 @@ impl TabbedFormState {
         }
     }
 
-    pub(super) fn carry_page(&mut self, page: PageCarry, tx: &mut Tx) {
-        self.carry = Some(Carry::Page {
-            from: Some(page.from),
-            panel: page.panel,
-            tab: page.tab,
-            tabs_prefix: page.tabs_prefix,
-            ring: page.ring,
-        });
+    pub(super) fn carry_panel(&mut self, panel: String, ring: bool, tx: &mut Tx) {
+        self.carry = Some(Carry::Panel { panel, ring });
         tx.wake_after(Duration::ZERO);
     }
 
@@ -126,38 +94,14 @@ impl TabbedFormState {
     }
 
     pub fn tick(&mut self, tx: &mut Tx) -> bool {
-        match self.carry.as_mut() {
+        match self.carry.take() {
             None => false,
-            Some(Carry::Page {
-                from,
-                panel,
-                tab,
-                tabs_prefix,
-                ring,
-            }) => {
-                let ring = *ring;
-                if from.is_none() {
-                    // On the new page's tab now: into the page, if it holds anything focusable.
-                    let panel = panel.clone();
-                    self.carry = None;
-                    tx.focus(panel, ring);
-                    return true;
-                }
-                let focused = tx.focused();
-                let dropped = focused != from.as_deref()
-                    || focused.is_none_or(|key| is_form_tab(key, tabs_prefix));
-                if !dropped {
-                    self.carry = None;
-                    return false;
-                }
-                *from = None;
-                tx.focus(tab.clone(), ring);
-                tx.wake_after(Duration::ZERO);
+            Some(Carry::Panel { panel, ring }) => {
+                // On the new page's tab now: into the page, if it holds anything focusable.
+                tx.focus(panel, ring);
                 true
             }
             Some(Carry::Tab { key, ring }) => {
-                let (key, ring) = (key.clone(), *ring);
-                self.carry = None;
                 if tx.focused() == Some(key.as_str()) {
                     return false;
                 }

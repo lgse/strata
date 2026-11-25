@@ -17,6 +17,7 @@ mod tests;
 
 pub use data::{Choice, PickerCategory, PickerItem, PickerSource};
 pub use emoji::DEFAULT_VERSION;
+pub(crate) use grid::drawn_emoji;
 pub use grid::drawn_text;
 pub use recent::{RECENT_MAX, remember};
 pub use state::{IconPickerState, Page};

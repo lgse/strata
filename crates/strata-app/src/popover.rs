@@ -2,9 +2,9 @@
 
 //! Non-modal popovers and menus over a full-window dismiss scrim.
 //!
-//! Uses a scrim instead of `El::modal` so an outside wheel both closes the popover and scrolls
-//! an underlying listing via `El::wheel_scrolls` (Rune chains wheel scrolling up ancestors
-//! only; [anomalyco/rune#1137](https://github.com/anomalyco/rune/issues/1137)).
+//! Uses a scrim instead of `El::modal` so the background stays visible to assistive technology,
+//! focus moving outside autohides the popover, and an outside wheel scrolls only the listing via
+//! `El::wheel_scrolls` (Rune chains wheel scrolling up ancestors only).
 
 use rune::{El, Key, KeyEvent, PointerPress, Tx, WheelEvent, el};
 use rune_kit::{Placement, popover};

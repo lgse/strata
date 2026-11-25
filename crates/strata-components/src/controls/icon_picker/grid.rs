@@ -172,14 +172,22 @@ pub(super) fn glyph(look: &Look, m: &Metrics, choice: &Choice) -> El {
     }
 }
 
+/// Emoji text to draw: appends `U+FE0F` only for unqualified text-default emoji from the bundled
+/// table; `Emoji_Presentation` emoji, ZWJ sequences, and already-qualified forms borrow as-is.
+pub(crate) fn drawn_emoji(emoji: &str) -> &str {
+    if !emoji.contains('\u{fe0f}')
+        && let Some(qualified) = super::emoji::qualified(emoji)
+    {
+        return qualified;
+    }
+    emoji
+}
+
 /// The text to draw for `choice`, for display only.
 pub fn drawn_text(choice: &Choice) -> Cow<'_, str> {
     match choice {
-        Choice::Emoji(e) if !e.contains('\u{fe0f}') => match super::emoji::qualified(e) {
-            Some(qualified) => Cow::Borrowed(qualified),
-            None => Cow::Borrowed(e),
-        },
-        Choice::Icon(t) | Choice::Emoji(t) => Cow::Borrowed(t),
+        Choice::Emoji(e) => Cow::Borrowed(drawn_emoji(e)),
+        Choice::Icon(t) => Cow::Borrowed(t),
     }
 }
 
