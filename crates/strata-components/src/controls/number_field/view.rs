@@ -25,6 +25,7 @@ pub struct NumberField<S> {
     get_mut: GetMut<S>,
     label: Option<String>,
     disabled: bool,
+    steppers: bool,
     report: Option<Report<S>>,
     menu: Option<Menu<S>>,
 }
@@ -37,6 +38,7 @@ impl<S: 'static> NumberField<S> {
             get_mut,
             label: None,
             disabled: false,
+            steppers: true,
             report: None,
             menu: None,
         }
@@ -56,6 +58,12 @@ impl<S: 'static> NumberField<S> {
     /// A field that can't be used now: dimmed, out of the focus order, and deaf to input.
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    /// Whether to show the `-` and `+` stepper buttons beside the text input.
+    pub fn steppers(mut self, show: bool) -> Self {
+        self.steppers = show;
         self
     }
 
@@ -175,9 +183,15 @@ impl<S: 'static> NumberField<S> {
             .role("textbox")
             .h(height)
             .items_center()
-            .child(self.stepper(look, false, at_min, tell.clone()))
+            .children(
+                self.steppers
+                    .then(|| self.stepper(look, false, at_min, tell.clone())),
+            )
             .child(value)
-            .child(self.stepper(look, true, at_max, tell.clone()))
+            .children(
+                self.steppers
+                    .then(|| self.stepper(look, true, at_max, tell.clone())),
+            )
             .radius(look.round(8.0))
             .fill(if self.disabled {
                 c.surface_disabled

@@ -496,6 +496,27 @@ fn step_slider(host: &mut Offscreen, key: &str, step_key: Key) {
     press(host, step_key, Mods::default());
 }
 
+fn type_number_input(host: &mut Offscreen, field_key: &str, text: &str, commit: Key) {
+    let input_key = format!("{field_key}-input");
+    let _ = reveal_and_center(host, &input_key);
+    host.runtime().update(|_, tx| tx.focus(input_key, true));
+    idle(host);
+    press(
+        host,
+        Key::Command('a'),
+        Mods {
+            ctrl: true,
+            cmd: true,
+            ..Mods::default()
+        },
+    );
+    press(host, Key::Backspace, Mods::default());
+    for ch in text.chars() {
+        press(host, Key::Text(ch.to_string()), Mods::default());
+    }
+    press(host, commit, Mods::default());
+}
+
 #[test]
 fn appearance_transparency_controls_update_look_persist_and_follow_window_focus() {
     hosted(
@@ -515,9 +536,12 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
 
             let sub_controls = [
                 "settings-background-transparency",
+                "settings-background-transparency-field",
                 "settings-raised-transparency",
+                "settings-raised-transparency-field",
                 "settings-switch-frosted-glass",
                 "settings-unfocused-transparency",
+                "settings-unfocused-transparency-field",
             ];
             let _ = reveal_and_center(&mut host, "settings-switch-transparency");
             let tree = host.tree();
@@ -557,11 +581,40 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
                 );
             }
 
-            // Step background and raised transparency independently via keyboard.
+            // Step background and raised transparency independently via slider keyboard control.
             step_slider(&mut host, "settings-background-transparency", Key::PageUp);
             assert_eq!(shell::transparency(host.app()).background_transparency, 25);
             assert!((host.app().look.kit.c.bg_base.a - 0.75).abs() < 1e-4);
             assert!((host.app().look.kit.c.bg_deep.a - 0.90).abs() < 1e-4);
+
+            // Direct text input commits on Enter and keeps the slider synced.
+            type_number_input(
+                &mut host,
+                "settings-background-transparency-field",
+                "30",
+                Key::Enter,
+            );
+            assert_eq!(shell::transparency(host.app()).background_transparency, 30);
+            assert!((host.app().look.kit.c.bg_base.a - 0.70).abs() < 1e-4);
+
+            // Out-of-range text reverts without changing the saved value.
+            type_number_input(
+                &mut host,
+                "settings-background-transparency-field",
+                "999",
+                Key::Enter,
+            );
+            assert_eq!(shell::transparency(host.app()).background_transparency, 30);
+
+            // Direct text input commits on blur (Tab away).
+            type_number_input(
+                &mut host,
+                "settings-background-transparency-field",
+                "25",
+                Key::Tab,
+            );
+            assert_eq!(shell::transparency(host.app()).background_transparency, 25);
+            assert!((host.app().look.kit.c.bg_base.a - 0.75).abs() < 1e-4);
 
             step_slider(&mut host, "settings-raised-transparency", Key::PageUp);
             assert_eq!(
@@ -578,8 +631,13 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
             assert_eq!(host.app().look.transparency.backdrop_blur, 0.0);
             assert!(!shell::backdrop_blur_enabled(host.app()));
 
-            // Step unfocused multiplier up (1.25 -> 1.50) and verify live focus/unfocus scaling.
-            step_slider(&mut host, "settings-unfocused-transparency", Key::PageUp);
+            // Direct decimal input on unfocused multiplier updates slider and focus scaling.
+            type_number_input(
+                &mut host,
+                "settings-unfocused-transparency-field",
+                "1.5",
+                Key::Enter,
+            );
             assert!((shell::transparency(host.app()).unfocused_multiplier - 1.50).abs() < 1e-6);
 
             // Unfocus: 25% * 1.50 = 37.5% transparent (0.625 alpha), 20% * 1.50 = 30% (0.70 alpha).
@@ -608,10 +666,10 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
 }
 
 #[test]
-fn appearance_scrollbar_controls_toggle_width_field_and_update_look_live() {
+fn appearance_scrollbar_controls_toggle_width_slider_and_update_look_live() {
     hosted(
         MODULE,
-        "appearance_scrollbar_controls_toggle_width_field_and_update_look_live",
+        "appearance_scrollbar_controls_toggle_width_slider_and_update_look_live",
         |mut host| {
             assert!(!shell::preferences(host.app()).scrollbar_expand_on_hover);
             assert_eq!(
@@ -628,10 +686,15 @@ fn appearance_scrollbar_controls_toggle_width_field_and_update_look_live() {
                 &tree,
                 "settings-switch-scrollbar-expand-on-hover"
             ));
-            assert!(
-                node_disabled(&tree, "settings-scrollbar-hover-width"),
-                "width field starts disabled when hover expansion is off"
-            );
+            for key in [
+                "settings-scrollbar-hover-width",
+                "settings-scrollbar-hover-width-field",
+            ] {
+                assert!(
+                    node_disabled(&tree, key),
+                    "{key} starts disabled when hover expansion is off"
+                );
+            }
 
             click(&mut host, "settings-switch-scrollbar-expand-on-hover");
             assert!(shell::preferences(host.app()).scrollbar_expand_on_hover);
@@ -640,17 +703,18 @@ fn appearance_scrollbar_controls_toggle_width_field_and_update_look_live() {
                 Some(12.0)
             );
             let tree = host.tree();
-            assert!(
-                !node_disabled(&tree, "settings-scrollbar-hover-width"),
-                "width field enables once hover expansion is turned on"
-            );
+            for key in [
+                "settings-scrollbar-hover-width",
+                "settings-scrollbar-hover-width-field",
+            ] {
+                assert!(
+                    !node_disabled(&tree, key),
+                    "{key} enables once hover expansion is turned on"
+                );
+            }
 
-            // Step width up via keyboard on the input field.
-            let _ = reveal_and_center(&mut host, "settings-scrollbar-hover-width-input");
-            host.runtime()
-                .update(|_, tx| tx.focus("settings-scrollbar-hover-width-input", true));
-            idle(&mut host);
-            press(&mut host, Key::Up, Mods::default());
+            // Step width up, down, by page, and verify clamping at min/max via keyboard on the slider.
+            step_slider(&mut host, "settings-scrollbar-hover-width", Key::Up);
             assert_eq!(
                 shell::preferences(host.app()).scrollbar_hover_width.get(),
                 13
@@ -660,21 +724,100 @@ fn appearance_scrollbar_controls_toggle_width_field_and_update_look_live() {
                 Some(13.0)
             );
 
-            // Turning the switch off disables the width field and clears the Look token while preserving the stored width.
+            step_slider(&mut host, "settings-scrollbar-hover-width", Key::Down);
+            assert_eq!(
+                shell::preferences(host.app()).scrollbar_hover_width.get(),
+                12
+            );
+
+            step_slider(&mut host, "settings-scrollbar-hover-width", Key::PageUp);
+            assert_eq!(
+                shell::preferences(host.app()).scrollbar_hover_width.get(),
+                16
+            );
+
+            step_slider(&mut host, "settings-scrollbar-hover-width", Key::End);
+            step_slider(&mut host, "settings-scrollbar-hover-width", Key::Up);
+            assert_eq!(
+                shell::preferences(host.app()).scrollbar_hover_width.get(),
+                24
+            );
+            assert_eq!(
+                strata_kit::slots::scroll::hover_width(&host.app().look),
+                Some(24.0)
+            );
+
+            step_slider(&mut host, "settings-scrollbar-hover-width", Key::Home);
+            step_slider(&mut host, "settings-scrollbar-hover-width", Key::Down);
+            assert_eq!(
+                shell::preferences(host.app()).scrollbar_hover_width.get(),
+                6
+            );
+            assert_eq!(
+                strata_kit::slots::scroll::hover_width(&host.app().look),
+                Some(6.0)
+            );
+
+            // Direct text input commits on Enter, reverts invalid input, and commits on blur.
+            type_number_input(
+                &mut host,
+                "settings-scrollbar-hover-width-field",
+                "18",
+                Key::Enter,
+            );
+            assert_eq!(
+                shell::preferences(host.app()).scrollbar_hover_width.get(),
+                18
+            );
+            assert_eq!(
+                strata_kit::slots::scroll::hover_width(&host.app().look),
+                Some(18.0)
+            );
+
+            type_number_input(
+                &mut host,
+                "settings-scrollbar-hover-width-field",
+                "99",
+                Key::Enter,
+            );
+            assert_eq!(
+                shell::preferences(host.app()).scrollbar_hover_width.get(),
+                18
+            );
+
+            type_number_input(
+                &mut host,
+                "settings-scrollbar-hover-width-field",
+                "14",
+                Key::Tab,
+            );
+            assert_eq!(
+                shell::preferences(host.app()).scrollbar_hover_width.get(),
+                14
+            );
+            assert_eq!(
+                strata_kit::slots::scroll::hover_width(&host.app().look),
+                Some(14.0)
+            );
+
+            // Turning the switch off disables both controls and clears the Look token while preserving the stored width.
             click(&mut host, "settings-switch-scrollbar-expand-on-hover");
             assert!(!shell::preferences(host.app()).scrollbar_expand_on_hover);
             assert_eq!(
                 shell::preferences(host.app()).scrollbar_hover_width.get(),
-                13
+                14
             );
             assert_eq!(
                 strata_kit::slots::scroll::hover_width(&host.app().look),
                 None
             );
-            assert!(node_disabled(
-                &host.tree(),
-                "settings-scrollbar-hover-width"
-            ));
+            let tree = host.tree();
+            for key in [
+                "settings-scrollbar-hover-width",
+                "settings-scrollbar-hover-width-field",
+            ] {
+                assert!(node_disabled(&tree, key));
+            }
 
             // Settings search finds both scrollbar rows by title and by keyword.
             click(&mut host, "settings-search-field");
@@ -700,6 +843,7 @@ fn appearance_scrollbar_controls_toggle_width_field_and_update_look_live() {
                 "settings-switch-scrollbar-expand-on-hover"
             ));
             assert!(is_mounted(&host, "settings-scrollbar-hover-width"));
+            assert!(is_mounted(&host, "settings-scrollbar-hover-width-field"));
         },
     );
 }
