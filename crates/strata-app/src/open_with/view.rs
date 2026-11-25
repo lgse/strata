@@ -56,7 +56,7 @@ impl AppEntry {
             display_name,
             app.name(),
             description.as_deref().unwrap_or_default(),
-            app.executable().to_string_lossy(),
+            app.executable().unwrap_or_default().to_string_lossy(),
             app.id().unwrap_or_default(),
         )
         .to_lowercase();
