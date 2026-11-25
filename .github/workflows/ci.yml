@@ -81,7 +81,7 @@ jobs:
           STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
         run: ./scripts/quality.sh clippy
 
-      - name: Check and exercise the build without UnRAR
+      - name: Check and exercise the build without UnRAR or the in-app updater
         env:
           IMAGE: ${{ steps.environment.outputs.environment_image }}
         run: |
@@ -113,6 +113,7 @@ jobs:
                 exit 1
               fi
               cargo check --locked --workspace --no-default-features
+              STRATA_UPDATER=disabled cargo check --locked --workspace --no-default-features
               cargo check --locked --workspace --all-targets --no-default-features --features strata/test-support,strata/qa
               cargo test --locked -p strata-fs --no-default-features --features test-support services::operations::tests
               cargo test --locked -p strata-fs --no-default-features --features test-support rar_archives_report_unsupported_format
