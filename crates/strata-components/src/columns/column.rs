@@ -6,7 +6,7 @@ use rune::{
     Anim, Color, Cursor, Drag, El, Phase, PointerButton, Spring, SpringPair, Transition, Tx, col,
     el, row, text,
 };
-use rune_kit::{ControlSize, IconButton, IconButtonVariant, Spinner};
+use rune_kit::Spinner;
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 use strata_kit::slots::columns as tokens;
@@ -377,7 +377,7 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
         .h(tokens::header_height(look))
         .pl(tokens::header_inset(look))
         .pr(look.space.xs)
-        .gap(look.space.xs)
+        .gap(look.space.md)
         .items_center()
         .border_sides(
             [0.0, 0.0, tokens::edge_width(look), 0.0],
@@ -430,7 +430,7 @@ fn header_controls<S: 'static>(sh: &Rc<Shared<S>>, s: &S, cx: HeaderCx, serial: 
     let p = (sh.parts)(s);
     let look = p.look;
     let key = keys::column(&p.state.key, serial);
-    let mut controls = row().gap(look.space.xxs).items_center();
+    let mut controls = row().gap(look.frame.inset).items_center();
     let mut any = false;
     if let Some(actions) = sh.actions.as_ref().and_then(|f| f(s, cx)) {
         controls = controls.child(actions);
@@ -439,10 +439,7 @@ fn header_controls<S: 'static>(sh: &Rc<Shared<S>>, s: &S, cx: HeaderCx, serial: 
     if cx.depth > 0 && (sh.close_buttons)(s) {
         let close = sh.clone();
         controls = controls.child(
-            IconButton::new(look.icon(IconName::Close))
-                .variant(IconButtonVariant::GhostMuted)
-                .control_size(ControlSize::Small)
-                .label(sh.labels.close.clone())
+            crate::header::action(look, IconName::Close, &sh.labels.close)
                 .on_press_tx(move |s: &mut S, tx: &mut Tx| {
                     if let Some(depth) = depth_of(&close, s, serial) {
                         close.emit(s, ColumnsIntent::CloseFrom(depth), tx);

@@ -205,7 +205,6 @@ pub(super) fn label_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S
             let look = rcx.look;
             let cut = b.cut(&build_shared, s, rcx.entry.name);
             let (fill, color, hover) = name_look(rcx);
-            let below = (m.caption_height() - (cut.size.1 + m.caption_pad)).max(0.0);
             let matches = rcx.state.marks.name_matches;
             let spans = matches.onto(rcx.entry.name, &cut.text).spans(look);
             let mut name = text(cut.text.to_string())
@@ -219,7 +218,6 @@ pub(super) fn label_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S
                 .max_lines(m.name_lines.max(1))
                 .px(m.caption_pad)
                 .py(m.caption_pad / 2.0)
-                .mb(below)
                 .radius(tokens::caption_radius(look))
                 .w(cut.size.0 + 2.0 * m.caption_pad)
                 .h(cut.size.1 + m.caption_pad);

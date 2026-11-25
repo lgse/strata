@@ -7,6 +7,7 @@ use strata_kit::look::Look;
 use strata_kit::slots::icons as tokens;
 use strata_kit::typography::line_of;
 
+use super::caption::Cut;
 use crate::contract::Rect;
 
 /// The narrowest card, in points: Strata's fallback column (120) less its card spacing.
@@ -71,7 +72,12 @@ impl TileMetrics {
         let caption_pad = tokens::caption_pad(look);
         let name_font = kit.ty.ui_compact;
         let name_line = line_of(name_font);
-        let details_font = kit.ty.small;
+        let details_font = TextStyle {
+            line_height: (kit.ty.small.size * 1.25)
+                .round()
+                .max(line_of(kit.ty.small)),
+            ..kit.ty.small
+        };
         let details_line = if details { line_of(details_font) } else { 0.0 };
         let (margin, card_x, card_y) = (
             tokens::tile_margin(look),
@@ -183,9 +189,18 @@ impl TileMetrics {
         }
     }
 
-    /// Where the details line starts, from the cell's top.
+    /// Where the details line starts below a full-height caption, from the cell's top.
     pub fn details_top(&self) -> f32 {
         self.caption_top() + self.caption_height()
+    }
+
+    /// Where the details line starts for a tile whose name wrapped to `cut`, from the cell's top.
+    pub fn details_top_for(&self, cut: &Cut) -> f32 {
+        if self.name_lines == 0 {
+            self.caption_top()
+        } else {
+            self.caption_top() + cut.size.1 + self.caption_pad
+        }
     }
 
     /// A hash of every size, for a memo version.

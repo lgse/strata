@@ -187,7 +187,7 @@ fn a_long_details_line_hits_only_inside_the_card() {
         cut: false,
         size: (8.0, m.name_line),
     };
-    let y = m.details_top() + m.details_line / 2.0;
+    let y = m.details_top_for(&cut) + m.details_line / 2.0;
     let wide = 10.0 * cell_w;
     assert_eq!(
         super::regions::region(&m, cell_w, &cut, wide, Point::new(cell_w / 2.0, y)),
@@ -197,6 +197,17 @@ fn a_long_details_line_hits_only_inside_the_card() {
         super::regions::region(&m, cell_w, &cut, wide, Point::new(m.margin / 2.0, y)),
         Region::Gutter,
         "the tile's margin"
+    );
+    assert_eq!(
+        super::regions::region(
+            &m,
+            cell_w,
+            &cut,
+            wide,
+            Point::new(cell_w / 2.0, m.details_top() + m.details_line / 2.0)
+        ),
+        Region::Gutter,
+        "the unused second-line slack below a one-line tile's details"
     );
 }
 

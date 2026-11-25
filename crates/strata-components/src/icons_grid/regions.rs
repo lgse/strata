@@ -23,7 +23,7 @@ pub fn region(m: &TileMetrics, cell_w: f32, cut: &Cut, details_w: f32, local: Po
     if details_w > 0.0 && m.details_line > 0.0 {
         let details = Rect::new(
             (cell_w - details_w) / 2.0,
-            m.details_top(),
+            m.details_top_for(cut),
             details_w,
             m.details_line,
         );
