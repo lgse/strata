@@ -173,8 +173,8 @@ fn edge_line(key: &str, look: &Look) -> El {
         .inert()
 }
 
-/// Column resize edge overlay. Uses a dedicated accent line driven by the edge's hover group
-/// because Rune lacks hover border colour (`anomalyco/rune#328`).
+/// Column resize edge overlay. Uses a hover-group accent line centred inside the `2 * EDGE_REACH`
+/// grab band so the seam lights from either side of the divider and stays lit while dragging.
 fn edge<S: 'static>(sh: &Rc<Shared<S>>, st: &ColumnsState, spec: EdgeSpec<'_>, look: &Look) -> El {
     let (drag, lit, hover) = (sh.clone(), sh.clone(), sh.clone());
     let EdgeSpec {

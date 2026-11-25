@@ -135,7 +135,7 @@ impl Demo {
     }
 
     /// What the emoji button reads: Strata's "Choose Emoji…", or "Emoji" and the saved emoji,
-    /// drawn through `drawn_text` (anomalyco/rune#102).
+    /// drawn through `drawn_text` so unqualified text-default emoji qualify for colour.
     pub fn emoji_label(&self) -> String {
         match &self.current {
             Some(c @ Choice::Emoji(_)) => format!("Emoji  {}", drawn_text(c)),

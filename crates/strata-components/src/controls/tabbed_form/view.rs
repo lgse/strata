@@ -7,7 +7,7 @@ use std::rc::Rc;
 use rune::{El, Key, KeyEvent, TextStyle, Tx, col, el, row, text};
 use strata_kit::look::Look;
 
-use super::state::{FormPage, Mounting, PageCarry, TabbedFormState};
+use super::state::{FormPage, Mounting, TabbedFormState};
 
 pub const TAB_HEIGHT: f32 = 36.0;
 pub const TAB_PAD_X: f32 = 6.0;
@@ -114,23 +114,13 @@ impl<S: 'static> TabbedForm<S> {
             return true;
         }
         let ring = tx.focus_visible() || tx.by_keys();
-        if let Some(f) = tx.focused().map(str::to_owned) {
-            if (0..pages).any(|j| f == self.tab_key(j)) {
-                let tab = self.tab_key(next);
-                tx.focus(tab.clone(), ring);
-                (self.get_mut)(s).keep_tab(tab, ring, tx);
-            } else {
-                (self.get_mut)(s).carry_page(
-                    PageCarry {
-                        from: f,
-                        panel: self.panel_key(next),
-                        tab: self.tab_key(next),
-                        tabs_prefix: format!("{}-tab-", self.key),
-                        ring,
-                    },
-                    tx,
-                );
-            }
+        if tx.focus_within(&self.tabs_key()) {
+            let tab = self.tab_key(next);
+            tx.focus(tab.clone(), ring);
+            (self.get_mut)(s).keep_tab(tab, ring, tx);
+        } else if tx.focus_within(&self.panel_key(at)) {
+            tx.focus(self.tab_key(next), ring);
+            (self.get_mut)(s).carry_panel(self.panel_key(next), ring, tx);
         }
         choose(self.get_mut, &self.on_select, s, next, tx);
         true

@@ -11,6 +11,7 @@ use super::store::{Thumb, ThumbnailStore};
 use crate::{
     collection::element::{ICON, RowCx, Slot},
     contract::{Entry, EntryGlyph, EntryId, EntryKind},
+    controls::icon_picker::drawn_emoji,
 };
 
 /// The key of a part's image, under the part ([`ICON`] in a row).
@@ -231,15 +232,6 @@ fn wears_folder_badge(look: &Look, entry: Entry<'_>) -> bool {
                 .is_some_and(|art| std::ptr::eq(art, look.icon(IconName::Folder))))
 }
 
-/// Emoji presentation (`U+FE0F`) so text-default emoji draw in colour (`anomalyco/rune#102`).
-fn drawn_emoji(emoji: &str) -> String {
-    if emoji.contains('\u{fe0f}') {
-        emoji.to_owned()
-    } else {
-        format!("{emoji}\u{fe0f}")
-    }
-}
-
 /// A filled folder coloured `folder_color` with `badge` centred in its body.
 pub fn folder_badge(
     look: &Look,
@@ -294,7 +286,7 @@ pub(crate) fn folder_badge_hover(
                 .center()
                 .a11y_hidden()
                 .child(
-                    text(drawn_emoji(emoji))
+                    text(drawn_emoji(emoji).to_owned())
                         .font(style)
                         .color(look.kit.c.text_base)
                         .a11y_hidden(),
@@ -330,7 +322,7 @@ pub fn entry_glyph(look: &Look, entry: Entry<'_>, points: f32, default_color: ru
             .center()
             .a11y_hidden()
             .child(
-                text(drawn_emoji(emoji))
+                text(drawn_emoji(emoji).to_owned())
                     .font(style)
                     .color(look.kit.c.text_base)
                     .a11y_hidden(),
