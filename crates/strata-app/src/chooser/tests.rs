@@ -4,7 +4,6 @@ use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 use rune::{Key, Mods, Tx};
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
-use strata_platform::csd::{Backend, Csd, Policy};
 
 use super::{
     NAME_KEY, accept,
@@ -192,10 +191,8 @@ fn run_chooser(
         let initial = request.initial_directory.clone();
         let chosen: Chosen = Rc::new(RefCell::new(None));
         let slot = chosen.clone();
-        let csd = Csd::new(Policy::Auto.frame(), Backend::Headless);
         let app = App::new_chooser(
             &ui,
-            csd,
             settings,
             (
                 request,

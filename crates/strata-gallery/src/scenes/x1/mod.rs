@@ -98,6 +98,7 @@ fn x11(maximized: bool) -> WindowChrome {
         can_minimize: Some(true),
         can_maximize: Some(true),
         active: true,
+        ..WindowChrome::default()
     }
 }
 
@@ -252,6 +253,7 @@ fn header_states(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
                 can_minimize: Some(false),
                 can_maximize: None,
                 active: true,
+                ..WindowChrome::default()
             },
         ),
     ];

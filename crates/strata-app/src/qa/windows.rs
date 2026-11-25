@@ -7,7 +7,6 @@ use std::{
 };
 
 use strata_components::contract::EntryId;
-use strata_platform::csd::{Backend, Csd, Policy};
 use strata_qa::{Chord, Keymap, Modifier};
 
 use super::{
@@ -142,8 +141,7 @@ impl Windows {
         let ui = self.main.ui();
         let settings = self.main.app(shell::share_settings);
         let initial = launch::initial_for(opening, &settings);
-        let csd = Csd::new(Policy::Auto.frame(), Backend::Headless);
-        let app = App::new(&ui, csd, settings);
+        let app = App::new(&ui, settings);
         #[expect(clippy::cast_precision_loss, reason = "a window's size fits f32")]
         let size = (self.parent_size.0 as f32, self.parent_size.1 as f32);
         let mut host = Offscreen::from_app(ui, app, size).without_animations();

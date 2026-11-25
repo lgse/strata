@@ -8,12 +8,8 @@
 //!
 //! This crate is generic: it depends on `rune` alone and carries no Strata names in its API.
 
-#[cfg(feature = "backdrop-blur")]
-pub mod backdrop_blur;
 #[cfg(feature = "clipboard")]
 pub mod clipboard;
-#[cfg(feature = "csd")]
-pub mod csd;
 #[cfg(feature = "dnd")]
 pub mod dnd;
 #[cfg(feature = "foreign-parent")]
@@ -26,8 +22,6 @@ pub mod glib_loop;
 pub mod icon_theme;
 #[cfg(feature = "media-audio")]
 pub mod media;
-#[cfg(feature = "settings")]
-pub mod settings;
 #[cfg(feature = "single-instance")]
 pub mod single_instance;
 #[cfg(feature = "_transfer")]

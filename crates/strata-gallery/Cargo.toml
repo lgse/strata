@@ -23,7 +23,7 @@ serde_json.workspace = true
 
 # Shared by two or more demos.
 serde.workspace = true
-strata-platform = { workspace = true, features = ["clipboard", "csd", "dnd", "glib-bridge", "settings", "single-instance"] }
+strata-platform = { workspace = true, features = ["clipboard", "dnd", "glib-bridge", "single-instance"] }
 strata-test-peer.workspace = true
 
 # X1 shell demo: examples/shell/

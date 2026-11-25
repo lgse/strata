@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Internal transfer substrate shared by `dnd`, `clipboard`, `foreign-parent`, and `backdrop-blur`.
+//! Internal transfer substrate shared by `dnd`, `clipboard`, and `foreign-parent`.
 //!
 //! Uses `WindowHandle::with_raw_display_handle` to share winit's Wayland display; Rune still
 //! lacks an every-turn dispatch hook for a custom Wayland queue ([anomalyco/rune#522]).
@@ -108,12 +108,7 @@ enum Backend {
 }
 
 /// Runs at [`Transfer::shutdown`], on the UI thread, before anything is torn down.
-#[cfg(any(
-    feature = "dnd",
-    feature = "clipboard",
-    feature = "foreign-parent",
-    feature = "backdrop-blur"
-))]
+#[cfg(any(feature = "dnd", feature = "clipboard", feature = "foreign-parent"))]
 pub(crate) type BeforeShutdown = Box<dyn FnOnce(&Transfer) + Send>;
 
 struct Hub {
@@ -124,12 +119,7 @@ struct Hub {
     windows: Arc<Windows>,
     subs: Subscribers,
     backend: Backend,
-    #[cfg(any(
-        feature = "dnd",
-        feature = "clipboard",
-        feature = "foreign-parent",
-        feature = "backdrop-blur"
-    ))]
+    #[cfg(any(feature = "dnd", feature = "clipboard", feature = "foreign-parent"))]
     before_shutdown: Mutex<Vec<BeforeShutdown>>,
 }
 
@@ -193,12 +183,7 @@ impl Transfer {
             windows,
             subs,
             backend,
-            #[cfg(any(
-                feature = "dnd",
-                feature = "clipboard",
-                feature = "foreign-parent",
-                feature = "backdrop-blur"
-            ))]
+            #[cfg(any(feature = "dnd", feature = "clipboard", feature = "foreign-parent"))]
             before_shutdown: Mutex::new(Vec::new()),
         });
         *hub = Some(h.clone());
@@ -376,12 +361,7 @@ impl Transfer {
             return Ok(false);
         };
         drop(slot);
-        #[cfg(any(
-            feature = "dnd",
-            feature = "clipboard",
-            feature = "foreign-parent",
-            feature = "backdrop-blur"
-        ))]
+        #[cfg(any(feature = "dnd", feature = "clipboard", feature = "foreign-parent"))]
         {
             let hooks = std::mem::take(&mut *lock(&hub.before_shutdown));
             let t = Transfer(hub.clone());
@@ -404,7 +384,7 @@ impl Transfer {
     }
 }
 
-#[cfg(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur"))]
+#[cfg(any(feature = "dnd", feature = "foreign-parent"))]
 impl Transfer {
     /// The Wayland connection on winit's display, if bound.
     pub(crate) fn shared_conn(&self) -> Option<&Arc<wayland::Conn>> {
@@ -430,12 +410,7 @@ impl Transfer {
     }
 }
 
-#[cfg(any(
-    feature = "dnd",
-    feature = "clipboard",
-    feature = "foreign-parent",
-    feature = "backdrop-blur"
-))]
+#[cfg(any(feature = "dnd", feature = "clipboard", feature = "foreign-parent"))]
 impl Transfer {
     /// Runs `f` at [`Transfer::shutdown`], on the UI thread, before the substrate tears down.
     pub(crate) fn before_shutdown(&self, f: BeforeShutdown) {

@@ -15,8 +15,6 @@ use rune::{AppHandle, AppSpec, Cx, El, Tx, WindowHandle, WindowSpec, col};
 use strata_core::model::Location;
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::{
-    backdrop_blur::BackdropBlur,
-    csd::{Backend, Csd, Policy},
     dnd::Dnd,
     foreign_parent::{self, Options, Parent},
     glib_loop::GlibLoop,
@@ -225,7 +223,6 @@ fn lost_parent(app: &mut App, tx: &mut Tx) {
 
 /// A chooser window closing, by its close button or after its request finished.
 fn close_chooser(app: &mut App, tx: &mut Tx) {
-    shell::detach_backdrop_blur(app);
     crate::chooser::cancel(app, tx);
     folder_views::flush_at_exit(app);
     let Some(token) = app.chooser.token() else {
@@ -239,11 +236,7 @@ fn close_chooser(app: &mut App, tx: &mut Tx) {
 }
 
 /// The chooser's own app over `state`, which shows its window once it is parented.
-fn chooser_app(
-    request: &ChooserRequest,
-    (state_size, frame): ((f32, f32), strata_platform::csd::Frame),
-    (dnd, blur): (Dnd<App>, BackdropBlur),
-) -> rune::App<App> {
+fn chooser_app(request: &ChooserRequest, state_size: (f32, f32), dnd: Dnd<App>) -> rune::App<App> {
     let parent = request
         .parent
         .as_deref()
@@ -252,14 +245,13 @@ fn chooser_app(
     let modal = request.modal;
     let app = super::chooser_window::chooser_app(ChooserWindow {
         size: state_size,
-        frame,
         visible: false,
         poll: chooser_poll,
         on_close: close_chooser,
     });
     let handle = app.handle();
     app.on_window(move |window: &WindowHandle| {
-        chooser_window::attach_window(window, &handle, &blur);
+        chooser_window::attach_window(window, &handle);
         crate::dnd::attach(&dnd, window, &handle);
         let options = Options::new().modal(modal).on_lost(lost_parent);
         let _ = foreign_parent::apply(window, &handle, &parent, options);
@@ -284,14 +276,12 @@ fn open_chooser_window(
     if let Some((old_window, _)) = previous {
         old_window.close();
     }
-    let frame = Policy::Auto.frame();
     let (width, height) = chooser_initial_dimensions(None, request.parent_size_hint);
     #[expect(clippy::cast_precision_loss, reason = "window dimensions fit f32")]
     let size = (width as f32, height as f32);
     let initial = Location::local(request.initial_directory.clone());
     let dnd = Dnd::<App>::new();
-    let blur = BackdropBlur::new();
-    let app = chooser_app(&request, (size, frame), (dnd.clone(), blur.clone()));
+    let app = chooser_app(&request, size, dnd.clone());
     let app = HOOKS.with(
         |cell| match cell.get().and_then(|hooks| hooks.chooser.as_ref()) {
             Some(chooser) => chooser(app, &token),
@@ -300,12 +290,10 @@ fn open_chooser_window(
     );
     let mut state = App::new_chooser(
         &ui,
-        Csd::new(frame, Backend::from_env()),
         startup::load_settings(),
         (request, ChooserFileSource::new(None), None, completion),
     );
     crate::dnd::bind(&mut state, dnd);
-    shell::bind_backdrop_blur(&mut state, blur);
     state.open(initial);
     let handle = app.handle();
     let wake = handle.clone();

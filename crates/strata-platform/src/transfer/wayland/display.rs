@@ -10,7 +10,7 @@ use std::ptr::NonNull;
 
 use rune::WindowHandle;
 use rune::raw_window_handle::RawDisplayHandle;
-#[cfg(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur"))]
+#[cfg(any(feature = "dnd", feature = "foreign-parent"))]
 use rune::raw_window_handle::RawWindowHandle;
 use wayland_backend::client::Backend;
 
@@ -40,7 +40,7 @@ pub(super) fn winit_display(
         .map_err(Error::WindowClosed)?
 }
 
-#[cfg(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur"))]
+#[cfg(any(feature = "dnd", feature = "foreign-parent"))]
 pub(crate) fn with_surface<R>(
     conn: &wayland_client::Connection,
     window: &WindowHandle,

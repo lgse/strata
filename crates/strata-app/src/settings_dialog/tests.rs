@@ -533,7 +533,10 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
             assert_eq!(host.app().look.kit.c.bg_base.a, 1.0);
             assert_eq!(host.app().look.kit.c.bg_deep.a, 1.0);
             assert_eq!(host.app().look.transparency.backdrop_blur, 0.0);
-            assert!(!shell::backdrop_blur_enabled(host.app()));
+            assert_eq!(
+                shell::requested_window_backdrop(host.app()),
+                rune::WindowBackdrop::None
+            );
 
             click(&mut host, "header-settings");
             click(&mut host, "settings-nav-theme");
@@ -567,12 +570,36 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
             }
 
             // Enable master transparency toggle: sub-controls activate and Look scales live.
+            // Without compositor blur support, WindowBackdrop stays None so translucent windows
+            // never trigger Rune's opaque fallback on compositors like Hyprland/Sway/X11.
             click(&mut host, "settings-switch-transparency");
             assert!(shell::transparency(host.app()).enabled);
             assert!(host.app().look.transparency.enabled);
             assert!(host.app().look.transparency.frosted_glass);
             assert!(host.app().look.transparency.backdrop_blur > 0.0);
-            assert!(shell::backdrop_blur_enabled(host.app()));
+            assert_eq!(
+                shell::requested_window_backdrop(host.app()),
+                rune::WindowBackdrop::None
+            );
+
+            // Once compositor Wayland blur support is reported, WindowBackdrop::Blur activates
+            // and the unsupported compositor note hides.
+            host.runtime()
+                .set_window_backdrop_supported(rune::WindowBackdrop::Blur, true);
+            idle(&mut host);
+            assert_eq!(
+                shell::requested_window_backdrop(host.app()),
+                rune::WindowBackdrop::Blur
+            );
+            let supported_tree = host.tree();
+            let note_when_supported = view::all(&supported_tree, &|node| {
+                view::text(node, "name")
+                    == "Requires a compositor that supports backdrop blur and has it enabled."
+            });
+            assert!(
+                note_when_supported.is_empty(),
+                "Frosted glass hides the compositor note when blur is supported"
+            );
             assert!((host.app().look.kit.c.bg_base.a - 0.85).abs() < 1e-4);
             assert!((host.app().look.kit.c.bg_deep.a - 0.90).abs() < 1e-4);
             assert_eq!(host.app().look.kit.c.text_base.a, 1.0);
@@ -633,7 +660,10 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
             assert!(!shell::transparency(host.app()).frosted_glass);
             assert!(!host.app().look.transparency.frosted_glass);
             assert_eq!(host.app().look.transparency.backdrop_blur, 0.0);
-            assert!(!shell::backdrop_blur_enabled(host.app()));
+            assert_eq!(
+                shell::requested_window_backdrop(host.app()),
+                rune::WindowBackdrop::None
+            );
 
             // Direct decimal input on unfocused multiplier updates slider and focus scaling.
             type_number_input(

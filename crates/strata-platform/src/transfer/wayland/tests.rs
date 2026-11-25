@@ -40,7 +40,7 @@ fn a_dead_connection_forgets_drags_and_dropped_offers() {
     assert!(st.selections.is_empty());
 }
 
-#[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
+#[cfg(feature = "foreign-parent")]
 #[test]
 fn only_libwaylands_own_error_counts_a_round_trip_failure_as_death() {
     use std::io::{Error as IoError, ErrorKind};

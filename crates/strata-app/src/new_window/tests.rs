@@ -59,8 +59,6 @@ fn shift_enter_asks_for_a_window_on_the_cursors_folder() {
 
 #[test]
 fn a_chooser_opens_no_window_and_no_tab() {
-    use strata_platform::csd::{Backend, Csd, Policy};
-
     use crate::{App, chooser::floating, host::offscreen::Offscreen, portal::Completion};
 
     hosted(
@@ -82,7 +80,6 @@ fn a_chooser_opens_no_window_and_no_tab() {
             let completion: Completion = Box::new(|_| {});
             let chooser = App::new_chooser(
                 &host.ui(),
-                Csd::new(Policy::Auto.frame(), Backend::Headless),
                 shell::share_settings(host.app()),
                 (
                     request.request,

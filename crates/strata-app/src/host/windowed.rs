@@ -19,11 +19,7 @@ use std::{
 
 use rune::{AppHandle, AppSpec, CloseResponse, Tx, WindowHandle, WindowOptions, WindowSpec};
 use strata_kit::fonts::{FAMILIES, FONTS};
-use strata_platform::{
-    backdrop_blur::BackdropBlur,
-    csd::{self, Backend, Csd, Policy},
-    glib_loop::GlibLoop,
-};
+use strata_platform::glib_loop::GlibLoop;
 
 use crate::{
     App, application, commands, folder_views, launch, menus,
@@ -232,14 +228,11 @@ fn on_close_request(app: &mut App, _: &mut Tx) -> CloseResponse {
 }
 
 fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<App> {
-    let frame = Policy::Auto.frame();
     let clip =
         strata_platform::clipboard::Clipboard::<App>::new().on_change(crate::clipboard::changed);
     let clip_for_init = clip.clone();
     let dnd = strata_platform::dnd::Dnd::<App>::new();
     let dnd_for_init = dnd.clone();
-    let blur = BackdropBlur::new();
-    let blur_for_init = blur.clone();
     let app = rune::App::new(AppSpec {
         poll: Some(poll),
         on_key: Some(commands::on_key),
@@ -250,7 +243,6 @@ fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<
     .compositor(crate::fx::FxCompositor::new())
     .on_close_request(on_close_request)
     .on_close(|app: &mut App, _: &mut Tx| {
-        shell::detach_backdrop_blur(app);
         super::floating::close_with_browser(shell::window_id(app));
         folder_views::flush_at_exit(app);
         if closed(shell::window_id(app)) {
@@ -258,7 +250,6 @@ fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<
         }
     })
     .on_quit(|app: &mut App, _: &mut Tx| {
-        shell::detach_backdrop_blur(app);
         folder_views::flush_at_exit(app);
         if closed(shell::window_id(app)) {
             shut_down();
@@ -271,21 +262,17 @@ fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<
     .on_rest(on_rest)
     // Rune's own flags (`--snap`, `--tree`) are not this binary's.
     .args(Vec::new())
-    .window_options(csd::window_options(
-        frame,
-        WindowOptions {
-            transparent: true,
-            ..WindowOptions::default()
-        },
-    ));
+    .window_options(WindowOptions {
+        borderless: true,
+        transparent: true,
+        ..WindowOptions::default()
+    });
     let handle = app.handle();
     let registered = handle.clone();
     app.init(move || {
-        let csd = Csd::new(frame, Backend::from_env());
-        let mut app = App::new(&ui, csd, settings);
+        let mut app = App::new(&ui, settings);
         crate::clipboard::bind(&mut app, clip_for_init);
         crate::dnd::bind(&mut app, dnd_for_init);
-        shell::bind_backdrop_blur(&mut app, blur_for_init);
         let wake = registered.clone();
         app.window
             .set_image_cache(std::sync::Arc::new(rune::ImageCache::new(
@@ -299,8 +286,8 @@ fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<
     .on_window(move |window: &WindowHandle| {
         crate::clipboard::attach(&clip, window, &handle);
         crate::dnd::attach(&dnd, window, &handle);
-        csd::attach(window, &handle, shell::csd_of);
-        blur.attach(window, &handle);
+        let bound = window.clone();
+        handle.update(move |app, _| shell::bind_window_handle(app, bound));
     })
 }
 

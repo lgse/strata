@@ -3,7 +3,6 @@
 use std::{cell::Cell, rc::Rc};
 
 use strata_core::model::Location;
-use strata_platform::csd::{Backend, Csd, Policy};
 use strata_qa::Keymap;
 
 use super::{host::Host, input_log::InputLog, staged::Staged, tree::Node};
@@ -59,7 +58,6 @@ impl Toplevel {
         let closed = Rc::new(Cell::new(false));
         let mut app = App::new_chooser(
             &ui,
-            Csd::new(Policy::Auto.frame(), Backend::Headless),
             parts.settings,
             (
                 parts.request,
