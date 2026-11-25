@@ -14,7 +14,7 @@
 {"expect":{"mentions":{"target":{"dialog":true},"text":"$path"}},"message":"the error to name the blocking path, not just a basename"}
 {"expect":{"mentions":{"target":{"dialog":true},"text":"Permission denied"}},"message":"the underlying permission reason to be visible"}
 {"expect":{"mentions":{"target":{"dialog":true},"text":"Some entries were already deleted."}},"message":"the error to make clear that other entries are gone","variants":["permanent"]}
-{"expect":{"absent":{"dialog_button":"Permanently delete 1 item"}},"message":"a permission refusal must not offer permanent deletion as a substitute for Trash","variants":["trash"]}
+{"expect":{"absent":{"dialog_button":"Delete Permanently"}},"message":"a permission refusal must not offer permanent deletion as a substitute for Trash","variants":["trash"]}
 {"click":{"dialog_button":"Show in Folder"}}
 {"wait":{"all":[{"dialog":null},{"directory":"$folder"},{"selected":["$item"],"dir":"$folder"}]},"message":"Show in Folder to navigate and select just the blocker"}
 {"fs":{"path":"to-delete/nested","chmod":"755"}}
