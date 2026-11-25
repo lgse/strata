@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: MIT
 
+use std::cell::Cell;
 use std::rc::Rc;
 
-use rune::{Chord, Key, KeyEvent, Mods};
+use rune::{Chord, Cx, El, Env, Key, KeyEvent, Mods, Runtime, col};
+use strata_kit::look::Look;
 
 use super::data::{Keys, Section, Shortcut, ShortcutData};
 use super::keys::edits;
 use super::search::{Index, Line, fold, fold_query, lines};
 use super::state::{ReferenceKeys, ReferenceState};
-use super::{chord_label, keymap_rows, note};
+use super::{ShortcutReference, chord_label, keymap_rows, note};
 use crate::collection::keyboard::{Command, KeyMap, Letters, Target};
 use crate::contract::Direction;
 
@@ -436,8 +438,6 @@ fn the_panel_takes_keys_with_focus_elsewhere_in_it() {
         search: "r-search".to_owned(),
         chosen_category: "r-category-0".to_owned(),
         results: "r-results".to_owned(),
-        line_key: Rc::new(|i| format!("r-line-{i}")),
-        lines: Rc::default(),
     };
     let mut s = ReferenceState::new();
     s.open();
@@ -469,4 +469,198 @@ fn super_with_a_letter_is_taken() {
         "Super+E is the desktop's or the app's"
     );
     assert!(!edits(&key(Key::Left, logo)));
+}
+
+struct ScrollHost {
+    reference: ReferenceState,
+    data: ShortcutData,
+    look: Look,
+    views: Cell<usize>,
+}
+
+fn long_data() -> ShortcutData {
+    let rows = |prefix: &str, count: usize| {
+        (0..count)
+            .map(|i| {
+                Shortcut::new(
+                    format!("{prefix} action {i}"),
+                    Keys::one(format!("Ctrl+{i}")),
+                )
+            })
+            .collect()
+    };
+    ShortcutData {
+        sections: vec![
+            Section {
+                title: "Navigation".to_owned(),
+                rows: rows("Navigate", 40),
+            },
+            Section {
+                title: "Editing".to_owned(),
+                rows: rows("Edit", 40),
+            },
+        ],
+        revision: 1,
+    }
+}
+
+fn scroll_host_view(s: &ScrollHost, _cx: &mut Cx<ScrollHost>) -> El {
+    s.views.set(s.views.get() + 1);
+    let mut layer = Vec::new();
+    ShortcutReference::new(
+        "ref",
+        |s: &ScrollHost| &s.reference,
+        |s: &mut ScrollHost| &mut s.reference,
+        |s: &ScrollHost| &s.data,
+    )
+    .reduced_motion(true)
+    .build(s, &s.look, &mut layer);
+    rune_kit::root(col().size(1200.0, 800.0), layer)
+}
+
+fn mounted_reference() -> Runtime<ScrollHost> {
+    let mut reference = ReferenceState::new();
+    reference.open();
+    let state = ScrollHost {
+        reference,
+        data: long_data(),
+        look: Look::fallback(false),
+        views: Cell::new(0),
+    };
+    let mut rt = Runtime::new(
+        state,
+        scroll_host_view,
+        (1200.0, 800.0),
+        Env::new(true, 1.0),
+    );
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+    rt
+}
+
+#[test]
+fn held_arrow_keys_from_search_accumulate_smoothly_without_view_rebuilds() {
+    let mut rt = mounted_reference();
+    rt.check_live_only(false);
+    assert_eq!(rt.state.reference.scroll_offset(), 0.0);
+
+    let views_before = rt.state.views.get();
+    // Queue five held Down repeats before the next frame draws; every repeat must accumulate.
+    for _ in 0..5 {
+        rt.key(key(Key::Down, Mods::default()));
+    }
+    rt.frame(1.0 / 60.0);
+    let after_down = rt.state.reference.scroll_offset();
+    assert!(
+        after_down >= 199.0,
+        "held Down repeats from search should accumulate (~200pt), got {after_down}"
+    );
+    assert_eq!(
+        rt.state.views.get(),
+        views_before,
+        "held Down repeats must not trigger full view rebuilds"
+    );
+
+    // Held Up repeats scroll cleanly back toward the top without rebuilding the view.
+    for _ in 0..3 {
+        rt.key(key(Key::Up, Mods::default()));
+    }
+    rt.frame(1.0 / 60.0);
+    let after_up = rt.state.reference.scroll_offset();
+    assert!(
+        after_up < after_down - 100.0 && after_up > 0.0,
+        "held Up repeats should step back smoothly: before={after_down}, after={after_up}"
+    );
+    assert_eq!(
+        rt.state.views.get(),
+        views_before,
+        "held Up repeats must not trigger full view rebuilds"
+    );
+}
+
+#[test]
+fn results_scroll_keys_page_jump_and_clamp_at_bottom_without_view_rebuilds() {
+    let mut rt = mounted_reference();
+    rt.check_live_only(false);
+    rt.key(key(Key::Command('l'), ctrl()));
+    rt.frame(1.0 / 60.0);
+    let views_in_results = rt.state.views.get();
+
+    for _ in 0..4 {
+        rt.key(key(Key::Text("j".into()), Mods::default()));
+    }
+    rt.frame(1.0 / 60.0);
+    let after_j = rt.state.reference.scroll_offset();
+    assert!(after_j >= 159.0, "held j in results accumulates: {after_j}");
+
+    for _ in 0..2 {
+        rt.key(key(Key::Text("k".into()), Mods::default()));
+    }
+    rt.frame(1.0 / 60.0);
+    let after_k = rt.state.reference.scroll_offset();
+    assert!(after_k < after_j - 70.0, "held k steps up: {after_k}");
+
+    rt.key(key(Key::PageDown, Mods::default()));
+    rt.frame(1.0 / 60.0);
+    let after_pgdn = rt.state.reference.scroll_offset();
+    assert!(after_pgdn > after_k + 200.0, "PageDown advances by a page");
+
+    rt.key(key(Key::PageUp, Mods::default()));
+    rt.frame(1.0 / 60.0);
+    assert!(
+        rt.state.reference.scroll_offset() < after_pgdn - 200.0,
+        "PageUp steps back by a page"
+    );
+
+    rt.key(key(Key::End, Mods::default()));
+    rt.frame(1.0 / 60.0);
+    let at_end = rt.state.reference.scroll_offset();
+    assert!(at_end > after_pgdn, "End jumps to the bottom: {at_end}");
+
+    // Holding Down past the bottom clamps at max so the very first Up scrolls up immediately.
+    for _ in 0..10 {
+        rt.key(key(Key::Down, Mods::default()));
+    }
+    rt.frame(1.0 / 60.0);
+    assert!((rt.state.reference.scroll_offset() - at_end).abs() < 1.0);
+    rt.key(key(Key::Up, Mods::default()));
+    rt.frame(1.0 / 60.0);
+    assert!(rt.state.reference.scroll_offset() < at_end - 20.0);
+
+    rt.key(key(Key::Home, Mods::default()));
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.state.reference.scroll_offset(), 0.0, "Home jumps to top");
+    assert_eq!(
+        rt.state.views.get(),
+        views_in_results,
+        "all results scroll keys run live-only without view rebuilds"
+    );
+}
+
+#[test]
+fn scroll_keys_pass_rune_live_only_check_and_category_change_resets_scroll() {
+    let mut rt = mounted_reference();
+    rt.check_live_only(true);
+    rt.frame(0.5);
+    for _ in 0..4 {
+        rt.key(key(Key::Down, Mods::default()));
+        rt.frame(1.0 / 60.0);
+    }
+    assert!(rt.state.reference.scroll_offset() > 100.0);
+    assert!(
+        rt.live_only_warnings().is_empty(),
+        "scroll keys must not dirty view state: {:?}",
+        rt.live_only_warnings()
+    );
+
+    rt.update(|s, tx| {
+        s.reference.set_category(Some("Editing".to_owned()));
+        tx.scroll_to_instant("ref-results", 0.0, 0.0);
+    });
+    rt.frame(1.0 / 60.0);
+    assert_eq!(
+        rt.state.reference.scroll_offset(),
+        0.0,
+        "switching category resets scroll offset to top"
+    );
 }

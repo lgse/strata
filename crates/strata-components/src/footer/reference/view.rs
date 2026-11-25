@@ -48,11 +48,6 @@ pub(super) fn panel<S: 'static>(r: &ShortcutReference<S>, s: &S, look: &Look) ->
     let index = state.index();
     let chosen = state.section(data);
     let key = r.key.clone();
-    let line_key: Rc<dyn Fn(usize) -> String> = {
-        let key = key.clone();
-        let lines = lines.clone();
-        Rc::new(move |i| line_key(&key, &lines, i))
-    };
     let route = Rc::new(Route {
         get_mut: r.get_mut,
         keys: r.keys.clone(),
@@ -61,13 +56,11 @@ pub(super) fn panel<S: 'static>(r: &ShortcutReference<S>, s: &S, look: &Look) ->
         // Category 0 is All, then each section in order.
         chosen_category: r.category_key(chosen.map_or(0, |c| c + 1)),
         results: r.results_key(),
-        line_key,
-        lines: lines.clone(),
     });
 
     let header = header(r, s, look, compact, &route);
     let categories = categories(r, s, look, compact, chosen);
-    let results = results(r, s, look, compact, lines, index, &route);
+    let results = results(r, s, look, compact, lines, index);
     let body = if compact {
         col()
             .key(format!("{key}-body"))
@@ -367,7 +360,6 @@ fn results<S: 'static>(
     compact: bool,
     lines: Rc<Lines>,
     index: Rc<Index>,
-    route: &Rc<Route<S>>,
 ) -> El {
     let k = &look.kit;
     let state = (r.get)(s);
@@ -390,7 +382,8 @@ fn results<S: 'static>(
         .h_full()
         .scroll(ScrollSpec {
             stick_bottom: false,
-        });
+        })
+        .on_scroll_offset(state.scroll_watcher());
     let quiet = state.query().trim().is_empty();
     let status = |words: String| {
         let e = el()
@@ -402,7 +395,8 @@ fn results<S: 'static>(
             .h(0.0);
         if quiet { e } else { e.label(words) }
     };
-    if lines.matches == 0 {
+    let matches = lines.matches;
+    if matches == 0 {
         let empty = col().w_full().h_full().min_h(0.0).center().px(px).child(
             text(r.labels.no_match.clone())
                 .font(k.ty.text_xsmall)
@@ -411,7 +405,6 @@ fn results<S: 'static>(
                 .align(Align::Center)
                 .a11y_hidden(),
         );
-        let _ = route;
         return frame(view.child(empty), status(r.labels.no_match.clone()));
     }
     let count = lines.lines.len();
@@ -426,7 +419,6 @@ fn results<S: 'static>(
     let data = r.data;
     let key = r.key.clone();
     let keys_lines = lines.clone();
-    let get_mut = r.get_mut;
     let words = r.labels.count.clone();
     let rows = col()
         .key(format!("{}-rows", r.key))
@@ -435,6 +427,7 @@ fn results<S: 'static>(
         .px(px)
         .py(py)
         .growth(GrowthSpec::default())
+        .instant_changes()
         .virtual_rows(
             count,
             LINE_ESTIMATE,
@@ -452,15 +445,8 @@ fn results<S: 'static>(
                 }
             },
         )
-        .virtual_rows_version(version)
-        .on_visible_rows(move |s: &mut S, visible| {
-            get_mut(s).visible = visible;
-            false
-        });
-    frame(
-        view.child(rows),
-        status((r.labels.count)(route.lines.matches)),
-    )
+        .virtual_rows_version(version);
+    frame(view.child(rows), status((r.labels.count)(matches)))
 }
 
 fn frame(viewport: El, status: El) -> El {

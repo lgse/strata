@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: MIT
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::fmt;
-use std::ops::Range;
 use std::rc::Rc;
 
-use rune::{Chord, ChordKey, ChordMod, KeyEvent, TextEdit, Tx};
+use rune::{Chord, ChordKey, ChordMod, KeyEvent, ScrollPos, TextEdit, Tx};
 
 use super::data::ShortcutData;
 use super::search::{Index, Lines, fold_query, lines};
+
+#[derive(Clone, Copy, Debug, Default)]
+struct ScrollTrack {
+    offset_y: f32,
+    max_y: Option<f32>,
+    viewport_h: f32,
+}
 
 pub struct ReferenceState {
     open: bool,
@@ -16,7 +22,9 @@ pub struct ReferenceState {
     pub search: TextEdit,
     /// Interior: [`ReferenceState::lines`] forgets a title the data lost while building the view.
     category: RefCell<Option<String>>,
-    pub(super) visible: Range<usize>,
+    /// Tracked results viewport scroll position, kept current by `El::on_scroll_offset` and
+    /// stepped eagerly on scroll keys so held repeats accumulate before the next frame draws.
+    scroll: Rc<Cell<ScrollTrack>>,
     pub(super) width: Option<f32>,
     /// The panel's height as last laid out: the compact category pills take at most a quarter.
     pub(super) height: Option<f32>,
@@ -60,7 +68,7 @@ impl ReferenceState {
             open: false,
             search: TextEdit::default(),
             category: RefCell::new(None),
-            visible: 0..0,
+            scroll: Rc::new(Cell::new(ScrollTrack::default())),
             width: None,
             height: None,
             cache: RefCell::default(),
@@ -74,6 +82,7 @@ impl ReferenceState {
 
     pub fn open(&mut self) {
         self.open = true;
+        self.reset_scroll();
         let end = self.search.text.len();
         self.search.anchor = 0;
         self.search.focus = end;
@@ -104,6 +113,7 @@ impl ReferenceState {
         let end = self.search.text.len();
         self.search.anchor = end;
         self.search.focus = end;
+        self.reset_scroll();
     }
 
     pub fn category(&self) -> Option<String> {
@@ -113,6 +123,62 @@ impl ReferenceState {
     /// Chooses a category by title, or All.
     pub fn set_category(&mut self, title: Option<String>) {
         *self.category.get_mut() = title;
+        self.reset_scroll();
+    }
+
+    /// The results viewport's current vertical scroll offset in points.
+    pub fn scroll_offset(&self) -> f32 {
+        self.scroll.get().offset_y
+    }
+
+    pub(super) fn scroll_watcher(&self) -> impl Fn(ScrollPos) + 'static {
+        let scroll = self.scroll.clone();
+        move |pos: ScrollPos| {
+            scroll.set(ScrollTrack {
+                offset_y: pos.offset[1],
+                max_y: Some(pos.max[1]),
+                viewport_h: pos.viewport[1],
+            });
+        }
+    }
+
+    pub(super) fn step_scroll(&self, delta: f32) -> f32 {
+        let mut track = self.scroll.get();
+        let next = match track.max_y {
+            Some(max) => (track.offset_y + delta).clamp(0.0, max.max(0.0)),
+            None => (track.offset_y + delta).max(0.0),
+        };
+        track.offset_y = next;
+        self.scroll.set(track);
+        next
+    }
+
+    pub(super) fn step_scroll_page(&self, pages: i32) {
+        let mut track = self.scroll.get();
+        if track.viewport_h <= 0.0 {
+            return;
+        }
+        // Matches Rune's `Tx::scroll_page` step (90% of the viewport height).
+        let delta = pages as f32 * track.viewport_h * 0.9;
+        track.offset_y = match track.max_y {
+            Some(max) => (track.offset_y + delta).clamp(0.0, max.max(0.0)),
+            None => (track.offset_y + delta).max(0.0),
+        };
+        self.scroll.set(track);
+    }
+
+    pub(super) fn scroll_to_edge(&self, bottom: bool) {
+        let mut track = self.scroll.get();
+        track.offset_y = if bottom {
+            track.max_y.unwrap_or(track.offset_y)
+        } else {
+            0.0
+        };
+        self.scroll.set(track);
+    }
+
+    pub(super) fn reset_scroll(&self) {
+        self.scroll.set(ScrollTrack::default());
     }
 
     /// The chosen category's section in `data`, if it still has it.
