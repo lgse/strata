@@ -675,10 +675,14 @@ fn appearance_scrollbar_controls_toggle_width_slider_and_update_look_live() {
         MODULE,
         "appearance_scrollbar_controls_toggle_width_slider_and_update_look_live",
         |mut host| {
-            assert!(!shell::preferences(host.app()).scrollbar_expand_on_hover);
+            assert!(shell::preferences(host.app()).scrollbar_expand_on_hover);
+            assert_eq!(
+                shell::preferences(host.app()).scrollbar_hover_width.get(),
+                8
+            );
             assert_eq!(
                 strata_kit::slots::scroll::hover_width(&host.app().look),
-                None
+                Some(8.0)
             );
 
             click(&mut host, "header-settings");
@@ -695,25 +699,8 @@ fn appearance_scrollbar_controls_toggle_width_slider_and_update_look_live() {
                 "settings-scrollbar-hover-width-field",
             ] {
                 assert!(
-                    node_disabled(&tree, key),
-                    "{key} starts disabled when hover expansion is off"
-                );
-            }
-
-            click(&mut host, "settings-switch-scrollbar-expand-on-hover");
-            assert!(shell::preferences(host.app()).scrollbar_expand_on_hover);
-            assert_eq!(
-                strata_kit::slots::scroll::hover_width(&host.app().look),
-                Some(12.0)
-            );
-            let tree = host.tree();
-            for key in [
-                "settings-scrollbar-hover-width",
-                "settings-scrollbar-hover-width-field",
-            ] {
-                assert!(
                     !node_disabled(&tree, key),
-                    "{key} enables once hover expansion is turned on"
+                    "{key} starts enabled when hover expansion is on by default"
                 );
             }
 
@@ -721,23 +708,23 @@ fn appearance_scrollbar_controls_toggle_width_slider_and_update_look_live() {
             step_slider(&mut host, "settings-scrollbar-hover-width", Key::Up);
             assert_eq!(
                 shell::preferences(host.app()).scrollbar_hover_width.get(),
-                13
+                9
             );
             assert_eq!(
                 strata_kit::slots::scroll::hover_width(&host.app().look),
-                Some(13.0)
+                Some(9.0)
             );
 
             step_slider(&mut host, "settings-scrollbar-hover-width", Key::Down);
             assert_eq!(
                 shell::preferences(host.app()).scrollbar_hover_width.get(),
-                12
+                8
             );
 
             step_slider(&mut host, "settings-scrollbar-hover-width", Key::PageUp);
             assert_eq!(
                 shell::preferences(host.app()).scrollbar_hover_width.get(),
-                16
+                12
             );
 
             step_slider(&mut host, "settings-scrollbar-hover-width", Key::End);
@@ -804,7 +791,7 @@ fn appearance_scrollbar_controls_toggle_width_slider_and_update_look_live() {
                 Some(14.0)
             );
 
-            // Turning the switch off disables both controls and clears the Look token while preserving the stored width.
+            // Turning the switch off disables both controls, persists `false`, and clears the Look token while preserving the stored width.
             click(&mut host, "settings-switch-scrollbar-expand-on-hover");
             assert!(!shell::preferences(host.app()).scrollbar_expand_on_hover);
             assert_eq!(
@@ -821,6 +808,33 @@ fn appearance_scrollbar_controls_toggle_width_slider_and_update_look_live() {
                 "settings-scrollbar-hover-width-field",
             ] {
                 assert!(node_disabled(&tree, key));
+            }
+
+            strata_core::storage::writer::flush_at_exit();
+            let persisted_text = std::fs::read_to_string(strata_desktop::settings::settings_path())
+                .expect("read persisted settings after disabling scrollbar hover expansion");
+            let persisted = strata_desktop::settings::parse_preferences(&persisted_text)
+                .expect("parse persisted settings");
+            assert!(!persisted.scrollbar_expand_on_hover);
+            assert_eq!(persisted.scrollbar_hover_width.get(), 14);
+
+            // Turning the switch back on re-enables both controls and restores the stored width in Look.
+            click(&mut host, "settings-switch-scrollbar-expand-on-hover");
+            assert!(shell::preferences(host.app()).scrollbar_expand_on_hover);
+            assert_eq!(
+                shell::preferences(host.app()).scrollbar_hover_width.get(),
+                14
+            );
+            assert_eq!(
+                strata_kit::slots::scroll::hover_width(&host.app().look),
+                Some(14.0)
+            );
+            let tree = host.tree();
+            for key in [
+                "settings-scrollbar-hover-width",
+                "settings-scrollbar-hover-width-field",
+            ] {
+                assert!(!node_disabled(&tree, key));
             }
 
             // Settings search finds both scrollbar rows by title and by keyword.

@@ -252,7 +252,7 @@ pub struct Preferences {
     pub text_size: TextSize,
     #[serde(default = "default_corner_roundness")]
     pub corner_roundness: CornerRoundness,
-    #[serde(default)]
+    #[serde(default = "default_enabled")]
     pub scrollbar_expand_on_hover: bool,
     #[serde(default)]
     pub scrollbar_hover_width: ScrollbarHoverWidth,
