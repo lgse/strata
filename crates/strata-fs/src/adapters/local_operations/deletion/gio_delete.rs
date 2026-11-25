@@ -4,7 +4,7 @@ use std::{future::Future, pin::Pin, rc::Rc};
 
 use gio::prelude::*;
 
-use super::super::{await_cancellable, next_children};
+use super::super::{await_cancellable, leftovers::Deadline, next_children};
 use crate::adapters::gio_close;
 
 pub(in crate::adapters::local_operations) fn permanently_delete(
@@ -12,11 +12,33 @@ pub(in crate::adapters::local_operations) fn permanently_delete(
     directory: bool,
     cancellable: gio::Cancellable,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    delete_tree(file, directory, cancellable, None)
+}
+
+pub(super) fn permanently_delete_counted(
+    file: gio::File,
+    directory: bool,
+    cancellable: gio::Cancellable,
+    deadline: Deadline,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    delete_tree(file, directory, cancellable, Some(deadline))
+}
+
+fn delete_tree(
+    file: gio::File,
+    directory: bool,
+    cancellable: gio::Cancellable,
+    deadline: Option<Deadline>,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
         if directory {
-            delete_children(&file, &cancellable).await?;
+            delete_children(&file, &cancellable, deadline.as_ref()).await?;
         }
-        delete_file(&file, &cancellable).await
+        delete_file(&file, &cancellable).await?;
+        if let Some(deadline) = deadline {
+            deadline.note_removed();
+        }
+        Ok(())
     })
 }
 
@@ -32,6 +54,7 @@ async fn delete_file(file: &gio::File, cancellable: &gio::Cancellable) -> Result
 async fn delete_children(
     file: &gio::File,
     cancellable: &gio::Cancellable,
+    deadline: Option<&Deadline>,
 ) -> Result<(), glib::Error> {
     let enumerator = gio_close::enumerate_children(
         file,
@@ -58,10 +81,11 @@ async fn delete_children(
             return Ok(());
         }
         for child in children {
-            permanently_delete(
+            delete_tree(
                 file.child(child.name()),
                 child.file_type() == gio::FileType::Directory,
                 cancellable.clone(),
+                deadline.cloned(),
             )
             .await?;
         }

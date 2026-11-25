@@ -2,14 +2,14 @@
 
 //! File operation lifecycle: transfers, deletions, restorations, archives and their outcomes.
 
-use crate::model::{FileEntry, Location};
-use crate::services::{PasswordFailure, TransferReport};
+use crate::model::Location;
+use crate::services::{DeleteBlocker, PasswordFailure, TransferReport};
 use crate::ui::browser::ViewState;
 use crate::ui::browser::archive::extract_password_retry;
 use crate::ui::browser::transfer::FinishedSendToCompletion;
-use crate::ui::browser::trash::retryable_delete_entries;
+use crate::ui::browser::trash::{DeleteErrorRetry, retryable_delete_entries};
 use crate::ui::browser_modes::BrowserMode;
-use crate::ui::modal::{show_delete_error_dialog, show_error_dialog};
+use crate::ui::modal::show_error_dialog;
 use gtk::glib;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -197,45 +197,25 @@ impl ViewState {
         message: String,
         retryable_locations: &[Location],
         has_non_retryable_failures: bool,
+        blocker: Option<DeleteBlocker>,
     ) {
         self.abandon_operation_follow_ups();
-        let retryable_entries =
+        let entries =
             retryable_delete_entries(self.pending_delete_entries.take(), retryable_locations);
         let weak = Rc::downgrade(self);
         self.dismiss_file_operation_progress_then(move || {
             if let Some(state) = weak.upgrade() {
-                state.report_partial_failure(
+                state.show_partial_operation_failure(
                     &message,
-                    retryable_entries,
-                    has_non_retryable_failures,
+                    blocker,
+                    DeleteErrorRetry {
+                        entries,
+                        require_choice: has_non_retryable_failures,
+                        run: Self::show_trash_unavailable_confirmation,
+                    },
                 );
             }
         });
-    }
-
-    fn report_partial_failure(
-        self: &Rc<Self>,
-        message: &str,
-        retryable_entries: Vec<FileEntry>,
-        has_non_retryable_failures: bool,
-    ) {
-        if retryable_entries.is_empty() {
-            crate::ui::modal::show_partial_failure_dialog(&self.overlay, message);
-        } else if has_non_retryable_failures {
-            let weak_state = Rc::downgrade(self);
-            show_delete_error_dialog(
-                &self.overlay,
-                message,
-                &crate::ui::browser::trash::delete_retry_label(&retryable_entries),
-                Rc::new(move || {
-                    if let Some(state) = weak_state.upgrade() {
-                        state.show_trash_unavailable_confirmation(retryable_entries.clone());
-                    }
-                }),
-            );
-        } else {
-            self.show_trash_unavailable_confirmation(retryable_entries);
-        }
     }
 
     /// `message` is the cancellation summary with the report's detail already appended.

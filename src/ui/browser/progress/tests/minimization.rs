@@ -714,6 +714,7 @@ fn docked_deletion_without_trash_support_explains_and_focuses_cancel() {
                     retryable_locations: vec![deleted.location.clone()],
                     has_non_retryable_failures: false,
                     message: "deleted.txt: This location doesn't support Trash.".into(),
+                    blocker: None,
                 },
             );
             pump_until(|| {

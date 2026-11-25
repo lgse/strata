@@ -209,11 +209,13 @@ impl ViewState {
                 message,
                 retryable_locations,
                 has_non_retryable_failures,
+                blocker,
                 report,
             } => self.on_operation_completed_with_errors(
                 super::transfer_report::outcome_detail(message.clone(), report),
                 retryable_locations,
                 *has_non_retryable_failures,
+                blocker.clone(),
             ),
             BrowserEvent::OperationCancelled {
                 completed,

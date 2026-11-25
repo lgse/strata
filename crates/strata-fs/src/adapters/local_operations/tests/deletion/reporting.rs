@@ -26,6 +26,72 @@ fn deletion_error_summaries_are_bounded_and_report_the_failure_count() {
 }
 
 #[test]
+fn permanent_deletion_reports_an_entry_removed_inside_a_failed_tree() -> Result<(), Box<dyn Error>>
+{
+    let _serial = serial()?;
+    for remove_child in [false, true] {
+        let fixture = tempfile::tempdir()?;
+        let root = fixture.path().join("to-delete");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested)?;
+        let removable = nested.join("removable.txt");
+        if remove_child {
+            fs::write(&removable, b"remove")?;
+        }
+        let _quirks = FsQuirks::install(
+            fixture.path(),
+            Quirks {
+                fail: vec![(Op::Unlink, "nested", 0, rustix::io::Errno::ACCESS)],
+                ..Quirks::ext4()
+            },
+        );
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let sink = events.clone();
+        let _operation = LocalOperationProvider.delete(
+            DeleteRequest {
+                id: OperationRequestId(25),
+                entries: vec![directory_entry(&root)],
+                permanent: true,
+            },
+            Rc::new(move |event| sink.borrow_mut().push(event)),
+        );
+        wait_for_operation(&events, |event| {
+            matches!(
+                event,
+                OperationEvent::CompletedWithErrors { .. } | OperationEvent::Deleted { .. }
+            )
+        });
+        let events = events.borrow();
+        let Some(OperationEvent::CompletedWithErrors {
+            message,
+            blocker,
+            deleted_locations,
+            ..
+        }) = events.last()
+        else {
+            panic!("expected a partial failure: {events:?}");
+        };
+        assert!(message.contains("to-delete/nested"), "{message}");
+        assert_eq!(
+            message.contains("Some entries were already deleted."),
+            remove_child,
+            "{message}"
+        );
+        assert!(deleted_locations.is_empty());
+        assert_eq!(
+            *blocker,
+            Some(crate::services::DeleteBlocker {
+                root,
+                child: PathBuf::from("nested")
+            })
+        );
+        assert!(nested.is_dir());
+        assert!(!removable.exists());
+    }
+    Ok(())
+}
+
+#[test]
 fn large_deletion_progress_reports_every_completed_location() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
     let root = tempfile::tempdir()?;

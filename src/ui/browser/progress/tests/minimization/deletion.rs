@@ -252,6 +252,7 @@ fn fast_delete_animates_only_its_own_success_without_showing_progress() {
                             message: "Partial deletion".into(),
                             retryable_locations: Vec::new(),
                             has_non_retryable_failures: true,
+                            blocker: None,
                             report: Default::default(),
                         },
                     };

@@ -263,7 +263,7 @@ pub(in crate::adapters::local_operations) async fn remove_displaced_original(
         parallel_delete_local_blocking_with_workers(roots, cancelled, workers, &deadline)?;
         originals
             .remove(fs(), parent.as_fd(), &deadline)
-            .map_err(|refused| originals.refusal(fs(), parent.as_fd(), refused))
+            .map_err(|refused| originals.refusal(fs(), parent.as_fd(), refused).into())
     })
     .await
 }

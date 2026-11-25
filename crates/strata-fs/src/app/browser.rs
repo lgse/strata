@@ -363,6 +363,7 @@ pub enum BrowserEvent {
         /// doesn't support Trash. Always empty for a restore failure.
         retryable_locations: Vec<Location>,
         has_non_retryable_failures: bool,
+        blocker: Option<crate::services::DeleteBlocker>,
         report: TransferReport,
     },
     OperationCancelled {

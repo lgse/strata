@@ -418,7 +418,8 @@ fn an_error_that_stops_a_delete_is_reported_over_an_earlier_open_folder()
         1,
         &Deadline::default(),
     )
-    .expect_err("the failed unlink");
+    .expect_err("the failed unlink")
+    .to_string();
 
     assert!(error.contains("broken"), "{error}");
     assert!(!error.contains("open"), "{error}");

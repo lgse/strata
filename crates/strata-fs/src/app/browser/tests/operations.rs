@@ -575,6 +575,7 @@ fn a_restore_reloads_the_open_folders_without_a_monitor_it_changed() {
         retryable_locations: Vec::new(),
         has_non_retryable_failures: true,
         message: "one item failed".to_owned(),
+        blocker: None,
     };
     let rows = [
         (

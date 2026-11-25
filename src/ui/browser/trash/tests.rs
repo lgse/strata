@@ -369,6 +369,7 @@ fn unsupported_trash_fallback_explains_and_focuses_cancel() {
                     deleted_locations: Vec::new(),
                     retryable_locations: entries.iter().map(|entry| entry.location.clone()).collect(),
                     has_non_retryable_failures: mixed,
+                    blocker: None,
                     message: "a.txt: This location doesn't support Trash.\n\n• b.txt: This location doesn't support Trash.".into(),
                 }
                 };

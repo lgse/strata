@@ -522,6 +522,13 @@ pub enum PasswordFailure {
     Incorrect,
 }
 
+/// A nested native entry reported by a failed deletion.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeleteBlocker {
+    pub(crate) root: PathBuf,
+    pub(crate) child: PathBuf,
+}
+
 #[derive(Clone, Debug)]
 pub enum OperationEvent {
     Renamed {
@@ -640,6 +647,8 @@ pub enum OperationEvent {
         retryable_locations: Vec<Location>,
         has_non_retryable_failures: bool,
         message: String,
+        /// The first nested failure shown in the message, if its path is revealable.
+        blocker: Option<DeleteBlocker>,
     },
     Restored {
         request_id: OperationRequestId,

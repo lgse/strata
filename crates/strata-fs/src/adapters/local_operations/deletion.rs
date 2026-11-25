@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod error;
 mod gio_delete;
 mod parallel;
 mod pinned;

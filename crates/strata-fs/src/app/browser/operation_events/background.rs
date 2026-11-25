@@ -243,6 +243,7 @@ impl Browser {
                         retryable_locations,
                         has_non_retryable_failures,
                         message,
+                        blocker,
                         ..
                     } => {
                         self.refresh_unmonitored_operation_locations(context, None);
@@ -257,6 +258,7 @@ impl Browser {
                             retryable_locations,
                             has_non_retryable_failures,
                             message,
+                            blocker,
                             report: std::mem::take(&mut report),
                         });
                     }

@@ -424,6 +424,8 @@ enum FailedAction {
     Restore,
 }
 
+const ITEM_ERROR_DETAIL_LIMIT: usize = 8;
+
 /// `OperationEvent` carries display text, so the summary is localized here.
 fn operation_error_summary(errors: &[String], action: FailedAction) -> String {
     let items = crate::i18n::count("items", errors.len());
@@ -442,13 +444,16 @@ fn operation_error_summary(errors: &[String], action: FailedAction) -> String {
         ),
     }
     .into_owned();
-    for error in errors.iter().take(8) {
+    for error in errors.iter().take(ITEM_ERROR_DETAIL_LIMIT) {
         summary.push_str("\n\n• ");
         summary.push_str(error);
     }
-    if errors.len() > 8 {
+    if errors.len() > ITEM_ERROR_DETAIL_LIMIT {
         summary.push_str("\n\n");
-        summary.push_str(&crate::i18n::count("more_items", errors.len() - 8));
+        summary.push_str(&crate::i18n::count(
+            "more_items",
+            errors.len() - ITEM_ERROR_DETAIL_LIMIT,
+        ));
     }
     summary
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 pub mod bookmarks;
+mod delete_blocker;
 pub mod directory_summary;
 pub mod directory_validation;
 mod file_manager1;

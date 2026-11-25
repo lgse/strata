@@ -20,6 +20,7 @@ use std::{
 use gio::prelude::*;
 
 use super::{
+    delete_blocker::reported_trash_child,
     local_operations::Deadline,
     volume::{MountTable, TrashMountKey as MountKey, is_fuse_fs_type},
 };
@@ -48,6 +49,8 @@ pub enum UnsupportedReason {
 pub(crate) struct TrashError {
     pub(crate) failure: TrashFailure,
     pub(crate) error: glib::Error,
+    /// Path relative to the requested target, never the target itself.
+    pub(crate) child: Option<PathBuf>,
 }
 
 impl TrashError {
@@ -58,7 +61,11 @@ impl TrashError {
         } else {
             TrashFailure::Other
         };
-        Self { failure, error }
+        Self {
+            failure,
+            error,
+            child: None,
+        }
     }
 
     pub(crate) fn is_unsupported(&self) -> bool {
@@ -72,6 +79,7 @@ impl From<glib::Error> for TrashError {
         Self {
             failure: decide(&error, None, None),
             error,
+            child: None,
         }
     }
 }
@@ -146,11 +154,24 @@ pub(crate) async fn attempt(
         Ok(identity) => return Ok(identity),
         Err(error) => error,
     };
-    let (failure, mount) = classify(environment, file, &error).await;
+    let child = file
+        .path()
+        .filter(|_| file.is_native())
+        .and_then(|path| reported_trash_child(&path, &error));
+    // A refusal to remove a child is not a refusal of the Trash protocol.
+    let (failure, mount) = if child.is_some() {
+        (TrashFailure::Other, None)
+    } else {
+        classify(environment, file, &error).await
+    };
     if let (TrashFailure::Unsupported(reason), Some(mount)) = (failure, mount) {
         record_unsupported(mount, reason);
     }
-    Err(TrashError { failure, error })
+    Err(TrashError {
+        failure,
+        error,
+        child,
+    })
 }
 
 /// Blocking counterpart of [`trash_with_cleanup`] for worker threads.
@@ -179,6 +200,13 @@ pub(crate) fn verified_with_cleanup(
         Ok(()) => return Ok(()),
         Err(error) => error,
     };
+    if let Some(child) = reported_trash_child(path, &error) {
+        return Err(TrashError {
+            failure: TrashFailure::Other,
+            error,
+            child: Some(child),
+        });
+    }
     let facts = mount
         .as_ref()
         .map(|mount| FuseFacts::gather(path, &mount.mount_point, &home));
@@ -193,7 +221,11 @@ pub(crate) fn verified_with_cleanup(
             snapshot.remove_created();
         }
     }
-    Err(TrashError { failure, error })
+    Err(TrashError {
+        failure,
+        error,
+        child: None,
+    })
 }
 
 fn native_path(file: &gio::File) -> Option<PathBuf> {
