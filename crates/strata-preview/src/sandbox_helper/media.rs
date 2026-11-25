@@ -299,8 +299,6 @@ fn ffmpeg_command(backend: &Backend) -> Command {
         "50000000",
         "-threads",
         "2",
-        "-thread_queue_size",
-        "2",
         "-filter_threads",
         "1",
         "-filter_complex_threads",
