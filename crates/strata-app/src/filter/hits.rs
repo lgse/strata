@@ -36,7 +36,7 @@ impl HitsUpdate {
 }
 
 /// The entry result `item` is, with nothing known of it beyond its name, kind and mode.
-pub(super) fn entry_of(item: &SearchItem) -> FileEntry {
+pub(crate) fn entry_of(item: &SearchItem) -> FileEntry {
     FileEntry {
         location: Location::local(item.path.clone()),
         native_name: item.path.file_name().unwrap_or_default().to_os_string(),

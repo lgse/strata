@@ -14,7 +14,7 @@ pub(crate) fn command_sections(map: Map) -> Vec<(&'static str, Vec<Command>)> {
     for mode in [Mode::Columns, Mode::Icons, Mode::List] {
         let mut previous = None;
         let sections = match map {
-            Map::Tenxer => super::tenxer::tenxer_sections(mode),
+            Map::Tenxer => super::tenxer::tenxer_sections(mode, None),
             Map::Default => contents::default_sections(mode),
         };
         for section in sections {

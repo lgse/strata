@@ -107,7 +107,7 @@ fn keymap_with_custom_actions_bound() -> Keymap {
 
 fn sections_of(map: Map, mode: Mode) -> Vec<super::Section> {
     match map {
-        Map::Tenxer => tenxer_sections(mode),
+        Map::Tenxer => tenxer_sections(mode, None),
         Map::Default => default_sections(mode),
     }
 }

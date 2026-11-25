@@ -52,6 +52,13 @@ pub(crate) struct Palette {
     visits: visits::Visits,
 }
 
+#[cfg(test)]
+impl Palette {
+    pub(crate) fn state(&self) -> &PaletteState {
+        &self.state
+    }
+}
+
 impl Part for Palette {
     const PLACE: Place<App> = Place::Dialogs(build);
 
@@ -94,7 +101,7 @@ impl Part for Palette {
                 &[SEARCH.ignoring(Modifiers::empty())],
             )
             .when(no_text),
-            Keys::at(Stage::AfterYield, &[SEARCH.ignoring(Modifiers::empty())]),
+            Keys::at(Stage::AfterYield, &[SEARCH.ignoring(Modifiers::empty())]).when(outside_menu),
         ]),
         Action::new("jump-folder", toggle_jump)
             .command(JUMP_TO_FOLDER)
@@ -128,6 +135,10 @@ fn no_text(_: &App, at: &Situation) -> bool {
     !at.text()
 }
 
+fn outside_menu(_: &App, at: &Situation) -> bool {
+    at.holds() != Some(Holds::Menu)
+}
+
 /// The palette, while open, over every other dialog.
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let mut palette = SearchPalette::new(
@@ -151,6 +162,9 @@ fn toggle(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
         return Outcome::Ran;
     }
     if !app.palette.state.is_open() {
+        if app.chooser.is_confined() {
+            return Outcome::Declined;
+        }
         app.palette.roots = roots::global_search_roots();
     }
     let mode = search::mode(&app.palette.roots);
