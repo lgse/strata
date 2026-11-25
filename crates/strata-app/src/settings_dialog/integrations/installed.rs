@@ -29,7 +29,7 @@ struct InstalledRowData<'a> {
     remove_question: Option<&'static str>,
 }
 
-pub(super) fn section(app: &App, state: &IntegrationsState) -> Option<El> {
+pub(super) fn section(app: &App, state: &IntegrationsState, compact: bool) -> Option<El> {
     let mut rows = collect_installed_rows(state);
     if rows.is_empty() {
         return None;
@@ -39,7 +39,7 @@ pub(super) fn section(app: &App, state: &IntegrationsState) -> Option<El> {
     let count = rows.len();
     let built: Vec<Option<El>> = rows
         .into_iter()
-        .map(|(_, data)| Some(build_installed_row(look, state, data)))
+        .map(|(_, data)| Some(build_installed_row(look, state, data, compact)))
         .collect();
     let card = group_card(look, built)?;
     Some(
@@ -115,7 +115,12 @@ fn manual_installed_data(row: &ManualRow) -> (String, InstalledRowData<'_>) {
     )
 }
 
-fn build_installed_row(look: &Look, state: &IntegrationsState, data: InstalledRowData<'_>) -> El {
+fn build_installed_row(
+    look: &Look,
+    state: &IntegrationsState,
+    data: InstalledRowData<'_>,
+    compact: bool,
+) -> El {
     let kit = &look.kit;
     let c = &kit.c;
     let id = data.id;
@@ -138,14 +143,8 @@ fn build_installed_row(look: &Look, state: &IntegrationsState, data: InstalledRo
                 .color(c.text_muted),
         );
     let actions = row_actions(look, &data, locked);
-    let heading = row()
-        .w_full()
-        .min_w(0.0)
-        .gap(12.0)
-        .items_center()
-        .child(logo_tile(look, data.logo, data.category))
-        .child(copy)
-        .child(actions);
+    let logo = logo_tile(look, data.logo, data.category);
+    let heading = installed_row_heading(look, (logo, copy, actions), compact);
     let mut container = col()
         .key(format!("integration-{id}"))
         .w_full()
@@ -162,6 +161,33 @@ fn build_installed_row(look: &Look, state: &IntegrationsState, data: InstalledRo
         container = container.child(confirmation_bar(look, id, pending));
     }
     container
+}
+
+fn installed_row_heading(look: &Look, (logo, copy, actions): (El, El, El), compact: bool) -> El {
+    if compact {
+        return col()
+            .w_full()
+            .min_w(0.0)
+            .gap(look.space.sm)
+            .child(
+                row()
+                    .w_full()
+                    .min_w(0.0)
+                    .gap(12.0)
+                    .items_center()
+                    .child(logo)
+                    .child(copy),
+            )
+            .child(row().w_full().min_w(0.0).justify_end().child(actions));
+    }
+    row()
+        .w_full()
+        .min_w(0.0)
+        .gap(12.0)
+        .items_center()
+        .child(logo)
+        .child(copy)
+        .child(actions)
 }
 
 fn row_actions(look: &Look, data: &InstalledRowData<'_>, locked: bool) -> El {

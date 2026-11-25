@@ -28,7 +28,7 @@ use strata_desktop::{
 };
 use strata_fs::services::UNEXPECTED_SYSTEM_ERROR;
 
-pub(crate) use view::build;
+pub(in crate::settings_dialog) use view::build;
 
 use crate::{App, settings_dialog::close_settings, shell};
 use install::{

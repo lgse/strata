@@ -155,7 +155,9 @@ fn unfocused_field() -> SliderField {
 }
 
 fn background_row(ctx: PageCtx<'_>, disabled: bool) -> Option<El> {
-    let control = background_field().disabled(disabled).build(ctx.app);
+    let control = background_field()
+        .disabled(disabled)
+        .build(ctx.app, ctx.layout.compact_content);
     option_row(
         ctx,
         RowSpec::new(
@@ -170,7 +172,9 @@ fn background_row(ctx: PageCtx<'_>, disabled: bool) -> Option<El> {
 }
 
 fn raised_row(ctx: PageCtx<'_>, disabled: bool) -> Option<El> {
-    let control = raised_field().disabled(disabled).build(ctx.app);
+    let control = raised_field()
+        .disabled(disabled)
+        .build(ctx.app, ctx.layout.compact_content);
     option_row(
         ctx,
         RowSpec::new(
@@ -185,7 +189,9 @@ fn raised_row(ctx: PageCtx<'_>, disabled: bool) -> Option<El> {
 }
 
 fn unfocused_row(ctx: PageCtx<'_>, disabled: bool) -> Option<El> {
-    let control = unfocused_field().disabled(disabled).build(ctx.app);
+    let control = unfocused_field()
+        .disabled(disabled)
+        .build(ctx.app, ctx.layout.compact_content);
     option_row(
         ctx,
         RowSpec::new(

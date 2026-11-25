@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use rune::{Color, Cursor, El, Tx, col, el, icon, row, text};
 use rune_kit::Spinner;
-use strata_components::{controls::settings_search::SettingsSearch, dialog::keep_words_whole};
+use strata_components::dialog::keep_words_whole;
 use strata_core::i18n::tr;
 use strata_kit::{icons::IconName, look::Look};
 
@@ -16,20 +16,21 @@ use super::{
 use crate::{
     App, buttons,
     settings_dialog::{
-        controls::{card_surface, group_card, panel_border},
+        controls::{PageCtx, card_surface, group_card, panel_border},
         install_command::{CommandBoxSpec, command_box},
     },
 };
 
 const DESCRIPTION: &str = "Checks the tools and services that previews, locations, devices and desktop integration rely on. Sample files are rendered in the preview sandbox and GitHub is contacted to test the connection. Nothing is changed or installed.";
 
-pub(in crate::settings_dialog) fn build(app: &App, search: &SettingsSearch<App>) -> Vec<El> {
-    if !search.shows_row(app, "diagnostics") {
+pub(in crate::settings_dialog) fn build(ctx: PageCtx<'_>) -> Vec<El> {
+    let app = ctx.app;
+    if !ctx.search.shows_row(app, "diagnostics") {
         return Vec::new();
     }
     let state = &app.settings_dialog.diagnostics;
     let mut items = Vec::new();
-    if let Some(header) = header_card(app, search, state) {
+    if let Some(header) = header_card(ctx, state) {
         items.push(header);
     }
     if !state.has_run {
@@ -37,7 +38,11 @@ pub(in crate::settings_dialog) fn build(app: &App, search: &SettingsSearch<App>)
     }
     items.push(summary_banner(&app.look, state));
     items.push(group_heading(&app.look, "SYSTEM"));
-    items.push(system_card(&app.look, &state.environment));
+    items.push(system_card(
+        &app.look,
+        &state.environment,
+        ctx.layout.narrow_controls,
+    ));
     for (group, ids) in GROUPS {
         items.push(group_heading(&app.look, format::heading(group)));
         let rows = ids
@@ -51,7 +56,8 @@ pub(in crate::settings_dialog) fn build(app: &App, search: &SettingsSearch<App>)
     items
 }
 
-fn header_card(app: &App, search: &SettingsSearch<App>, state: &DiagnosticsState) -> Option<El> {
+fn header_card(ctx: PageCtx<'_>, state: &DiagnosticsState) -> Option<El> {
+    let app = ctx.app;
     let look = &app.look;
     let kit = &look.kit;
     let c = &kit.c;
@@ -63,8 +69,10 @@ fn header_card(app: &App, search: &SettingsSearch<App>, state: &DiagnosticsState
     });
     let actions = row()
         .w_full()
+        .min_w(0.0)
         .pt(10.0)
         .gap(8.0)
+        .flex_wrap()
         .justify_end()
         .items_center()
         .child(action_button(
@@ -93,7 +101,10 @@ fn header_card(app: &App, search: &SettingsSearch<App>, state: &DiagnosticsState
         .px(18.0)
         .py(16.0)
         .gap(3.0)
-        .child(search.title(app, look, &tr("Run diagnostics"), kit.ty.ui_medium))
+        .child(
+            ctx.search
+                .title(app, look, &tr("Run diagnostics"), kit.ty.ui_medium),
+        )
         .child(
             text(keep_words_whole(&description))
                 .label(description)
@@ -102,7 +113,7 @@ fn header_card(app: &App, search: &SettingsSearch<App>, state: &DiagnosticsState
                 .wrap(),
         )
         .child(actions);
-    let wrapped = search.row(app, look, "diagnostics", content);
+    let wrapped = ctx.search.row(app, look, "diagnostics", content);
     group_card(look, vec![wrapped])
 }
 
@@ -208,7 +219,7 @@ fn group_heading(look: &Look, heading: &str) -> El {
         .pb(10.0)
 }
 
-fn system_card(look: &Look, environment: &[(String, String)]) -> El {
+fn system_card(look: &Look, environment: &[(String, String)], narrow: bool) -> El {
     let kit = &look.kit;
     let c = &kit.c;
     let mut card = col()
@@ -220,7 +231,24 @@ fn system_card(look: &Look, environment: &[(String, String)]) -> El {
         .fill(card_surface(look))
         .border(1.0, panel_border(look));
     for (label, value) in environment {
-        card = card.child(
+        let label_el = text(label.clone())
+            .font(kit.ty.ui_medium)
+            .color(c.text_base);
+        let value_el = text(value.clone())
+            .font(kit.ty.mono)
+            .color(c.text_muted)
+            .selectable(true)
+            .wrap();
+        let entry = if narrow {
+            col()
+                .w_full()
+                .min_w(0.0)
+                .px(18.0)
+                .py(5.0)
+                .gap(2.0)
+                .child(label_el)
+                .child(value_el)
+        } else {
             row()
                 .w_full()
                 .min_w(0.0)
@@ -228,20 +256,10 @@ fn system_card(look: &Look, environment: &[(String, String)]) -> El {
                 .py(3.0)
                 .gap(look.space.xl)
                 .items_center()
-                .child(
-                    text(label.clone())
-                        .font(kit.ty.ui_medium)
-                        .color(c.text_base)
-                        .grow(1.0)
-                        .min_w(0.0),
-                )
-                .child(
-                    text(value.clone())
-                        .font(kit.ty.mono)
-                        .color(c.text_muted)
-                        .selectable(true),
-                ),
-        );
+                .child(label_el.grow(1.0).min_w(0.0))
+                .child(value_el)
+        };
+        card = card.child(entry);
     }
     card
 }

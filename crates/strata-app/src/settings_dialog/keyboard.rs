@@ -4,13 +4,13 @@ use std::rc::Rc;
 
 use rune::{El, TextEdit, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant};
-use strata_components::controls::settings_search::SettingsSearch;
 use strata_core::i18n::tr;
 use strata_desktop::keys::{Active, Command, Keymap, Map, conflicts::Policy};
 use strata_fs::services::ActionCatalog;
 
 use super::{
-    controls::{SearchField, group_card, search_field, segmented_toggles},
+    controls::{PageCtx, SearchField, group_card, search_field, segmented_toggles},
+    responsive::ResponsiveLayout,
     search_index::KEYBOARD_SHORTCUTS,
 };
 use crate::{App, buttons, shell};
@@ -85,6 +85,7 @@ type Section = (&'static str, Vec<Command>);
 /// What every row of the shown table reads.
 pub(super) struct Page<'a> {
     pub(super) app: &'a App,
+    pub(super) layout: ResponsiveLayout,
     pub(super) keymap: Rc<Keymap>,
     pub(super) policy: Policy,
     pub(super) catalog: Option<Rc<ActionCatalog>>,
@@ -92,9 +93,10 @@ pub(super) struct Page<'a> {
 }
 
 impl<'a> Page<'a> {
-    pub(super) fn of(app: &'a App) -> Self {
+    pub(super) fn of(app: &'a App, layout: ResponsiveLayout) -> Self {
         Self {
             app,
+            layout,
             keymap: shell::live_keys(app).keymap(),
             policy: policy(app),
             catalog: app.custom_actions.catalog(),
@@ -131,11 +133,12 @@ pub(super) fn policy(app: &App) -> Policy {
     }
 }
 
-pub(super) fn build(app: &App, search: &SettingsSearch<App>) -> Vec<El> {
-    if !search.shows_row(app, KEYBOARD_SHORTCUTS) {
+pub(super) fn build(ctx: PageCtx<'_>) -> Vec<El> {
+    let app = ctx.app;
+    if !ctx.search.shows_row(app, KEYBOARD_SHORTCUTS) {
         return Vec::new();
     }
-    let page = Page::of(app);
+    let page = Page::of(app, ctx.layout);
     let shown = app.settings_dialog.keyboard.shown;
     let all = sections::sections(shown);
     let tables = page.filtered(&all);
@@ -172,13 +175,28 @@ fn heading(app: &App, title: &str) -> El {
 fn controls(page: &Page<'_>, no_match: bool, overridden: bool) -> El {
     let app = page.app;
     let look = &app.look;
-    let toolbar = row()
-        .w_full()
-        .gap(look.space.sm)
-        .items_center()
-        .child(map_switcher(app))
-        .child(col().grow(1.0))
-        .child(reset_all_button(app, overridden));
+    let toolbar = if page.layout.narrow_controls {
+        col()
+            .w_full()
+            .min_w(0.0)
+            .gap(look.space.sm)
+            .child(map_switcher(app).w_full().min_w(0.0))
+            .child(
+                row()
+                    .w_full()
+                    .justify_end()
+                    .child(reset_all_button(app, overridden)),
+            )
+    } else {
+        row()
+            .w_full()
+            .min_w(0.0)
+            .gap(look.space.sm)
+            .items_center()
+            .child(map_switcher(app))
+            .child(col().grow(1.0))
+            .child(reset_all_button(app, overridden))
+    };
     let mut controls = col()
         .w_full()
         .gap(look.space.md)

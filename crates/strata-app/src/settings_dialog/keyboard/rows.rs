@@ -74,6 +74,17 @@ pub(super) fn command_row(page: &Page<'_>, map: Map, command: Command, found: &[
     let rendered = render(page, map, command, found);
     let copy = copy_column(page, (map, command), &rendered);
     let controls = controls_row(page, (map, command), &keys, &rendered);
+    if page.layout.compact_content {
+        return col()
+            .key(keys.base.clone())
+            .w_full()
+            .min_w(0.0)
+            .px(18.0)
+            .py(16.0)
+            .gap(look.space.sm)
+            .child(copy.w_full())
+            .child(controls.w_full().min_w(0.0));
+    }
     row()
         .key(keys.base.clone())
         .w_full()
@@ -82,7 +93,7 @@ pub(super) fn command_row(page: &Page<'_>, map: Map, command: Command, found: &[
         .py(16.0)
         .gap(look.space.xl)
         .items_center()
-        .child(copy)
+        .child(copy.grow(1.0))
         .child(controls)
 }
 
@@ -172,7 +183,7 @@ fn push_note(notes: &mut Vec<(String, Severity)>, text: String, severity: Severi
 fn copy_column(page: &Page<'_>, (map, command): (Map, Command), rendered: &Rendered) -> El {
     let look = &page.app.look;
     let c = &look.kit.c;
-    let mut copy = col().grow(1.0).min_w(0.0).gap(look.space.xxs).child(
+    let mut copy = col().min_w(0.0).gap(look.space.xxs).child(
         text(title(command))
             .font(look.kit.ty.ui_medium)
             .color(c.text_base)
@@ -231,7 +242,7 @@ fn controls_row(
     let look = &page.app.look;
     let c = &look.kit.c;
     let action = title(command);
-    let mut controls = row().gap(look.space.xs).items_center();
+    let mut controls = row().gap(look.space.xs).items_center().flex_wrap();
     if let Some(prefix) = rendered.prefix {
         controls = controls.child(
             text(key_label(prefix))

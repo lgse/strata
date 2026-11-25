@@ -4,10 +4,7 @@ use std::rc::Rc;
 
 use rune::{Cursor, El, Tx, col, icon, row, text};
 use rune_kit::{Button, ButtonVariant};
-use strata_components::controls::{
-    number_field::{NumberField, NumberFieldState},
-    settings_search::SettingsSearch,
-};
+use strata_components::controls::number_field::{NumberField, NumberFieldState};
 use strata_core::{
     i18n::{Language, tr},
     model::{SortDirection, SortKey},
@@ -48,8 +45,7 @@ pub(super) fn video_start_field() -> NumberField<App> {
     )
 }
 
-pub(super) fn build(app: &App, search: &SettingsSearch<App>, menu_layer: &mut Vec<El>) -> Vec<El> {
-    let ctx = PageCtx { app, search };
+pub(super) fn build(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<El> {
     let mut blocks: Vec<Option<El>> = vec![
         first_section_heading(ctx, "language-units", "LANGUAGE & UNITS"),
         language_and_units(ctx, menu_layer),
@@ -69,8 +65,8 @@ pub(super) fn build(app: &App, search: &SettingsSearch<App>, menu_layer: &mut Ve
 fn language_and_units(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
     let app = ctx.app;
     let prefs = shell::preferences(app);
-    let lang_col = language_controls(app, prefs.language, menu_layer);
-    let units = units_control(app, prefs.unit_system);
+    let lang_col = language_controls(ctx, prefs.language, menu_layer);
+    let units = units_control(ctx, prefs.unit_system);
     group_card(
         &app.look,
         vec![
@@ -96,7 +92,8 @@ fn language_and_units(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> 
     )
 }
 
-fn language_controls(app: &App, current: Language, menu_layer: &mut Vec<El>) -> El {
+fn language_controls(ctx: PageCtx<'_>, current: Language, menu_layer: &mut Vec<El>) -> El {
+    let app = ctx.app;
     let current_lang = Language::CHOICES
         .iter()
         .find_map(|(label, lang)| (*lang == current).then(|| tr(label)))
@@ -110,7 +107,7 @@ fn language_controls(app: &App, current: Language, menu_layer: &mut Vec<El>) -> 
         })
         .collect();
     let menu = choice_menu(
-        app,
+        ctx,
         ChoiceSpec {
             id: "language",
             title: "Language",
@@ -120,7 +117,11 @@ fn language_controls(app: &App, current: Language, menu_layer: &mut Vec<El>) -> 
         },
         menu_layer,
     );
-    let mut lang_col = col().gap(app.look.space.xs).items_end().child(menu);
+    let mut lang_col = if ctx.layout.compact_content {
+        col().w_full().min_w(0.0).gap(app.look.space.xs).child(menu)
+    } else {
+        col().gap(app.look.space.xs).items_end().child(menu)
+    };
     if shell::language_restart_required(app) {
         let restart = Button::new(tr("Restart now"))
             .variant(ButtonVariant::Submit)
@@ -131,9 +132,9 @@ fn language_controls(app: &App, current: Language, menu_layer: &mut Vec<El>) -> 
     lang_col
 }
 
-fn units_control(app: &App, unit_system: UnitSystem) -> El {
-    segmented_toggles(
-        &app.look,
+fn units_control(ctx: PageCtx<'_>, unit_system: UnitSystem) -> El {
+    let toggle = segmented_toggles(
+        &ctx.app.look,
         "settings-units",
         Some(tr("Units")),
         vec![
@@ -150,8 +151,12 @@ fn units_control(app: &App, unit_system: UnitSystem) -> El {
                 }),
             ),
         ],
-    )
-    .min_w(220.0)
+    );
+    if ctx.layout.compact_content {
+        toggle.w_full().min_w(0.0)
+    } else {
+        toggle.min_w(220.0)
+    }
 }
 
 type BoolSwitchDef = (
@@ -304,8 +309,25 @@ const BROWSING_TENXER: (&str, &str, &str) = (
 fn folder_view_rows(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<Option<El>> {
     let app = ctx.app;
     let prefs = shell::preferences(app);
-    let key_menu = default_sort_key_menu(app, menu_layer);
-    let dir_menu = default_sort_dir_menu(app, menu_layer);
+    let key_menu = default_sort_key_menu(ctx, menu_layer);
+    let dir_menu = default_sort_dir_menu(ctx, menu_layer);
+    let sort_controls = if ctx.layout.narrow_controls {
+        col()
+            .w_full()
+            .min_w(0.0)
+            .gap(app.look.space.xs)
+            .child(key_menu)
+            .child(dir_menu)
+    } else if ctx.layout.compact_content {
+        row()
+            .w_full()
+            .min_w(0.0)
+            .gap(app.look.space.sm)
+            .child(col().grow(1.0).min_w(0.0).child(key_menu))
+            .child(col().grow(1.0).min_w(0.0).child(dir_menu))
+    } else {
+        row().gap(app.look.space.sm).child(key_menu).child(dir_menu)
+    };
     let clear = Button::new(tr("Clear"))
         .variant(ButtonVariant::Neutral)
         .disabled(!folder_views::has_saved(app))
@@ -330,7 +352,7 @@ fn folder_view_rows(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<Option<El
                 "Default sort",
                 "Folders without their own sort use this order.",
             ),
-            row().gap(app.look.space.sm).child(key_menu).child(dir_menu),
+            sort_controls,
         ),
         option_row(
             ctx,
@@ -344,7 +366,8 @@ fn folder_view_rows(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<Option<El
     ]
 }
 
-fn default_sort_key_menu(app: &App, menu_layer: &mut Vec<El>) -> El {
+fn default_sort_key_menu(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> El {
+    let app = ctx.app;
     let (current_key, _, _) = sort_preferences(shell::preferences(app)).sort_options();
     let choices = [
         ("Name", SortKey::Name),
@@ -362,7 +385,7 @@ fn default_sort_key_menu(app: &App, menu_layer: &mut Vec<El>) -> El {
         .find_map(|&(l, k)| (k == current_key).then(|| tr(l)))
         .unwrap_or_else(|| tr("Name"));
     choice_menu(
-        app,
+        ctx,
         ChoiceSpec {
             id: "default-sort-key",
             title: "Default sort",
@@ -383,7 +406,8 @@ fn default_sort_key_menu(app: &App, menu_layer: &mut Vec<El>) -> El {
     )
 }
 
-fn default_sort_dir_menu(app: &App, menu_layer: &mut Vec<El>) -> El {
+fn default_sort_dir_menu(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> El {
+    let app = ctx.app;
     let (current_key, current_dir, comparison) =
         sort_preferences(shell::preferences(app)).sort_options();
     let dir_label = if current_dir == SortDirection::Descending {
@@ -396,7 +420,7 @@ fn default_sort_dir_menu(app: &App, menu_layer: &mut Vec<El>) -> El {
         ("Descending", SortDirection::Descending),
     ];
     choice_menu(
-        app,
+        ctx,
         ChoiceSpec {
             id: "default-sort-dir",
             title: "Default sort direction",
@@ -469,7 +493,7 @@ fn search_limit_rows(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<Option<E
     let app = ctx.app;
     let prefs = shell::preferences(app);
     let time_menu = limit_choice_menu(
-        app,
+        ctx,
         LimitMenuSpec {
             id: "search-time-limit",
             title: "Search time limit",
@@ -480,7 +504,7 @@ fn search_limit_rows(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<Option<E
         menu_layer,
     );
     let entry_menu = limit_choice_menu(
-        app,
+        ctx,
         LimitMenuSpec {
             id: "search-entry-limit",
             title: "Search entry limit",
@@ -513,7 +537,7 @@ fn search_limit_rows(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<Option<E
     ]
 }
 
-fn limit_choice_menu(app: &App, spec: LimitMenuSpec, menu_layer: &mut Vec<El>) -> El {
+fn limit_choice_menu(ctx: PageCtx<'_>, spec: LimitMenuSpec, menu_layer: &mut Vec<El>) -> El {
     let current = spec
         .choices
         .iter()
@@ -530,7 +554,7 @@ fn limit_choice_menu(app: &App, spec: LimitMenuSpec, menu_layer: &mut Vec<El>) -
         })
         .collect();
     choice_menu(
-        app,
+        ctx,
         ChoiceSpec {
             id: spec.id,
             title: spec.title,
@@ -767,7 +791,7 @@ fn opening_section(ctx: PageCtx<'_>) -> Option<El> {
     let rows: Vec<Option<El>> = modes
         .into_iter()
         .map(|(slug, title, files, folders)| {
-            Some(opening_mode_row(app, slug, title, (files, folders)))
+            Some(opening_mode_row(ctx, slug, title, (files, folders)))
         })
         .collect();
     let card = group_card(&app.look, rows)?;
@@ -775,38 +799,101 @@ fn opening_section(ctx: PageCtx<'_>) -> Option<El> {
 }
 
 fn opening_mode_row(
-    app: &App,
+    ctx: PageCtx<'_>,
     slug: &str,
     title: &str,
     (files, folders): (ClickSlot, ClickSlot),
 ) -> El {
+    let app = ctx.app;
+    let look = &app.look;
     let view_name = tr(title);
+    let files_label = tr("Files");
+    let folders_label = tr("Folders");
     let files_ctl = click_pair_control(
         app,
         &format!("settings-clicks-{slug}-files"),
-        &format!("{view_name} {}", tr("Files")),
+        &format!("{view_name} {files_label}"),
         files,
     );
     let folders_ctl = click_pair_control(
         app,
         &format!("settings-clicks-{slug}-folders"),
-        &format!("{view_name} {}", tr("Folders")),
+        &format!("{view_name} {folders_label}"),
         folders,
     );
+    if ctx.layout.compact_content {
+        return compact_opening_mode_row(
+            ctx,
+            view_name,
+            (files_label, files_ctl),
+            (folders_label, folders_ctl),
+        );
+    }
     row()
         .w_full()
+        .min_w(0.0)
         .px(18.0)
         .py(16.0)
-        .gap(app.look.space.xl)
+        .gap(look.space.xl)
         .items_center()
         .child(
             text(view_name)
-                .font(app.look.kit.ty.ui_medium)
-                .color(app.look.kit.c.text_base)
-                .grow(1.0),
+                .font(look.kit.ty.ui_medium)
+                .color(look.kit.c.text_base)
+                .grow(1.0)
+                .min_w(0.0),
         )
         .child(files_ctl)
         .child(folders_ctl)
+}
+
+fn compact_opening_mode_row(
+    ctx: PageCtx<'_>,
+    view_name: String,
+    (files_label, files_ctl): (String, El),
+    (folders_label, folders_ctl): (String, El),
+) -> El {
+    let look = &ctx.app.look;
+    let labelled = |heading: String, ctl: El| {
+        col()
+            .w_full()
+            .min_w(0.0)
+            .gap(look.space.xxs)
+            .child(
+                text(heading)
+                    .font(look.kit.ty.small)
+                    .color(look.kit.c.text_muted),
+            )
+            .child(ctl.w_full().min_w(0.0))
+    };
+    let pairs = if ctx.layout.narrow_controls {
+        col()
+            .w_full()
+            .min_w(0.0)
+            .gap(look.space.sm)
+            .child(labelled(files_label, files_ctl))
+            .child(labelled(folders_label, folders_ctl))
+    } else {
+        row()
+            .w_full()
+            .min_w(0.0)
+            .gap(look.space.md)
+            .child(labelled(files_label, files_ctl).grow(1.0))
+            .child(labelled(folders_label, folders_ctl).grow(1.0))
+    };
+    col()
+        .w_full()
+        .min_w(0.0)
+        .px(18.0)
+        .py(16.0)
+        .gap(look.space.sm)
+        .child(
+            text(view_name)
+                .font(look.kit.ty.ui_medium)
+                .color(look.kit.c.text_base)
+                .wrap(),
+        )
+        .child(pairs)
 }
 
 fn click_pair_control(app: &App, key: &str, a11y_prefix: &str, (current, write): ClickSlot) -> El {

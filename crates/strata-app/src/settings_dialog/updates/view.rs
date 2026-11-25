@@ -4,7 +4,6 @@
 
 use rune::{Color, Cursor, El, Tx, col, el, icon, row, text};
 use rune_kit::{Button, ButtonVariant};
-use strata_components::controls::settings_search::SettingsSearch;
 use strata_core::i18n::tr;
 use strata_desktop::{
     build_info::{build_kind, installed_version},
@@ -42,15 +41,15 @@ pub(super) const MANAGED_BANNER_KEY: &str = "settings-update-managed-banner";
 pub(super) const NOTES_CARD_KEY: &str = "settings-update-release-notes";
 const MAX_PREVIEW_NOTES_CHARS: usize = 600;
 
-pub(crate) fn build(app: &App, search: &SettingsSearch<App>, menu_layer: &mut Vec<El>) -> Vec<El> {
-    let ctx = PageCtx { app, search };
+pub(in crate::settings_dialog) fn build(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<El> {
+    let app = ctx.app;
     let prefs = shell::preferences(app);
     let updates = &app.settings_dialog.updates;
     let method = updates.effective_method();
     let managed = updates.managed();
     let channel = prefs.release_channel();
     let channel_disabled = !prefs.check_for_updates || managed.is_some() || updates.is_installing();
-    let menu = release_channel_menu(app, channel, channel_disabled, menu_layer);
+    let menu = release_channel_menu(ctx, channel, channel_disabled, menu_layer);
 
     let mut rows = Vec::new();
     if let Some(managed) = managed {
@@ -126,7 +125,6 @@ fn channel_row(
     let look = &app.look;
     let kit = &look.kit;
     let copy = col()
-        .grow(1.0)
         .min_w(0.0)
         .gap(3.0)
         .child(
@@ -139,15 +137,26 @@ fn channel_row(
                 .color(kit.c.text_muted)
                 .wrap(),
         );
-    let mut line = row()
-        .w_full()
-        .min_w(0.0)
-        .px(18.0)
-        .py(16.0)
-        .gap(look.space.xl)
-        .items_center()
-        .child(copy)
-        .child(menu);
+    let mut line = if ctx.layout.compact_content {
+        col()
+            .w_full()
+            .min_w(0.0)
+            .px(18.0)
+            .py(16.0)
+            .gap(look.space.sm)
+            .child(copy.w_full())
+            .child(col().w_full().min_w(0.0).child(menu))
+    } else {
+        row()
+            .w_full()
+            .min_w(0.0)
+            .px(18.0)
+            .py(16.0)
+            .gap(look.space.xl)
+            .items_center()
+            .child(copy.grow(1.0))
+            .child(menu)
+    };
     if disabled {
         line = line.layer_opacity(0.45);
     }
@@ -182,7 +191,6 @@ fn check_status_row(
         );
 
     let mut copy = col()
-        .grow(1.0)
         .min_w(0.0)
         .gap(6.0)
         .child(heading)
@@ -197,14 +205,7 @@ fn check_status_row(
         .disabled(presentation.button_disabled)
         .on_press_tx(on_action_press)
         .build(&look.kit);
-
-    let summary = row()
-        .w_full()
-        .min_w(0.0)
-        .gap(look.space.xl)
-        .items_center()
-        .child(copy)
-        .child(buttons::on_return(ACTION_BUTTON_KEY, action));
+    let summary = status_summary_row(ctx, copy, buttons::on_return(ACTION_BUTTON_KEY, action));
 
     let mut content = col()
         .w_full()
@@ -221,6 +222,26 @@ fn check_status_row(
     }
 
     ctx.search.row(app, look, "check", content)
+}
+
+fn status_summary_row(ctx: PageCtx<'_>, copy: El, action_btn: El) -> El {
+    let look = &ctx.app.look;
+    if ctx.layout.compact_content {
+        col()
+            .w_full()
+            .min_w(0.0)
+            .gap(look.space.md)
+            .child(copy.w_full())
+            .child(action_btn)
+    } else {
+        row()
+            .w_full()
+            .min_w(0.0)
+            .gap(look.space.xl)
+            .items_center()
+            .child(copy.grow(1.0))
+            .child(action_btn)
+    }
 }
 
 struct StatusPresentation {
@@ -619,7 +640,7 @@ fn truncated_notes(raw: &str) -> String {
 }
 
 fn release_channel_menu(
-    app: &App,
+    ctx: PageCtx<'_>,
     channel: Channel,
     disabled: bool,
     menu_layer: &mut Vec<El>,
@@ -634,7 +655,7 @@ fn release_channel_menu(
         .find_map(|&(l, c)| (c == channel).then(|| tr(l)))
         .unwrap_or_else(|| tr("Stable"));
     choice_menu(
-        app,
+        ctx,
         ChoiceSpec {
             id: "release-channel",
             title: "Release channel",

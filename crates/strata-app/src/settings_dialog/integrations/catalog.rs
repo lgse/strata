@@ -10,13 +10,14 @@ use strata_kit::{icons::IconName, look::Look};
 use super::{
     CatalogRow, IntegrationsState, copy_command, install_entry, run_command, select_category,
     toggle_requirements,
-    view::{IconLabelButton, counted_heading, icon_label_button, is_compact, logo_tile, note_text},
+    view::{IconLabelButton, counted_heading, icon_label_button, logo_tile, note_text},
 };
 use crate::{
     App, buttons,
     settings_dialog::{
         controls::{card_surface, panel_border},
         install_command::{CommandBoxSpec, command_box},
+        responsive::ResponsiveLayout,
     },
 };
 
@@ -24,7 +25,7 @@ const MAX_COLUMNS: usize = 3;
 const MIN_COLUMN_WIDTH: f32 = 320.0;
 const GRID_GAP: f32 = 12.0;
 
-pub(super) fn section(app: &App, state: &IntegrationsState) -> Vec<El> {
+pub(super) fn section(app: &App, state: &IntegrationsState, layout: ResponsiveLayout) -> Vec<El> {
     let look = &app.look;
     let mut items = vec![counted_heading(look, "CATALOG", state.rows.len())];
     if let Some(filters) = category_filters(look, state) {
@@ -36,11 +37,10 @@ pub(super) fn section(app: &App, state: &IntegrationsState) -> Vec<El> {
         .filter(|row| state.category.is_none_or(|cat| row.entry.category == cat))
         .collect();
     if !shown.is_empty() {
-        let cols = grid_columns(app, shown.len());
-        let compact = is_compact(app);
+        let cols = grid_columns(layout, shown.len());
         let cards: Vec<El> = shown
             .into_iter()
-            .map(|row| catalog_card(look, state, row, compact))
+            .map(|row| catalog_card(look, state, row, layout))
             .collect();
         items.push(
             el().key("integrations-catalog-grid")
@@ -64,12 +64,8 @@ pub(super) fn section(app: &App, state: &IntegrationsState) -> Vec<El> {
     items
 }
 
-fn grid_columns(app: &App, shown: usize) -> usize {
-    let dialog_w = app
-        .window_size()
-        .map_or(1250.0, |(w, _)| ((w as f32) - 48.0).min(1250.0));
-    let pad_x = if is_compact(app) { 40.0 } else { 96.0 };
-    let content_w = (dialog_w - 240.0 - pad_x).max(240.0);
+fn grid_columns(layout: ResponsiveLayout, shown: usize) -> usize {
+    let content_w = layout.content_width();
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -166,11 +162,12 @@ fn catalog_card(
     look: &Look,
     state: &IntegrationsState,
     row_data: &CatalogRow,
-    compact: bool,
+    layout: ResponsiveLayout,
 ) -> El {
     let entry = &row_data.entry;
     let kit = &look.kit;
     let c = &kit.c;
+    let compact = layout.compact_content;
     let pad = if compact { 10.0 } else { 18.0 };
     let name = tr(&entry.name);
     let mut copy = col()
@@ -193,15 +190,8 @@ fn catalog_card(
         );
     }
     let trailing = card_trailing(look, state, row_data, &name);
-    let body = row()
-        .w_full()
-        .min_w(0.0)
-        .padding(pad)
-        .gap(12.0)
-        .items_start()
-        .child(logo_tile(look, row_data.logo.as_ref(), entry.category))
-        .child(copy)
-        .child(trailing);
+    let logo = logo_tile(look, row_data.logo.as_ref(), entry.category);
+    let body = catalog_card_body(look, (logo, copy, trailing), (pad, layout.narrow_controls));
     col()
         .key(format!("integration-{}-card", entry.id))
         .w_full()
@@ -216,6 +206,39 @@ fn catalog_card(
             (&entry.id, &name),
             compact,
         ))
+}
+
+fn catalog_card_body(
+    look: &Look,
+    (logo, copy, trailing): (El, El, El),
+    (pad, narrow): (f32, bool),
+) -> El {
+    if narrow {
+        return col()
+            .w_full()
+            .min_w(0.0)
+            .padding(pad)
+            .gap(look.space.sm)
+            .child(
+                row()
+                    .w_full()
+                    .min_w(0.0)
+                    .gap(12.0)
+                    .items_start()
+                    .child(logo)
+                    .child(copy),
+            )
+            .child(row().w_full().min_w(0.0).justify_end().child(trailing));
+    }
+    row()
+        .w_full()
+        .min_w(0.0)
+        .padding(pad)
+        .gap(12.0)
+        .items_start()
+        .child(logo)
+        .child(copy)
+        .child(trailing)
 }
 
 fn card_trailing(look: &Look, state: &IntegrationsState, row_data: &CatalogRow, name: &str) -> El {

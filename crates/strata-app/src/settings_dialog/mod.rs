@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use rune::{Color, Cursor, El, ScrollSpec, TextEdit, Tx, col, el, icon, row, text};
+use rune::{
+    Color, Cursor, El, Key, KeyEvent, ScrollSpec, Side, TextEdit, Tx, col, el, icon, row, text,
+};
+use rune_kit::{Placement, popover};
 use strata_components::{
     controls::{
         number_field::{NumberFieldState, Range},
@@ -40,6 +43,7 @@ mod keyboard;
 mod message;
 mod notice;
 mod pages;
+mod responsive;
 mod search_index;
 mod slider_field;
 #[cfg(test)]
@@ -47,16 +51,12 @@ mod tests;
 mod transparency_section;
 mod updates;
 
-const DIALOG_WIDTH: f32 = 1250.0;
-const DIALOG_HEIGHT: f32 = 800.0;
-const RAIL_WIDTH: f32 = 240.0;
-const COMPACT_CONTENT_WINDOW_WIDTH: i32 = 1000;
-const CONTENT_PAD_X: f32 = 48.0;
-const CONTENT_PAD_Y: f32 = 24.0;
-const CONTENT_BOTTOM_PAD: f32 = 40.0;
-const COMPACT_CONTENT_PAD_X: f32 = 20.0;
-const COMPACT_CONTENT_PAD_Y: f32 = 18.0;
-const COMPACT_CONTENT_BOTTOM_PAD: f32 = 32.0;
+use controls::PageCtx;
+use responsive::{DIALOG_HEIGHT, DIALOG_WIDTH, ResponsiveLayout};
+
+pub(super) const COMPACT_SEARCH_KEY: &str = "settings-search-compact";
+pub(super) const COMPACT_SEARCH_POPOVER_KEY: &str = "settings-search-popover";
+const COMPACT_SEARCH_POPOVER_WIDTH: f32 = 260.0;
 const RAIL_SCROLL: &str = "settings-rail-scroll";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -195,6 +195,7 @@ pub(crate) struct SettingsDialog {
     page: PageId,
     opened_page: PageId,
     open_choice: Option<&'static str>,
+    search_popover_open: bool,
     search: SettingsSearchState,
     index: SearchIndex,
     indexed_locale: String,
@@ -263,6 +264,7 @@ impl SettingsDialog {
             page: PageId::General,
             opened_page: PageId::General,
             open_choice: None,
+            search_popover_open: false,
             search: SettingsSearchState::new(),
             index,
             indexed_locale: locale,
@@ -364,6 +366,14 @@ impl SettingsDialog {
         self.open && !self.message_open() && self.open_choice.is_some()
     }
 
+    fn popover_open(&self) -> bool {
+        self.choice_menu_open() || (self.open && self.actions.popover_open())
+    }
+
+    fn modal_field_active(&self) -> bool {
+        self.open && !self.message_open() && (self.text_field_focused() || self.search_popover_open)
+    }
+
     fn message_open(&self) -> bool {
         self.notice.is_open() || self.keyboard.confirm_open()
     }
@@ -401,6 +411,7 @@ pub(crate) fn open_settings_tx(app: &mut App, tx: &mut Tx) {
     state.transparency.sync(transparency);
     state.open = true;
     state.open_choice = None;
+    state.search_popover_open = false;
     state.opened_page = state.page;
     let nav_key = state.page.nav_key();
     let on_actions = state.page == PageId::Actions;
@@ -425,6 +436,7 @@ pub(super) fn close_settings(app: &mut App) {
     let state = &mut app.settings_dialog;
     state.open = false;
     state.open_choice = None;
+    state.search_popover_open = false;
     state.release_bars();
     state.hold_number_fields(false);
     state.search = SettingsSearchState::new();
@@ -447,6 +459,11 @@ fn dismiss_settings_or_notice(app: &mut App, tx: &mut Tx) {
         keyboard::reset_all::dismiss(app, tx);
         return;
     }
+    if app.settings_dialog.search_popover_open {
+        app.settings_dialog.search_popover_open = false;
+        tx.focus(COMPACT_SEARCH_KEY, true);
+        return;
+    }
     close_settings(app);
 }
 
@@ -464,11 +481,11 @@ impl Part for SettingsDialog {
         if !dialog.open && !dialog.notice.is_open() {
             return None;
         }
-        if dialog.choice_menu_open() || (dialog.open && dialog.actions.popover_open()) {
+        if dialog.popover_open() {
             return Some(Holds::Popover);
         }
         Some(Holds::Modal {
-            field: dialog.open && !dialog.message_open() && dialog.text_field_focused(),
+            field: dialog.modal_field_active(),
         })
     }
 
@@ -480,29 +497,7 @@ impl Part for SettingsDialog {
             }
             return changed;
         }
-        let avail = search_index::Availability {
-            system: shell::themes(app).system_available(),
-            omarchy: shell::themes(app).omarchy_available(),
-        };
-        {
-            let state = &mut app.settings_dialog;
-            controls::sync_search_index_if_needed(
-                &mut state.index,
-                &mut state.indexed_locale,
-                avail,
-            );
-        }
-        if app.settings_dialog.page == PageId::Actions
-            && !app.settings_dialog.actions.is_observing()
-        {
-            actions::ensure_observing(app);
-        }
-        if app.settings_dialog.page == PageId::Integrations {
-            integrations::ensure_scanned(app);
-        }
-        if app.settings_dialog.page == PageId::Updates {
-            updates::ensure_method_detected(app);
-        }
+        changed |= sync_open_settings(app);
         changed |= controls::search_handle().tick(app, clock, tx);
         let hold_fields = crate::menus::field_menu_open(app);
         app.settings_dialog.hold_number_fields(hold_fields);
@@ -527,21 +522,51 @@ impl Part for SettingsDialog {
     }
 }
 
+fn sync_open_settings(app: &mut App) -> bool {
+    let mut changed = false;
+    if app.settings_dialog.search_popover_open && !ResponsiveLayout::for_app(app).compact_nav {
+        app.settings_dialog.search_popover_open = false;
+        changed = true;
+    }
+    let avail = search_index::Availability {
+        system: shell::themes(app).system_available(),
+        omarchy: shell::themes(app).omarchy_available(),
+    };
+    {
+        let state = &mut app.settings_dialog;
+        controls::sync_search_index_if_needed(&mut state.index, &mut state.indexed_locale, avail);
+    }
+    match app.settings_dialog.page {
+        PageId::Actions if !app.settings_dialog.actions.is_observing() => {
+            actions::ensure_observing(app);
+        }
+        PageId::Integrations => integrations::ensure_scanned(app),
+        PageId::Updates => updates::ensure_method_detected(app),
+        _ => {}
+    }
+    changed
+}
+
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     if !app.settings_dialog.open {
         notice::standalone_dialog(app, frame);
         return None;
     }
+    let layout = ResponsiveLayout::for_app(app);
     let search = controls::search_handle();
     let mut menu_layer = Vec::new();
-    let rail = build_rail(app, &search);
-    let main = build_main_column(app, &search, &mut menu_layer);
+    let rail = build_rail(app, &search, layout);
+    let main = build_main_column(app, &search, layout, &mut menu_layer);
+    if layout.compact_nav && app.settings_dialog.search_popover_open {
+        menu_layer.push(build_compact_search_popover(app, &search));
+    }
     let notice_open = app.settings_dialog.message_open();
     let mut body = row()
         .key("settings-body")
         .w_full()
         .grow(1.0)
         .min_h(0.0)
+        .instant_changes()
         .child(rail)
         .child(main);
     if notice_open {
@@ -580,22 +605,62 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
 fn build_rail(
     app: &App,
     search: &strata_components::controls::settings_search::SettingsSearch<App>,
+    layout: ResponsiveLayout,
 ) -> El {
     let look = &app.look;
-    let c = &look.kit.c;
+    let compact = layout.compact_nav;
     let nav_items: Vec<El> = NAVIGATION
         .iter()
         .filter(|entry| entry_shown(entry) && search.shows_page(app, entry.key))
-        .map(|entry| nav_button(app, entry))
+        .map(|entry| nav_button(app, entry, compact))
         .collect();
+    let nav_list = rail_nav_list(app, nav_items, compact);
+    let rail = col()
+        .key("settings-rail")
+        .w(layout.rail_width())
+        .h_full()
+        .min_h(0.0)
+        .border_sides([0.0, 1.0, 0.0, 0.0], controls::panel_border(look));
+    if compact {
+        rail.pt(look.space.md)
+            .gap(look.space.sm)
+            .items_center()
+            .child(compact_search_button(app))
+            .child(nav_list)
+    } else {
+        rail.pt(look.space.xl)
+            .gap(look.space.lg)
+            .child(
+                text(tr("SETTINGS"))
+                    .font(look.ty.heading)
+                    .color(look.kit.c.text_muted)
+                    .px(look.space.lg + 10.0)
+                    .pt(2.0),
+            )
+            .child(
+                col()
+                    .w_full()
+                    .px(look.space.lg)
+                    .pb(2.0)
+                    .child(search.field(app, look)),
+            )
+            .child(nav_list)
+    }
+}
+
+fn rail_nav_list(app: &App, nav_items: Vec<El>, compact: bool) -> El {
+    let look = &app.look;
     let rail_bar = &app.settings_dialog.rail_bar;
-    let inner = col()
+    let mut inner = col()
         .w_full()
         .min_w(0.0)
-        .px(look.space.lg)
+        .px(if compact { 8.0 } else { look.space.lg })
         .pb(look.space.xl)
         .gap(look.space.xs)
         .children(nav_items);
+    if compact {
+        inner = inner.items_center();
+    }
     let viewport = col()
         .key(RAIL_SCROLL)
         .w_full()
@@ -617,34 +682,98 @@ fn build_rail(
             ),
         )
         .wheel_scrolls(RAIL_SCROLL);
-    let nav_list = col()
+    col()
         .w_full()
         .grow(1.0)
         .min_h(0.0)
-        .child(rail_bar.area(overlay(viewport, [bar_el])));
-    col()
-        .key("settings-rail")
-        .w(RAIL_WIDTH)
-        .h_full()
-        .min_h(0.0)
-        .pt(look.space.xl)
-        .gap(look.space.lg)
-        .border_sides([0.0, 1.0, 0.0, 0.0], controls::panel_border(look))
-        .child(
-            text(tr("SETTINGS"))
-                .font(look.ty.heading)
-                .color(c.text_muted)
-                .px(look.space.lg + 10.0)
-                .pt(2.0),
+        .child(rail_bar.area(overlay(viewport, [bar_el])))
+}
+
+fn compact_search_button(app: &App) -> El {
+    let look = &app.look;
+    let kit = &look.kit;
+    let c = &kit.c;
+    let open = app.settings_dialog.search_popover_open;
+    let active = open || app.settings_dialog.search.searching();
+    let (fill, hover, icon_color) = if active {
+        (
+            kit.alpha(c.bg_accent, 0.18),
+            kit.alpha(c.bg_accent, 0.24),
+            c.icon_accent,
         )
+    } else {
+        (Color::TRANSPARENT, c.hover, kit.alpha(c.icon_accent, 0.65))
+    };
+    let label = tr("Search settings");
+    let mut btn = el()
+        .role("button")
+        .label(label.clone())
+        .help(label)
+        .help_side(Side::Right)
+        .expanded(open)
+        .size(40.0, 40.0)
+        .center()
+        .radius(look.round(8.0))
+        .fill(fill)
+        .hover(hover)
+        .press(c.pressed)
+        .focusable(true)
+        .focus_ring(2.0, -2.0, c.border_focus)
+        .cursor(Cursor::Pointer)
         .child(
-            col()
-                .w_full()
-                .px(look.space.lg)
-                .pb(2.0)
-                .child(search.field(app, look)),
+            icon(look.icon(IconName::Search), 18.0)
+                .color(icon_color)
+                .a11y_hidden(),
         )
-        .child(nav_list)
+        .on_press_tx(|app: &mut App, tx: &mut Tx| {
+            let next = !app.settings_dialog.search_popover_open;
+            app.settings_dialog.search_popover_open = next;
+            app.settings_dialog.open_choice = None;
+            if next {
+                tx.focus_when_shown(controls::search_handle().field_key(), true);
+            }
+        });
+    if active {
+        btn = btn.border(1.0, c.border_active);
+    }
+    buttons::on_return(COMPACT_SEARCH_KEY, btn)
+}
+
+fn build_compact_search_popover(
+    app: &App,
+    search: &strata_components::controls::settings_search::SettingsSearch<App>,
+) -> El {
+    let look = &app.look;
+    let kit = &look.kit;
+    let body = col()
+        .key(COMPACT_SEARCH_POPOVER_KEY)
+        .w(COMPACT_SEARCH_POPOVER_WIDTH)
+        .padding(look.space.sm)
+        .focus_return(COMPACT_SEARCH_KEY)
+        .on_key(|app: &mut App, ev: &KeyEvent, tx: &mut Tx| {
+            if ev.key == Key::Escape {
+                app.settings_dialog.search_popover_open = false;
+                tx.focus(COMPACT_SEARCH_KEY, true);
+                return true;
+            }
+            false
+        })
+        .modal_tx(true, |app: &mut App, tx: &mut Tx| {
+            app.settings_dialog.search_popover_open = false;
+            tx.focus(COMPACT_SEARCH_KEY, false);
+        })
+        .modal_wheel_outside(true)
+        .instant_changes()
+        .child(search.field(app, look));
+    let surface = strata_kit::transparency::raised_popover(look, body, kit.radius.md)
+        .border(1.0, look.transparency.frosted_border(kit.c.border_base));
+    popover::anchored(
+        kit,
+        surface,
+        COMPACT_SEARCH_KEY,
+        Placement::RightStart,
+        look.space.xs,
+    )
 }
 
 struct NavColors {
@@ -677,12 +806,47 @@ fn nav_colors(look: &strata_kit::look::Look, active: bool) -> NavColors {
     }
 }
 
-fn nav_button(app: &App, entry: &NavEntry) -> El {
+fn nav_button(app: &App, entry: &NavEntry, compact: bool) -> El {
     let look = &app.look;
     let kit = &look.kit;
     let colors = nav_colors(look, app.settings_dialog.page == entry.id);
     let page = entry.id;
-    let mut btn = row()
+    let mut btn = nav_button_body(look, entry, &colors, compact)
+        .radius(look.round(8.0))
+        .fill(colors.fill)
+        .hover(colors.hover)
+        .press(kit.c.pressed)
+        .focusable(true)
+        .focus_ring(2.0, -2.0, kit.c.border_focus)
+        .cursor(Cursor::Pointer)
+        .on_press_tx(move |app: &mut App, tx: &mut Tx| on_nav_press(app, page, tx));
+    if entry.id == app.settings_dialog.opened_page {
+        btn = btn.autofocus();
+    }
+    buttons::on_return(entry.id.nav_key(), btn)
+}
+
+fn nav_button_body(
+    look: &strata_kit::look::Look,
+    entry: &NavEntry,
+    colors: &NavColors,
+    compact: bool,
+) -> El {
+    let kit = &look.kit;
+    let glyph = icon(look.icon(entry.icon), 18.0)
+        .color(colors.icon)
+        .a11y_hidden();
+    if compact {
+        return el()
+            .role("button")
+            .label(tr(entry.accessible))
+            .help(tr(entry.label))
+            .help_side(Side::Right)
+            .size(40.0, 40.0)
+            .center()
+            .child(glyph);
+    }
+    row()
         .role("button")
         .label(tr(entry.accessible))
         .w_full()
@@ -691,18 +855,7 @@ fn nav_button(app: &App, entry: &NavEntry) -> El {
         .py(7.0)
         .gap(10.0)
         .items_center()
-        .radius(look.round(8.0))
-        .fill(colors.fill)
-        .hover(colors.hover)
-        .press(kit.c.pressed)
-        .focusable(true)
-        .focus_ring(2.0, -2.0, kit.c.border_focus)
-        .cursor(Cursor::Pointer)
-        .child(
-            icon(look.icon(entry.icon), 18.0)
-                .color(colors.icon)
-                .a11y_hidden(),
-        )
+        .child(glyph)
         .child(
             col()
                 .grow(1.0)
@@ -723,25 +876,20 @@ fn nav_button(app: &App, entry: &NavEntry) -> El {
                         .a11y_hidden(),
                 ),
         )
-        .on_press_tx(move |app: &mut App, tx: &mut Tx| {
-            let tenxer_mode = shell::preferences(app).tenxer_mode;
-            if app.settings_dialog.select_page(page, tenxer_mode) {
-                tx.scroll_to_instant(controls::PAGE_SCROLL, 0.0, 0.0);
-            }
-            if page == PageId::Actions {
-                actions::ensure_observing(app);
-            }
-            if page == PageId::Integrations {
-                integrations::ensure_scanned(app);
-            }
-            if page == PageId::Updates {
-                updates::ensure_method_detected(app);
-            }
-        });
-    if entry.id == app.settings_dialog.opened_page {
-        btn = btn.autofocus();
+}
+
+fn on_nav_press(app: &mut App, page: PageId, tx: &mut Tx) {
+    app.settings_dialog.search_popover_open = false;
+    let tenxer_mode = shell::preferences(app).tenxer_mode;
+    if app.settings_dialog.select_page(page, tenxer_mode) {
+        tx.scroll_to_instant(controls::PAGE_SCROLL, 0.0, 0.0);
     }
-    buttons::on_return(entry.id.nav_key(), btn)
+    match page {
+        PageId::Actions => actions::ensure_observing(app),
+        PageId::Integrations => integrations::ensure_scanned(app),
+        PageId::Updates => updates::ensure_method_detected(app),
+        _ => {}
+    }
 }
 
 fn close_button(look: &strata_kit::look::Look) -> El {
@@ -772,6 +920,7 @@ fn close_button(look: &strata_kit::look::Look) -> El {
 fn build_main_column(
     app: &App,
     search: &strata_components::controls::settings_search::SettingsSearch<App>,
+    layout: ResponsiveLayout,
     menu_layer: &mut Vec<El>,
 ) -> El {
     let look = &app.look;
@@ -797,7 +946,7 @@ fn build_main_column(
                 .grow(1.0),
         )
         .child(close_button(look));
-    let (pad_x, pad_y, bottom_pad) = content_padding(app);
+    let (pad_x, pad_y, bottom_pad) = layout.content_padding();
     let body = if app.settings_dialog.search.no_results() {
         col()
             .w_full()
@@ -807,7 +956,12 @@ fn build_main_column(
             .pb(bottom_pad)
             .child(search.empty(look))
     } else {
-        let content = build_page_content(app, page, search, menu_layer);
+        let ctx = PageCtx {
+            app,
+            search,
+            layout,
+        };
+        let content = build_page_content(ctx, page, menu_layer);
         build_page_scroll(app, content, (pad_x, pad_y, bottom_pad))
     };
     col()
@@ -862,36 +1016,16 @@ fn build_page_scroll(
         .child(page_bar.area(overlay(viewport, [bar_el])))
 }
 
-fn content_padding(app: &App) -> (f32, f32, f32) {
-    if app
-        .window_size()
-        .is_some_and(|(w, _)| w < COMPACT_CONTENT_WINDOW_WIDTH)
-    {
-        (
-            COMPACT_CONTENT_PAD_X,
-            COMPACT_CONTENT_PAD_Y,
-            COMPACT_CONTENT_BOTTOM_PAD,
-        )
-    } else {
-        (CONTENT_PAD_X, CONTENT_PAD_Y, CONTENT_BOTTOM_PAD)
-    }
-}
-
-fn build_page_content(
-    app: &App,
-    page: PageId,
-    search: &strata_components::controls::settings_search::SettingsSearch<App>,
-    menu_layer: &mut Vec<El>,
-) -> Vec<El> {
+fn build_page_content(ctx: PageCtx<'_>, page: PageId, menu_layer: &mut Vec<El>) -> Vec<El> {
     match page {
-        PageId::General => general::build(app, search, menu_layer),
-        PageId::Appearance => appearance_page::build(app, search, menu_layer),
-        PageId::Actions => actions::build(app, search),
-        PageId::Keyboard => keyboard::build(app, search),
-        PageId::Integrations => integrations::build(app, search),
-        PageId::Updates => pages::updates_page(app, search, menu_layer),
-        PageId::Diagnostics => diagnostics::build(app, search),
-        PageId::About => pages::about_page(app, search),
+        PageId::General => general::build(ctx, menu_layer),
+        PageId::Appearance => appearance_page::build(ctx, menu_layer),
+        PageId::Actions => actions::build(ctx),
+        PageId::Keyboard => keyboard::build(ctx),
+        PageId::Integrations => integrations::build(ctx),
+        PageId::Updates => pages::updates_page(ctx, menu_layer),
+        PageId::Diagnostics => diagnostics::build(ctx),
+        PageId::About => pages::about_page(ctx),
     }
 }
 

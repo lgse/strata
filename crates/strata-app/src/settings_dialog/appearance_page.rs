@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use rune::{Color, Cursor, El, ScrollSpec, Tx, col, el, icon, row, text};
 use rune_kit::{Button, ButtonVariant};
-use strata_components::controls::{number_field::NumberField, settings_search::SettingsSearch};
+use strata_components::controls::number_field::NumberField;
 use strata_core::i18n::tr;
 use strata_desktop::settings::{
     CornerRoundness, FileIconColors, InterfaceRenderer, OmarchyVariant, Preferences,
@@ -75,9 +75,8 @@ pub(super) fn roundness_field() -> NumberField<App> {
     )
 }
 
-pub(super) fn build(app: &App, search: &SettingsSearch<App>, menu_layer: &mut Vec<El>) -> Vec<El> {
-    let ctx = PageCtx { app, search };
-    let prefs = shell::preferences(app);
+pub(super) fn build(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<El> {
+    let prefs = shell::preferences(ctx.app);
     let blocks: Vec<Option<El>> = vec![
         first_section_heading(ctx, "theme-source", "THEME"),
         theme_source_section(ctx, menu_layer),
@@ -200,7 +199,7 @@ fn omarchy_variant_row(
         .find_map(|&(l, v)| (v == current).then(|| tr(l)))
         .unwrap_or_else(|| tr("Darker"));
     let menu = choice_menu(
-        app,
+        ctx,
         ChoiceSpec {
             id: "omarchy-variant",
             title: "Omarchy variant",
@@ -318,7 +317,7 @@ fn theme_library_section(ctx: PageCtx<'_>) -> Option<El> {
         .w_full()
         .pt(24.0)
         .gap(10.0)
-        .child(library_toolbar(app))
+        .child(library_toolbar(ctx))
         .child(scroller)
         .child(footer);
     if follows_omarchy {
@@ -358,8 +357,10 @@ fn theme_catalog_scroller(app: &App, cards: Vec<El>) -> El {
     .border(1.0, panel_border(look))
 }
 
-fn library_toolbar(app: &App) -> El {
+fn library_toolbar(ctx: PageCtx<'_>) -> El {
+    let app = ctx.app;
     let look = &app.look;
+    let compact = ctx.layout.compact_content;
     let search_box = search_field(
         app,
         SearchField {
@@ -368,11 +369,48 @@ fn library_toolbar(app: &App) -> El {
             label: tr("Search themes"),
             edit: |app| &app.settings_dialog.theme_query,
             edit_mut: |app| &mut app.settings_dialog.theme_query,
-            width: Some(196.0),
+            width: (!compact).then_some(196.0),
         },
     );
-    let current = app.settings_dialog.theme_filter;
-    let filters = segmented_toggles(
+    let filters = theme_filter_toggles(look, app.settings_dialog.theme_filter);
+    let heading = text(tr("THEME LIBRARY"))
+        .font(look.ty.heading)
+        .color(look.kit.c.text_muted);
+    if !compact {
+        return row()
+            .w_full()
+            .gap(look.space.md)
+            .items_center()
+            .child(heading.grow(1.0))
+            .child(search_box)
+            .child(filters);
+    }
+    let controls = if ctx.layout.narrow_controls {
+        col()
+            .w_full()
+            .min_w(0.0)
+            .gap(look.space.sm)
+            .child(search_box)
+            .child(filters.w_full().min_w(0.0))
+    } else {
+        row()
+            .w_full()
+            .min_w(0.0)
+            .gap(look.space.sm)
+            .items_center()
+            .child(col().grow(1.0).min_w(0.0).child(search_box))
+            .child(filters)
+    };
+    col()
+        .w_full()
+        .min_w(0.0)
+        .gap(look.space.sm)
+        .child(heading.px(4.0))
+        .child(controls)
+}
+
+fn theme_filter_toggles(look: &Look, current: ThemeFilter) -> El {
+    segmented_toggles(
         look,
         "settings-theme-filter",
         None,
@@ -393,19 +431,7 @@ fn library_toolbar(app: &App) -> El {
                 Rc::new(|app, _| app.settings_dialog.theme_filter = ThemeFilter::Dark),
             ),
         ],
-    );
-    row()
-        .w_full()
-        .gap(look.space.md)
-        .items_center()
-        .child(
-            text(tr("THEME LIBRARY"))
-                .font(look.ty.heading)
-                .color(look.kit.c.text_muted)
-                .grow(1.0),
-        )
-        .child(search_box)
-        .child(filters)
+    )
 }
 
 fn theme_matches(theme: &Theme, filter: ThemeFilter, query: &str) -> bool {
@@ -520,7 +546,7 @@ fn rendering_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
         .find_map(|&(l, r)| (r == prefs.interface_renderer).then(|| tr(l)))
         .unwrap_or_else(|| tr("GTK default"));
     let menu = choice_menu(
-        app,
+        ctx,
         ChoiceSpec {
             id: "interface-renderer",
             title: "Interface renderer",
@@ -539,7 +565,11 @@ fn rendering_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
         },
         menu_layer,
     );
-    let mut controls = col().gap(app.look.space.xs).items_end().child(menu);
+    let mut controls = if ctx.layout.compact_content {
+        col().w_full().min_w(0.0).gap(app.look.space.xs).child(menu)
+    } else {
+        col().gap(app.look.space.xs).items_end().child(menu)
+    };
     if shell::interface_renderer_restart_required(app) {
         let restart = Button::new(tr("Restart now"))
             .variant(ButtonVariant::Submit)
@@ -564,7 +594,7 @@ fn rendering_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
 
 fn text_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
     let app = ctx.app;
-    let font_menu = interface_font_menu(app, menu_layer);
+    let font_menu = interface_font_menu(ctx, menu_layer);
     group_card(
         &app.look,
         vec![
@@ -590,7 +620,8 @@ fn text_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
     )
 }
 
-fn interface_font_menu(app: &App, menu_layer: &mut Vec<El>) -> El {
+fn interface_font_menu(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> El {
+    let app = ctx.app;
     let current_font = shell::preferences(app).interface_font.as_deref();
     let current_label = current_font.map_or_else(|| tr("Default"), str::to_owned);
     let mut families: Vec<Option<String>> = vec![None, Some(FAMILY.to_owned())];
@@ -609,7 +640,7 @@ fn interface_font_menu(app: &App, menu_layer: &mut Vec<El>) -> El {
         families.insert(1, Some(custom.to_owned()));
     }
     choice_menu(
-        app,
+        ctx,
         ChoiceSpec {
             id: "interface-font",
             title: "Interface font",
@@ -663,7 +694,7 @@ fn scrollbars_section(ctx: PageCtx<'_>) -> Option<El> {
     let sub_disabled = !prefs.scrollbar_expand_on_hover;
     let width_control = scrollbar_hover_width_field()
         .disabled(sub_disabled)
-        .build(app);
+        .build(app, ctx.layout.compact_content);
     group_card(
         &app.look,
         vec![
@@ -712,7 +743,7 @@ fn apply_scrollbar_hover_width(app: &mut App, value: f64, tx: &mut Tx) {
 fn file_icons_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
     let app = ctx.app;
     let prefs = shell::preferences(app);
-    let menu = file_icon_colors_menu(app, menu_layer);
+    let menu = file_icon_colors_menu(ctx, menu_layer);
     group_card(
         &app.look,
         vec![
@@ -755,7 +786,8 @@ fn file_icons_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> 
     )
 }
 
-fn file_icon_colors_menu(app: &App, menu_layer: &mut Vec<El>) -> El {
+fn file_icon_colors_menu(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> El {
+    let app = ctx.app;
     let prefs = shell::preferences(app);
     let choices = [
         ("Brand colors", FileIconColors::Brand),
@@ -766,7 +798,7 @@ fn file_icon_colors_menu(app: &App, menu_layer: &mut Vec<El>) -> El {
         .find_map(|&(l, c)| (c == prefs.file_icon_colors).then(|| tr(l)))
         .unwrap_or_else(|| tr("Brand colors"));
     choice_menu(
-        app,
+        ctx,
         ChoiceSpec {
             id: "file-icon-colors",
             title: "File icon colors",

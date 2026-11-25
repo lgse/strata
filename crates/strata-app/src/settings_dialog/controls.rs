@@ -16,7 +16,7 @@ use strata_core::i18n::{count, tr};
 use strata_desktop::settings::Preferences;
 use strata_kit::{icons::IconName, look::Look};
 
-use super::{PageId, search_index::translated};
+use super::{PageId, responsive::ResponsiveLayout, search_index::translated};
 use crate::{App, buttons, shell};
 
 pub(super) const PAGE_SCROLL: &str = "settings-page";
@@ -58,6 +58,7 @@ pub(super) fn bounded_scroll_with_bar(
 pub(super) struct PageCtx<'a> {
     pub(super) app: &'a App,
     pub(super) search: &'a SettingsSearch<App>,
+    pub(super) layout: ResponsiveLayout,
 }
 
 pub(super) fn search_handle() -> SettingsSearch<App> {
@@ -75,28 +76,38 @@ pub(super) fn search_handle() -> SettingsSearch<App> {
         count: Rc::new(|n| count("results", n)),
     })
     .page_scroll(PAGE_SCROLL)
-    .on_navigate(|app: &mut App, to: Navigate, tx: &mut Tx| {
-        if let Some(page) = PageId::from_key(&to.page) {
-            let tenxer_mode = shell::preferences(app).tenxer_mode;
-            let changed = app.settings_dialog.select_page(page, tenxer_mode);
-            if changed && to.row.is_none() {
-                tx.scroll_to_instant(PAGE_SCROLL, 0.0, 0.0);
-            }
-            if page == PageId::Actions {
-                super::actions::ensure_observing(app);
-            }
-            if page == PageId::Integrations {
-                super::integrations::ensure_scanned(app);
-            }
-            if page == PageId::Updates {
-                super::updates::ensure_method_detected(app);
-            }
-        }
-    })
-    .on_escape(|app: &mut App, _| {
-        super::close_settings(app);
-        true
-    })
+    .on_navigate(on_search_navigate)
+    .on_escape(on_search_escape)
+}
+
+fn on_search_navigate(app: &mut App, to: Navigate, tx: &mut Tx) {
+    let Some(page) = PageId::from_key(&to.page) else {
+        return;
+    };
+    if to.row.is_some() {
+        app.settings_dialog.search_popover_open = false;
+    }
+    let tenxer_mode = shell::preferences(app).tenxer_mode;
+    let changed = app.settings_dialog.select_page(page, tenxer_mode);
+    if changed && to.row.is_none() {
+        tx.scroll_to_instant(PAGE_SCROLL, 0.0, 0.0);
+    }
+    match page {
+        PageId::Actions => super::actions::ensure_observing(app),
+        PageId::Integrations => super::integrations::ensure_scanned(app),
+        PageId::Updates => super::updates::ensure_method_detected(app),
+        _ => {}
+    }
+}
+
+fn on_search_escape(app: &mut App, tx: &mut Tx) -> bool {
+    if app.settings_dialog.search_popover_open {
+        app.settings_dialog.search_popover_open = false;
+        tx.focus(super::COMPACT_SEARCH_KEY, true);
+        return true;
+    }
+    super::close_settings(app);
+    true
 }
 
 pub(super) type NumberFieldAccess = (
@@ -254,9 +265,14 @@ impl<'a> RowSpec<'a> {
 }
 
 pub(super) fn option_row(ctx: PageCtx<'_>, spec: RowSpec<'_>, control: El) -> Option<El> {
-    if !ctx.search.shows_row(ctx.app, spec.key) {
-        return None;
+    if ctx.layout.compact_content {
+        stacked_option_row(ctx, spec, control)
+    } else {
+        inline_option_row(ctx, spec, control)
     }
+}
+
+fn build_row_copy(ctx: PageCtx<'_>, spec: &RowSpec<'_>, stacked: bool) -> El {
     let look = &ctx.app.look;
     let c = &look.kit.c;
     let title_str = translated(spec.title);
@@ -274,7 +290,12 @@ pub(super) fn option_row(ctx: PageCtx<'_>, spec: RowSpec<'_>, control: El) -> Op
             ctx.search
                 .title(ctx.app, look, &title_str, look.kit.ty.ui_medium),
         );
-    let mut copy = col().grow(1.0).min_w(0.0).gap(3.0).child(title_line);
+    let mut copy = if stacked {
+        col().w_full().min_w(0.0).gap(3.0)
+    } else {
+        col().grow(1.0).min_w(0.0).gap(3.0)
+    }
+    .child(title_line);
     if !desc_str.is_empty() {
         copy = copy.child(
             text(desc_str)
@@ -291,6 +312,15 @@ pub(super) fn option_row(ctx: PageCtx<'_>, spec: RowSpec<'_>, control: El) -> Op
                 .wrap(),
         );
     }
+    copy
+}
+
+fn inline_option_row(ctx: PageCtx<'_>, spec: RowSpec<'_>, control: El) -> Option<El> {
+    if !ctx.search.shows_row(ctx.app, spec.key) {
+        return None;
+    }
+    let look = &ctx.app.look;
+    let copy = build_row_copy(ctx, &spec, false);
     let mut line = row()
         .w_full()
         .min_w(0.0)
@@ -301,6 +331,27 @@ pub(super) fn option_row(ctx: PageCtx<'_>, spec: RowSpec<'_>, control: El) -> Op
         .items_center()
         .child(copy)
         .child(control);
+    if spec.disabled {
+        line = line.layer_opacity(0.45);
+    }
+    ctx.search.row(ctx.app, look, spec.key, line)
+}
+
+fn stacked_option_row(ctx: PageCtx<'_>, spec: RowSpec<'_>, control: El) -> Option<El> {
+    if !ctx.search.shows_row(ctx.app, spec.key) {
+        return None;
+    }
+    let look = &ctx.app.look;
+    let copy = build_row_copy(ctx, &spec, true);
+    let mut line = col()
+        .w_full()
+        .min_w(0.0)
+        .pl(if spec.indented { 28.0 } else { 18.0 })
+        .pr(18.0)
+        .py(16.0)
+        .gap(look.space.sm)
+        .child(copy)
+        .child(col().w_full().min_w(0.0).child(control));
     if spec.disabled {
         line = line.layer_opacity(0.45);
     }
@@ -328,7 +379,7 @@ pub(super) fn switch_row(
     if !desc_str.is_empty() {
         toggle = toggle.description(desc_str);
     }
-    option_row(ctx, spec, toggle.build(&ctx.app.look).key(switch_key))
+    inline_option_row(ctx, spec, toggle.build(&ctx.app.look).key(switch_key))
 }
 
 pub(super) fn pref_switch(
@@ -395,23 +446,79 @@ fn choice_colors(look: &Look, disabled: bool, is_open: bool) -> (Color, Color, C
     }
 }
 
-pub(super) fn choice_menu(app: &App, spec: ChoiceSpec<'_>, menu_layer: &mut Vec<El>) -> El {
-    let look = &app.look;
-    let kit = &look.kit;
-    let c = &kit.c;
+pub(super) fn choice_menu(ctx: PageCtx<'_>, spec: ChoiceSpec<'_>, menu_layer: &mut Vec<El>) -> El {
+    let app = ctx.app;
+    let compact = ctx.layout.compact_content;
     let id = spec.id;
     let is_open = !spec.disabled && app.settings_dialog.open_choice == Some(id);
     let title = tr(spec.title);
-    let current = spec.current;
     let toggle_key = format!("settings-choice-{id}-toggle");
     let first_opt_key = format!("settings-choice-{id}-opt-0");
-    let (fill, border, ink) = choice_colors(look, spec.disabled, is_open);
+    let toggle = choice_toggle_button(
+        &app.look,
+        (&title, &spec.current, id),
+        (compact, spec.disabled, is_open),
+        &first_opt_key,
+    );
+    let inner = buttons::on_return(toggle_key.clone(), toggle);
+    if is_open {
+        let popup = PopupSpec {
+            id,
+            title: &title,
+            anchor_key: &toggle_key,
+            options: spec.options,
+        };
+        build_choice_popup(
+            &app.look,
+            &app.settings_dialog.choice_bar,
+            popup,
+            menu_layer,
+        );
+    }
+    let mut wrapper = el()
+        .key(format!("settings-choice-{id}"))
+        .role("button")
+        .label(title)
+        .description(spec.current)
+        .disabled(spec.disabled)
+        .focusable(false)
+        .child(inner);
+    if compact {
+        wrapper = wrapper.w_full().min_w(0.0);
+    }
+    wrapper
+}
+
+fn choice_toggle_button(
+    look: &Look,
+    (title, current, id): (&str, &str, &'static str),
+    (compact, disabled, is_open): (bool, bool, bool),
+    first_opt_key: &str,
+) -> El {
+    let kit = &look.kit;
+    let c = &kit.c;
+    let (fill, border, ink) = choice_colors(look, disabled, is_open);
+    let label_slot = if compact {
+        row().grow(1.0).min_w(0.0).child(
+            text(current.to_owned())
+                .font(kit.ty.ui)
+                .color(ink)
+                .truncate()
+                .a11y_hidden(),
+        )
+    } else {
+        el().grow(1.0).center().child(
+            text(current.to_owned())
+                .font(kit.ty.ui)
+                .color(ink)
+                .a11y_hidden(),
+        )
+    };
     let mut toggle = row()
         .role("button")
-        .label(title.clone())
-        .description(current.clone())
+        .label(title.to_owned())
+        .description(current.to_owned())
         .checked(is_open)
-        .min_w(160.0)
         .min_h(32.0)
         .px(12.0)
         .py(6.0)
@@ -421,49 +528,30 @@ pub(super) fn choice_menu(app: &App, spec: ChoiceSpec<'_>, menu_layer: &mut Vec<
         .fill(fill)
         .border(1.0, border)
         .focus_ring(2.0, -2.0, c.border_focus)
-        .focusable(!spec.disabled)
-        .disabled(spec.disabled)
-        .child(
-            el().grow(1.0).center().child(
-                text(current.clone())
-                    .font(kit.ty.ui)
-                    .color(ink)
-                    .a11y_hidden(),
-            ),
-        )
+        .focusable(!disabled)
+        .disabled(disabled)
+        .child(label_slot)
         .child(
             icon(look.icon(IconName::ChevronDown), 14.0)
                 .color(ink)
                 .a11y_hidden(),
         );
-    toggle = if spec.disabled {
-        toggle.layer_opacity(0.45)
+    toggle = if compact {
+        toggle.w_full().min_w(0.0)
     } else {
-        toggle
-            .cursor(Cursor::Pointer)
-            .hover(c.hover)
-            .press(look.fill.highlight)
-            .on_press_tx(move |app: &mut App, tx: &mut Tx| {
-                toggle_choice_popup(app, id, &first_opt_key, tx);
-            })
+        toggle.min_w(160.0)
     };
-    let inner = buttons::on_return(toggle_key.clone(), toggle);
-    if is_open {
-        let popup = PopupSpec {
-            id,
-            title: &title,
-            anchor_key: &toggle_key,
-            options: spec.options,
-        };
-        build_choice_popup(look, &app.settings_dialog.choice_bar, popup, menu_layer);
+    if disabled {
+        return toggle.layer_opacity(0.45);
     }
-    el().key(format!("settings-choice-{id}"))
-        .role("button")
-        .label(title)
-        .description(current)
-        .disabled(spec.disabled)
-        .focusable(false)
-        .child(inner)
+    let first_opt_key = first_opt_key.to_owned();
+    toggle
+        .cursor(Cursor::Pointer)
+        .hover(c.hover)
+        .press(look.fill.highlight)
+        .on_press_tx(move |app: &mut App, tx: &mut Tx| {
+            toggle_choice_popup(app, id, &first_opt_key, tx);
+        })
 }
 
 fn close_choice(app: &mut App) {
@@ -472,6 +560,7 @@ fn close_choice(app: &mut App) {
 }
 
 fn toggle_choice_popup(app: &mut App, id: &'static str, first_opt_key: &str, tx: &mut Tx) {
+    app.settings_dialog.search_popover_open = false;
     if app.settings_dialog.open_choice == Some(id) {
         close_choice(app);
     } else {
@@ -728,7 +817,11 @@ pub(super) fn segmented_toggles_named(
             } else {
                 (Color::TRANSPARENT, c.hover, c.text_muted)
             };
-            let mut label = text(seg.visible).font(kit.ty.ui).color(ink).a11y_hidden();
+            let mut label = text(seg.visible)
+                .font(kit.ty.ui)
+                .color(ink)
+                .truncate()
+                .a11y_hidden();
             if !seg.active {
                 label = label.group_color(c.text_base);
             }
@@ -738,6 +831,7 @@ pub(super) fn segmented_toggles_named(
                 .role("button")
                 .label(seg.accessible)
                 .checked(seg.active)
+                .min_w(0.0)
                 .min_h(28.0)
                 .px(14.0)
                 .py(3.0)
