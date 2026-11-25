@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
+use gio::prelude::*;
 use rune::{Key, KeyEvent, Mods};
 use strata_components::contract::EntryId;
 use strata_core::model::Location;
 
 use super::{
-    Change, Selection, changed, complete_cut_transfer, fallback_text, has_files, is_cut_match,
-    marks, may_paste, offer_serial, paths, settled_since,
+    Change, LocationSet, Selection, changed, complete_cut_transfer, fallback_text, has_files,
+    is_cut_match, marks, may_paste, offer_serial, paths, retain_untransferred, same_locations,
+    settled_since,
 };
 use crate::{
     App,
@@ -181,6 +183,13 @@ fn copy_and_cut_marks_track_partial_and_full_transfer_consumption() {
                 &[beta_loc.clone(), alpha_loc.clone()]
             ));
 
+            let unrelated = Location::local("/fixture/unrelated");
+            host.runtime()
+                .update(move |app, _| complete_cut_transfer(app, std::slice::from_ref(&unrelated)));
+            assert!(marks(host.app(), alpha_id).cut);
+            assert!(marks(host.app(), beta_id).cut);
+            assert!(has_files(host.app()));
+
             let moved_alpha = alpha_loc.clone();
             host.runtime().update(move |app, _| {
                 complete_cut_transfer(app, std::slice::from_ref(&moved_alpha))
@@ -189,13 +198,88 @@ fn copy_and_cut_marks_track_partial_and_full_transfer_consumption() {
             assert!(marks(host.app(), beta_id).cut);
             assert!(has_files(host.app()));
 
-            let moved_beta = beta_loc.clone();
+            let moved_beta = Location::uri(
+                gio::File::for_path(beta_loc.native_path().expect("native beta"))
+                    .uri()
+                    .to_string(),
+            );
             host.runtime().update(move |app, _| {
                 complete_cut_transfer(app, std::slice::from_ref(&moved_beta))
             });
             assert!(!marks(host.app(), beta_id).cut);
             assert!(!has_files(host.app()));
         },
+    );
+}
+
+#[test]
+fn cut_matches_gio_equivalent_representations() {
+    let native = Location::local("/fixture/first");
+    let uri = Location::uri("file:///fixture/first");
+
+    assert!(same_locations(
+        std::slice::from_ref(&native),
+        std::slice::from_ref(&uri)
+    ));
+    assert!(!same_locations(
+        std::slice::from_ref(&native),
+        std::slice::from_ref(&Location::uri("file:///fixture/other"))
+    ));
+    assert!(same_locations(
+        &[native.clone(), uri.clone()],
+        &[uri.clone(), native.clone()]
+    ));
+    assert!(!same_locations(
+        &[native, uri.clone()],
+        &[uri, Location::local("/fixture/second")]
+    ));
+}
+
+#[test]
+fn completed_moves_match_gio_equivalent_and_partial_cut_entries() {
+    let mut single = vec![Location::local("/fixture/first")];
+    retain_untransferred(
+        &mut single,
+        &LocationSet::new(&[Location::uri("file:///fixture/first")]),
+    );
+    assert!(single.is_empty());
+
+    let first = Location::local("/fixture/first");
+    let second = Location::local("/fixture/second");
+    let third = Location::local("/fixture/third");
+    let mut cut = vec![first.clone(), second.clone(), third.clone()];
+    retain_untransferred(&mut cut, &LocationSet::new(&[first, third]));
+    assert_eq!(cut, vec![second]);
+}
+
+#[test]
+fn large_cut_lists_reconcile_without_pairwise_comparison() {
+    let cut: Vec<_> = (0..20_000)
+        .map(|index| Location::local(format!("/fixture/large/{index:05}.png")))
+        .collect();
+    let mut pasted: Vec<_> = cut
+        .iter()
+        .rev()
+        .map(|location| {
+            let path = location.native_path().expect("native fixture");
+            Location::uri(gio::File::for_path(path).uri().to_string())
+        })
+        .collect();
+    let moved: Vec<_> = pasted.iter().step_by(2).cloned().collect();
+    let mut remaining = cut.clone();
+
+    let started = std::time::Instant::now();
+    assert!(same_locations(&pasted, &cut));
+    retain_untransferred(&mut remaining, &LocationSet::new(&moved));
+    pasted[0] = Location::uri("file:///fixture/large/other.png");
+    assert!(!same_locations(&pasted, &cut));
+    let elapsed = started.elapsed();
+
+    let expected: Vec<_> = cut.iter().step_by(2).cloned().collect();
+    assert_eq!(remaining, expected);
+    assert!(
+        elapsed < Duration::from_secs(20),
+        "reconciling took {elapsed:?}"
     );
 }
 
