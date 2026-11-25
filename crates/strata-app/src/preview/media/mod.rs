@@ -124,8 +124,10 @@ impl Opening {
     }
 }
 
+/// Images reach the media player only as GIFs or animated WebPs, so any image
+/// type there loops from the start with play/pause as its only control.
 fn is_animation(content_type: &str) -> bool {
-    matches!(content_type, "image/gif" | "image/webp")
+    content_type.starts_with("image/")
 }
 
 /// A sandboxed media preview arrived: the player for its kind, decoding from the start.

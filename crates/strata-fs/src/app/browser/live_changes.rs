@@ -26,7 +26,17 @@ pub(super) struct LiveChanges {
     burst: Cell<Option<(Instant, usize)>>,
     pub(super) batching: Cell<bool>,
     flushing: Cell<bool>,
-    timer: RefCell<Option<gio::glib::SourceId>>,
+    pub(super) timer: RefCell<Option<gio::glib::SourceId>>,
+}
+
+/// A pending flush must not outlive its browser: its closure is bound to this
+/// thread, and another thread iterating the default context would fire it.
+impl Drop for LiveChanges {
+    fn drop(&mut self) {
+        if let Some(source) = self.timer.get_mut().take() {
+            source.remove();
+        }
+    }
 }
 
 impl Browser {

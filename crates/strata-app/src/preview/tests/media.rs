@@ -760,8 +760,15 @@ fn animated_webp_plays_in_the_plain_bar_loops_and_skips_media_probes() {
         |mut host| {
             let _hooks = BackgroundHooks::install(true, false);
             decode_with(half_a_second_of_pictures);
-            let (_provider, _folder) =
-                open(&mut host, &[("spin.webp", MP4)], "spin.webp", "image/webp");
+            host.runtime().update(|app: &mut App, _: &mut Tx| {
+                crate::shell::saved(app).change(|prefs| prefs.preview_video_start = 50);
+            });
+            let (provider, folder) = open(
+                &mut host,
+                &[("spin.webp", MP4), ("alias.png", MP4)],
+                "spin.webp",
+                "image/webp",
+            );
             shows(
                 &mut host,
                 MediaState::has_frame,
@@ -770,6 +777,11 @@ fn animated_webp_plays_in_the_plain_bar_loops_and_skips_media_probes() {
             assert_eq!(
                 state(&host).map(|s| s.clip().kind),
                 Some(MediaKind::Animation)
+            );
+            assert_eq!(
+                state(&host).map(MediaState::position),
+                Some(Duration::ZERO),
+                "animated WebP ignores preview_video_start and starts at 0"
             );
             let keys: Vec<String> = host
                 .runtime()
@@ -803,6 +815,20 @@ fn animated_webp_plays_in_the_plain_bar_loops_and_skips_media_probes() {
                     .is_some_and(|s| s.playing() && s.position() < Duration::from_millis(200))
             });
             assert!(looped, "animated WebP loops back to start while playing");
+
+            select(&mut host, &Location::local(folder.path().join("alias.png")));
+            provider.wait_for(&mut host, 1);
+            provider.answer_as(1, "image/png", sandboxed(folder.path().join("alias.png")));
+            shows(
+                &mut host,
+                |s| s.clip().name == "alias.png" && s.has_frame(),
+                "misnamed image animation frame",
+            );
+            assert_eq!(
+                state(&host).map(|s| (s.clip().kind, s.position())),
+                Some((MediaKind::Animation, Duration::ZERO)),
+                "any image/* reaching the media player opens as a looping animation at 0"
+            );
         },
     );
 }

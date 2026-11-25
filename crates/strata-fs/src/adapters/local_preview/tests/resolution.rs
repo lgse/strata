@@ -86,6 +86,7 @@ const PREVIEW_FAMILY_CASES: &[(&str, &[u8], Resolved<'static>)] = &[
     ("GOPR0001.GPR", &[0, 1, 2, 3, 255, 254], Resolved::Image),
     ("still.webp", STATIC_WEBP_HEADER, Resolved::Image),
     ("loop.webp", ANIMATED_WEBP_HEADER, Resolved::Media),
+    ("loop.png", ANIMATED_WEBP_HEADER, Resolved::Media),
     (
         "notes.webp",
         b"not a webp\n",
