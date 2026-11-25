@@ -22,6 +22,7 @@ use super::controls::{
     choice_menu, first_section_heading, group_card, number_field, option_row, panel_border,
     search_field, section_heading, segmented_toggles, settings_bar_look, switch_row,
 };
+use super::slider_field::{SliderField, slider_field_access};
 use crate::{App, buttons, shell};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -69,27 +70,6 @@ pub(super) fn roundness_field() -> NumberField<App> {
             )]
             let pct = value.round() as u32;
             shell::saved(app).change(|s| s.corner_roundness = CornerRoundness::new(pct));
-            shell::follow_look_tx(app, tx);
-        },
-    )
-}
-
-pub(super) fn scrollbar_hover_width_field() -> NumberField<App> {
-    number_field(
-        "settings-scrollbar-hover-width",
-        "Expanded scrollbar width in pixels",
-        (
-            |app: &App| &app.settings_dialog.scrollbar_hover_width,
-            |app: &mut App| &mut app.settings_dialog.scrollbar_hover_width,
-        ),
-        |app, value, tx| {
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss,
-                reason = "clamped 6..=24"
-            )]
-            let px = value.round() as u32;
-            shell::saved(app).change(|s| s.scrollbar_hover_width = ScrollbarHoverWidth::new(px));
             shell::follow_look_tx(app, tx);
         },
     )
@@ -668,10 +648,22 @@ fn shape_section(ctx: PageCtx<'_>) -> Option<El> {
     )
 }
 
+pub(super) fn scrollbar_hover_width_field() -> SliderField {
+    SliderField::new(
+        "settings-scrollbar-hover-width",
+        "Expanded scrollbar width in pixels",
+        slider_field_access!(settings_dialog.scrollbar_hover_width),
+        apply_scrollbar_hover_width,
+    )
+}
+
 fn scrollbars_section(ctx: PageCtx<'_>) -> Option<El> {
     let app = ctx.app;
     let prefs = shell::preferences(app);
     let sub_disabled = !prefs.scrollbar_expand_on_hover;
+    let width_control = scrollbar_hover_width_field()
+        .disabled(sub_disabled)
+        .build(app);
     group_card(
         &app.look,
         vec![
@@ -697,12 +689,24 @@ fn scrollbars_section(ctx: PageCtx<'_>) -> Option<El> {
                 )
                 .indented()
                 .disabled(sub_disabled),
-                scrollbar_hover_width_field()
-                    .disabled(sub_disabled)
-                    .build(app, &app.look),
+                width_control,
             ),
         ],
     )
+}
+
+fn apply_scrollbar_hover_width(app: &mut App, value: f64, tx: &mut Tx) {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "slider range is clamped 6..=24"
+    )]
+    let next = ScrollbarHoverWidth::new(value.round().max(0.0) as u32);
+    if shell::preferences(app).scrollbar_hover_width == next {
+        return;
+    }
+    shell::saved(app).change(|s| s.scrollbar_hover_width = next);
+    shell::follow_look_tx(app, tx);
 }
 
 fn file_icons_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
@@ -812,9 +816,7 @@ pub(super) fn sync_appearance_fields(state: &mut super::SettingsDialog, prefs: &
             .roundness
             .set_value(f64::from(prefs.corner_roundness.percent()));
     }
-    if !state.scrollbar_hover_width.edit().focused && !state.scrollbar_hover_width.held() {
-        state
-            .scrollbar_hover_width
-            .set_value(f64::from(prefs.scrollbar_hover_width.get()));
-    }
+    state
+        .scrollbar_hover_width
+        .sync(f64::from(prefs.scrollbar_hover_width.get()));
 }

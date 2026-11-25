@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use rune::{El, TextStyle, Tx, row, text};
-use strata_components::controls::slider::{Range, Slider, SliderChange, SliderState, Snap};
-use strata_core::i18n::tr;
+use rune::{El, Tx};
+use strata_components::controls::slider::{Range, Snap};
 use strata_desktop::settings::{
     MAX_SURFACE_TRANSPARENCY, MAX_UNFOCUSED_TRANSPARENCY_MULTIPLIER, MIN_SURFACE_TRANSPARENCY,
     MIN_UNFOCUSED_TRANSPARENCY_MULTIPLIER, TransparencyPreferences,
@@ -11,16 +10,14 @@ use strata_desktop::settings::{
 };
 
 use super::controls::{PageCtx, RowSpec, group_card, option_row, switch_row};
+use super::slider_field::{SliderField, SliderFieldState, slider_field_access};
 use crate::{App, shell};
 
-const SLIDER_WIDTH: f32 = 180.0;
-const VALUE_WIDTH: f32 = 48.0;
-
-/// Slider states for the three numeric transparency controls in Settings → Appearance.
+/// Paired slider and numeric input states for the three transparency controls in Settings → Appearance.
 pub(super) struct TransparencySliders {
-    background: SliderState,
-    raised: SliderState,
-    unfocused_multiplier: SliderState,
+    background: SliderFieldState,
+    raised: SliderFieldState,
+    unfocused_multiplier: SliderFieldState,
 }
 
 impl TransparencySliders {
@@ -39,44 +36,50 @@ impl TransparencySliders {
         )
         .page(0.25);
         Self {
-            background: SliderState::new(
+            background: SliderFieldState::new(
                 f64::from(defaults.background_transparency),
                 percent_range,
+                "%",
             ),
-            raised: SliderState::new(
+            raised: SliderFieldState::new(
                 f64::from(defaults.raised_surface_transparency),
                 percent_range,
+                "%",
             ),
-            unfocused_multiplier: SliderState::new(defaults.unfocused_multiplier, multiplier_range),
+            unfocused_multiplier: SliderFieldState::new(
+                defaults.unfocused_multiplier,
+                multiplier_range,
+                "\u{00D7}",
+            ),
         }
     }
 
-    /// Keeps slider positions aligned with saved settings when the user is not dragging them.
+    pub(super) fn hold(&mut self, held: bool) {
+        self.background.hold(held);
+        self.raised.hold(held);
+        self.unfocused_multiplier.hold(held);
+    }
+
+    pub(super) fn has_focused_field(&self) -> bool {
+        self.background.focused() || self.raised.focused() || self.unfocused_multiplier.focused()
+    }
+
+    /// Keeps slider positions and numeric inputs aligned with saved settings when not actively edited.
     pub(super) fn sync(&mut self, prefs: TransparencyPreferences) {
-        if !self.background.dragging() {
-            self.background
-                .set_value(f64::from(prefs.background_transparency));
-        }
-        if !self.raised.dragging() {
-            self.raised
-                .set_value(f64::from(prefs.raised_surface_transparency));
-        }
-        if !self.unfocused_multiplier.dragging() {
-            self.unfocused_multiplier
-                .set_value(prefs.unfocused_multiplier);
-        }
+        self.background
+            .sync(f64::from(prefs.background_transparency));
+        self.raised
+            .sync(f64::from(prefs.raised_surface_transparency));
+        self.unfocused_multiplier.sync(prefs.unfocused_multiplier);
     }
 }
 
-struct SliderControl {
-    key: &'static str,
-    label_key: &'static str,
-    value_text: String,
-    disabled: bool,
-    snaps: Vec<Snap>,
-    get: fn(&App) -> &SliderState,
-    get_mut: fn(&mut App) -> &mut SliderState,
-    on_change: fn(&mut App, f64, SliderChange, &mut Tx),
+pub(super) fn poll(app: &mut App, tx: &mut Tx) -> bool {
+    let mut changed = false;
+    changed |= background_field().poll(app, tx);
+    changed |= raised_field().poll(app, tx);
+    changed |= unfocused_field().poll(app, tx);
+    changed
 }
 
 pub(super) fn build(ctx: PageCtx<'_>) -> Option<El> {
@@ -98,8 +101,8 @@ pub(super) fn build(ctx: PageCtx<'_>) -> Option<El> {
                 shell::follow_look_tx(app, tx);
             },
         ),
-        background_row(ctx, prefs, sub_disabled),
-        raised_row(ctx, prefs, sub_disabled),
+        background_row(ctx, sub_disabled),
+        raised_row(ctx, sub_disabled),
         switch_row(
             ctx,
             RowSpec::new(
@@ -118,26 +121,41 @@ pub(super) fn build(ctx: PageCtx<'_>) -> Option<El> {
                 shell::follow_look_tx(app, tx);
             },
         ),
-        unfocused_row(ctx, prefs, sub_disabled),
+        unfocused_row(ctx, sub_disabled),
     ];
     group_card(&app.look, rows)
 }
 
-fn background_row(ctx: PageCtx<'_>, prefs: TransparencyPreferences, disabled: bool) -> Option<El> {
-    let value_text = format!("{}%", prefs.background_transparency);
-    let control = slider_control(
-        ctx.app,
-        SliderControl {
-            key: "settings-background-transparency",
-            label_key: "Background transparency",
-            value_text,
-            disabled,
-            snaps: Vec::new(),
-            get: |app| &app.settings_dialog.transparency.background,
-            get_mut: |app| &mut app.settings_dialog.transparency.background,
-            on_change: apply_background_transparency,
-        },
-    );
+fn background_field() -> SliderField {
+    SliderField::new(
+        "settings-background-transparency",
+        "Background transparency",
+        slider_field_access!(settings_dialog.transparency.background),
+        apply_background_transparency,
+    )
+}
+
+fn raised_field() -> SliderField {
+    SliderField::new(
+        "settings-raised-transparency",
+        "Raised surface transparency",
+        slider_field_access!(settings_dialog.transparency.raised),
+        apply_raised_transparency,
+    )
+}
+
+fn unfocused_field() -> SliderField {
+    SliderField::new(
+        "settings-unfocused-transparency",
+        "Unfocused window multiplier",
+        slider_field_access!(settings_dialog.transparency.unfocused_multiplier),
+        apply_unfocused_multiplier,
+    )
+    .snaps(vec![Snap::at(1.0)])
+}
+
+fn background_row(ctx: PageCtx<'_>, disabled: bool) -> Option<El> {
+    let control = background_field().disabled(disabled).build(ctx.app);
     option_row(
         ctx,
         RowSpec::new(
@@ -151,21 +169,8 @@ fn background_row(ctx: PageCtx<'_>, prefs: TransparencyPreferences, disabled: bo
     )
 }
 
-fn raised_row(ctx: PageCtx<'_>, prefs: TransparencyPreferences, disabled: bool) -> Option<El> {
-    let value_text = format!("{}%", prefs.raised_surface_transparency);
-    let control = slider_control(
-        ctx.app,
-        SliderControl {
-            key: "settings-raised-transparency",
-            label_key: "Raised surface transparency",
-            value_text,
-            disabled,
-            snaps: Vec::new(),
-            get: |app| &app.settings_dialog.transparency.raised,
-            get_mut: |app| &mut app.settings_dialog.transparency.raised,
-            on_change: apply_raised_transparency,
-        },
-    );
+fn raised_row(ctx: PageCtx<'_>, disabled: bool) -> Option<El> {
+    let control = raised_field().disabled(disabled).build(ctx.app);
     option_row(
         ctx,
         RowSpec::new(
@@ -179,21 +184,8 @@ fn raised_row(ctx: PageCtx<'_>, prefs: TransparencyPreferences, disabled: bool) 
     )
 }
 
-fn unfocused_row(ctx: PageCtx<'_>, prefs: TransparencyPreferences, disabled: bool) -> Option<El> {
-    let value_text = format!("{:.2}\u{00D7}", prefs.unfocused_multiplier);
-    let control = slider_control(
-        ctx.app,
-        SliderControl {
-            key: "settings-unfocused-transparency",
-            label_key: "Unfocused window multiplier",
-            value_text,
-            disabled,
-            snaps: vec![Snap::at(1.0)],
-            get: |app| &app.settings_dialog.transparency.unfocused_multiplier,
-            get_mut: |app| &mut app.settings_dialog.transparency.unfocused_multiplier,
-            on_change: apply_unfocused_multiplier,
-        },
-    );
+fn unfocused_row(ctx: PageCtx<'_>, disabled: bool) -> Option<El> {
+    let control = unfocused_field().disabled(disabled).build(ctx.app);
     option_row(
         ctx,
         RowSpec::new(
@@ -207,34 +199,7 @@ fn unfocused_row(ctx: PageCtx<'_>, prefs: TransparencyPreferences, disabled: boo
     )
 }
 
-fn slider_control(app: &App, spec: SliderControl) -> El {
-    let look = &app.look;
-    let kit = &look.kit;
-    let readout_font = TextStyle {
-        size: (kit.ty.ui.size * 0.92).round().max(1.0),
-        ..kit.ty.mono
-    };
-    let slider = Slider::new(spec.key, spec.get, spec.get_mut)
-        .snaps(spec.snaps)
-        .label(tr(spec.label_key))
-        .value_text(spec.value_text.clone())
-        .disabled(spec.disabled)
-        .on_change(spec.on_change)
-        .build(app, look);
-    let readout = row().min_w(VALUE_WIDTH).justify_end().items_center().child(
-        text(spec.value_text)
-            .font(readout_font)
-            .color(kit.c.text_muted)
-            .a11y_hidden(),
-    );
-    row()
-        .gap(look.space.md)
-        .items_center()
-        .child(row().w(SLIDER_WIDTH).items_center().child(slider))
-        .child(readout)
-}
-
-fn apply_background_transparency(app: &mut App, value: f64, _: SliderChange, _: &mut Tx) {
+fn apply_background_transparency(app: &mut App, value: f64, _: &mut Tx) {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -248,7 +213,7 @@ fn apply_background_transparency(app: &mut App, value: f64, _: SliderChange, _: 
     shell::follow_look(app);
 }
 
-fn apply_raised_transparency(app: &mut App, value: f64, _: SliderChange, _: &mut Tx) {
+fn apply_raised_transparency(app: &mut App, value: f64, _: &mut Tx) {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -262,7 +227,7 @@ fn apply_raised_transparency(app: &mut App, value: f64, _: SliderChange, _: &mut
     shell::follow_look(app);
 }
 
-fn apply_unfocused_multiplier(app: &mut App, value: f64, _: SliderChange, _: &mut Tx) {
+fn apply_unfocused_multiplier(app: &mut App, value: f64, _: &mut Tx) {
     let mult = normalized_unfocused_transparency_multiplier(value);
     if (shell::transparency(app).unfocused_multiplier - mult).abs() < f64::EPSILON {
         return;

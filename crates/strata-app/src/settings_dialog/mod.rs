@@ -39,6 +39,7 @@ mod message;
 mod notice;
 mod pages;
 mod search_index;
+mod slider_field;
 #[cfg(test)]
 mod tests;
 mod transparency_section;
@@ -198,7 +199,7 @@ pub(crate) struct SettingsDialog {
     video_start: NumberFieldState,
     text_size: NumberFieldState,
     roundness: NumberFieldState,
-    scrollbar_hover_width: NumberFieldState,
+    scrollbar_hover_width: slider_field::SliderFieldState,
     transparency: transparency_section::TransparencySliders,
     theme_query: TextEdit,
     theme_filter: appearance_page::ThemeFilter,
@@ -239,15 +240,16 @@ impl SettingsDialog {
                 f64::from(CornerRoundness::STEP),
             ),
         );
-        let scrollbar_hover_width = NumberFieldState::new(
+        let scrollbar_hover_width = slider_field::SliderFieldState::new(
             f64::from(prefs.scrollbar_hover_width.get()),
             Range::new(
                 f64::from(ScrollbarHoverWidth::MIN),
                 f64::from(ScrollbarHoverWidth::MAX),
                 1.0,
-            ),
-        )
-        .suffix(" px");
+            )
+            .page(4.0),
+            " px",
+        );
         Self {
             open: false,
             page: PageId::General,
@@ -320,6 +322,7 @@ impl SettingsDialog {
         self.text_size.hold(held);
         self.roundness.hold(held);
         self.scrollbar_hover_width.hold(held);
+        self.transparency.hold(held);
     }
 
     fn text_field_focused(&self) -> bool {
@@ -328,10 +331,11 @@ impl SettingsDialog {
             &self.video_start,
             &self.text_size,
             &self.roundness,
-            &self.scrollbar_hover_width,
         ]
         .iter()
-        .any(|field| field.edit().focused);
+        .any(|field| field.edit().focused)
+            || self.scrollbar_hover_width.focused()
+            || self.transparency.has_focused_field();
         self.search.edit().focused
             || self.theme_query.focused
             || number_focused
@@ -479,6 +483,7 @@ impl Part for SettingsDialog {
         changed |= appearance_page::text_size_field().poll(app, tx);
         changed |= appearance_page::roundness_field().poll(app, tx);
         changed |= appearance_page::scrollbar_hover_width_field().poll(app, tx);
+        changed |= transparency_section::poll(app, tx);
         changed |= actions::poll(app, tx);
         changed |= keyboard::poll(app, tx);
         changed |= integrations::poll(app, clock, tx);

@@ -283,3 +283,102 @@ fn a_menu_press_that_opens_no_menu_keeps_the_blur_commit() {
     assert!(!rt.state.field.edit().focused, "the keyboard went on");
     assert_eq!(rt.state.heard, [9.0], "and the typed count committed");
 }
+
+fn bare_field() -> NumberField<Host> {
+    NumberField::new("n", |h: &Host| &h.field, |h: &mut Host| &mut h.field)
+        .label("Workers")
+        .steppers(false)
+        .on_change(|h: &mut Host, v, _| h.heard.push(v))
+}
+
+fn bare_view(h: &Host, _: &mut Cx<Host>) -> El {
+    col().child(bare_field().build(h, &h.look)).child(
+        el().key("other")
+            .label("Other")
+            .size(40.0, 20.0)
+            .focusable(true)
+            .on_press(|_: &mut Host| {}),
+    )
+}
+
+fn bare_poll(h: &mut Host, _: f64, tx: &mut Tx) -> bool {
+    bare_field().poll(h, tx)
+}
+
+#[test]
+fn without_steppers_omits_buttons_and_commits_direct_input() {
+    let host = Host {
+        field: workers(4.0),
+        look: Look::fallback(false),
+        heard: Vec::new(),
+    };
+    let mut rt = Runtime::new(host, bare_view, (400.0, 200.0), Env::new(false, 1.0));
+    rt.poll = Some(bare_poll);
+    let frames = |rt: &mut Runtime<Host>| {
+        for _ in 0..3 {
+            rt.frame(1.0 / 60.0);
+        }
+    };
+    rt.frame(0.0);
+    frames(&mut rt);
+
+    let elements = rt.elements();
+    assert!(
+        !elements
+            .iter()
+            .any(|e| matches!(e.key.as_deref(), Some("n-decrease" | "n-increase"))),
+        "stepper buttons are omitted when steppers(false)"
+    );
+    let r = elements
+        .into_iter()
+        .find(|e| e.key.as_deref() == Some("n-input"))
+        .expect("the text input")
+        .rect;
+    let (x, y) = (r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    frames(&mut rt);
+    assert!(rt.state.field.edit().focused);
+
+    for key in [
+        Key::End,
+        Key::Backspace,
+        Key::Text("1".into()),
+        Key::Text("2".into()),
+        Key::Enter,
+    ] {
+        rt.key(KeyEvent {
+            key,
+            mods: Mods::default(),
+        });
+        frames(&mut rt);
+    }
+    assert_eq!(rt.state.field.value(), 12.0);
+    assert_eq!(rt.state.heard, [12.0]);
+
+    for key in [Key::End, Key::Backspace, Key::Text("4".into()), Key::Tab] {
+        rt.key(KeyEvent {
+            key,
+            mods: Mods::default(),
+        });
+        frames(&mut rt);
+    }
+    assert!(!rt.state.field.edit().focused);
+    assert_eq!(rt.state.field.value(), 14.0);
+    assert_eq!(rt.state.heard, [12.0, 14.0]);
+
+    // Invalid input reverts on Enter without emitting a change.
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    frames(&mut rt);
+    for key in [Key::Text("9".into()), Key::Text("9".into()), Key::Enter] {
+        rt.key(KeyEvent {
+            key,
+            mods: Mods::default(),
+        });
+        frames(&mut rt);
+    }
+    assert_eq!(rt.state.field.value(), 14.0);
+    assert_eq!(rt.state.field.edit().text, "14");
+    assert_eq!(rt.state.heard, [12.0, 14.0]);
+}
