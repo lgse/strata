@@ -39,7 +39,7 @@ mod text_size;
 mod transparency;
 pub mod trashed;
 
-pub use corner_roundness::CornerRoundness;
+pub use corner_roundness::{CornerRoundness, default_corner_roundness};
 pub use defaults::default_sidebar_order;
 use defaults::{
     default_browser_density, default_browser_mode, default_cross_volume_drop_strategy,
@@ -250,7 +250,7 @@ pub struct Preferences {
     pub show_hidden: bool,
     #[serde(default)]
     pub text_size: TextSize,
-    #[serde(default)]
+    #[serde(default = "default_corner_roundness")]
     pub corner_roundness: CornerRoundness,
     #[serde(default)]
     pub scrollbar_expand_on_hover: bool,

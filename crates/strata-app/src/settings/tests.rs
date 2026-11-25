@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 use strata_components::scroll::BarLook;
-use strata_desktop::settings::{Preferences, ScrollbarHoverWidth, settings_path};
-use strata_kit::slots::scroll as scroll_tokens;
+use strata_desktop::settings::{
+    CornerRoundness, Preferences, ScrollbarHoverWidth, default_corner_roundness, settings_path,
+};
+use strata_kit::{shape, slots::scroll as scroll_tokens};
 
 use crate::{
     host::offscreen::Offscreen,
@@ -140,6 +142,93 @@ fn scrollbar_hover_width_applies_at_startup_and_propagates_across_windows() {
                 }),
                 "first window clears scrollbar hover width when disabled in another window"
             );
+        },
+    );
+}
+
+#[test]
+fn corner_roundness_defaults_propagate_and_persist_changes() {
+    in_own_process(
+        &format!("{MODULE}::corner_roundness_defaults_propagate_and_persist_changes"),
+        &[],
+        || {
+            let path = settings_path();
+            std::fs::create_dir_all(path.parent().expect("config dir")).expect("create config dir");
+            std::fs::write(&path, "mode = \"theme\"\ntheme = \"tokyo-night\"\n")
+                .expect("write startup settings");
+
+            let expected_default = default_corner_roundness();
+            let expected_factor = shape::factor(expected_default.percent() as u16);
+            let target = if expected_default == CornerRoundness::SQUARE {
+                CornerRoundness::DEFAULT
+            } else {
+                CornerRoundness::new(100)
+            };
+            let target_factor = shape::factor(target.percent() as u16);
+
+            let settings = startup::load_settings();
+            let ui = UiThread::claim().expect("the UI thread");
+            let mut first = Offscreen::new(ui, settings);
+            let mut second = Offscreen::new(ui, shell::share_settings(first.app()));
+
+            for host in [&first, &second] {
+                assert_eq!(
+                    shell::preferences(host.app()).corner_roundness,
+                    expected_default
+                );
+                assert_eq!(host.app().look.roundness, expected_factor);
+            }
+
+            first.runtime().update(move |app, tx| {
+                shell::saved(app).change(move |saved| saved.corner_roundness = target);
+                shell::follow_look_tx(app, tx);
+            });
+            assert!(
+                second.run_until(PATIENCE, |host| {
+                    (host.app().look.roundness - target_factor).abs() < f32::EPSILON
+                }),
+                "second window adopts live corner roundness change"
+            );
+
+            strata_core::storage::writer::flush_at_exit();
+            let table: toml::Table = std::fs::read_to_string(&path)
+                .expect("read saved settings")
+                .parse()
+                .expect("parse saved settings");
+            assert_eq!(
+                table
+                    .get("corner_roundness")
+                    .and_then(toml::Value::as_integer),
+                Some(i64::from(target.percent())),
+                "changing corner_roundness from default persists to settings.toml"
+            );
+        },
+    );
+}
+
+#[test]
+fn explicit_corner_roundness_overrides_default_at_startup() {
+    in_own_process(
+        &format!("{MODULE}::explicit_corner_roundness_overrides_default_at_startup"),
+        &[],
+        || {
+            let path = settings_path();
+            std::fs::create_dir_all(path.parent().expect("config dir")).expect("create config dir");
+            std::fs::write(
+                &path,
+                "mode = \"theme\"\ntheme = \"tokyo-night\"\ncorner_roundness = 60\n",
+            )
+            .expect("write startup settings");
+
+            let settings = startup::load_settings();
+            let ui = UiThread::claim().expect("the UI thread");
+            let host = Offscreen::new(ui, settings);
+
+            assert_eq!(
+                shell::preferences(host.app()).corner_roundness,
+                CornerRoundness::new(60)
+            );
+            assert_eq!(host.app().look.roundness, shape::factor(60));
         },
     );
 }

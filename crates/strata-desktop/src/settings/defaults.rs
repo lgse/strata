@@ -63,7 +63,7 @@ impl Default for Preferences {
             sidebar_compact: false,
             show_hidden: false,
             text_size: TextSize::default(),
-            corner_roundness: CornerRoundness::default(),
+            corner_roundness: default_corner_roundness(),
             scrollbar_expand_on_hover: false,
             scrollbar_hover_width: ScrollbarHoverWidth::default(),
             interface_font: None,
