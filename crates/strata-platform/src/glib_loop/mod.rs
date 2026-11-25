@@ -2,10 +2,11 @@
 
 //! GLib main context dispatched on Rune's UI thread without polling.
 //!
-//! Rune lacks a GLib main loop integration; a helper thread polls the context's fds/timeout and
-//! wakes the UI thread via `AppHandle::update_if` rather than `Waker` because under a covered
-//! Wayland window `Waker` does not run `poll`
-//! ([anomalyco/rune#139](https://github.com/anomalyco/rune/issues/139)).
+//! GLib main-loop integration is outside Rune's scope; a helper thread polls the context's
+//! fds/timeout and wakes the UI thread via `AppHandle::update_if`. Under a covered Wayland
+//! window, `Waker` only requests a redraw (withheld until uncovered) and overdue `wake_after`
+//! timers run at Rune's 250 ms `TimerFrame` stall interval, whereas `AppHandle::update_if`
+//! runs directly during event-loop drain without waiting for a frame callback.
 //!
 //! Invariant: the UI thread must own the `MainContext` for the lifetime of [`GlibLoop`], and
 //! sources attached on the UI thread itself require `MainContext::wakeup` or a `poll` pump so

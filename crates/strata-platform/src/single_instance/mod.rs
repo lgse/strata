@@ -2,10 +2,10 @@
 
 //! D-Bus single instance, desktop activation, and opt-in `org.freedesktop.FileManager1` shim.
 //!
-//! Rune lacks session-bus single-instance registration (`org.freedesktop.Application` /
-//! GApplication wire interop), arbitrary byte-string arguments, forwarded `cwd` and activation
-//! tokens, remote exit status, and `org.freedesktop.FileManager1`
-//! ([anomalyco/rune#22](https://github.com/anomalyco/rune/issues/22)).
+//! Rune ships `rune::single_instance` with `org.freedesktop.Application` (`Activate`/`Open`),
+//! while this shim remains needed for `org.freedesktop.FileManager1`, arbitrary `OsString`
+//! (byte-string) arguments with forwarded `cwd`, forwarded activation tokens, and
+//! `org.gtk.Application` `CommandLine` wire interop with remote exit status.
 
 mod app_id;
 mod event;
