@@ -4,14 +4,11 @@ use std::rc::Rc;
 
 use rune::{Color, Cursor, El, ScrollSpec, Tx, col, el, icon, row, text};
 use rune_kit::{Button, ButtonVariant};
-use strata_components::controls::{
-    number_field::{NumberField, NumberFieldState},
-    settings_search::SettingsSearch,
-};
+use strata_components::controls::{number_field::NumberField, settings_search::SettingsSearch};
 use strata_core::i18n::tr;
 use strata_desktop::settings::{
-    CornerRoundness, FileIconColors, InterfaceRenderer, OmarchyVariant, Preferences, TextSize,
-    normalized_font_family,
+    CornerRoundness, FileIconColors, InterfaceRenderer, OmarchyVariant, Preferences,
+    ScrollbarHoverWidth, TextSize, normalized_font_family,
 };
 use strata_kit::{
     fonts::FAMILY,
@@ -77,6 +74,27 @@ pub(super) fn roundness_field() -> NumberField<App> {
     )
 }
 
+pub(super) fn scrollbar_hover_width_field() -> NumberField<App> {
+    number_field(
+        "settings-scrollbar-hover-width",
+        "Expanded scrollbar width in pixels",
+        (
+            |app: &App| &app.settings_dialog.scrollbar_hover_width,
+            |app: &mut App| &mut app.settings_dialog.scrollbar_hover_width,
+        ),
+        |app, value, tx| {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "clamped 6..=24"
+            )]
+            let px = value.round() as u32;
+            shell::saved(app).change(|s| s.scrollbar_hover_width = ScrollbarHoverWidth::new(px));
+            shell::follow_look_tx(app, tx);
+        },
+    )
+}
+
 pub(super) fn build(app: &App, search: &SettingsSearch<App>, menu_layer: &mut Vec<El>) -> Vec<El> {
     let ctx = PageCtx { app, search };
     let prefs = shell::preferences(app);
@@ -90,6 +108,8 @@ pub(super) fn build(app: &App, search: &SettingsSearch<App>, menu_layer: &mut Ve
         text_section(ctx, menu_layer),
         section_heading(ctx, "shape", "SHAPE"),
         shape_section(ctx),
+        section_heading(ctx, "scrollbars", "SCROLLBARS"),
+        scrollbars_section(ctx),
         section_heading(ctx, "file-icons", "FILE ICONS"),
         file_icons_section(ctx, menu_layer),
         section_heading(ctx, "effects", "EFFECTS"),
@@ -648,6 +668,43 @@ fn shape_section(ctx: PageCtx<'_>) -> Option<El> {
     )
 }
 
+fn scrollbars_section(ctx: PageCtx<'_>) -> Option<El> {
+    let app = ctx.app;
+    let prefs = shell::preferences(app);
+    let sub_disabled = !prefs.scrollbar_expand_on_hover;
+    group_card(
+        &app.look,
+        vec![
+            switch_row(
+                ctx,
+                RowSpec::new(
+                    "scrollbar-expand-on-hover",
+                    "Expand scrollbars on hover",
+                    "Widen scrollbars when hovering over them so they are easier to grab.",
+                ),
+                prefs.scrollbar_expand_on_hover,
+                |app, on, tx| {
+                    shell::saved(app).change(|s| s.scrollbar_expand_on_hover = on);
+                    shell::follow_look_tx(app, tx);
+                },
+            ),
+            option_row(
+                ctx,
+                RowSpec::new(
+                    "scrollbar-hover-width",
+                    "Expanded scrollbar width",
+                    "Width in pixels when hovering over a scrollbar.",
+                )
+                .indented()
+                .disabled(sub_disabled),
+                scrollbar_hover_width_field()
+                    .disabled(sub_disabled)
+                    .build(app, &app.look),
+            ),
+        ],
+    )
+}
+
 fn file_icons_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
     let app = ctx.app;
     let prefs = shell::preferences(app);
@@ -744,15 +801,20 @@ fn look_switch_card(
     )
 }
 
-pub(super) fn sync_appearance_fields(
-    text_size: &mut NumberFieldState,
-    roundness: &mut NumberFieldState,
-    prefs: &Preferences,
-) {
-    if !text_size.edit().focused && !text_size.held() {
-        text_size.set_value(f64::from(prefs.text_size.root_font_px()));
+pub(super) fn sync_appearance_fields(state: &mut super::SettingsDialog, prefs: &Preferences) {
+    if !state.text_size.edit().focused && !state.text_size.held() {
+        state
+            .text_size
+            .set_value(f64::from(prefs.text_size.root_font_px()));
     }
-    if !roundness.edit().focused && !roundness.held() {
-        roundness.set_value(f64::from(prefs.corner_roundness.percent()));
+    if !state.roundness.edit().focused && !state.roundness.held() {
+        state
+            .roundness
+            .set_value(f64::from(prefs.corner_roundness.percent()));
+    }
+    if !state.scrollbar_hover_width.edit().focused && !state.scrollbar_hover_width.held() {
+        state
+            .scrollbar_hover_width
+            .set_value(f64::from(prefs.scrollbar_hover_width.get()));
     }
 }

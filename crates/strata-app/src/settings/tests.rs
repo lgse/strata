@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use strata_desktop::settings::{Preferences, settings_path};
+use strata_components::scroll::BarLook;
+use strata_desktop::settings::{Preferences, ScrollbarHoverWidth, settings_path};
+use strata_kit::slots::scroll as scroll_tokens;
 
 use crate::{
     host::offscreen::Offscreen,
@@ -82,6 +84,62 @@ fn a_closed_window_is_told_nothing() {
                 .runtime()
                 .update(|app, _| told = shell::saved(app).windows_told());
             assert_eq!(told, 1);
+        },
+    );
+}
+
+#[test]
+fn scrollbar_hover_width_applies_at_startup_and_propagates_across_windows() {
+    in_own_process(
+        &format!(
+            "{MODULE}::scrollbar_hover_width_applies_at_startup_and_propagates_across_windows"
+        ),
+        &[],
+        || {
+            let path = settings_path();
+            std::fs::create_dir_all(path.parent().expect("config dir")).expect("create config dir");
+            std::fs::write(
+                &path,
+                "mode = \"theme\"\ntheme = \"tokyo-night\"\nscrollbar_expand_on_hover = true\nscrollbar_hover_width = 18\n",
+            )
+            .expect("write startup settings");
+
+            let settings = startup::load_settings();
+            let ui = UiThread::claim().expect("the UI thread");
+            let mut first = Offscreen::new(ui, settings);
+            let mut second = Offscreen::new(ui, shell::share_settings(first.app()));
+
+            for host in [&first, &second] {
+                assert_eq!(scroll_tokens::hover_width(&host.app().look), Some(18.0));
+                assert_eq!(BarLook::app(&host.app().look).hover_thickness, Some(18.0));
+                assert_eq!(
+                    BarLook::listing(&host.app().look).hover_thickness,
+                    Some(18.0)
+                );
+            }
+
+            first.runtime().update(|app, tx| {
+                shell::saved(app)
+                    .change(|saved| saved.scrollbar_hover_width = ScrollbarHoverWidth::new(22));
+                shell::follow_look_tx(app, tx);
+            });
+            assert!(
+                second.run_until(PATIENCE, |host| {
+                    scroll_tokens::hover_width(&host.app().look) == Some(22.0)
+                }),
+                "second window adopts live scrollbar hover width change"
+            );
+
+            second.runtime().update(|app, tx| {
+                shell::saved(app).change(|saved| saved.scrollbar_expand_on_hover = false);
+                shell::follow_look_tx(app, tx);
+            });
+            assert!(
+                first.run_until(PATIENCE, |host| {
+                    scroll_tokens::hover_width(&host.app().look).is_none()
+                }),
+                "first window clears scrollbar hover width when disabled in another window"
+            );
         },
     );
 }

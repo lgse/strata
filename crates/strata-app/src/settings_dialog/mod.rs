@@ -13,7 +13,9 @@ use strata_core::i18n::tr;
 use strata_desktop::{
     build_info::updater_enabled,
     keys::{Modifiers, bindings::SETTINGS},
-    settings::{CornerRoundness, MAX_PREVIEW_VIDEO_START, Preferences, TextSize},
+    settings::{
+        CornerRoundness, MAX_PREVIEW_VIDEO_START, Preferences, ScrollbarHoverWidth, TextSize,
+    },
 };
 use strata_kit::icons::IconName;
 
@@ -196,6 +198,7 @@ pub(crate) struct SettingsDialog {
     video_start: NumberFieldState,
     text_size: NumberFieldState,
     roundness: NumberFieldState,
+    scrollbar_hover_width: NumberFieldState,
     transparency: transparency_section::TransparencySliders,
     theme_query: TextEdit,
     theme_filter: appearance_page::ThemeFilter,
@@ -236,6 +239,15 @@ impl SettingsDialog {
                 f64::from(CornerRoundness::STEP),
             ),
         );
+        let scrollbar_hover_width = NumberFieldState::new(
+            f64::from(prefs.scrollbar_hover_width.get()),
+            Range::new(
+                f64::from(ScrollbarHoverWidth::MIN),
+                f64::from(ScrollbarHoverWidth::MAX),
+                1.0,
+            ),
+        )
+        .suffix(" px");
         Self {
             open: false,
             page: PageId::General,
@@ -248,6 +260,7 @@ impl SettingsDialog {
             video_start,
             text_size,
             roundness,
+            scrollbar_hover_width,
             transparency: transparency_section::TransparencySliders::new(),
             theme_query: TextEdit::default(),
             theme_filter: appearance_page::ThemeFilter::All,
@@ -306,15 +319,22 @@ impl SettingsDialog {
         self.video_start.hold(held);
         self.text_size.hold(held);
         self.roundness.hold(held);
+        self.scrollbar_hover_width.hold(held);
     }
 
     fn text_field_focused(&self) -> bool {
+        let number_focused = [
+            &self.workers,
+            &self.video_start,
+            &self.text_size,
+            &self.roundness,
+            &self.scrollbar_hover_width,
+        ]
+        .iter()
+        .any(|field| field.edit().focused);
         self.search.edit().focused
             || self.theme_query.focused
-            || self.workers.edit().focused
-            || self.video_start.edit().focused
-            || self.text_size.edit().focused
-            || self.roundness.edit().focused
+            || number_focused
             || self.keyboard.query.focused
             || self.actions.has_focused_field()
     }
@@ -357,7 +377,7 @@ pub(crate) fn open_settings_tx(app: &mut App, tx: &mut Tx) {
     let state = &mut app.settings_dialog;
     controls::sync_search_index_if_needed(&mut state.index, &mut state.indexed_locale, avail);
     general::sync_general_fields(&mut state.workers, &mut state.video_start, &prefs);
-    appearance_page::sync_appearance_fields(&mut state.text_size, &mut state.roundness, &prefs);
+    appearance_page::sync_appearance_fields(state, &prefs);
     state.transparency.sync(transparency);
     state.open = true;
     state.open_choice = None;
@@ -458,6 +478,7 @@ impl Part for SettingsDialog {
         changed |= general::video_start_field().poll(app, tx);
         changed |= appearance_page::text_size_field().poll(app, tx);
         changed |= appearance_page::roundness_field().poll(app, tx);
+        changed |= appearance_page::scrollbar_hover_width_field().poll(app, tx);
         changed |= actions::poll(app, tx);
         changed |= keyboard::poll(app, tx);
         changed |= integrations::poll(app, clock, tx);
@@ -466,7 +487,7 @@ impl Part for SettingsDialog {
         let transparency = shell::transparency(app);
         let state = &mut app.settings_dialog;
         general::sync_general_fields(&mut state.workers, &mut state.video_start, &prefs);
-        appearance_page::sync_appearance_fields(&mut state.text_size, &mut state.roundness, &prefs);
+        appearance_page::sync_appearance_fields(state, &prefs);
         state.transparency.sync(transparency);
         changed
     }

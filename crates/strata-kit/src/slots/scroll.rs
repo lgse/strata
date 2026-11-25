@@ -9,6 +9,7 @@ use crate::tokens::Token;
 #[non_exhaustive]
 pub struct Scroll {
     pub bar_width: Option<f32>,
+    pub hover_width: Option<f32>,
     pub thumb_color: Option<Color>,
     pub thumb_min_length: Option<f32>,
     pub trough_color: Option<Color>,
@@ -39,9 +40,20 @@ fn fade(look: &Look, c: Color, x: f32) -> Color {
     look.kit.alpha(c, c.a * x)
 }
 
+/// The shared resting scrollbar thickness in points.
+const DEFAULT_BAR_WIDTH: f32 = 4.0;
+
 /// How thick the app-wide bar is, trough and thumb alike: `scroll.bar.width`, else 4.
 pub fn bar_width(look: &Look) -> f32 {
-    look.slots.scroll.bar_width.unwrap_or(4.0)
+    look.slots.scroll.bar_width.unwrap_or(DEFAULT_BAR_WIDTH)
+}
+
+/// How thick a bar expands to while hovered or dragged: `scroll.bar.hover_width`, if set.
+pub fn hover_width(look: &Look) -> Option<f32> {
+    look.slots
+        .scroll
+        .hover_width
+        .filter(|&w| w.is_finite() && w > 0.0)
 }
 
 /// The thumb's colour: `scroll.thumb.color`, else the accent (`bg_accent`).
@@ -74,14 +86,17 @@ pub fn trough_hover_opacity(look: &Look) -> f32 {
     look.slots.scroll.trough_hover_opacity.unwrap_or(0.45)
 }
 
-/// The Icons and List vertical bar's width: `scroll.listing.width`, else 9.
+/// The Icons and List vertical bar's width: `scroll.listing.width`, else 4 (matching `bar_width`).
 pub fn listing_width(look: &Look) -> f32 {
-    look.slots.scroll.listing_width.unwrap_or(9.0)
+    look.slots.scroll.listing_width.unwrap_or(DEFAULT_BAR_WIDTH)
 }
 
-/// The Icons and List thumb's width: `scroll.listing.thumb_width`, else 7.
+/// The Icons and List thumb's width: `scroll.listing.thumb_width`, else 4 (matching `bar_width`).
 pub fn listing_thumb_width(look: &Look) -> f32 {
-    look.slots.scroll.listing_thumb_width.unwrap_or(7.0)
+    look.slots
+        .scroll
+        .listing_thumb_width
+        .unwrap_or(DEFAULT_BAR_WIDTH)
 }
 
 /// The Icons and List trough's opacity at rest: `scroll.listing.trough_opacity`, else 0.08.
@@ -178,6 +193,11 @@ pub const TOKENS: &[Token] = &[
     Token::length("scroll.bar.width", bar_width, |l, v| {
         l.slots.scroll.bar_width = Some(v)
     }),
+    Token::length(
+        "scroll.bar.hover_width",
+        |l| hover_width(l).unwrap_or(0.0),
+        |l, v| l.slots.scroll.hover_width = (v > 0.0).then_some(v),
+    ),
     Token::color("scroll.thumb.color", thumb_color, |l, v| {
         l.slots.scroll.thumb_color = Some(v)
     }),

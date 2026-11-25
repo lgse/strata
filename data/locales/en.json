@@ -1599,6 +1599,11 @@
   "PDF document": "PDF document",
   "Page %{page} of %{pages}": "Page %{page} of %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Page %{page} of %{pages}, %{zoom}%",
+  "Page navigation": "Page navigation",
+  "Page %{input} / %{pages}": "Page %{input} / %{pages}",
+  "Go to page": "Go to page",
+  "Previous page": "Previous page",
+  "Next page": "Next page",
   "Loading page": "Loading page",
   "Off": "Off",
   "TRANSPARENCY": "TRANSPARENCY",
@@ -1612,5 +1617,13 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.",
   "Requires a compositor that supports backdrop blur and has it enabled.": "Requires a compositor that supports backdrop blur and has it enabled.",
   "Unfocused window multiplier": "Unfocused window multiplier",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).",
+  "SCROLLBARS": "SCROLLBARS",
+  "Expand scrollbars on hover": "Expand scrollbars on hover",
+  "Widen scrollbars when hovering over them so they are easier to grab.": "Widen scrollbars when hovering over them so they are easier to grab.",
+  "Expanded scrollbar width": "Expanded scrollbar width",
+  "Width in pixels when hovering over a scrollbar.": "Width in pixels when hovering over a scrollbar.",
+  "Expanded scrollbar width in pixels": "Expanded scrollbar width in pixels",
+  "settings_keywords.scrollbar-expand-on-hover": "appearance scrollbars scroll bar widen expand hover thick grab accessibility",
+  "settings_keywords.scrollbar-hover-width": "appearance scrollbars scroll bar width thickness size pixels hover"
 }

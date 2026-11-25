@@ -9,7 +9,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
-use rune::{Color, El, Live, Phase, ScrollPos, Spring, col};
+use rune::{Color, Cursor, El, Live, Phase, ScrollPos, Spring, col};
 use strata_kit::look::Look;
 use strata_kit::slots::scroll as tokens;
 
@@ -30,6 +30,8 @@ pub struct BarLook {
     pub horizontal: bool,
     /// The trough's thickness.
     pub thickness: f32,
+    /// Optional expanded trough thickness while hovered or dragged.
+    pub hover_thickness: Option<f32>,
     /// The thumb's thickness, centred in the trough.
     pub thumb_width: f32,
     /// The thumb's least length.
@@ -64,6 +66,7 @@ impl BarLook {
         Self {
             horizontal: false,
             thickness: w,
+            hover_thickness: tokens::hover_width(look),
             thumb_width: w,
             min_length: tokens::thumb_min_length(look),
             ends: 0.0,
@@ -140,6 +143,19 @@ impl BarLook {
     /// The bar's cross-axis band thickness (`thickness + 2 * margin`).
     pub fn band(&self) -> f32 {
         self.thickness + 2.0 * self.margin
+    }
+
+    /// Effective `(thickness, thumb_width)` for rest vs. hovered/dragged state.
+    fn active_widths(&self, held: bool) -> (f32, f32) {
+        let Some(thickness) = self
+            .hover_thickness
+            .filter(|&w| held && w.is_finite() && w > self.thickness)
+        else {
+            return (self.thickness, self.thumb_width);
+        };
+        let inset = (self.thickness - self.thumb_width).max(0.0);
+        let thumb_width = (thickness - inset).max(self.thumb_width);
+        (thickness, thumb_width)
     }
 
     fn turned(&self, [across, along, thick, long]: [f32; 4]) -> [f32; 4] {
@@ -279,16 +295,23 @@ impl Bar {
         inner.restyle(look);
         let fade = if look.animations { FADE } else { Spring::NONE };
         let tint = if look.animations { TINT } else { Spring::NONE };
+        let bind_rect = |live: &Live<[f32; 4]>| {
+            if look.animations && look.hover_thickness.is_some() {
+                live.smooth(tint)
+            } else {
+                live.into()
+            }
+        };
         let thumb = col()
             .key("thumb")
             .absolute(0.0, 0.0)
-            .live_rect(&inner.thumb)
+            .live_rect(bind_rect(&inner.thumb))
             .radius(look.thumb_radius)
             .fill(look.thumb);
         let mut trough = col()
             .key("trough")
             .absolute(0.0, 0.0)
-            .live_rect(&inner.trough)
+            .live_rect(bind_rect(&inner.trough))
             .radius(look.trough_radius)
             .live_fill(inner.fill.smooth(tint))
             .child(thumb);
@@ -298,8 +321,9 @@ impl Bar {
         let mut band = col()
             .key(key.to_owned())
             .absolute(0.0, 0.0)
-            .live_rect(&inner.band)
+            .live_rect(bind_rect(&inner.band))
             .live_opacity(inner.opacity.smooth(fade).rest(fade))
+            .cursor(Cursor::Default)
             .a11y_hidden()
             .keeps_text_selection()
             .on_middle_press(|_: &mut S, tx: &mut rune::Tx| tx.live_only())
@@ -376,25 +400,52 @@ impl Inner {
         self.over.get() || self.dragging.get()
     }
 
-    /// Lays the band, trough and thumb out for the viewport as it stands.
-    fn layout(&self) {
-        let Some(look) = self.look() else {
-            return;
-        };
+    fn rects(&self, look: BarLook) -> ([f32; 4], [f32; 4], [f32; 4]) {
         let p = self.pos.get();
         let a = look.along();
         let (trough, track, shows) = self.track();
         let (trough, track) = if shows { (trough, track) } else { (0.0, 0.0) };
-        let band = look.band();
+        let (thickness, thumb_width) = look.active_widths(self.held());
+        let band = thickness + 2.0 * look.margin;
         let across = self.width_across(a, p) - look.edge - band;
-        self.band
-            .snap(look.turned([across, look.start, band, trough]));
-        self.trough
-            .snap(look.turned([look.margin, 0.0, look.thickness, trough]));
         let (start, len) = thumb(p.offset[a], p.max[a], p.viewport[a], track, look.min_length);
-        let inset = (look.thickness - look.thumb_width) / 2.0;
-        self.thumb
-            .snap(look.turned([inset, look.ends + start, look.thumb_width, len]));
+        let inset = (thickness - thumb_width) / 2.0;
+        (
+            look.turned([across, look.start, band, trough]),
+            look.turned([look.margin, 0.0, thickness, trough]),
+            look.turned([inset, look.ends + start, thumb_width, len]),
+        )
+    }
+
+    /// Lays the band, trough and thumb out instantaneously (scroll tracking, resize, restyle).
+    fn layout(&self) {
+        let Some(look) = self.look() else {
+            return;
+        };
+        let (band, trough, thumb) = self.rects(look);
+        self.band.snap(band);
+        self.trough.snap(trough);
+        self.thumb.snap(thumb);
+    }
+
+    /// Smoothly expands or contracts the bar across its thickness axis when hover/drag flips.
+    fn layout_resize(&self) {
+        let Some(look) = self.look() else {
+            return;
+        };
+        if look.hover_thickness.is_none() {
+            return;
+        }
+        let (band, trough, thumb) = self.rects(look);
+        if look.animations {
+            self.band.set(band);
+            self.trough.set(trough);
+            self.thumb.set(thumb);
+        } else {
+            self.band.snap(band);
+            self.trough.snap(trough);
+            self.thumb.snap(thumb);
+        }
     }
 
     fn width_across(&self, a: usize, p: ScrollPos) -> f32 {
@@ -449,10 +500,18 @@ impl Inner {
         }
     }
 
-    fn hover(&self, inside: bool) {
-        self.over.set(inside);
+    fn finish_hold_change(&self, was_held: bool) {
         self.tint();
+        if self.held() != was_held {
+            self.layout_resize();
+        }
         self.reveal();
+    }
+
+    fn hover(&self, inside: bool) {
+        let was_held = self.held();
+        self.over.set(inside);
+        self.finish_hold_change(was_held);
     }
 
     fn release(&self) {
@@ -461,6 +520,7 @@ impl Inner {
         if let Some(look) = self.look() {
             self.fill.snap(look.trough);
         }
+        self.layout();
         if self.mode.get() == BarMode::Overlay {
             self.opacity.snap(0.0);
         }
@@ -486,9 +546,9 @@ impl Inner {
         let a = look.along();
         let (_, track, shows) = self.track();
         if d.phase == Phase::Up {
+            let was_held = self.held();
             let was_dragging = self.dragging.replace(false);
-            self.tint();
-            self.reveal();
+            self.finish_hold_change(was_held);
             if was_dragging {
                 tx.wake_after(Duration::ZERO);
             }
@@ -500,9 +560,9 @@ impl Inner {
         let along = if look.horizontal { d.x } else { d.y } - look.ends;
         let (start, len) = thumb(p.offset[a], p.max[a], p.viewport[a], track, look.min_length);
         if d.phase == Phase::Down {
+            let was_held = self.held();
             self.dragging.set(true);
-            self.tint();
-            self.reveal();
+            self.finish_hold_change(was_held);
             let on_thumb = (start..=start + len).contains(&along);
             self.grab
                 .set(if on_thumb { along - start } else { len / 2.0 });

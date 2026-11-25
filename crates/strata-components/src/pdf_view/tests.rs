@@ -15,6 +15,7 @@ use rune::{Color, Env, Runtime, Tx};
 use strata_kit::look::Look;
 
 mod identity;
+mod page_nav;
 mod perf;
 
 pub(super) fn layer_of(lines: &[&str]) -> TextLayer {

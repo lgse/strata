@@ -1599,6 +1599,11 @@
   "PDF document": "PDF 文件",
   "Page %{page} of %{pages}": "第 %{page} 頁，共 %{pages} 頁",
   "Page %{page} of %{pages}, %{zoom}%": "第 %{page} 頁，共 %{pages} 頁，%{zoom}%",
+  "Page navigation": "頁面導覽",
+  "Page %{input} / %{pages}": "第 %{input} / %{pages} 頁",
+  "Go to page": "跳至頁面",
+  "Previous page": "上一頁",
+  "Next page": "下一頁",
   "Loading page": "正在載入頁面",
   "Off": "關閉",
   "TRANSPARENCY": "透明度",
@@ -1612,5 +1617,13 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "為半透明對話框、選單與彈出面板套用背景模糊與細緻的霧面光澤。",
   "Requires a compositor that supports backdrop blur and has it enabled.": "需要支援並已啟用背景模糊的合成器。",
   "Unfocused window multiplier": "失焦視窗倍率",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "視窗失去焦點時對透明度套用的倍率（越高越通透，1.00× 維持不變）。"
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "視窗失去焦點時對透明度套用的倍率（越高越通透，1.00× 維持不變）。",
+  "SCROLLBARS": "捲軸",
+  "Expand scrollbars on hover": "滑鼠停留時加寬捲軸",
+  "Widen scrollbars when hovering over them so they are easier to grab.": "將游標停留在捲軸上時加寬捲軸，方便拖曳操作。",
+  "Expanded scrollbar width": "停留時的捲軸寬度",
+  "Width in pixels when hovering over a scrollbar.": "將游標停留在捲軸上時的寬度（單位：像素）。",
+  "Expanded scrollbar width in pixels": "停留時的捲軸寬度（像素）",
+  "settings_keywords.scrollbar-expand-on-hover": "外觀 捲軸 加寬 展開 停留 粗細 拖曳 協助工具",
+  "settings_keywords.scrollbar-hover-width": "外觀 捲軸 寬度 粗細 大小 像素 停留"
 }

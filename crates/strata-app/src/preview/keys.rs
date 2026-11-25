@@ -131,6 +131,7 @@ fn in_preview_outside_find(app: &App, at: &Situation) -> bool {
         && at.within("preview")
         && !app.preview.drawer.is_find_focused()
         && !app.preview.viewer.is_prompt_focused()
+        && !app.preview.viewer.is_page_input_focused()
 }
 
 fn in_tenxer_preview(app: &App, at: &Situation) -> bool {

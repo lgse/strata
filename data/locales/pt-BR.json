@@ -1599,6 +1599,11 @@
   "PDF document": "Documento PDF",
   "Page %{page} of %{pages}": "Página %{page} de %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Página %{page} de %{pages}, %{zoom}%",
+  "Page navigation": "Navegação de páginas",
+  "Page %{input} / %{pages}": "Página %{input} / %{pages}",
+  "Go to page": "Ir para a página",
+  "Previous page": "Página anterior",
+  "Next page": "Próxima página",
   "Loading page": "Carregando página",
   "Off": "Desativado",
   "TRANSPARENCY": "TRANSPARÊNCIA",
@@ -1612,5 +1617,13 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Aplica desfoque de fundo e um brilho fosco sutil a diálogos, menus e popovers translúcidos.",
   "Requires a compositor that supports backdrop blur and has it enabled.": "Requer um compositor compatível com desfoque de fundo e com o recurso ativado.",
   "Unfocused window multiplier": "Multiplicador de janela sem foco",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplica a transparência quando a janela perde o foco (maior é mais transparente; 1,00× mantém igual)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplica a transparência quando a janela perde o foco (maior é mais transparente; 1,00× mantém igual).",
+  "SCROLLBARS": "BARRAS DE ROLAGEM",
+  "Expand scrollbars on hover": "Expandir barras de rolagem ao passar o cursor",
+  "Widen scrollbars when hovering over them so they are easier to grab.": "Alarga as barras de rolagem ao passar o cursor sobre elas para facilitar o arraste.",
+  "Expanded scrollbar width": "Largura expandida da barra de rolagem",
+  "Width in pixels when hovering over a scrollbar.": "Largura em pixels ao passar o cursor sobre uma barra de rolagem.",
+  "Expanded scrollbar width in pixels": "Largura expandida da barra de rolagem em pixels",
+  "settings_keywords.scrollbar-expand-on-hover": "aparência barras rolagem alargar expandir passar cursor espessura arrastar acessibilidade",
+  "settings_keywords.scrollbar-hover-width": "aparência barras rolagem largura espessura tamanho pixels cursor"
 }

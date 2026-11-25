@@ -1599,6 +1599,11 @@
   "PDF document": "Document PDF",
   "Page %{page} of %{pages}": "Page %{page} sur %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Page %{page} sur %{pages}, %{zoom} %",
+  "Page navigation": "Navigation entre les pages",
+  "Page %{input} / %{pages}": "Page %{input} / %{pages}",
+  "Go to page": "Aller à la page",
+  "Previous page": "Page précédente",
+  "Next page": "Page suivante",
   "Loading page": "Chargement de la page",
   "Off": "Désactivé",
   "TRANSPARENCY": "TRANSPARENCE",
@@ -1612,5 +1617,13 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Appliquer un flou d’arrière-plan et un léger reflet dépoli aux boîtes de dialogue, menus et infobulles translucides.",
   "Requires a compositor that supports backdrop blur and has it enabled.": "Nécessite un compositeur qui prend en charge le flou d’arrière-plan et l’a activé.",
   "Unfocused window multiplier": "Multiplicateur de fenêtre inactive",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplier la transparence lorsque la fenêtre n’est pas active (plus élevé = plus transparent ; 1,00× ne change rien)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplier la transparence lorsque la fenêtre n’est pas active (plus élevé = plus transparent ; 1,00× ne change rien).",
+  "SCROLLBARS": "BARRES DE DÉFILEMENT",
+  "Expand scrollbars on hover": "Élargir les barres de défilement au survol",
+  "Widen scrollbars when hovering over them so they are easier to grab.": "Élargit les barres de défilement au survol du pointeur pour les saisir plus facilement.",
+  "Expanded scrollbar width": "Largeur de barre élargie",
+  "Width in pixels when hovering over a scrollbar.": "Largeur en pixels lors du survol d’une barre de défilement.",
+  "Expanded scrollbar width in pixels": "Largeur de barre élargie en pixels",
+  "settings_keywords.scrollbar-expand-on-hover": "apparence barres défilement élargir agrandir survol épais saisir accessibilité",
+  "settings_keywords.scrollbar-hover-width": "apparence barres défilement largeur épaisseur taille pixels survol"
 }

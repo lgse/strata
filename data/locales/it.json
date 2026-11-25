@@ -1599,6 +1599,11 @@
   "PDF document": "Documento PDF",
   "Page %{page} of %{pages}": "Pagina %{page} di %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Pagina %{page} di %{pages}, %{zoom}%",
+  "Page navigation": "Navigazione pagine",
+  "Page %{input} / %{pages}": "Pagina %{input} / %{pages}",
+  "Go to page": "Vai alla pagina",
+  "Previous page": "Pagina precedente",
+  "Next page": "Pagina successiva",
   "Loading page": "Caricamento pagina",
   "Off": "Disattivato",
   "TRANSPARENCY": "TRASPARENZA",
@@ -1612,5 +1617,13 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Applica sfocatura dello sfondo e un leggero riflesso smerigliato a finestre di dialogo, menu e popover traslucidi.",
   "Requires a compositor that supports backdrop blur and has it enabled.": "Richiede un compositor che supporti la sfocatura dello sfondo e l’abbia attivata.",
   "Unfocused window multiplier": "Moltiplicatore finestra non attiva",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Moltiplica la trasparenza quando la finestra non ha il focus (più alto è più trasparente; 1,00× la lascia invariata)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Moltiplica la trasparenza quando la finestra non ha il focus (più alto è più trasparente; 1,00× la lascia invariata).",
+  "SCROLLBARS": "BARRE DI SCORRIMENTO",
+  "Expand scrollbars on hover": "Espandi le barre di scorrimento al passaggio del puntatore",
+  "Widen scrollbars when hovering over them so they are easier to grab.": "Allarga le barre di scorrimento al passaggio del puntatore per renderle più facili da afferrare.",
+  "Expanded scrollbar width": "Larghezza espansa della barra di scorrimento",
+  "Width in pixels when hovering over a scrollbar.": "Larghezza in pixel al passaggio del puntatore su una barra di scorrimento.",
+  "Expanded scrollbar width in pixels": "Larghezza espansa della barra di scorrimento in pixel",
+  "settings_keywords.scrollbar-expand-on-hover": "aspetto barre scorrimento allarga espandi passaggio puntatore spessore afferrare accessibilità",
+  "settings_keywords.scrollbar-hover-width": "aspetto barre scorrimento larghezza spessore dimensione pixel passaggio"
 }

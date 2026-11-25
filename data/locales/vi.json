@@ -1599,6 +1599,11 @@
   "PDF document": "Tài liệu PDF",
   "Page %{page} of %{pages}": "Trang %{page} / %{pages}",
   "Page %{page} of %{pages}, %{zoom}%": "Trang %{page} / %{pages}, %{zoom}%",
+  "Page navigation": "Điều hướng trang",
+  "Page %{input} / %{pages}": "Trang %{input} / %{pages}",
+  "Go to page": "Đi tới trang",
+  "Previous page": "Trang trước",
+  "Next page": "Trang sau",
   "Loading page": "Đang tải trang",
   "Off": "Tắt",
   "TRANSPARENCY": "ĐỘ TRONG SUỐT",
@@ -1612,5 +1617,13 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Áp dụng làm mờ nền và ánh kính mờ nhẹ cho hộp thoại, trình đơn và khung bật lên trong suốt.",
   "Requires a compositor that supports backdrop blur and has it enabled.": "Yêu cầu trình kết hợp hỗ trợ làm mờ nền và đã bật tính năng này.",
   "Unfocused window multiplier": "Hệ số khi cửa sổ mất tiêu điểm",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Nhân độ trong suốt khi cửa sổ không được chọn (cao hơn sẽ trong suốt hơn; 1,00× giữ nguyên)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Nhân độ trong suốt khi cửa sổ không được chọn (cao hơn sẽ trong suốt hơn; 1,00× giữ nguyên).",
+  "SCROLLBARS": "THANH CUỘN",
+  "Expand scrollbars on hover": "Mở rộng thanh cuộn khi di chuột qua",
+  "Widen scrollbars when hovering over them so they are easier to grab.": "Làm rộng thanh cuộn khi di chuột lên để dễ nắm kéo hơn.",
+  "Expanded scrollbar width": "Độ rộng thanh cuộn khi mở rộng",
+  "Width in pixels when hovering over a scrollbar.": "Độ rộng tính bằng pixel khi di chuột lên thanh cuộn.",
+  "Expanded scrollbar width in pixels": "Độ rộng thanh cuộn khi mở rộng theo pixel",
+  "settings_keywords.scrollbar-expand-on-hover": "giao diện thanh cuộn mở rộng làm rộng di chuột dày kéo trợ năng",
+  "settings_keywords.scrollbar-hover-width": "giao diện thanh cuộn độ rộng độ dày kích thước pixel di chuột"
 }

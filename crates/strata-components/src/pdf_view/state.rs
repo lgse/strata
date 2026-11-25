@@ -11,6 +11,7 @@ use super::layer::PlainText;
 use super::model::{
     Content, PageReply, PdfDocument, RenderCaps, RenderKind, RenderRequest, Shared, Ticket,
 };
+use super::page_nav::PageNav;
 use super::queue::{Held, Landed, Queue, Want};
 use super::selection::{Selection, Unit};
 use super::zoom::{self, GAP, LIMITS, SETTLE};
@@ -87,6 +88,7 @@ pub struct PdfState {
     pub(crate) feed: ScrollFeed,
     pub(crate) bar: Bar,
     pub(crate) sideways: Bar,
+    pub(crate) page_nav: PageNav,
 }
 
 impl std::fmt::Debug for PdfState {
@@ -143,6 +145,7 @@ impl PdfState {
             feed: ScrollFeed::new(),
             bar: Bar::new(),
             sideways: Bar::new(),
+            page_nav: PageNav::new(1),
         }
     }
 
@@ -155,6 +158,7 @@ impl PdfState {
         self.rects.clear();
         self.visible = 0..0;
         self.current = 0;
+        self.page_nav.reset(1);
         self.selection.clear();
         self.gesture = Gesture::Idle;
         self.find.clear();
@@ -162,7 +166,10 @@ impl PdfState {
         self.text_index_loaded = false;
         self.text_index_busy = None;
         self.anchor = None;
-        self.reveal = None;
+        self.reveal = (self.viewport.is_some() && self.doc.pages() > 0).then_some(Reveal {
+            page: 0,
+            at: [0.5, 0.0],
+        });
         self.settle_at = None;
         self.idle = true;
         // A new document opens at fitted width, as Strata's viewer does.
@@ -371,6 +378,30 @@ impl PdfState {
         format!("{}-scroll", self.key)
     }
 
+    pub fn page_input_key(&self) -> String {
+        format!("{}-page-input", self.key)
+    }
+
+    pub fn page_prev_key(&self) -> String {
+        format!("{}-page-prev", self.key)
+    }
+
+    pub fn page_next_key(&self) -> String {
+        format!("{}-page-next", self.key)
+    }
+
+    pub fn is_page_input_focused(&self) -> bool {
+        self.page_nav.is_focused()
+    }
+
+    pub fn hold_page_input(&mut self, held: bool) {
+        self.page_nav.hold(held);
+    }
+
+    pub fn page_input_text(&self) -> &str {
+        &self.page_nav.edit.text
+    }
+
     pub(crate) fn list_key(&self) -> String {
         format!("{}-pages", self.key)
     }
@@ -480,12 +511,13 @@ impl PdfState {
             let want = self.want();
             self.queue.reconcile(&self.doc, &want);
         }
-        false
+        self.page_nav.reconcile_focus(self.current + 1)
     }
 
     pub fn flush(&mut self, tx: &mut Tx) -> bool {
+        let nav = self.page_nav.reconcile_focus(self.current + 1);
         if self.reveal.is_none() || self.viewport.is_none() {
-            return false;
+            return nav;
         }
         self.place_reveal(tx);
         true
@@ -493,7 +525,10 @@ impl PdfState {
 
     /// Scrolls the revealed match or page to the viewport's centre in one step.
     pub(crate) fn place_reveal(&mut self, tx: &mut Tx) {
-        let (Some(r), Some(vp)) = (self.reveal.take(), self.viewport) else {
+        let Some(vp) = self.viewport else {
+            return;
+        };
+        let Some(r) = self.reveal.take() else {
             return;
         };
         self.anchor = None;
@@ -525,6 +560,24 @@ impl PdfState {
                 at: [0.5, down.clamp(0.0, 1.0)],
             });
         }
+    }
+
+    /// Jumps to 0-based `page` (clamped to `0..pages`), updating `current` and scrolling it into view.
+    pub fn jump_to_page(&mut self, page: usize, tx: &mut Tx) -> bool {
+        let pages = self.doc.pages();
+        if self.content != Content::Pages || pages == 0 {
+            return false;
+        }
+        let target = page.min(pages - 1);
+        self.current = target;
+        self.page_nav.set_page_text(target + 1);
+        let down = self.viewport.map_or(0.0, |vp| {
+            let h = self.page_height(target).max(1.0);
+            ((vp[3] / 2.0 - GAP) / h).clamp(0.0, 0.5)
+        });
+        self.show_page(target, down);
+        self.place_reveal(tx);
+        true
     }
 
     pub fn set_level(&mut self, level: f32) {
@@ -609,6 +662,7 @@ impl PdfState {
         let cy = vp[1] + vp[3] / 2.0;
         if row_contains(rect, cy) && self.current != page {
             self.current = page;
+            self.page_nav.sync_unfocused(page + 1);
             return true;
         }
         cursor

@@ -33,6 +33,7 @@ mod list_columns;
 mod persistence;
 pub mod save_notice;
 mod saving;
+mod scrollbar_hover_width;
 mod stored;
 mod text_size;
 mod transparency;
@@ -77,6 +78,10 @@ pub use persistence::{
 pub use saving::{
     Commit, FinishedSave, PendingSave, RunePreferences, SaveOutcome, SaveProblem, Saving, load,
     load_rune,
+};
+pub use scrollbar_hover_width::{
+    DEFAULT_SCROLLBAR_HOVER_WIDTH, MAX_SCROLLBAR_HOVER_WIDTH, MIN_SCROLLBAR_HOVER_WIDTH,
+    ScrollbarHoverWidth,
 };
 pub use stored::{
     MAX_PREVIEW_VIDEO_START, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES,
@@ -247,6 +252,10 @@ pub struct Preferences {
     pub text_size: TextSize,
     #[serde(default)]
     pub corner_roundness: CornerRoundness,
+    #[serde(default)]
+    pub scrollbar_expand_on_hover: bool,
+    #[serde(default)]
+    pub scrollbar_hover_width: ScrollbarHoverWidth,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interface_font: Option<String>,
     #[serde(default)]
