@@ -102,6 +102,7 @@ struct Out {
     window: String,
     token: Option<String>,
     payload: Option<Rc<dyn Any>>,
+    actions: Actions,
     mods: Mods,
     x11: bool,
     wl: wayland::OutState,
@@ -348,6 +349,13 @@ fn local_mods(hub: &Hub, local: bool) -> Option<Mods> {
     hub.out.as_ref().filter(|o| local && !o.x11).map(|o| o.mods)
 }
 
+fn local_actions(hub: &Hub, local: bool) -> Actions {
+    hub.out
+        .as_ref()
+        .filter(|o| local && !o.x11)
+        .map_or(Actions::NONE, |o| o.actions)
+}
+
 fn route_substrate(hub: &mut Hub, to: &mut To<'_>) {
     for event in hub.sub.drain() {
         match event {
@@ -360,6 +368,7 @@ fn route_substrate(hub: &mut Hub, to: &mut To<'_>) {
                 let mimes = offer.mimes().to_vec();
                 let local = local_of(hub, &mimes);
                 let mods = local_mods(hub, local);
+                let actions = local_actions(hub, local);
                 hub.wl_in = Some((window.clone(), local));
                 let port: Rc<dyn InPort> = Rc::new(wayland::WlIn::new(offer));
                 to(
@@ -368,7 +377,7 @@ fn route_substrate(hub: &mut Hub, to: &mut To<'_>) {
                     Routed::In(InEvent::Enter {
                         port,
                         mimes,
-                        actions: Actions::NONE,
+                        actions,
                         x,
                         y,
                         mods,
@@ -542,12 +551,14 @@ pub(crate) fn start_drag(key: &str, item: DragItem, mods: Mods) -> Result<(u64, 
     })
     .ok_or(Error::NotAttached)??;
     let (x11, release) = started;
+    let wl_actions = actions.intersect(Actions::COPY | Actions::MOVE | Actions::ASK);
     with(|hub| {
         hub.out = Some(Out {
             id,
             window: key.to_owned(),
             token,
             payload: item.local.clone(),
+            actions: if x11 { actions } else { wl_actions },
             mods,
             x11,
             wl: wayland::OutState::default(),

@@ -121,10 +121,15 @@ pub(crate) fn running() -> Option<DragPayload> {
 pub(crate) fn offer_of_p1(offer: &P1Offer) -> DropOffer {
     let mimes: Vec<std::borrow::Cow<'static, str>> =
         offer.mimes.iter().map(|m| m.clone().into()).collect();
-    let mut w1 = DropOffer::new(mimes, actions_of_p1(offer.actions))
+    let local = running().filter(|_| offer.local);
+    // An in-app drag keeps its source's action offer even if Wayland narrowed the drop offer.
+    let actions = local
+        .as_ref()
+        .map_or_else(|| actions_of_p1(offer.actions), |payload| payload.actions);
+    let mut w1 = DropOffer::new(mimes, actions)
         .local(offer.local)
         .serial(offer.serial);
-    let uris = match running().filter(|_| offer.local) {
+    let uris = match local {
         Some(payload) => Some(payload.uris),
         None => offer.peeked(URI_LIST).map(parse_uri_list),
     };
@@ -145,6 +150,8 @@ pub(crate) fn point_of_p1(point: DropPoint) -> PointerEvent {
 
 pub(crate) fn dropped_of_p1(data: &P1Data) -> Dropped {
     let mut offer = offer_of_p1(&data.offer);
+    // Keep the platform's drop actions distinct from `body.local.actions` for drop classification logs.
+    offer.actions = actions_of_p1(data.offer.actions);
     let items: Vec<DropItem> = data
         .items
         .iter()

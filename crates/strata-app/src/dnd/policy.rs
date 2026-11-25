@@ -173,8 +173,19 @@ struct Choices {
 impl Choices {
     fn of(app: &App, dropped: &Dropped) -> Self {
         let cross = cross_device(app);
-        let input =
-            |relation| ActionInput::new(dropped.mods, dropped.offer.actions, relation, cross);
+        let drop_actions = dropped.offer.actions;
+        let in_app_actions = dropped.data.local.as_ref().map(|payload| payload.actions);
+        // Wayland can narrow a drop to the action last negotiated; an in-app drag keeps its source's offer.
+        let offered = in_app_actions.unwrap_or(drop_actions);
+        tracing::debug!(
+            mods = ?dropped.mods,
+            ?cross,
+            ?drop_actions,
+            ?in_app_actions,
+            ?offered,
+            "drop action classified"
+        );
+        let input = |relation| ActionInput::new(dropped.mods, offered, relation, cross);
         Self {
             same: input(VolumeRelation::Same),
             unknown: input(VolumeRelation::Unknown),
