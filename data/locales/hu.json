@@ -1617,5 +1617,13 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Háttérelmosás és finom mattüveg fény alkalmazása az áttetsző párbeszédablakokra, menükre és felugró panelekre.",
   "Requires a compositor that supports backdrop blur and has it enabled.": "Olyan kompozitort igényel, amely támogatja a háttérelmosást, és engedélyezve is van benne.",
   "Unfocused window multiplier": "Inaktív ablak szorzója",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Az átlátszóság megszorzása, ha az ablak nincs fókuszban (nagyobb érték jobban átlátszó; az 1,00× változatlanul hagyja)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Az átlátszóság megszorzása, ha az ablak nincs fókuszban (nagyobb érték jobban átlátszó; az 1,00× változatlanul hagyja).",
+  "SCROLLBARS": "GÖRGETŐSÁVOK",
+  "Expand scrollbars on hover": "Görgetősávok kiszélesítése rámutatáskor",
+  "Widen scrollbars when hovering over them so they are easier to grab.": "Kiszélesíti a görgetősávokat, amikor föléjük viszi a mutatót, hogy könnyebb legyen megfogni őket.",
+  "Expanded scrollbar width": "Kiszélesített görgetősáv szélessége",
+  "Width in pixels when hovering over a scrollbar.": "Szélesség képpontban, amikor a mutató a görgetősáv felett van.",
+  "Expanded scrollbar width in pixels": "Kiszélesített görgetősáv szélessége képpontban",
+  "settings_keywords.scrollbar-expand-on-hover": "megjelenés görgetősáv görgetősávok szélesítés kiszélesítés rámutatás vastag megfogás akadálymentesség",
+  "settings_keywords.scrollbar-hover-width": "megjelenés görgetősáv görgetősávok szélesség vastagság méret képpont pixel rámutatás"
 }

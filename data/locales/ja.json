@@ -1617,5 +1617,13 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "半透明のダイアログ、メニュー、ポップオーバーに背景ぼかしと繊細なすりガラスの質感を加えます。",
   "Requires a compositor that supports backdrop blur and has it enabled.": "背景ぼかしに対応し、有効になっているコンポジターが必要です。",
   "Unfocused window multiplier": "非フォーカス時の倍率",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "ウィンドウが非フォーカスのときに透過率へ掛ける倍率（高いほど透過し、1.00×で変化なし）。"
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "ウィンドウが非フォーカスのときに透過率へ掛ける倍率（高いほど透過し、1.00×で変化なし）。",
+  "SCROLLBARS": "スクロールバー",
+  "Expand scrollbars on hover": "ホバー時にスクロールバーを広げる",
+  "Widen scrollbars when hovering over them so they are easier to grab.": "カーソルを合わせたときにスクロールバーを広くして掴みやすくします。",
+  "Expanded scrollbar width": "ホバー時のスクロールバー幅",
+  "Width in pixels when hovering over a scrollbar.": "スクロールバーにカーソルを合わせたときの幅（ピクセル単位）。",
+  "Expanded scrollbar width in pixels": "ホバー時のスクロールバー幅（ピクセル）",
+  "settings_keywords.scrollbar-expand-on-hover": "外観 スクロールバー 広げる 拡大 ホバー 太く 掴みやすい アクセシビリティ",
+  "settings_keywords.scrollbar-hover-width": "外観 スクロールバー 幅 太さ サイズ ピクセル ホバー"
 }

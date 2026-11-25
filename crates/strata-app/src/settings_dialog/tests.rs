@@ -606,3 +606,100 @@ fn appearance_transparency_controls_update_look_persist_and_follow_window_focus(
         },
     );
 }
+
+#[test]
+fn appearance_scrollbar_controls_toggle_width_field_and_update_look_live() {
+    hosted(
+        MODULE,
+        "appearance_scrollbar_controls_toggle_width_field_and_update_look_live",
+        |mut host| {
+            assert!(!shell::preferences(host.app()).scrollbar_expand_on_hover);
+            assert_eq!(
+                strata_kit::slots::scroll::hover_width(&host.app().look),
+                None
+            );
+
+            click(&mut host, "header-settings");
+            click(&mut host, "settings-nav-theme");
+
+            let _ = reveal_and_center(&mut host, "settings-switch-scrollbar-expand-on-hover");
+            let tree = host.tree();
+            assert!(!node_disabled(
+                &tree,
+                "settings-switch-scrollbar-expand-on-hover"
+            ));
+            assert!(
+                node_disabled(&tree, "settings-scrollbar-hover-width"),
+                "width field starts disabled when hover expansion is off"
+            );
+
+            click(&mut host, "settings-switch-scrollbar-expand-on-hover");
+            assert!(shell::preferences(host.app()).scrollbar_expand_on_hover);
+            assert_eq!(
+                strata_kit::slots::scroll::hover_width(&host.app().look),
+                Some(12.0)
+            );
+            let tree = host.tree();
+            assert!(
+                !node_disabled(&tree, "settings-scrollbar-hover-width"),
+                "width field enables once hover expansion is turned on"
+            );
+
+            // Step width up via keyboard on the input field.
+            let _ = reveal_and_center(&mut host, "settings-scrollbar-hover-width-input");
+            host.runtime()
+                .update(|_, tx| tx.focus("settings-scrollbar-hover-width-input", true));
+            idle(&mut host);
+            press(&mut host, Key::Up, Mods::default());
+            assert_eq!(
+                shell::preferences(host.app()).scrollbar_hover_width.get(),
+                13
+            );
+            assert_eq!(
+                strata_kit::slots::scroll::hover_width(&host.app().look),
+                Some(13.0)
+            );
+
+            // Turning the switch off disables the width field and clears the Look token while preserving the stored width.
+            click(&mut host, "settings-switch-scrollbar-expand-on-hover");
+            assert!(!shell::preferences(host.app()).scrollbar_expand_on_hover);
+            assert_eq!(
+                shell::preferences(host.app()).scrollbar_hover_width.get(),
+                13
+            );
+            assert_eq!(
+                strata_kit::slots::scroll::hover_width(&host.app().look),
+                None
+            );
+            assert!(node_disabled(
+                &host.tree(),
+                "settings-scrollbar-hover-width"
+            ));
+
+            // Settings search finds both scrollbar rows by title and by keyword.
+            click(&mut host, "settings-search-field");
+            for ch in "accessibility".chars() {
+                press(&mut host, Key::Text(ch.to_string()), Mods::default());
+            }
+            host.runtime().frame(0.2);
+            idle(&mut host);
+            assert!(is_mounted(
+                &host,
+                "settings-switch-scrollbar-expand-on-hover"
+            ));
+            assert!(!is_mounted(&host, "settings-scrollbar-hover-width"));
+
+            click(&mut host, "settings-search-clear");
+            for ch in "scrollbar".chars() {
+                press(&mut host, Key::Text(ch.to_string()), Mods::default());
+            }
+            host.runtime().frame(0.2);
+            idle(&mut host);
+            assert!(is_mounted(
+                &host,
+                "settings-switch-scrollbar-expand-on-hover"
+            ));
+            assert!(is_mounted(&host, "settings-scrollbar-hover-width"));
+        },
+    );
+}
