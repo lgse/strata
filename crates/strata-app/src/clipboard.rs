@@ -21,9 +21,12 @@ use crate::{
     slots::{Frame, Ids, Part, Place, Scope, Setup},
 };
 
+mod matching;
 pub(crate) mod paths;
 #[cfg(test)]
 mod tests;
+
+use matching::{LocationSet, same_locations};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 enum Fallback {
@@ -163,6 +166,31 @@ impl Clipboard {
         }
     }
 
+    fn clear_files(&mut self) {
+        if let Some(copy_id) = self.owned {
+            if self.handle.clear(copy_id).unwrap_or(false) {
+                self.owned = None;
+                self.has_files = false;
+                self.bump_revision();
+            }
+        } else if matches!(self.fallback, Fallback::Files(_)) {
+            self.fallback = Fallback::Empty;
+            self.has_files = false;
+            self.bump_revision();
+        }
+    }
+
+    fn sync_cut_offer(&mut self, remaining: &[Location]) {
+        if self.owned.is_none() && !matches!(self.fallback, Fallback::Files(_)) {
+            return;
+        }
+        if remaining.is_empty() {
+            self.clear_files();
+        } else {
+            let _ = self.write_files(remaining, true);
+        }
+    }
+
     pub(crate) fn write_text(&mut self, text: &str) {
         self.clear_marks();
         match self
@@ -298,41 +326,27 @@ pub(crate) fn with_marks(app: &App, id: EntryId, mut marks: RowMarks) -> RowMark
 
 /// Whether `sources` matches the window's active cut selection.
 pub(crate) fn is_cut_match(app: &App, sources: &[Location]) -> bool {
-    paths::same_locations(sources, &app.clipboard.cut)
+    same_locations(sources, &app.clipboard.cut)
+}
+
+fn retain_untransferred(cut: &mut Vec<Location>, transferred: &LocationSet<'_>) {
+    cut.retain(|location| !transferred.contains(location));
 }
 
 /// Consumes moved cut items after a transfer finishes (`ViewState::complete_cut_transfer`).
 pub(crate) fn complete_cut_transfer(app: &mut App, transferred: &[Location]) {
-    let consumed = app.clipboard.cut.iter().any(|cut| {
-        transferred
-            .iter()
-            .any(|moved| paths::locations_equal(cut, moved))
-    });
-    if !consumed {
+    if app.clipboard.cut.is_empty() || transferred.is_empty() {
         return;
     }
+    let before = app.clipboard.cut.len();
     let mut remaining = std::mem::take(&mut app.clipboard.cut);
-    paths::retain_untransferred(&mut remaining, transferred);
-    app.clipboard.set_marks(Vec::new(), remaining.clone());
-    if let Some(copy_id) = app.clipboard.owned {
-        if remaining.is_empty() {
-            if app.clipboard.handle.clear(copy_id).unwrap_or(false) {
-                app.clipboard.owned = None;
-                app.clipboard.has_files = false;
-                app.clipboard.bump_revision();
-            }
-        } else {
-            let _ = app.clipboard.write_files(&remaining, true);
-        }
-    } else if matches!(app.clipboard.fallback, Fallback::Files(_)) {
-        if remaining.is_empty() {
-            app.clipboard.fallback = Fallback::Empty;
-            app.clipboard.has_files = false;
-            app.clipboard.bump_revision();
-        } else {
-            let _ = app.clipboard.write_files(&remaining, true);
-        }
+    retain_untransferred(&mut remaining, &LocationSet::new(transferred));
+    if remaining.len() == before {
+        app.clipboard.cut = remaining;
+        return;
     }
+    app.clipboard.set_marks(Vec::new(), remaining.clone());
+    app.clipboard.sync_cut_offer(&remaining);
 }
 
 /// Reads file URIs and their cut marker from the clipboard, calling `deliver` on the UI thread.
@@ -405,17 +419,7 @@ pub(crate) fn yank_targets(app: &mut App, cut: bool) -> Yank {
 
 pub(crate) fn unyank(app: &mut App) {
     app.clipboard.clear_marks();
-    if let Some(copy_id) = app.clipboard.owned {
-        if app.clipboard.handle.clear(copy_id).unwrap_or(false) {
-            app.clipboard.owned = None;
-            app.clipboard.has_files = false;
-            app.clipboard.bump_revision();
-        }
-    } else if matches!(app.clipboard.fallback, Fallback::Files(_)) {
-        app.clipboard.fallback = Fallback::Empty;
-        app.clipboard.has_files = false;
-        app.clipboard.bump_revision();
-    }
+    app.clipboard.clear_files();
 }
 
 fn copy_entries(app: &mut App, entries: &[FileEntry]) -> bool {

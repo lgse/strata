@@ -83,7 +83,7 @@ impl Browser {
         let watched = location.clone();
         let notify = Rc::new(move |change| {
             if let Some(browser) = weak.upgrade() {
-                browser.handle_directory_change(depth, &watched, change);
+                browser.handle_monitored_change(depth, &watched, change);
             }
         });
         let weak: Weak<Self> = Rc::downgrade(self);
