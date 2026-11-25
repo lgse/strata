@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-use std::rc::Rc;
-
 use rune::{Chord, Key, KeyEvent, Mods, Tx};
 
-use super::search::Lines;
 use super::state::{ReferenceKeys, ReferenceState};
+
+/// Vertical line-scroll step in points for arrow-key scrolling.
+const SCROLL_STEP: f32 = 40.0;
 
 pub(super) struct Route<S> {
     pub get_mut: fn(&mut S) -> &mut ReferenceState,
@@ -14,8 +14,6 @@ pub(super) struct Route<S> {
     pub search: String,
     pub chosen_category: String,
     pub results: String,
-    pub line_key: Rc<dyn Fn(usize) -> String>,
-    pub lines: Rc<Lines>,
 }
 
 /// Where focus is in the panel.
@@ -79,34 +77,29 @@ impl<S: 'static> Route<S> {
     }
 
     fn scroll(&self, s: &mut S, ev: &KeyEvent, tx: &mut Tx, results: bool) -> bool {
-        let m = ev.mods;
-        if m.cmd || m.ctrl || m.alt || m.logo {
+        let Some(action) = scroll_action(ev, results) else {
             return false;
-        }
-        let visible = (self.get_mut)(s).visible.clone();
-        let n = self.lines.lines.len();
-        let typed = |c: &str| results && !m.shift && matches!(&ev.key, Key::Text(t) if t == c);
-        let down = ev.key == Key::Down || (results && ev.key == Key::Right) || typed("j");
-        let up = ev.key == Key::Up || (results && ev.key == Key::Left) || typed("k");
-        if down {
-            if visible.end < n {
-                tx.scroll_into_view((self.line_key)(visible.end));
+        };
+        let state = (self.get_mut)(s);
+        match action {
+            ScrollAction::Step(delta) => {
+                let next_y = state.step_scroll(delta);
+                tx.scroll_to_y(self.results.clone(), next_y);
             }
-        } else if up {
-            if visible.start > 0 {
-                tx.scroll_into_view((self.line_key)(visible.start - 1));
+            ScrollAction::Page(pages) => {
+                state.step_scroll_page(pages);
+                tx.scroll_page(self.results.clone(), pages);
             }
-        } else if ev.key == Key::PageDown {
-            tx.scroll_page(self.results.clone(), 1);
-        } else if ev.key == Key::PageUp {
-            tx.scroll_page(self.results.clone(), -1);
-        } else if results && ev.key == Key::Home {
-            tx.scroll_to_instant(self.results.clone(), 0.0, 0.0);
-        } else if results && ev.key == Key::End {
-            tx.scroll_to_bottom_instant(self.results.clone());
-        } else {
-            return false;
+            ScrollAction::Edge(bottom) => {
+                state.scroll_to_edge(bottom);
+                if bottom {
+                    tx.scroll_to_bottom_instant(self.results.clone());
+                } else {
+                    tx.scroll_to_instant(self.results.clone(), 0.0, 0.0);
+                }
+            }
         }
+        tx.live_only();
         true
     }
 
@@ -182,7 +175,41 @@ impl<S: 'static> Route<S> {
 /// Tab and Shift+Tab, which Rune's modal keeps inside the panel.
 fn tab(ev: &KeyEvent) -> bool {
     let m = ev.mods;
-    ev.key == Key::Tab && !(m.cmd || m.ctrl || m.alt || m.logo)
+    ev.key == Key::Tab && !has_non_shift_mod(m)
+}
+
+#[derive(Clone, Copy)]
+enum ScrollAction {
+    Step(f32),
+    Page(i32),
+    Edge(bool),
+}
+
+fn has_non_shift_mod(m: Mods) -> bool {
+    m.cmd || m.ctrl || m.alt || m.logo
+}
+
+fn scroll_action(ev: &KeyEvent, results: bool) -> Option<ScrollAction> {
+    if has_non_shift_mod(ev.mods) {
+        return None;
+    }
+    match &ev.key {
+        Key::Down => Some(ScrollAction::Step(SCROLL_STEP)),
+        Key::Up => Some(ScrollAction::Step(-SCROLL_STEP)),
+        Key::PageDown => Some(ScrollAction::Page(1)),
+        Key::PageUp => Some(ScrollAction::Page(-1)),
+        Key::Right if results => Some(ScrollAction::Step(SCROLL_STEP)),
+        Key::Left if results => Some(ScrollAction::Step(-SCROLL_STEP)),
+        Key::Home if results => Some(ScrollAction::Edge(false)),
+        Key::End if results => Some(ScrollAction::Edge(true)),
+        Key::Text(t) if results && !ev.mods.shift && t == "j" => {
+            Some(ScrollAction::Step(SCROLL_STEP))
+        }
+        Key::Text(t) if results && !ev.mods.shift && t == "k" => {
+            Some(ScrollAction::Step(-SCROLL_STEP))
+        }
+        _ => None,
+    }
 }
 
 pub(super) fn edits(ev: &KeyEvent) -> bool {

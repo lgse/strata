@@ -148,3 +148,79 @@ fn tilde_toggles_the_tenxer_reference_with_its_own_sections() {
         },
     );
 }
+
+#[test]
+fn held_arrow_and_vim_keys_scroll_the_shortcuts_dialog_smoothly() {
+    hosted(
+        MODULE,
+        "held_arrow_and_vim_keys_scroll_the_shortcuts_dialog_smoothly",
+        |mut host| {
+            let _folder = listed(&mut host);
+            press(&mut host, Key::Function(1));
+            assert!(open(&host), "F1 opens the reference");
+            assert!(
+                focused_on(&mut host, "shortcuts-search"),
+                "search field starts focused"
+            );
+            assert_eq!(host.app().shortcuts.reference.scroll_offset(), 0.0);
+
+            // Rapidly queue held Down repeats from the search field before advancing frames.
+            for _ in 0..6 {
+                send_key(
+                    &mut host,
+                    KeyEvent {
+                        key: Key::Down,
+                        mods: Mods::default(),
+                    },
+                );
+            }
+            while host.turn() {}
+            let after_down = host.app().shortcuts.reference.scroll_offset();
+            assert!(
+                after_down >= 200.0,
+                "held Down repeats from search should accumulate smoothly, got {after_down}"
+            );
+
+            // Focus results via Ctrl+L, scroll further with j, then jump with End and Home.
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Command('l'),
+                    mods: Mods {
+                        ctrl: true,
+                        cmd: true,
+                        ..Mods::default()
+                    },
+                },
+            );
+            while host.turn() {}
+            assert!(
+                focused_on(&mut host, "shortcuts-results"),
+                "Ctrl+L focuses the results list"
+            );
+
+            for _ in 0..4 {
+                send_key(
+                    &mut host,
+                    KeyEvent {
+                        key: Key::Text("j".into()),
+                        mods: Mods::default(),
+                    },
+                );
+            }
+            while host.turn() {}
+            let after_j = host.app().shortcuts.reference.scroll_offset();
+            assert!(
+                after_j > after_down + 100.0,
+                "held j in results should continue scrolling: before={after_down}, after={after_j}"
+            );
+
+            press(&mut host, Key::Home);
+            assert_eq!(
+                host.app().shortcuts.reference.scroll_offset(),
+                0.0,
+                "Home returns to the top"
+            );
+        },
+    );
+}
