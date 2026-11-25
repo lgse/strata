@@ -16,7 +16,7 @@ pub(super) fn viewer(app: &mut App, loaded: Preview, tx: &mut Tx) -> Viewer {
         ..
     } = loaded;
     match content {
-        PreviewContent::Rasterized { png } => rasterized(&entry, &png),
+        PreviewContent::Rasterized { png } => rasterized(app, &entry, &png),
         PreviewContent::Model { png, mesh } => model::ready(app, entry, png, mesh),
         PreviewContent::Route { preview } => route::ready(app, entry, preview),
         PreviewContent::SandboxedMedia { media } => {
@@ -56,8 +56,9 @@ pub(super) fn unavailable(reason: Option<&str>) -> Viewer {
     }
 }
 
-fn rasterized(entry: &FileEntry, png: &[u8]) -> Viewer {
-    match ImageViewer::from_png(entry, png) {
+fn rasterized(app: &App, entry: &FileEntry, png: &[u8]) -> Viewer {
+    let cache = app.window.image_cache().map(std::sync::Arc::as_ref);
+    match ImageViewer::from_png(entry, png, cache) {
         Ok(img) => Viewer::Image(Box::new(img)),
         Err(detail) => Viewer::Message {
             title: tr("Preview unavailable"),

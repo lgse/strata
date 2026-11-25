@@ -562,7 +562,7 @@ fn copy_button<S: 'static>(
         .radius(p.radius)
         .hover(p.hover)
         .child(icon(if copied { p.check } else { p.copy }, p.icon).color(p.muted))
-        .on_key(crate::preview_drawer::return_as_space::<S>)
+        .press_on_return()
         .on_press_tx(move |s: &mut S, tx| {
             let st = get_mut(s);
             tx.copy(copy(st, unit));

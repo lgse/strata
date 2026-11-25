@@ -113,6 +113,7 @@ fn make_mixed_document(
         document_path: None,
         blocks,
         later,
+        image_cache: None,
         palette: diagram_palette(look),
     })
 }

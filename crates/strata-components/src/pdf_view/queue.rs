@@ -427,7 +427,7 @@ impl Queue {
                     self.image_bytes -= h.bytes();
                     // Frees the pixels now: a mounted row may still draw the handle.
                     if let Some(px) = &s.pixels {
-                        px.set(1, 1, vec![0; 4]);
+                        px.set(0, 0, Vec::new());
                     }
                     changed = true;
                 }

@@ -275,12 +275,12 @@ fn wayland_requests_one_after_another_leave_one_window_tracked() {
 #[test]
 #[ignore = "needs a private session: mise run test-platform"]
 fn wayland_without_winit_display_is_parentless() {
-    // S3 decision 1 (ruled: unsupported, still parentless): libwayland 1.22, simulated.
+    // S3 decision 1 (ruled: unsupported, still parentless): shared display unavailable, simulated.
     let s = Session::start();
     let peer = s.peer(Display::Wayland);
     peer.map("p4 parent");
     let handle = peer.export();
-    let p = probe(&s, Display::Wayland, &["--as-if-libwayland-1-22"]);
+    let p = probe(&s, Display::Wayland, &["--as-if-no-shared-display"]);
     assert_parentless(&open(&p, "c1", &handle, true), "NoDisplay", "Compositor");
     assert!(!chooser(&s, &p, "c1").floating, "it tiles");
     quit(p, true);

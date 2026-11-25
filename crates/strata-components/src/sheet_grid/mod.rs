@@ -88,6 +88,7 @@ fn grid<S: 'static>(
         v.name.to_string()
     };
     let on_key = intent.clone();
+    let grid_key = key.clone();
     let mut root = col()
         .key(key.clone())
         .role("grid")
@@ -108,6 +109,24 @@ fn grid<S: 'static>(
                     true
                 }
             }
+        })
+        .on_a11y_action(move |s: &mut S, target, action, tx| {
+            if action != rune::accesskit::Action::Click {
+                return false;
+            }
+            let Some(pos) = parse_cell_key(&grid_key, target) else {
+                return false;
+            };
+            let st = get_mut(s);
+            let Some(v) = st.view() else {
+                return false;
+            };
+            if pos.row >= v.rows() || pos.col >= v.columns() {
+                return false;
+            }
+            st.select(pos, pos);
+            tx.focus(grid_key.clone(), false);
+            true
         });
     if let Some(c) = v.sel.map(|s| s.cursor) {
         root = root.active_descendant(format!("{}-c{}", st.row_key(c.row), c.col));
@@ -248,6 +267,12 @@ fn body_list<S: 'static>(st: &SheetGridState, v: &state::SheetView, ctx: Rc<Ctx<
         .on_drag(move |s: &mut S, d: &mut rune::Drag, tx: &mut Tx| {
             on_body_drag(get_mut(s), d, tx);
         })
+}
+
+fn parse_cell_key(grid_key: &str, key: &str) -> Option<CellPos> {
+    let rest = key.strip_prefix(grid_key)?.strip_prefix("-r")?;
+    let (row, col) = rest.split_once("-c")?;
+    Some(CellPos::new(row.parse().ok()?, col.parse().ok()?))
 }
 
 fn on_body_drag(st: &mut SheetGridState, d: &rune::Drag, tx: &mut Tx) {

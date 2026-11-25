@@ -10,45 +10,46 @@ use strata_kit::look::Look;
 use strata_kit::slots::{collection as rows_tokens, columns as tokens};
 
 use super::place::WIDTH;
-use super::{More, Origin, PeekStatus, PeekTarget, Shared};
+use super::{More, Origin, PeekStatus, Shared};
 use crate::contract::Entry;
 use crate::thumbnails::picture;
-
-const CARD_PADDING: f32 = 4.0;
 
 const BODY_MIN_ROWS: f32 = 4.0;
 
 const HEADER_LINE_OPACITY: f32 = 0.24;
 
-/// The key of the card's group, which assistive technology names "Folder peek".
-pub const GROUP: &str = "folder-peek";
-
 /// The open peek's card, anchored to its folder's row.
 pub(super) fn card<S: 'static>(sh: &Rc<Shared<S>>, s: &S) -> Option<El> {
     let target = (sh.get)(s).target()?.clone();
     let look = (sh.look)(s);
-    let content = body(sh, s, &target, look);
+    let content = body(sh, s, look);
+    let hover = sh.clone();
     let mut layer = Vec::new();
     let _ = HoverCard::new(format!("{}-peek", target.collection))
         .placement(Placement::RightStart)
+        .gutter(0.0)
+        .width(WIDTH)
+        .role("group")
+        .label(sh.labels.peek.clone())
+        .on_hover_tx(move |s: &mut S, inside, tx| {
+            let change = (hover.get_mut)(s).card_rest(inside);
+            hover.changed(s, change, tx);
+        })
         .child(content)
         .open(true)
         .build(&look.kit, &mut layer);
     let surface = layer.pop()?;
-    let hover = sh.clone();
     let shown = (sh.get)(s).lives.shown.clone();
-    Some(
-        surface
-            .live_opacity(&shown)
-            .hover_delays(Duration::ZERO, sh.behavior.close)
-            .on_hover_change(move |s: &mut S, inside, tx| {
-                let change = (hover.get_mut)(s).card_rest(inside);
-                hover.changed(s, change, tx);
-            }),
-    )
+    let mut surface = surface
+        .live_opacity(&shown)
+        .hover_delays(Duration::ZERO, sh.behavior.close);
+    if target.origin == Origin::Keyboard {
+        surface = surface.live_region(LiveRegion::Polite);
+    }
+    Some(surface)
 }
 
-fn body<S: 'static>(sh: &Rc<Shared<S>>, s: &S, target: &PeekTarget, look: &Look) -> El {
+fn body<S: 'static>(sh: &Rc<Shared<S>>, s: &S, look: &Look) -> El {
     let k = &look.kit;
     let c = (sh.contents)(s);
     let labels = &sh.labels;
@@ -144,30 +145,19 @@ fn body<S: 'static>(sh: &Rc<Shared<S>>, s: &S, target: &PeekTarget, look: &Look)
     }
 
     let open = sh.clone();
-    let mut group = col()
-        .key(GROUP)
-        .role("group")
-        .label(labels.peek.clone())
-        .w(WIDTH - 2.0 * CARD_PADDING)
-        .child(header)
-        .child(list)
-        .child(
-            el().key("peek-open")
-                .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
-                .a11y_hidden()
-                .on_background_press_tx(move |s: &mut S, tx| {
-                    let target = (open.get)(s).target().cloned();
-                    (open.get_mut)(s).close();
-                    open.changed(s, super::Change::Closed, tx);
-                    if let (Some(target), Some(f)) = (target, &open.on_open) {
-                        f(s, target, tx);
-                    }
-                }),
-        );
-    if target.origin == Origin::Keyboard {
-        group = group.live_region(LiveRegion::Polite);
-    }
-    group
+    col().w_full().child(header).child(list).child(
+        el().key("peek-open")
+            .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+            .a11y_hidden()
+            .on_background_press_tx(move |s: &mut S, tx| {
+                let target = (open.get)(s).target().cloned();
+                (open.get_mut)(s).close();
+                open.changed(s, super::Change::Closed, tx);
+                if let (Some(target), Some(f)) = (target, &open.on_open) {
+                    f(s, target, tx);
+                }
+            }),
+    )
 }
 
 fn message(look: &Look, body_min: f32) -> El {

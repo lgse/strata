@@ -661,6 +661,7 @@ impl<S: 'static> Collection<S> {
         let secondary_cfg = cfg.clone();
         let key_cfg = cfg.clone();
         let move_cfg = cfg.clone();
+        let a11y_cfg = cfg.clone();
         let mut root = col()
             .key(cfg.key.to_string())
             .role(cfg.roles.container)
@@ -675,6 +676,9 @@ impl<S: 'static> Collection<S> {
             })
             .on_pointer_move_local(move |s: &mut S, p, tx| {
                 route::on_pointer_move(&move_cfg, s, p, tx)
+            })
+            .on_a11y_action(move |s: &mut S, key, action, tx| {
+                route::on_a11y_action(&a11y_cfg, s, key, action, tx)
             });
         if cfg.rest.is_some() {
             let leave_cfg = cfg.clone();

@@ -490,12 +490,13 @@ mod probe {
                 _ => Prefer::Ext,
             },
             x11_fallback: flag("--x11-fallback"),
-            as_if_libwayland_below_1_23: flag("--as-if-libwayland-1-22"),
+            as_if_no_shared_display: flag("--as-if-no-shared-display"),
             as_if_no_data_control: flag("--as-if-no-data-control"),
         };
         rune::tooling::set_app_id("strata-transfer-probe");
-        let app =
-            App::new(AppSpec::new(title, (640.0, 400.0), State::default, view)).on_close(on_close);
+        let app = App::new(AppSpec::new(title, (640.0, 400.0), State::default, view))
+            .on_close(on_close)
+            .on_display_close(|| shutdown("display-close"));
         let handle = app.handle();
         let _ = HANDLE.set(handle.clone());
         let stdin_handle = handle.clone();

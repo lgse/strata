@@ -72,8 +72,10 @@ pub struct Start {
 pub(crate) trait Out {
     /// Glide the viewport at `path` to (`x`, `y`) on `spring`.
     fn glide(&mut self, path: &str, x: f32, y: f32, spring: Spring);
-    /// Jump the viewport at `path` to (`x`, `y`): also stops a glide in progress.
+    /// Jump the viewport at `path` to (`x`, `y`).
     fn jump(&mut self, path: &str, x: f32, y: f32);
+    /// Halt any running glide on the viewport at `path` where it is.
+    fn stop(&mut self, path: &str);
     /// Run the next frame.
     fn wake(&mut self);
 }
@@ -85,6 +87,10 @@ impl Out for Tx {
 
     fn jump(&mut self, path: &str, x: f32, y: f32) {
         self.scroll_to_instant(path.to_owned(), x, y);
+    }
+
+    fn stop(&mut self, path: &str) {
+        self.stop_scroll(path.to_owned());
     }
 
     fn wake(&mut self) {
@@ -243,7 +249,7 @@ impl Run {
             let [ox, oy] = p.offset;
             if vx == 0.0 && vy == 0.0 {
                 if std::mem::take(was) {
-                    out.jump(&t.path, ox, oy);
+                    out.stop(&t.path);
                 }
                 continue;
             }
@@ -277,8 +283,7 @@ impl Run {
     /// Stops every viewport that is moving where it is.
     fn halt(&self, out: &mut dyn Out) {
         for (t, _) in self.targets.iter().zip(&self.moved).filter(|(_, m)| **m) {
-            let [x, y] = t.feed.get().offset;
-            out.jump(&t.path, x, y);
+            out.stop(&t.path);
         }
     }
 }

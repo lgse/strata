@@ -115,7 +115,7 @@ fn main() {
     clipboard::on_diagnostic(|m| log("diagnostic", json!({ "message": m })));
     let clip = FileClipboard::new(|w: &mut Win| &mut w.clip).test_route(TestRoute {
         as_if_no_data_control,
-        as_if_libwayland_below_1_23: false,
+        as_if_no_shared_display: false,
     });
     let attach = clip.handle();
     let mut spec = AppSpec::new(
@@ -129,7 +129,8 @@ fn main() {
     let app = App::new(spec)
         .init(move || Win::new(root, apply, clip))
         .on_quit(|_, _| shutdown("quit"))
-        .on_close(|_, _| shutdown("window closed"));
+        .on_close(|_, _| shutdown("window closed"))
+        .on_display_close(|| shutdown("display-close"));
     let handle: AppHandle<Win> = app.handle();
     spawn_stdin(handle.clone());
     rune::orderly_exit();

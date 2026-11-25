@@ -110,7 +110,6 @@ pub(crate) struct Viewer {
     last: Option<Viewport>,
     direction: Direction,
     visible: Keyed,
-    prev_visible: Vec<ThumbKey>,
     ahead: Keyed,
     behind: Keyed,
 }
@@ -127,11 +126,6 @@ impl Viewer {
                 if *k == from {
                     *k = to;
                 }
-            }
-        }
-        for k in &mut self.prev_visible {
-            if *k == from {
-                *k = to;
             }
         }
     }
@@ -255,8 +249,6 @@ impl ThumbnailStore {
             Direction::Down => ((below, false), (above, true)),
             Direction::Up => ((above, true), (below, false)),
         };
-        let prev = std::mem::take(&mut w.visible);
-        w.prev_visible = prev.into_iter().map(|(k, _)| k).collect();
         w.visible = keyed(src, visible.clone());
         w.ahead = keyed_lines(src, &ahead, view.per_line, ahead_above);
         w.behind = keyed_lines(src, &behind, view.per_line, behind_above);
@@ -402,7 +394,6 @@ impl Inner {
                 *s = (*s).max(step);
             }
             self.protected.extend(w.visible.iter().map(|(k, _)| *k));
-            self.protected.extend(w.prev_visible.iter().copied());
         }
         let stale: Vec<ThumbKey> = self
             .in_flight

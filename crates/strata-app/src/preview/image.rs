@@ -2,14 +2,14 @@
 
 //! C14 [`ImageView`] adapter for still images, SVGs, and sandboxed covers (`PreviewContent::Rasterized`).
 
-use rune::{Cx, El, Pixels};
+use rune::{Cx, El, ImageCache, Pixels};
 use strata_components::viewers::{
     image::ImageView,
     viewport::{Mode, ViewportState},
 };
 use strata_core::{i18n::tr, model::FileEntry};
 
-use crate::App;
+use crate::{App, shell};
 
 /// Key of the still-image viewer inside the preview drawer.
 pub(crate) const IMAGE_KEY: &str = "preview-image";
@@ -24,7 +24,11 @@ pub(super) struct ImageViewer {
 }
 
 impl ImageViewer {
-    pub(super) fn from_png(entry: &FileEntry, png: &[u8]) -> Result<Self, String> {
+    pub(super) fn from_png(
+        entry: &FileEntry,
+        png: &[u8],
+        cache: Option<&ImageCache>,
+    ) -> Result<Self, String> {
         let decoded = image::load_from_memory(png).map_err(|err| err.to_string())?;
         let orig_w = decoded.width().max(1);
         let orig_h = decoded.height().max(1);
@@ -40,7 +44,7 @@ impl ImageViewer {
         let rgba = uploaded.to_rgba8();
         let (tex_w, tex_h) = (rgba.width(), rgba.height());
         let pixels = Pixels::new();
-        pixels.set(tex_w, tex_h, rgba.into_raw());
+        shell::upload_rgba(cache, &pixels, tex_w, tex_h, rgba.into_raw());
 
         let mut viewport = ViewportState::new(Mode::ScaleDown);
         viewport.set_content(Some([orig_w as f32, orig_h as f32]));

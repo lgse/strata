@@ -43,6 +43,13 @@ pub(crate) struct Bar {
     later: Later<App>,
 }
 
+#[cfg(test)]
+impl Bar {
+    pub(crate) fn state(&self) -> &LocationBarState {
+        &self.state
+    }
+}
+
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let bar = &app.location;
     let labels = labels::current();
@@ -167,6 +174,7 @@ impl Part for Bar {
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+        app.location.state.hold(crate::menus::field_menu_open(app));
         let polled = app.location.state.tick(clock, tx);
         let changed = polled.changed;
         intents::route_ticked(app, polled, tx);

@@ -80,7 +80,13 @@ fn show(
             let data = route_data(app, &entry, preview, &decoded);
             let pixels = Pixels::new();
             let (width, height) = decoded.image.dimensions();
-            pixels.set(width, height, decoded.image.into_raw());
+            shell::upload_rgba(
+                app.window.image_cache().map(std::sync::Arc::as_ref),
+                &pixels,
+                width,
+                height,
+                decoded.image.into_raw(),
+            );
             let mut state = RouteState::new(data, route_labels());
             state.set_units(units(app));
             Viewer::Route(Box::new(RouteViewer { state, pixels }))

@@ -25,6 +25,12 @@ use crate::{
     slots::{Frame, Part, Place, Setup},
 };
 
+mod field;
+
+pub(crate) use field::{
+    build as build_field_menu, is_open as field_menu_open, open as open_field_menu,
+};
+
 /// The one menu the window has open, and what it was opened on.
 pub(crate) struct Menu {
     pub(crate) state: ContextMenuState,
@@ -34,6 +40,8 @@ pub(crate) struct Menu {
     provider_slot: usize,
     /// What assistive technology hears the menu called: its entry or its folder.
     name: String,
+    /// In-window text-field context menu opened through Rune's `App::on_field_menu`.
+    field: field::FieldMenu,
 }
 
 /// A menu to open: what it is for, and what it lists.
@@ -424,7 +432,11 @@ impl Part for Menu {
     const COMMANDS: &'static [Action<App>] = crate::window_keys::COMMANDS;
 
     fn keyboard(app: &App) -> Option<Holds> {
-        app.menu.state.is_open().then_some(Holds::Menu)
+        (app.menu.state.is_open() || app.menu.field.is_open()).then_some(Holds::Menu)
+    }
+
+    fn poll(app: &mut App, _: f64, tx: &mut Tx) -> bool {
+        field::poll(app, tx)
     }
 
     fn new(_: &Setup<'_>) -> Self {
@@ -433,6 +445,7 @@ impl Part for Menu {
             depth: 0,
             provider_slot: 0,
             name: String::new(),
+            field: field::FieldMenu::default(),
         }
     }
 }

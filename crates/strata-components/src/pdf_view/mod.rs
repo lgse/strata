@@ -144,8 +144,9 @@ impl<S: 'static> PdfView<S> {
             paint: Paint::from_look(look),
             kit: look.kit.clone(),
         });
+        let _ = cx;
         match st.content() {
-            Content::Pages => render::pages(ctx, st, look, cx.env().scale),
+            Content::Pages => render::pages(ctx, st, look),
             Content::Locked => {
                 let message = ctx.labels.locked.clone();
                 message::build(&ctx, st, &message, open_button, look)

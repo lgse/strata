@@ -136,7 +136,7 @@ fn header_cell<S: 'static>(tb: &TableBuild<'_, S>, c: usize) -> El {
         .hover_group()
         .hover(p.table_head_hover)
         .focusable(true)
-        .on_key(crate::preview_drawer::return_as_space::<S>)
+        .press_on_return()
         .child(title_row)
         .child(divider(tb, c, w, &name));
     if let Some(k) = place.filter(|&k| k > 0) {

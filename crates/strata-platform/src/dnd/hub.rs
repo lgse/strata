@@ -69,9 +69,6 @@ pub(crate) enum Routed {
         id: u64,
         outcome: DragOutcome,
     },
-    Holding {
-        id: u64,
-    },
 }
 
 /// The platform side of one drag over a window.
@@ -108,8 +105,6 @@ struct Out {
     mods: Mods,
     x11: bool,
     wl: wayland::OutState,
-    /// `Routed::Holding` went out.
-    holding: bool,
 }
 
 #[derive(Clone, Default)]
@@ -185,8 +180,8 @@ fn with<R>(f: impl FnOnce(&mut Hub) -> R) -> Option<R> {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TestRoute {
-    /// Behave as on libwayland < 1.23: winit's display is out of reach.
-    pub as_if_libwayland_below_1_23: bool,
+    /// Behave as if winit's shared display handle were unavailable.
+    pub as_if_no_shared_display: bool,
     /// Behave as on a compositor with no data control (mutter).
     pub as_if_no_data_control: bool,
 }
@@ -203,7 +198,7 @@ pub(crate) fn attach(
         let turn_poster = poster.clone();
         let turn: Turn = Arc::new(move |f| turn_poster(Job::Run(f)));
         let wants = Wants {
-            as_if_libwayland_below_1_23: test.as_if_libwayland_below_1_23,
+            as_if_no_shared_display: test.as_if_no_shared_display,
             as_if_no_data_control: test.as_if_no_data_control,
             ..Wants::default()
         };
@@ -366,12 +361,6 @@ fn route_substrate(hub: &mut Hub, to: &mut To<'_>) {
                 let local = local_of(hub, &mimes);
                 let mods = local_mods(hub, local);
                 hub.wl_in = Some((window.clone(), local));
-                // Our own drag entering our window: the compositor took the pointer.
-                if let Some(out) = hub.out.as_mut().filter(|o| local && !o.x11 && !o.holding) {
-                    out.holding = true;
-                    let (id, w) = (out.id, out.window.clone());
-                    to(hub, &w, Routed::Holding { id });
-                }
                 let port: Rc<dyn InPort> = Rc::new(wayland::WlIn::new(offer));
                 to(
                     hub,
@@ -441,18 +430,6 @@ fn route_wayland_source(hub: &mut Hub, to: &mut To<'_>) {
     };
     for (id, ev) in wayland::drain(&conn) {
         let Some(out) = hub.out.as_mut().filter(|o| o.id == id) else {
-            continue;
-        };
-        if matches!(
-            ev,
-            wayland::SrcEvent::Target(_) | wayland::SrcEvent::Action(_)
-        ) && !out.holding
-        {
-            out.holding = true;
-            let w = out.window.clone();
-            to(hub, &w, Routed::Holding { id });
-        }
-        let Some(out) = hub.out.as_mut() else {
             continue;
         };
         if let Some(outcome) = out.wl.on(ev) {
@@ -561,7 +538,7 @@ pub(crate) fn start_drag(key: &str, item: DragItem, mods: Mods) -> Result<(u64, 
         // The press that started this drag must be in before its serial is read (S2).
         hub.transfer.dispatch()?;
         wayland::start(&conn, &window, id, &spec, actions, item.icon.is_some())?;
-        Ok((false, Release::Escape))
+        Ok((false, Release::CancelPointer))
     })
     .ok_or(Error::NotAttached)??;
     let (x11, release) = started;
@@ -574,7 +551,6 @@ pub(crate) fn start_drag(key: &str, item: DragItem, mods: Mods) -> Result<(u64, 
             mods,
             x11,
             wl: wayland::OutState::default(),
-            holding: false,
         });
     });
     if let Some(icon) = item.icon.clone()
@@ -615,26 +591,6 @@ pub(crate) fn released() {
             x11::released(x, out.id);
         }
     });
-}
-
-pub(crate) fn still_holding(id: u64) -> bool {
-    #[cfg(test)]
-    if let Some(live) = tests::FAKE_LIVE.get() {
-        return live;
-    }
-    let Some(t) = with(|hub| hub.transfer.clone()) else {
-        return false;
-    };
-    if t.dispatch().is_err() {
-        return false;
-    }
-    route();
-    with(|hub| {
-        hub.out
-            .as_ref()
-            .is_some_and(|o| o.id == id && !o.x11 && o.wl.live())
-    })
-    .unwrap_or(false)
 }
 
 /// Cancels the drag this process started, if any: its window hears `Cancelled`.

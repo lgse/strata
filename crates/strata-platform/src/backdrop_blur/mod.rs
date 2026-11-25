@@ -3,13 +3,12 @@
 //! Compositor-level backdrop blur behind translucent Rune windows on Linux Wayland.
 //!
 //! Prefers `ext_background_effect_v1` and falls back to `org_kde_kwin_blur_manager`.
-//! On unsupported compositors, X11, or libwayland < 1.23, [`BackdropBlur`] is a no-op.
+//! On unsupported compositors or X11, [`BackdropBlur`] is a no-op.
 //!
-//! Rune lacks Linux Wayland backdrop blur (`El::system_material` is macOS-only) and exposes
-//! only the `wl_surface` without winit's `wl_display`, so this shim binds through the internal
-//! `transfer` substrate (`wl_proxy_get_display`, libwayland 1.23+). Call [`shutdown`] on the
-//! UI thread before the event loop ends to tear down the shared display substrate while winit's
-//! display is still alive.
+//! Rune lacks Linux Wayland backdrop blur (`El::system_material` is macOS-only), so this shim
+//! binds through the internal `transfer` substrate using `WindowHandle::with_raw_display_handle`.
+//! Call [`shutdown`] on the UI thread before the event loop ends (or from `App::on_display_close`)
+//! to tear down the shared display substrate while winit's display is still alive.
 
 mod wayland;
 

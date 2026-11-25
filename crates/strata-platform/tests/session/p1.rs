@@ -1178,7 +1178,7 @@ fn wayland_without_any_route_dnd_alone_stays_unsupported() {
     cmd.args([
         "--title",
         "p1 dnd",
-        "--as-if-libwayland-1-22",
+        "--as-if-no-shared-display",
         "--as-if-no-data-control",
     ]);
     let app = s.spawn("dnd", cmd);

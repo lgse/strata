@@ -885,7 +885,9 @@ impl<S: 'static> DragHandler<S> {
 
     fn on_up(&self, s: &mut S, d: &Drag, tx: &mut Tx) {
         let on_tab = (0.0..=d.w).contains(&d.x) && (0.0..=d.h).contains(&d.y);
-        match (self.access)(s).reorder.release(d.cancelled(), on_tab) {
+        let st = &mut (self.access)(s).reorder;
+        st.note_travel([d.dx, d.dy]);
+        match st.release(d.cancelled(), on_tab) {
             Release::Click => tx.live_only(),
             Release::None => tx.animated(),
             Release::Reorder { from, to } => {

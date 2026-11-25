@@ -2,86 +2,35 @@
 
 #![expect(
     unsafe_code,
-    reason = "dlopen, dlsym and wl_proxy_get_display through FFI"
+    reason = "wayland_backend::Backend::from_foreign_display and ObjectId::from_ptr"
 )]
 
 use std::ffi::c_void;
 use std::ptr::NonNull;
 
 use rune::WindowHandle;
+use rune::raw_window_handle::RawDisplayHandle;
+#[cfg(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur"))]
 use rune::raw_window_handle::RawWindowHandle;
 use wayland_backend::client::Backend;
 
 use super::super::error::{Error, Unsupported};
 
-/// `struct wl_display *wl_proxy_get_display(struct wl_proxy *proxy)`.
-pub(super) type GetDisplay = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
-
-/// `wl_proxy_get_display` from the libwayland-client already in the process.
-fn loaded() -> Option<GetDisplay> {
-    // SAFETY: a NUL-terminated library name; RTLD_NOLOAD only returns a library that is
-    // already loaded (winit loaded it), never loads one.
-    let lib = unsafe {
-        libc::dlopen(
-            c"libwayland-client.so.0".as_ptr(),
-            libc::RTLD_NOW | libc::RTLD_NOLOAD,
-        )
-    };
-    if lib.is_null() {
-        return None;
-    }
-    // SAFETY: `lib` is a live handle from dlopen, and the symbol name is NUL-terminated. The
-    // handle is never closed: libwayland stays loaded for the process anyway.
-    let sym = unsafe { libc::dlsym(lib, c"wl_proxy_get_display".as_ptr()) };
-    if sym.is_null() {
-        return None;
-    }
-    // SAFETY: the symbol is libwayland's `wl_proxy_get_display`, whose C signature is
-    // `struct wl_display *(struct wl_proxy *)`: one pointer in, one out, as `GetDisplay`.
-    Some(unsafe { std::mem::transmute::<*mut c_void, GetDisplay>(sym) })
-}
-
-/// The lookup, or why there is none. `lookup` is [`loaded`] outside tests.
-pub(super) fn get_display_with(
-    lookup: impl FnOnce() -> Option<GetDisplay>,
-) -> Result<GetDisplay, Unsupported> {
-    lookup().ok_or(Unsupported::LibwaylandBelow1_23)
-}
-
-/// The `wl_display` that owns `surface`.
+/// winit's `wl_display`, from the window's display handle. Call it on the UI thread.
 ///
-/// # Safety
-///
-/// `surface` must be a live `wl_proxy`: winit's `wl_surface`, inside
-/// `WindowHandle::with_raw_handle`.
-///
-/// With `as_if_old`, behaves as on libwayland < 1.23: the lookup finds nothing.
-pub(super) unsafe fn display_of(
-    surface: NonNull<c_void>,
-    as_if_old: bool,
-) -> Result<NonNull<c_void>, Unsupported> {
-    let get = get_display_with(|| if as_if_old { None } else { loaded() })?;
-    // SAFETY: `get` is wl_proxy_get_display and the caller guarantees `surface` is a live
-    // proxy; it only reads the proxy's display field.
-    let display = unsafe { get(surface.as_ptr()) };
-    NonNull::new(display).ok_or(Unsupported::LibwaylandBelow1_23)
-}
-
-/// winit's display, from the window's surface. Call it on the UI thread.
+/// With `as_if_no_shared_display`, behaves as if winit's display were unreachable (for fallback tests).
 pub(super) fn winit_display(
     window: &WindowHandle,
-    as_if_old: bool,
+    as_if_no_shared_display: bool,
 ) -> Result<NonNull<c_void>, Error> {
+    if as_if_no_shared_display {
+        return Err(Error::from(Unsupported::NoSharedDisplay));
+    }
     window
-        .with_raw_handle(|h| match h.as_raw() {
-            RawWindowHandle::Wayland(w) => {
-                // SAFETY: inside `with_raw_handle` the handle keeps winit's window, and so its
-                // `wl_surface` proxy, alive; the pointer isn't kept past this call.
-                let display = unsafe { display_of(w.surface, as_if_old) };
-                display.map_err(Error::from)
-            }
+        .with_raw_display_handle(|h| match h.as_raw() {
+            RawDisplayHandle::Wayland(d) => Ok(d.display),
             other => Err(Error::Refused(
-                if matches!(other, RawWindowHandle::Xlib(_) | RawWindowHandle::Xcb(_)) {
+                if matches!(other, RawDisplayHandle::Xlib(_) | RawDisplayHandle::Xcb(_)) {
                     "an X11 window has no Wayland display"
                 } else {
                     "not a Linux window"
@@ -126,6 +75,3 @@ pub(super) fn foreign_backend(display: NonNull<c_void>) -> Backend {
     // disconnects the display.
     unsafe { Backend::from_foreign_display(display.as_ptr().cast()) }
 }
-
-#[cfg(test)]
-mod tests;

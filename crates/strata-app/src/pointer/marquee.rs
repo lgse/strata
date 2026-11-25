@@ -146,6 +146,7 @@ fn apply_effects(viewport: &str, effects: &[Effect], tx: &mut Tx) {
                 tx.scroll_to_instant(viewport.to_owned(), 0.0, y);
             }
             Effect::Glide { y, spring } => tx.scroll_to_with(viewport.to_owned(), 0.0, y, spring),
+            Effect::StopScroll => tx.stop_scroll(viewport.to_owned()),
             Effect::WakeAfter(d) => tx.wake_after(d),
             _ => {}
         }

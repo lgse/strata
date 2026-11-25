@@ -120,7 +120,7 @@ mod probe {
     fn options(modal: bool) -> Options<Chooser> {
         let options = Options::new().modal(modal).on_lost(on_lost);
         if AS_IF_OLD.load(Ordering::Relaxed) {
-            return options.as_if_libwayland_below_1_23();
+            return options.as_if_no_shared_display();
         }
         options
     }
@@ -219,7 +219,7 @@ mod probe {
     pub(super) fn main() {
         let args = rune::tooling::extra_args();
         AS_IF_OLD.store(
-            args.iter().any(|a| a == "--as-if-libwayland-1-22"),
+            args.iter().any(|a| a == "--as-if-no-shared-display"),
             Ordering::Relaxed,
         );
         let parent = args
@@ -247,6 +247,9 @@ mod probe {
         rune::orderly_exit();
         let started = AtomicBool::new(false);
         let result = app
+            .on_display_close(|| {
+                let _ = foreign_parent::shutdown();
+            })
             .on_ready(move |_| {
                 log("host-ready", json!({}));
                 if !started.swap(true, Ordering::Relaxed)

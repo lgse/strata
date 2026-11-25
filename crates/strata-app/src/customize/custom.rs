@@ -85,7 +85,14 @@ fn picker() -> ColorPicker<App> {
 
 /// The picker's own timers, while its dialog is open.
 pub(super) fn poll(app: &mut App, tx: &mut Tx) -> bool {
-    app.customize.custom.open && picker().poll(app, tx)
+    if !app.customize.custom.open {
+        return false;
+    }
+    app.customize
+        .custom
+        .picker
+        .hold(crate::menus::field_menu_open(app));
+    picker().poll(app, tx)
 }
 
 pub(super) fn build(app: &App, item: &Item, frame: &mut Frame<'_, App>) {

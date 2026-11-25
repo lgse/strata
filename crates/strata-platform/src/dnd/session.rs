@@ -12,7 +12,8 @@ use super::registry::Registry;
 /// How the platform ends Rune's capture of a press that became a system drag.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Release {
-    Escape,
+    /// Wayland: cancel Rune's pointer capture immediately via `Tx::cancel_pointer`.
+    CancelPointer,
     /// X11: Rune hears the real release; a cancelled `Up` before it cancels the drag.
     RealUp,
 }
@@ -21,7 +22,7 @@ pub(crate) enum Release {
 enum State {
     Idle,
     Pressed { x: f32, y: f32 },
-    Started { release: Release, escape: bool },
+    Started { release: Release },
 }
 
 /// What a source's `on_drag` does with a phase.
@@ -83,27 +84,12 @@ impl Guard {
         self.owns(d)
     }
 
-    pub(crate) fn started(&mut self, release: Release) {
+    /// Marks a system drag started. Returns `true` when the caller should end Rune's held press
+    /// via `Tx::cancel_pointer` (Wayland, for a press this guard owns).
+    pub(crate) fn started(&mut self, release: Release) -> bool {
         let pressed = matches!(self.state, State::Pressed { .. });
-        self.state = State::Started {
-            release,
-            escape: release == Release::Escape && pressed,
-        };
-    }
-
-    /// Whether [`Guard::take_escape`] would allow the Escape, without spending it.
-    pub(crate) fn may_escape(&self) -> bool {
-        matches!(self.state, State::Started { escape: true, .. })
-    }
-
-    pub(crate) fn take_escape(&mut self) -> bool {
-        match &mut self.state {
-            State::Started { escape, .. } if *escape => {
-                *escape = false;
-                true
-            }
-            _ => false,
-        }
+        self.state = State::Started { release };
+        release == Release::CancelPointer && pressed
     }
 
     /// For [`super::Dnd::owns`]: whether `d` belongs to the system drag.
@@ -116,12 +102,12 @@ impl Guard {
             }
             (Phase::Move, State::Started { .. }) => Decision::Own,
             (Phase::Move, _) => Decision::Pass,
-            (Phase::Up, State::Started { release, .. }) => {
+            (Phase::Up, State::Started { release }) => {
                 self.state = State::Idle;
                 match (release, d.cancelled) {
                     (Release::RealUp, true) => Decision::Cancel,
                     (Release::RealUp, false) => Decision::Released,
-                    (Release::Escape, _) => Decision::Own,
+                    (Release::CancelPointer, _) => Decision::Own,
                 }
             }
             (Phase::Up, _) => {

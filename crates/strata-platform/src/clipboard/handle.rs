@@ -47,8 +47,8 @@ impl<S: 'static> Sink for Core<S> {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TestRoute {
     pub as_if_no_data_control: bool,
-    /// Behave as on libwayland < 1.23: winit's display is out of reach.
-    pub as_if_libwayland_below_1_23: bool,
+    /// Behave as if winit's shared display handle were unavailable.
+    pub as_if_no_shared_display: bool,
 }
 
 thread_local! {

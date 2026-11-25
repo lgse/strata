@@ -5,9 +5,7 @@
 use std::fmt;
 use std::rc::Rc;
 
-use rune::{
-    Beat, El, Key, KeyEvent, LiveRegion, PointerPress, Sequence, TextStyle, Tx, el, icon, row, text,
-};
+use rune::{Beat, El, Key, KeyEvent, LiveRegion, Sequence, TextStyle, Tx, el, icon, row, text};
 use rune_kit::{ControlSize, IconButton, IconButtonVariant};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
@@ -320,10 +318,6 @@ impl<S: 'static> SettingsSearch<S> {
     pub fn field(&self, s: &S, look: &Look) -> El {
         let k = &look.kit;
         let st = (self.get)(s);
-        let menu: MenuFn<S> = self
-            .on_menu
-            .clone()
-            .unwrap_or_else(|| Rc::new(|_: &mut S, _, _: &mut Tx| {}));
         let get_mut = self.get_mut;
         let (keys, change) = (self.clone(), self.clone());
         let handlers = Handlers {
@@ -334,7 +328,7 @@ impl<S: 'static> SettingsSearch<S> {
             change: Rc::new(move |s: &mut S, tx: &mut Tx| {
                 change.refresh(s, tx);
             }),
-            menu: menu.clone(),
+            menu: self.on_menu.clone(),
         };
         let spec = Spec {
             key: &self.field_key(),
@@ -387,7 +381,7 @@ impl<S: 'static> SettingsSearch<S> {
             .absolute(0.0, 0.0)
             .w(0.0)
             .h(0.0);
-        search_frame(look, inner, st.field.focused, menu).child(status)
+        search_frame(look, inner, st.field.focused).child(status)
     }
 
     fn clear(&self, s: &mut S, tx: &mut Tx) {
@@ -410,7 +404,7 @@ impl<S: 'static> SettingsSearch<S> {
     }
 }
 
-fn search_frame<S: 'static>(look: &Look, inner: El, focused: bool, menu: MenuFn<S>) -> El {
+fn search_frame(look: &Look, inner: El, focused: bool) -> El {
     let k = &look.kit;
     let border = if focused {
         k.c.border_focus
@@ -419,9 +413,6 @@ fn search_frame<S: 'static>(look: &Look, inner: El, focused: bool, menu: MenuFn<
     };
     let mut frame = inner
         .role("textbox")
-        .on_secondary_press(move |s: &mut S, p: PointerPress, tx: &mut Tx| {
-            menu(s, Point::new(p.x, p.y), tx);
-        })
         .radius(look.round(8.0))
         .fill(look.fill.muted)
         .border(1.0, border)

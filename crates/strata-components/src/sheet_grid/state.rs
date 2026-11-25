@@ -446,8 +446,7 @@ impl SheetGridState {
         }
         if self.halt == Halt::Pending {
             self.halt = Halt::None;
-            let p = self.feed.get();
-            tx.scroll_to_instant(self.scroll_key(), p.offset[0], p.offset[1]);
+            tx.stop_scroll(self.scroll_key());
         }
         let Some(mut drag) = self.drag else {
             return false;
@@ -473,7 +472,7 @@ impl SheetGridState {
         let vy = towards(drag.pointer[1], p.viewport[1], 1);
         if vx == 0.0 && vy == 0.0 {
             if drag.ticked.take().is_some() {
-                tx.scroll_to_instant(self.scroll_key(), p.offset[0], p.offset[1]);
+                tx.stop_scroll(self.scroll_key());
             }
             self.drag = Some(drag);
             return false;

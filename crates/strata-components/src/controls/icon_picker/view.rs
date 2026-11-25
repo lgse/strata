@@ -273,7 +273,8 @@ impl<S: 'static> IconPicker<S> {
             let body = self
                 .body(s, look, &m, columns)
                 .role("none")
-                .modal_tx(true, move |s: &mut S, tx: &mut Tx| dismiss.close(s, tx));
+                .modal_tx(true, move |s: &mut S, tx: &mut Tx| dismiss.close(s, tx))
+                .modal_wheel_outside(true);
             popover = popover.child(body);
         }
         row().child(popover.build(k, layer))
@@ -481,10 +482,6 @@ impl<S: 'static> IconPicker<S> {
     fn field(&self, s: &S, look: &Look) -> El {
         let k = &look.kit;
         let st = (self.get)(s);
-        let menu: MenuFn<S> = self
-            .on_menu
-            .clone()
-            .unwrap_or_else(|| Rc::new(|_: &mut S, _, _: &mut Tx| {}));
         let get_mut = self.get_mut;
         let (keys, change) = (self.clone(), self.clone());
         let handlers = Handlers {
@@ -496,7 +493,7 @@ impl<S: 'static> IconPicker<S> {
                 let scope = change.grid_key();
                 (change.get_mut)(s).query_changed(Some((&scope, tx)));
             }),
-            menu: menu.clone(),
+            menu: self.on_menu.clone(),
         };
         let spec = Spec {
             key: &self.field_key(),
@@ -528,7 +525,7 @@ impl<S: 'static> IconPicker<S> {
                     .key(format!("{}-clear", self.key)),
             );
         }
-        field::frame(look, inner, st.field.focused, false, &menu)
+        field::frame(look, inner, st.field.focused, false)
     }
 
     fn clear(&self, s: &mut S, tx: &mut Tx) {

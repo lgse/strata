@@ -10,9 +10,6 @@ pub const GAP: f32 = 8.0;
 
 pub(super) const MARGIN: f32 = 8.0;
 
-/// The gap rune-kit's `HoverCard` puts between its anchor and the card (`overlay.rs`).
-pub(super) const CARD_GAP: f32 = 4.0;
-
 /// Which side of the item the card opens on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Side {
@@ -51,6 +48,6 @@ pub fn place(item: Rect, viewport: Rect) -> Option<Placement> {
     Some(Placement {
         side,
         x,
-        dx: x - item.x - CARD_GAP,
+        dx: x - item.x,
     })
 }

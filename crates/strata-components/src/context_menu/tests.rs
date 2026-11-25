@@ -159,13 +159,17 @@ fn app_key(s: &mut Host, ev: &KeyEvent, _: &mut rune::Tx) -> bool {
     false
 }
 
-fn runtime() -> Runtime<Host> {
-    let mut rt = Runtime::new(Host::new(), view, (W, H), Env::new(false, 1.0));
+fn runtime_sized(w: f32, h: f32) -> Runtime<Host> {
+    let mut rt = Runtime::new(Host::new(), view, (w, h), Env::new(false, 1.0));
     rt.poll = Some(poll);
     rt.on_key = Some(app_key);
     rt.frame(0.0);
     rt.frame(1.0 / 60.0);
     rt
+}
+
+fn runtime() -> Runtime<Host> {
+    runtime_sized(W, H)
 }
 
 fn step(rt: &mut Runtime<Host>) {
@@ -482,7 +486,8 @@ fn a_release_without_a_press_on_a_row_runs_nothing() {
     let [x, y, w, h] = live(&rt, "m-item7").unwrap().rect;
     rt.pointer_up(x + w / 2.0, y + h / 2.0);
     step(&mut rt);
-    rt.secondary_down(x - 50.0, y);
+    let [sx, sy, sw, sh] = live(&rt, "m-item6").unwrap().rect;
+    rt.secondary_down(sx + sw / 2.0, sy + sh / 2.0);
     step(&mut rt);
     rt.pointer_move(x + w / 2.0, y + h / 2.0);
     step(&mut rt);
@@ -1303,7 +1308,9 @@ fn the_chooser_minimum_counts_a_submenu_two_levels_in() {
             ])],
         ),
     ]));
-    let mut rt = runtime();
+    // Measure the three open levels in a viewport wide enough that Rune's anchored_fit
+    // clamping does not shrink the deepest submenu before comparing against chooser_minimum.
+    let mut rt = runtime_sized(1200.0, H);
     rt.update(|s, _| {
         s.menu.open(
             MenuTarget::Background,
@@ -1381,18 +1388,14 @@ fn a_clipboard_read_for_an_earlier_menu_is_dropped() {
 }
 
 #[test]
-fn a_right_click_outside_an_open_menu_leaves_it_open_on_its_target() {
+fn a_right_click_outside_an_open_menu_dismisses_it() {
     let mut rt = opened();
     rt.secondary_down(W - 10.0, H - 10.0);
     step(&mut rt);
     rt.secondary_up(W - 10.0, H - 10.0);
     step(&mut rt);
-    assert!(rt.state.menu.is_open());
-    assert_eq!(
-        rt.state.menu.target(),
-        Some(&MenuTarget::Entry(EntryId::new(4)))
-    );
-    assert_eq!(rt.state.dismissed, 0);
+    assert!(!rt.state.menu.is_open());
+    assert_eq!(rt.state.dismissed, 1);
 }
 
 #[test]

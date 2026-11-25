@@ -44,14 +44,15 @@ impl<S: 'static> ColorPicker<S> {
         if open {
             // Inside the popover's widest body the picker keeps its padding.
             let width = m.width.min(POPOVER_MAX_W - 2.0 * pad);
-            let body = self.body(s, look, m, width).role("none").modal_tx(
-                true,
-                move |s: &mut S, tx: &mut Tx| {
+            let body = self
+                .body(s, look, m, width)
+                .role("none")
+                .modal_tx(true, move |s: &mut S, tx: &mut Tx| {
                     if get_mut(s).is_open() {
                         dismiss.close(s, false, tx);
                     }
-                },
-            );
+                })
+                .modal_wheel_outside(true);
             popover = popover.child(body);
         }
         row().child(popover.build(k, layer))

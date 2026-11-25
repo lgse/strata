@@ -5,8 +5,7 @@
 use std::rc::Rc;
 
 use rune::{
-    Align, Drag, El, KeyEvent, LiveRegion, PointerButton, PointerPress, Side, TextStyle, Tx, col,
-    row, text, text_input,
+    Align, El, KeyEvent, LiveRegion, PointerPress, Side, TextStyle, Tx, col, row, text, text_input,
 };
 use strata_kit::look::Look;
 
@@ -176,15 +175,11 @@ fn build<S: 'static>(cfg: &Rc<RenameEditor<S>>, s: &S, rcx: &RowCx<'_>) -> El {
         field = field.invalid(true).description(message.to_owned());
     }
 
-    // Use `textbox` role so margin presses route into the field rather than dismissing the edit;
-    // absorb middle-button presses with a no-op drag handler so they do not bubble to the
-    // collection and open the row in a new tab.
+    // `role("textbox")` routes margin primary, secondary, and middle-button presses into the
+    // inner `text_input` rather than dismissing the edit or leaking to the collection.
     row()
         .key(EDITOR)
         .role("textbox")
-        .on_secondary_press(menu_press(cfg))
-        .pointer_buttons([PointerButton::Middle])
-        .on_drag(|_: &mut S, _: &mut Drag, _: &mut Tx| {})
         .grow(1.0)
         .min_w(0.0)
         .h_full()
@@ -210,7 +205,7 @@ fn returns_to<S>(cfg: &RenameEditor<S>, rcx: &RowCx<'_>) -> String {
     named.unwrap_or_else(|| rcx.scope.to_owned())
 }
 
-/// The field's menu press, on the field and on the box around it.
+/// The field's menu press.
 fn menu_press<S: 'static>(
     cfg: &Rc<RenameEditor<S>>,
 ) -> impl Fn(&mut S, PointerPress, &mut Tx) + 'static {

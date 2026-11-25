@@ -21,7 +21,6 @@ use rune::{Color, Span, Waker};
 use syntect::highlighting::Theme;
 
 pub use blocks::CodeBlocks;
-pub use spans::MAX_SPANS;
 
 /// Number of bundled syntax definitions loaded for code previews.
 pub fn language_count() -> usize {
@@ -551,10 +550,6 @@ impl CodeDoc {
             }
             if let Some(Some(c)) = self.cache.get(i) {
                 spans::colored(&c.tokens, &self.palette, self.lines.start(i), &mut runs);
-            }
-            if runs.len() >= MAX_SPANS {
-                runs.truncate(MAX_SPANS);
-                break;
             }
         }
         runs.into_iter().map(|(r, c)| spans::span(r, c)).collect()

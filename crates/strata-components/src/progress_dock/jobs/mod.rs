@@ -407,6 +407,7 @@ impl<S: 'static> Jobs<S> {
             })
             // Escape and a press outside hide it, as Minimize does; no job is cancelled.
             .modal(true, move |s: &mut S| get_mut(s).close())
+            .modal_wheel_outside(true)
             .child(header)
             .child(
                 col()

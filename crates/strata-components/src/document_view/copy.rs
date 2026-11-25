@@ -132,9 +132,6 @@ fn table_part(out: &mut String, pieces: &[Piece<'_>]) {
     }
 }
 
-const RUNE_ROWS: usize = 10_000;
-const RUNE_BYTES: usize = 4 << 20;
-
 /// Whether the document has any selectable prose or table text.
 pub(crate) fn has_selectable_text(state: &Content) -> bool {
     ends(state).is_some()
@@ -185,9 +182,6 @@ pub(crate) fn reads_whole(state: &Content, sel: &TextSelection) -> bool {
     };
     let mut first = None;
     let mut last = None;
-    let mut unit_count = 0usize;
-    let mut prev_unit = None;
-    let mut bytes = 0usize;
     for t in sel.texts().iter().filter(|t| t.is_selected()) {
         if !t.is_whole() {
             return false;
@@ -197,17 +191,9 @@ pub(crate) fn reads_whole(state: &Content, sel: &TextSelection) -> bool {
             first = Some(loc);
         }
         last = Some(loc);
-        if let Some((u, _)) = loc
-            && prev_unit != Some(u)
-        {
-            prev_unit = Some(u);
-            unit_count += 1;
-        }
-        bytes += t.len();
     }
     if first != Some(Some(doc_first)) {
         return false;
     }
-    let cut = unit_count >= RUNE_ROWS || bytes >= RUNE_BYTES;
-    last == Some(Some(doc_last)) || cut
+    last == Some(Some(doc_last)) || sel.truncated()
 }

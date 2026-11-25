@@ -203,8 +203,8 @@ fn activate<S: 'static>(ctx: &Ctx<'_, S>, el: El, item: ItemId, new_tab: bool) -
             tx.live_only();
         })
         .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-            let dropped = access(s).dropped.take();
-            if !tx.by_keys() && dropped.as_ref() == Some(&press_item) {
+            let cancelled = access(s).cancelled_press.take();
+            if !tx.by_keys() && cancelled.as_ref() == Some(&press_item) {
                 return;
             }
             let via = if tx.by_keys() {
@@ -361,7 +361,12 @@ pub(crate) fn folder_row<S: 'static>(
         rail_row(look, icon, spec.selected)
     } else {
         let trailing = match (spec.keycap, ctx.state.keycaps) {
-            (Some(cap), true) => Some(Keybind::new(&[cap]).build(&look.kit).a11y_hidden()),
+            (Some(cap), true) => Some(
+                Keybind::new(&[cap])
+                    .keep_case()
+                    .build(&look.kit)
+                    .a11y_hidden(),
+            ),
             _ => None,
         };
         full_row(look, icon, spec.label, spec.selected, trailing)

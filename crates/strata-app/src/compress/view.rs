@@ -122,8 +122,7 @@ fn name_field(look: &Look, form: &Form) -> El {
             let form = app.compress.form.as_mut().expect("compress form");
             &mut form.name
         })
-        .on_input_change(|app: &mut App, _: &mut Tx| super::name_changed(app))
-        .on_secondary_press(|_: &mut App, _, _| {});
+        .on_input_change(|app: &mut App, _: &mut Tx| super::name_changed(app));
     if let Some(error) = form.name_error {
         input = input.description(tr(error));
     }
@@ -233,8 +232,7 @@ fn secret_field(look: &Look, edit: &TextEdit, spec: SecretSpec) -> El {
         .shrink()
         .min_w(0.0)
         .revealed(spec.revealed)
-        .on_edit(spec.on_edit)
-        .on_secondary_press(|_: &mut App, _, _| {});
+        .on_edit(spec.on_edit);
     let peek_icon = if spec.revealed {
         IconName::EyeOff
     } else {
@@ -274,7 +272,6 @@ fn field_frame(look: &Look, inner: El, focused: bool, invalid: bool) -> El {
     let kit = &look.kit;
     let framed = inner
         .role("textbox")
-        .on_secondary_press(|_: &mut App, _, _| {})
         .radius(kit.radius.md)
         .fill(kit.c.bg_base)
         .token_motion(kit.motion.control);

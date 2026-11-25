@@ -347,7 +347,7 @@ pub(crate) fn failure<S: 'static>(
                 .on_press_tx(retry)
                 .build(k)
                 .key(format!("{key}-retry"))
-                .on_key(crate::preview_drawer::return_as_space::<S>),
+                .press_on_return(),
         )
 }
 

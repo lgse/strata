@@ -119,8 +119,7 @@ fn address_input(look: &Look, form: &Form, label: &str) -> El {
                     .expect("connect-server form")
                     .address
             })
-            .on_input_change(|app: &mut App, _: &mut Tx| clear_error(app))
-            .on_secondary_press(|_: &mut App, _, _| {});
+            .on_input_change(|app: &mut App, _: &mut Tx| clear_error(app));
     }
     if let Some(message) = &form.error {
         input = input.description(message.clone());
@@ -141,7 +140,6 @@ fn address_frame(look: &Look, form: &Form, key: &str, input: El) -> El {
         .min_w(0.0)
         .child(input)
         .role("textbox")
-        .on_secondary_press(|_: &mut App, _, _| {})
         .radius(kit.radius.md)
         .fill(kit.c.bg_base)
         .token_motion(kit.motion.control);

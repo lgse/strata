@@ -61,7 +61,7 @@ pub(super) fn action_button<S: 'static>(
         .focusable(true)
         .focus_ring(2.0, 1.0, k.alpha(k.c.border_focus, FOCUS_RING_OPACITY))
         .on_press_tx(on_press)
-        .on_key(super::return_as_space::<S>)
+        .press_on_return()
 }
 
 pub(super) fn header<S: 'static>(

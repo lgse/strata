@@ -49,23 +49,6 @@ fn via_name(via: Via) -> &'static str {
     }
 }
 
-#[expect(unsafe_code, reason = "dlopen and dlsym of libwayland-client")]
-fn libwayland_has_get_display() -> bool {
-    // SAFETY: a NUL-terminated name; loading libwayland-client runs no code of ours.
-    let lib = unsafe {
-        libc::dlopen(
-            c"libwayland-client.so.0".as_ptr(),
-            libc::RTLD_NOW | libc::RTLD_LOCAL,
-        )
-    };
-    if lib.is_null() {
-        return false;
-    }
-    // SAFETY: `lib` is a live handle and the symbol name is NUL-terminated. Never closed.
-    let sym = unsafe { libc::dlsym(lib, c"wl_proxy_get_display".as_ptr()) };
-    !sym.is_null()
-}
-
 /// The probe app and its window.
 struct Probe {
     app: Proc,
@@ -160,17 +143,8 @@ impl Probe {
     }
 
     fn shared(&self) -> bool {
-        let have = libwayland_has_get_display();
-        assert_eq!(self.attached["shared"], have, "{}", self.attached);
-        if !have {
-            let why = self.attached["unsupported"].as_str().unwrap_or_default();
-            assert!(why.contains("libwayland < 1.23"), "{}", self.attached);
-            eprintln!(
-                "libwayland < 1.23 here: only checked that winit's display is reported \
-                 Unsupported; the shared route didn't run"
-            );
-        }
-        have
+        assert_eq!(self.attached["shared"], true, "{}", self.attached);
+        true
     }
 
     fn no_errors(&self) {
@@ -438,7 +412,7 @@ fn a_data_device_write_the_compositor_drops_is_reported_cancelled() {
 #[ignore = "needs a private session: mise run test-platform"]
 fn without_winits_display_a_wayland_window_falls_back_to_its_own_data_control() {
     let s = Session::start();
-    let probe = Probe::start(&s, Display::Wayland, &["--as-if-libwayland-1-22"]);
+    let probe = Probe::start(&s, Display::Wayland, &["--as-if-no-shared-display"]);
     let a = &probe.attached;
     assert_eq!(
         (a["shared"].as_bool(), a["own"].as_bool()),
@@ -446,7 +420,7 @@ fn without_winits_display_a_wayland_window_falls_back_to_its_own_data_control() 
         "{a}"
     );
     let why = a["unsupported"].as_str().unwrap_or_default();
-    assert!(why.contains("libwayland < 1.23"), "{a}");
+    assert!(why.contains("display"), "{a}");
     assert!(a["data_control"].is_string(), "{a}");
     let at = probe.send(json!({
         "cmd": "own", "via": Via::DataDevice, "selection": Selection::Clipboard, "offers": three(),
@@ -481,7 +455,7 @@ fn without_any_wayland_route_a_wayland_window_takes_x11_selections_through_xwayl
         &s,
         Display::Wayland,
         &[
-            "--as-if-libwayland-1-22",
+            "--as-if-no-shared-display",
             "--as-if-no-data-control",
             "--x11-fallback",
         ],
@@ -563,7 +537,7 @@ fn without_any_route_and_no_x_server_a_wayland_window_is_unsupported() {
     cmd.args([
         "--title",
         "p0 probe",
-        "--as-if-libwayland-1-22",
+        "--as-if-no-shared-display",
         "--as-if-no-data-control",
         "--x11-fallback",
     ]);
@@ -1097,10 +1071,6 @@ fn closing_the_last_window_tears_the_wayland_binding_down() {
 #[ignore = "needs a private session: mise run test-platform"]
 fn a_window_attached_after_the_only_attached_one_closed_hears_the_clipboard() {
     let s = Session::start();
-    if !libwayland_has_get_display() {
-        eprintln!("libwayland < 1.23 here: no winit's display, so no reader; nothing ran");
-        return;
-    }
     let mut cmd = s.command(example("transfer-probe"), Display::Wayland);
     cmd.args(["--title", "p0 host", "--host"]);
     let app = s.spawn("probe", cmd);

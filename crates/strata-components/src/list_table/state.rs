@@ -2,8 +2,6 @@
 
 //! [`ListTableState`]: what the table keeps between frames, in the host's state.
 
-use std::cell::Cell;
-
 use super::column::ColumnId;
 use super::layout::DropSite;
 use crate::contract::Rect;
@@ -44,7 +42,6 @@ pub struct ListTableState {
     /// The heading strip's rect in window points, as last laid out.
     pub(super) strip: Rect,
     pub(super) drag: Option<HeadingDrag>,
-    pub(super) suppress_press: Cell<bool>,
     pub(super) resize: Option<Resize>,
     pub(super) menu: Option<MenuAt>,
     pub(super) bar: Bar,
@@ -64,13 +61,8 @@ impl ListTableState {
     pub fn reset(&mut self) {
         self.drag = None;
         self.resize = None;
-        self.suppress_press.set(false);
         self.bar.release();
         self.sideways_bar.release();
-    }
-
-    pub(super) fn end_frame(&self) {
-        self.suppress_press.set(false);
     }
 
     /// Opens the columns menu at `at`: `MenuAt::Headings``(None)` is Strata's "Customize columns…".

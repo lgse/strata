@@ -4,10 +4,9 @@ use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
     rc::Rc,
-    time::Duration,
 };
 
-use rune::{Drag, DragOutcome, El, Phase, Pick, Picked, Tx, el};
+use rune::{Drag, DragOutcome, El, Phase, Pick, Picked, Tx, col, el};
 use strata_components::contract::{
     Dnd as Binder,
     dnd::{
@@ -21,7 +20,7 @@ use super::{
     adapter::{
         action_to_p1, drag_item, encode_uri_list, offer_of_p1, point_of_p1, set_running, target_of,
     },
-    drag::{Change, Gesture, Hit, InWindowDrag, Launch, StandIn, TailProbe},
+    drag::{Change, Gesture, Hit, InWindowDrag, Launch, TailProbe},
     registry::{self, Landing, PointZone, Probe, Registry, scoped_id},
 };
 use crate::{App, shell};
@@ -218,11 +217,7 @@ impl Wiring {
         let Some((drag, key)) = self.0.phase.borrow_mut().take() else {
             return Err("no drag phase to start from".to_owned());
         };
-        let gesture = Gesture {
-            drag: &drag,
-            source: &key,
-        };
-        if self.0.windowed.get() && self.start_p1(gesture, &mut launch, tx)? {
+        if self.0.windowed.get() && self.start_p1(&mut launch, tx)? {
             return Ok(());
         }
         let in_window = self.in_window_drag(app, &key, launch);
@@ -230,25 +225,18 @@ impl Wiring {
         Ok(())
     }
 
-    fn start_p1(
-        &self,
-        gesture: Gesture<'_>,
-        launch: &mut Launch,
-        tx: &mut Tx,
-    ) -> Result<bool, String> {
+    fn start_p1(&self, launch: &mut Launch, tx: &mut Tx) -> Result<bool, String> {
         let item = drag_item(&launch.payload, launch.icon.take());
         let end = launch.on_end.clone();
         set_running(Some(launch.payload.clone()));
-        let res = self.0.p1.borrow().start_drag(
-            tx,
-            gesture.drag,
-            gesture.source,
-            item,
-            move |app: &mut App, outcome, tx| {
+        let res = self
+            .0
+            .p1
+            .borrow()
+            .start_drag(tx, item, move |app: &mut App, outcome, tx| {
                 set_running(None);
                 end(app, outcome, tx);
-            },
-        );
+            });
         match res {
             Ok(()) => Ok(true),
             Err(P1Error::NotAttached) => {
@@ -278,7 +266,6 @@ impl Wiring {
             seq: 0,
             origin_tab: shell::tabs::shown_tab(app),
             tab_tail: None,
-            stand_in: StandIn::Waiting,
             on_end: Some(launch.on_end),
         });
     }
@@ -300,7 +287,6 @@ impl Wiring {
             seq: 0,
             origin_tab: shell::tabs::shown_tab(app),
             tab_tail: None,
-            stand_in: StandIn::Waiting,
             on_end: Some(launch.on_end),
         }
     }
@@ -571,33 +557,40 @@ impl Wiring {
         Dropped::new(drag.offer, data, mods).point(point)
     }
 
-    pub(crate) fn poll_stand_in(&self, app: &App, tx: &mut Tx) -> bool {
+    pub(crate) fn keep_alive(&self, app: &App) -> Option<El> {
         let shown_tab = shell::tabs::shown_tab(app);
-        let mut slot = self.0.in_window.borrow_mut();
-        let Some(drag) = slot.as_mut().filter(|d| d.tab_tail.is_some()) else {
-            return false;
-        };
-        let needed = drag.origin_tab != shown_tab || !drag.source_mounted(app);
-        let (next, rebuild) = drag.stand_in.step(needed);
-        drag.stand_in = next;
-        if next == StandIn::Due {
-            tx.instant();
-            tx.wake_after(Duration::ZERO);
-        }
-        rebuild
-    }
-
-    pub(crate) fn keep_alive(&self, _app: &App) -> Option<El> {
         let slot = self.0.in_window.borrow();
-        let drag = slot.as_ref().filter(|d| d.stand_in == StandIn::Mounted)?;
+        let drag = slot
+            .as_ref()
+            .filter(|d| d.origin_tab != shown_tab || !d.source_mounted(app))?;
         let tail = drag.tab_tail.as_deref()?;
-        Some(
-            el().key(tail.join("/"))
+        let mut segs = tail.iter().filter(|seg| !seg.starts_with('#')).rev();
+        let leaf_key = segs.next()?;
+        let leaf = el()
+            .key(leaf_key.clone())
+            .size(0.0, 0.0)
+            .opacity(0.0)
+            .focusable(false)
+            .a11y_hidden()
+            .on_drag(super::keep_alive_drag);
+        let stand_in = segs.fold(leaf, |child, seg| {
+            col()
+                .key(seg.clone())
                 .size(0.0, 0.0)
                 .opacity(0.0)
-                .focusable(false)
                 .a11y_hidden()
-                .on_drag(super::keep_alive_drag),
+                .child(child)
+        });
+        // An unkeyed wrapper keeps the stand-in's path distinct from the live tab when the drag's
+        // source unmounted within the same tab, while Rune's `rebound_press_path` still matches
+        // its keyed path segments.
+        Some(
+            col()
+                .size(0.0, 0.0)
+                .opacity(0.0)
+                .absolute(0.0, 0.0)
+                .a11y_hidden()
+                .child(stand_in),
         )
     }
 

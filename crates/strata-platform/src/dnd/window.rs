@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rune::{AppHandle, Drag, DragOutcome, El, Key, KeyEvent, Mods, Pick, Picked, Tx, WindowHandle};
+use rune::{AppHandle, Drag, DragOutcome, El, Pick, Picked, Tx, WindowHandle};
 
 use super::api::{
     AskReply, DragAction, DragItem, DragSource, DropData, DropOffer, DropPoint, DropTarget, EndFn,
@@ -17,7 +17,7 @@ use super::hub::{self, InEvent, InPort, Job, Poster, Routed, Sink};
 use super::local;
 use super::negotiate;
 use super::registry::Registry;
-use super::session::{self, Decision, Guard, Landing, Release, Step};
+use super::session::{self, Decision, Guard, Landing, Step};
 use crate::transfer::{ReadError, mime};
 
 pub struct Dnd<S: 'static>(Rc<Core<S>>);
@@ -114,40 +114,11 @@ pub(crate) struct Core<S: 'static> {
     ends: RefCell<HashMap<u64, EndFn<S>>>,
     /// The hit test whose answer counts: older ones are stale.
     seq: Cell<u64>,
-    /// The drag started from this window, and whether its guard waits for a real release.
-    out: Cell<Option<(u64, Release)>>,
-    source: RefCell<Option<SourceAt>>,
+    /// The drag started from this window, if any (for headless tests).
+    #[cfg(test)]
+    out: Cell<Option<u64>>,
     /// Test switches for strata-platform's own tests ([`Dnd::test_route`]).
     test: Cell<hub::TestRoute>,
-}
-
-#[derive(Clone, Debug)]
-struct SourceAt {
-    id: u64,
-    /// Shared with the pick's callback, so a check copies no string.
-    path: Option<Rc<str>>,
-    at: (f32, f32),
-}
-
-fn selector(path: &str) -> String {
-    path.split('/')
-        .filter(|s| !s.is_empty() && !s.starts_with('#'))
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-fn through(path: &str, key: &str) -> Option<String> {
-    let segs: Vec<&str> = path.split('/').collect();
-    let i = segs.iter().position(|s| *s == key)?;
-    Some(segs[..=i].join("/"))
-}
-
-/// Whether `picked` is the element at `path` or inside it.
-fn under(picked: &str, path: &str) -> bool {
-    picked == path
-        || picked
-            .strip_prefix(path)
-            .is_some_and(|r| r.starts_with('/'))
 }
 
 impl<S: 'static> Sink for Core<S> {
@@ -208,8 +179,8 @@ impl<S: 'static> Dnd<S> {
             pending: RefCell::new(HashMap::new()),
             ends: RefCell::new(HashMap::new()),
             seq: Cell::new(0),
+            #[cfg(test)]
             out: Cell::new(None),
-            source: RefCell::new(None),
             test: Cell::new(hub::TestRoute::default()),
         }))
     }
@@ -256,7 +227,6 @@ impl<S: 'static> Dnd<S> {
 
     pub fn drag_source(&self, el: El, key: &str, source: DragSource<S>) -> El {
         let me = self.clone();
-        let source_key = key.to_owned();
         el.key(key)
             .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
                 let decision = me.0.guard.borrow_mut().phase(Step::of(d), source.threshold);
@@ -276,7 +246,7 @@ impl<S: 'static> Dnd<S> {
                             return pass(s, d, tx);
                         };
                         let end = source.on_end.clone();
-                        match me.begin(tx, d, &source_key, item, end) {
+                        match me.begin(tx, item, end) {
                             Ok(()) => {
                                 if let Some(f) = &source.on_start {
                                     f(s, tx);
@@ -295,12 +265,10 @@ impl<S: 'static> Dnd<S> {
     pub fn start_drag(
         &self,
         tx: &mut Tx,
-        drag: &Drag,
-        key: &str,
         item: DragItem,
         on_end: impl Fn(&mut S, DragOutcome, &mut Tx) + 'static,
     ) -> Result<(), Error> {
-        self.begin(tx, drag, key, item, Some(Rc::new(on_end)))
+        self.begin(tx, item, Some(Rc::new(on_end)))
     }
 
     pub fn owns(&self, drag: &Drag) -> bool {
@@ -323,14 +291,7 @@ impl<S: 'static> Dnd<S> {
         hub::cancel_drag();
     }
 
-    fn begin(
-        &self,
-        tx: &mut Tx,
-        drag: &Drag,
-        source_key: &str,
-        item: DragItem,
-        end: Option<EndFn<S>>,
-    ) -> Result<(), Error> {
+    fn begin(&self, tx: &mut Tx, item: DragItem, end: Option<EndFn<S>>) -> Result<(), Error> {
         #[cfg(test)]
         let key = self.0.key.borrow().clone().unwrap_or_default();
         #[cfg(not(test))]
@@ -339,36 +300,12 @@ impl<S: 'static> Dnd<S> {
         if let Some(end) = end {
             self.0.ends.borrow_mut().insert(id, end);
         }
-        self.0.out.set(Some((id, release)));
-        self.0.guard.borrow_mut().started(release);
-        let [wx, wy] = drag.window_point();
-        let at = (wx - drag.dx, wy - drag.dy);
-        *self.0.source.borrow_mut() = Some(SourceAt { id, path: None, at });
-        let core = Rc::downgrade(&self.0);
-        let k = source_key.to_owned();
-        tx.element_at_in_with(
-            source_key.to_owned(),
-            at.0,
-            at.1,
-            Pick::new().transparent(true),
-            move |_: &mut S, picked: Option<Picked>, _: &mut Tx| {
-                let path = picked.and_then(|p| through(p.path(), &k)).map(Rc::from);
-                if let Some(core) = core.upgrade()
-                    && let Some(src) = core.source.borrow_mut().as_mut().filter(|s| s.id == id)
-                {
-                    src.path = path;
-                }
-            },
-        );
-        Ok(())
-    }
-
-    /// For the headless tests: the compositor's proof arrives, with no platform to ask.
-    #[cfg(test)]
-    pub(crate) fn holding_for_test(&self, tx: &mut Tx) {
-        if let Some((id, _)) = self.0.out.get() {
-            self.0.holding(id, tx, || true);
+        #[cfg(test)]
+        self.0.out.set(Some(id));
+        if self.0.guard.borrow_mut().started(release) {
+            tx.cancel_pointer();
         }
+        Ok(())
     }
 
     /// For the headless tests: `r` is routed to this window, as the hub would.
@@ -418,58 +355,13 @@ impl<S: 'static> Dnd<S> {
     /// For the headless tests: the drag this window started, if any.
     #[cfg(test)]
     pub(crate) fn drag_id_for_test(&self) -> Option<u64> {
-        self.0.out.get().map(|(id, _)| id)
+        self.0.out.get()
     }
 }
 
 impl<S: 'static> Core<S> {
     fn key(&self) -> String {
         self.key.borrow().clone().unwrap_or_default()
-    }
-
-    fn holding(self: &Rc<Self>, id: u64, tx: &mut Tx, live: impl FnOnce() -> bool) {
-        if self.out.get() != Some((id, Release::Escape)) {
-            return;
-        }
-        let may = self.guard.borrow().may_escape();
-        if !may || !live() {
-            return;
-        }
-        self.escape_if_live(id, tx);
-    }
-
-    fn escape_if_live(self: &Rc<Self>, id: u64, tx: &mut Tx) {
-        let (path, at) = {
-            let src = self.source.borrow();
-            let Some(src) = src.as_ref().filter(|s| s.id == id) else {
-                return;
-            };
-            // No path: the start's pick found no source, and nothing says the capture is live.
-            let Some(path) = src.path.clone() else {
-                return;
-            };
-            (path, src.at)
-        };
-        let core = Rc::downgrade(self);
-        tx.element_at_in_with(
-            selector(&path),
-            at.0,
-            at.1,
-            Pick::new().transparent(true),
-            move |_: &mut S, picked: Option<Picked>, tx: &mut Tx| {
-                let live = picked.is_some_and(|p| under(p.path(), &path));
-                let Some(core) = core.upgrade() else {
-                    return;
-                };
-                if live && core.guard.borrow_mut().take_escape() {
-                    // The cancelled Up this brings is the guard's to swallow.
-                    tx.send_key(KeyEvent {
-                        key: Key::Escape,
-                        mods: Mods::default(),
-                    });
-                }
-            },
-        );
     }
 
     /// Handles what was routed to this window. True if app code ran.
@@ -482,10 +374,6 @@ impl<S: 'static> Core<S> {
             };
             changed |= match r {
                 Routed::In(ev) => self.on_in(ev, s, tx),
-                Routed::Holding { id } => {
-                    self.holding(id, tx, || hub::still_holding(id));
-                    false
-                }
                 Routed::Ended { id, outcome } => {
                     let f = self.ends.borrow_mut().remove(&id);
                     match f {

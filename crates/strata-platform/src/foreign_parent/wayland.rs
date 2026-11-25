@@ -62,7 +62,7 @@ impl Imports {
 /// Test switches, for strata-platform's own tests.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct Test {
-    pub(super) as_if_libwayland_below_1_23: bool,
+    pub(super) as_if_no_shared_display: bool,
 }
 
 /// Makes `window` (a Wayland window, key `key`) transient for the window `handle` names.
@@ -81,7 +81,7 @@ pub(super) fn apply<S: 'static>(
         });
     });
     let wants = Wants {
-        as_if_libwayland_below_1_23: test.as_if_libwayland_below_1_23,
+        as_if_no_shared_display: test.as_if_no_shared_display,
         ..Wants::default()
     };
     let transfer = match Transfer::attach(window, turn, wants) {
@@ -212,7 +212,7 @@ fn teardown(transfer: &Transfer) {
 
 pub(super) fn attach_failed(e: &Error) -> Outcome {
     match e {
-        Error::Unsupported(Unsupported::LibwaylandBelow1_23) => policy::without_winit_display(),
+        Error::Unsupported(Unsupported::NoSharedDisplay) => policy::without_winit_display(),
         Error::Unsupported(Unsupported::NotLinux(kind)) => {
             Outcome::parentless(Reason::NotLinux(kind.clone()), Fallback::Compositor)
         }
@@ -223,7 +223,7 @@ pub(super) fn attach_failed(e: &Error) -> Outcome {
 
 pub(super) fn no_shared_conn(status: &Status) -> Outcome {
     match &status.unsupported {
-        Some(Unsupported::LibwaylandBelow1_23) => policy::without_winit_display(),
+        Some(Unsupported::NoSharedDisplay) => policy::without_winit_display(),
         Some(u) => Outcome::parentless(Reason::Failed(u.to_string()), Fallback::Compositor),
         None => Outcome::parentless(
             Reason::Failed("winit's display isn't bound".into()),

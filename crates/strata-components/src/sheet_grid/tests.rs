@@ -824,3 +824,19 @@ fn cells_show_the_spreadsheet_cursor_while_headers_and_dividers_keep_theirs() {
     step(&mut rt);
     assert_eq!(rt.cursor(), Cursor::ResizeColumn);
 }
+
+#[test]
+fn a11y_click_on_a_gridcell_selects_it_and_focuses_the_grid() {
+    let mut rt = single(people(6));
+    let taken = rt.accessibility_action("g-r2-c1", rune::accesskit::Action::Click, None);
+    settle(&mut rt);
+    assert!(taken, "gridcell Click bubbles to SheetGrid::on_a11y_action");
+    assert_eq!(rt.state.grid.cursor(), Some(CellPos::new(2, 1)));
+    let focused: Vec<_> = rt
+        .elements()
+        .into_iter()
+        .filter(|e| e.focused)
+        .filter_map(|e| e.key)
+        .collect();
+    assert_eq!(focused, ["g"]);
+}

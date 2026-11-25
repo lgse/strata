@@ -156,13 +156,7 @@ impl<S: 'static> FilterBar<S> {
             .w_full()
             .px(look.space.sm)
             .py(look.space.xs)
-            .child(field::frame(
-                look,
-                inner,
-                st.edit.focused,
-                false,
-                &handlers.menu,
-            ));
+            .child(field::frame(look, inner, st.edit.focused, false));
         if let Some(to) = &self.focus_return {
             bar = bar.focus_return(to.clone());
         }
@@ -205,11 +199,11 @@ fn handlers<S: 'static>(bar: &Rc<FilterBar<S>>) -> Handlers<S> {
             let polled = (b_change.get_mut)(s).text_changed(|| before);
             b_change.route(s, polled, tx);
         }),
-        menu: Rc::new(move |s: &mut S, at, tx: &mut Tx| {
+        menu: Some(Rc::new(move |s: &mut S, at, tx: &mut Tx| {
             let mut polled = Polled::default();
             polled.push(FilterIntent::FieldMenu { at });
             b_menu.route(s, polled, tx);
-        }),
+        })),
     }
 }
 

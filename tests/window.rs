@@ -257,13 +257,15 @@ mod window {
         launched.app.wait_for(before, "the close refused", |line| {
             line.contains(REFUSED).then_some(())
         });
-        let closed = launched.window.id;
-        let reopened = s.wait_window_where("the window open again", |w| {
-            w.pid == launched.app.pid() && w.id != closed && w.title == "Projects — Strata"
+        std::thread::sleep(Duration::from_millis(200));
+        s.wait_window_where("the same window stays open", |w| {
+            w.pid == launched.app.pid()
+                && w.id == launched.window.id
+                && w.title == "Projects — Strata"
         });
 
-        std::thread::sleep(Duration::from_millis(3500));
-        s.sway_command(&format!("[con_id={}] kill", reopened.id));
+        std::thread::sleep(Duration::from_millis(3300));
+        s.sway_command(&format!("[con_id={}] kill", launched.window.id));
         assert!(
             launched.app.wait_exit().success(),
             "with the job done, the close ends the process"

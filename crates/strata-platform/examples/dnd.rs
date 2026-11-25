@@ -269,7 +269,7 @@ mod demo {
             && let Some(item) = item(s)
         {
             let dnd = s.dnd.clone();
-            match dnd.start_drag(tx, d, "manual", item, ended) {
+            match dnd.start_drag(tx, item, ended) {
                 Ok(()) => log(&s.window, "drag-start", json!({ "tile": "manual" })),
                 Err(e) => log(&s.window, "drag-error", json!({ "error": e.to_string() })),
             }
@@ -483,7 +483,7 @@ mod demo {
         rune::tooling::set_app_id("strata-dnd-demo");
         let handles: Handles = Arc::default();
         let route = TestRoute {
-            as_if_libwayland_below_1_23: flag("--as-if-libwayland-1-22"),
+            as_if_no_shared_display: flag("--as-if-no-shared-display"),
             as_if_no_data_control: flag("--as-if-no-data-control"),
         };
         let mut app = window_app(title, "main", &handles, route);
@@ -518,6 +518,7 @@ mod demo {
         rune::orderly_exit();
         static DRAWN: AtomicBool = AtomicBool::new(false);
         let result = app
+            .on_display_close(|| shutdown("main", "display-close"))
             .on_ready(|w: &WindowHandle| log("main", "ready", json!({ "key": w.key() })))
             .on_frame_drawn(|_| {
                 if !DRAWN.swap(true, Ordering::Relaxed) {

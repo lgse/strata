@@ -134,13 +134,20 @@ impl Part for List {
         single::sync_worn::<Self>(app);
     }
 
-    fn tab_shown(app: &mut App, _: &mut Tx) {
+    fn tab_shown(app: &mut App, tx: &mut Tx) {
         let saved = shell::preferences(app).clone();
         let chooser = app.browser.is_chooser_mode();
         let format = strata_core::util::DateFormat::parse(&saved.date_format);
         app.list.sync_columns(&saved, chooser);
         app.list.sync_date_format(format);
         single::sync_worn::<Self>(app);
+        single::restore_scroll::<Self>(app, tx);
+        if !app.filter.pane.shows() {
+            let x = app.list.table.sideways_feed().get().offset[0];
+            if x > 0.0 {
+                tx.scroll_to_instant(format!("{VIEW}-scroll"), x, 0.0);
+            }
+        }
     }
 
     fn publish(app: &mut App) {

@@ -85,23 +85,6 @@ fn fnv(offer: &Offer) -> String {
     fnv1a64(&offer.data.bytes().expect("offer bytes"))
 }
 
-/// Whether this host's libwayland-client has `wl_proxy_get_display` (1.23 or later).
-#[expect(unsafe_code, reason = "dlopen and dlsym of libwayland-client")]
-fn libwayland_has_get_display() -> bool {
-    // SAFETY: a NUL-terminated name; loading libwayland-client runs no code of ours.
-    let lib = unsafe {
-        libc::dlopen(
-            c"libwayland-client.so.0".as_ptr(),
-            libc::RTLD_NOW | libc::RTLD_LOCAL,
-        )
-    };
-    if lib.is_null() {
-        return false;
-    }
-    // SAFETY: `lib` is a live handle and the symbol name is NUL-terminated. Never closed.
-    !unsafe { libc::dlsym(lib, c"wl_proxy_get_display".as_ptr()) }.is_null()
-}
-
 /// The demo app and its window.
 struct Demo {
     app: Proc,
@@ -130,11 +113,6 @@ impl Demo {
         let attached = app.wait_json("attach", |v| {
             v["ev"] == "attached" || v["ev"] == "attach-error"
         });
-        if b == Some(B::D) && !libwayland_has_get_display() {
-            assert_eq!(attached["ev"], "attach-error", "{attached}");
-            eprintln!("libwayland < 1.23 here: the data-device route didn't run");
-            return None;
-        }
         assert_eq!(attached["ev"], "attached", "{attached}");
         if let Some(b) = b {
             assert_eq!(attached["route"], b.route(), "{attached}");
@@ -913,6 +891,7 @@ fn primary_round_trip(b: B) {
         &[Offer::text(UTF8, "the peer's primary")],
     );
     demo.change(at, "lost", Some(copy));
+    demo.change(at, "offered", None);
     let got = demo.read(Selection::Primary, &[UTF8], None);
     assert_eq!(got["text"], "the peer's primary");
     // The clipboard is apart from it.
@@ -1425,7 +1404,7 @@ fn wayland_without_any_wayland_route_copies_and_pastes_through_xwayland() {
     let demo = Demo::start_with(
         &s,
         Display::Wayland,
-        &["--as-if-libwayland-1-22", "--as-if-no-data-control"],
+        &["--as-if-no-shared-display", "--as-if-no-data-control"],
         &[Display::X11],
         None,
     )

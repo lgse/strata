@@ -195,16 +195,6 @@ impl<S: 'static> NumberField<S> {
         } else {
             frame
         };
-        if !self.disabled
-            && let Some(menu) = &self.menu
-        {
-            let menu = menu.clone();
-            frame = frame.on_secondary_press(move |s: &mut S, p: PointerPress, tx: &mut Tx| {
-                if menu(s, Point::new(p.x, p.y), tx) {
-                    get_mut(s).hold(true);
-                }
-            });
-        }
 
         let mut spin = el()
             .key(self.key.clone())

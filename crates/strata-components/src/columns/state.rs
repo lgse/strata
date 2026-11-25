@@ -386,7 +386,6 @@ impl ColumnsState {
         )));
         collection.controllers.keyboard = Some(Box::new(Keyboard::new(keys.clone())));
         collection.controllers.marquee = Some(Box::new(Marquee::new()));
-        collection.set_own_viewport_reveals(true);
         let scale = width::scale(look);
         // A saved width wider than the area opens narrowed to it; the setting stays.
         let limit = self
@@ -805,7 +804,7 @@ impl ColumnsState {
         let foreign = moved.abs() > 0.5 && (ahead.abs() < 0.5 || moved.signum() != ahead.signum());
         if foreign {
             if r.asked.is_some_and(|t| t + 1 >= self.ticks) {
-                tx.scroll_to_instant(keys::strip(&self.key), offset, 0.0);
+                tx.stop_scroll(keys::strip(&self.key));
             }
             return;
         }

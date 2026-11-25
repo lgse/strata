@@ -334,7 +334,6 @@ impl<S: 'static> ListTable<S> {
 
     /// The table: `base` with its parts and the heading strip.
     pub fn build(&self, s: &S, base: Collection<S>, layer: &mut Vec<El>) -> El {
-        (self.shared.parts)(s).table.end_frame();
         let shared = Rc::new(self.shared.clone());
         let resolved = self.resolved(s);
         let strip = header::strip(&shared, &resolved, s);

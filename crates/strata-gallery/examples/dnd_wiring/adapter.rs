@@ -303,17 +303,15 @@ impl<S: 'static> Wiring<S> {
         icon: Option<DragIcon>,
         on_end: impl Fn(&mut S, DragOutcome, &mut Tx) + 'static,
     ) -> Result<(), Error> {
-        let Some((drag, key)) = self.phase.borrow_mut().take() else {
+        let Some((_drag, _key)) = self.phase.borrow_mut().take() else {
             return Err(Error::Refused("no drag phase to start from"));
         };
         let item = drag_item(&payload, icon);
         OUT.with(|o| *o.borrow_mut() = Some(payload));
-        let r = self
-            .p1
-            .start_drag(tx, &drag, &key, item, move |s: &mut S, outcome, tx| {
-                OUT.with(|o| *o.borrow_mut() = None);
-                on_end(s, outcome, tx);
-            });
+        let r = self.p1.start_drag(tx, item, move |s: &mut S, outcome, tx| {
+            OUT.with(|o| *o.borrow_mut() = None);
+            on_end(s, outcome, tx);
+        });
         if r.is_err() {
             OUT.with(|o| *o.borrow_mut() = None);
         }

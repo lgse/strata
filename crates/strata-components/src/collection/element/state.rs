@@ -65,7 +65,6 @@ pub struct CollectionState {
     pub(super) header: Cell<Rect>,
     pub(super) deferred: Option<super::seam::PointerInput>,
     pub(crate) origin_press: Option<(Point, rune::Mods)>,
-    pub(super) own_viewport_reveals: bool,
 }
 
 impl Default for CollectionState {
@@ -99,7 +98,6 @@ impl Default for CollectionState {
             stuck_offset: Live::new([0.0, 0.0]),
             top_line: Cell::new(None),
             header: Cell::new(Rect::default()),
-            own_viewport_reveals: false,
             deferred: None,
             origin_press: None,
         }
@@ -159,17 +157,6 @@ impl CollectionState {
         let top = self.line_map(len).line_of(index) as f32 * h;
         let offset = self.scroll.get();
         top < offset + self.viewport.h && top + h > offset
-    }
-
-    pub(super) fn lines_in_view(&self, count: usize) -> Option<Range<usize>> {
-        let h = self.row_height;
-        if h <= 0.0 || self.viewport.h <= 0.0 || count == 0 {
-            return None;
-        }
-        let offset = self.scroll.get().max(0.0);
-        let first = ((offset / h).floor() as usize).min(count);
-        let last = (((offset + self.viewport.h) / h).ceil() as usize).min(count);
-        (first < last).then_some(first..last)
     }
 
     /// The part of the content the viewport shows, in content coordinates.
@@ -352,24 +339,13 @@ impl CollectionState {
         true
     }
 
-    /// Keeps every reveal of an entry (a key, a placed cursor, a reflow, a restore) to this collection's own viewport.
-    pub fn set_own_viewport_reveals(&mut self, on: bool) {
-        self.own_viewport_reveals = on;
-    }
-
     /// Scrolls the entry at `index` into view, mounted or not, just far enough.
     pub fn reveal(&self, scope: &str, source: &dyn EntrySource, index: usize, tx: &mut Tx) {
         if index >= source.len() {
             return;
         }
-        if self.viewport.w <= 0.0 || (self.own_viewport_reveals && self.row_height <= 0.0) {
+        if self.viewport.w <= 0.0 {
             self.reveal_after_layout.set(Some(source.id_at(index)));
-            return;
-        }
-        if self.own_viewport_reveals {
-            if let Some(target) = self.reveal_offset(source.len(), index) {
-                tx.scroll_to_instant(viewport_path(scope), 0.0, target);
-            }
             return;
         }
         let map = self.line_map(source.len());
@@ -443,12 +419,14 @@ impl CollectionState {
             Some(position) if listing == Listing::Loading => {
                 self.pending = Some(position.clone());
                 self.pending_offset = 0.0;
+                self.scroll.set(0.0);
                 let changed = self.selection.restore(&Position::default());
                 tx.scroll_to_instant(viewport_path(scope), 0.0, 0.0);
                 changed | self.selection.sync(source, SyncRule::loading())
             }
             Some(position) => self.apply_position(scope, source, position, SyncRule::default(), tx),
             None => {
+                self.scroll.set(0.0);
                 let changed = self.selection.restore(&Position::default());
                 tx.scroll_to_instant(viewport_path(scope), 0.0, 0.0);
                 let rule = match listing {
@@ -489,7 +467,7 @@ impl CollectionState {
             Some(offset) => tx.scroll_to_instant(viewport_path(scope), 0.0, offset),
             None => match self.selection.cursor_index(source) {
                 Some(index) if self.shows_line(index, source.len()) => {
-                    tx.scroll_to_instant(viewport_path(scope), 0.0, self.scroll.get());
+                    tx.stop_scroll(viewport_path(scope));
                 }
                 Some(index) => self.reveal(scope, source, index, tx),
                 None => tx.scroll_to_instant(viewport_path(scope), 0.0, 0.0),

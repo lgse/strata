@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use super::place::{CARD_GAP, MARGIN};
+use super::place::MARGIN;
 use super::*;
 use crate::collection::element::{RestReport, RestView};
 use crate::contract::{EntryId, Rect};
@@ -20,8 +20,7 @@ fn tile(x: f32) -> Rect {
 fn the_card_opens_right_of_the_item_and_else_left_of_it() {
     let p = place(tile(200.0), VIEWPORT).unwrap();
     assert_eq!((p.side, p.x), (Side::Right, 200.0 + 120.0 + GAP));
-    // The card rides an anchor HoverCard puts it 4 pt right of.
-    assert_eq!(p.dx, 120.0 + GAP - CARD_GAP);
+    assert_eq!(p.dx, 120.0 + GAP);
 
     let p = place(tile(680.0), VIEWPORT).unwrap();
     assert_eq!((p.side, p.x), (Side::Left, 680.0 - GAP - WIDTH));
@@ -41,7 +40,7 @@ fn with_no_room_either_side_the_card_covers_the_trailing_edge() {
     let row = Rect::new(200.0, 100.0, 600.0, 24.0);
     let p = place(row, VIEWPORT).unwrap();
     assert_eq!((p.side, p.x), (Side::Over, 800.0 - MARGIN - WIDTH));
-    assert_eq!(p.dx, p.x - row.x - CARD_GAP);
+    assert_eq!(p.dx, p.x - row.x);
 }
 
 // preview/quick-preview/folder-peek: "A viewport narrower than 256 px opens no peek."
@@ -187,7 +186,7 @@ fn a_peek_whose_folder_leaves_the_view_closes() {
 fn a_peek_whose_anchor_moved_sideways_closes() {
     let mut st = on();
     st.row_rest(&report(1, true));
-    let anchor = st.placement().unwrap().x - super::place::CARD_GAP;
+    let anchor = st.placement().unwrap().x;
     assert_eq!(st.anchor_drawn(anchor), Change::None, "where it opened");
     assert_eq!(st.anchor_drawn(anchor + 0.25), Change::None, "rounding");
     assert_eq!(st.anchor_drawn(anchor - 40.0), Change::Closed);

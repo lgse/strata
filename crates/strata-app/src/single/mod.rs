@@ -264,7 +264,6 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
         interrupted::<V>(app);
         crate::chooser::clicked_entry_in_chooser(app);
     })
-    // C3 replaces this with its own, which asks the Icons view's `IconsGrid::on_wheel` first.
     .on_wheel(wheeled::<V>)
     .on_intent(heard::<V>)
     .on_cursor(|app: &mut App, _, tx| moved(app, tx))
@@ -310,8 +309,6 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
     .on_drag_phase(|app: &mut App, d, key, tx| crate::dnd::drag_phase(app, d, key, tx))
     .marks(result_marks)
     .empty(filter::pane::status)
-    // C3 replaces this in Icons with its own, which asks the results grid's hook first.
-    .on_wheel(|app: &mut App, e, tx| crate::appearance::wheel::heard(app, e, tx))
     .on_intent(filter::pane::heard)
     .on_cursor(|app: &mut App, _, _| filter::picked(app))
     .on_selection(|app: &mut App, _| filter::picked(app))
@@ -378,16 +375,26 @@ pub(crate) fn interrupted<V: SinglePane>(app: &mut App) {
     V::single_mut(app).first_visit.interrupt();
 }
 
-/// A wheel over the view's entries: it ends a first visit, and scrolls as ever.
-pub(crate) fn wheeled<V: SinglePane>(app: &mut App, e: WheelEvent, tx: &mut Tx) -> bool {
+/// A wheel over the view's entries: it ends a first visit and bubbles on to the window's zoom or scroll.
+pub(crate) fn wheeled<V: SinglePane>(app: &mut App, _: WheelEvent, _: &mut Tx) -> bool {
     interrupted::<V>(app);
-    crate::appearance::wheel::heard(app, e, tx)
+    false
 }
 
-/// [`wheeled`] for the Icons grid, whose own hook C3 asks before its size wheel.
-pub(crate) fn wheeled_over_grid<V: SinglePane>(app: &mut App, e: WheelEvent, tx: &mut Tx) -> bool {
-    interrupted::<V>(app);
-    crate::appearance::wheel::over_grid(app, e, tx)
+/// Restores the view's scroll offset after its tab remounts.
+pub(crate) fn restore_scroll<V: SinglePane>(app: &App, tx: &mut Tx) {
+    let y = if app.filter.pane.shows() {
+        app.filter.pane.collection().scroll_offset()
+    } else {
+        pane::<V>(app).collection().scroll_offset()
+    };
+    if y > 0.0 {
+        tx.scroll_to_instant(
+            strata_components::collection::element::viewport_path(V::KEY),
+            0.0,
+            y,
+        );
+    }
 }
 
 /// What reads the view's share of each event out of the browser.

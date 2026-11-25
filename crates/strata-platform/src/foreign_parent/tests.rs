@@ -127,7 +127,7 @@ fn the_modal_state_is_added_or_removed_keeping_the_others() {
 fn an_unreachable_display_follows_decision_1() {
     let parentless = Outcome::parentless(Reason::NoDisplay, Fallback::Compositor);
     assert_eq!(
-        attach_failed(&Error::Unsupported(Unsupported::LibwaylandBelow1_23)),
+        attach_failed(&Error::Unsupported(Unsupported::NoSharedDisplay)),
         parentless
     );
     let status = Status {
@@ -135,7 +135,7 @@ fn an_unreachable_display_follows_decision_1() {
         shared: false,
         own: true,
         data_control: Some("ext"),
-        unsupported: Some(Unsupported::LibwaylandBelow1_23),
+        unsupported: Some(Unsupported::NoSharedDisplay),
         x11: false,
     };
     assert_eq!(no_shared_conn(&status), parentless);

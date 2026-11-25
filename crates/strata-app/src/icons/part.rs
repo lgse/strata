@@ -132,10 +132,11 @@ impl Part for Icons {
         sync_worn(app);
     }
 
-    fn tab_shown(app: &mut App, _: &mut Tx) {
+    fn tab_shown(app: &mut App, tx: &mut Tx) {
         let format = DateFormat::parse(&crate::shell::preferences(app).date_format);
         app.icons.sync_date_format(format);
         sync_worn(app);
+        single::restore_scroll::<Self>(app, tx);
     }
 
     fn listen(setup: &Setup<'_>) -> Option<Listener<App>> {

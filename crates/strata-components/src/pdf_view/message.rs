@@ -69,6 +69,7 @@ pub(crate) fn build<S: 'static>(
         })
         .build(k)
         .key(format!("{key}-open"))
+        .press_on_return()
         .mt(look.space.sm)
         // Inside the button's edge, as Strata's inset ring.
         .focus_ring(FOCUS_RING_WIDTH, -FOCUS_RING_WIDTH, k.c.border_focus)
@@ -83,7 +84,6 @@ pub(crate) fn build<S: 'static>(
             };
             let letter = |c: &str| letters && matches!(&ev.key, Key::Text(t) if t == c);
             match ev.key {
-                Key::Enter => send(s, PdfIntent::Open, tx),
                 Key::Left => send(s, PdfIntent::Leave, tx),
                 Key::Up | Key::Down | Key::Right => {}
                 _ if letter("h") => send(s, PdfIntent::Leave, tx),

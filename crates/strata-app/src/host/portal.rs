@@ -162,6 +162,10 @@ pub(crate) fn run_with(
         .on_quit(|_: &mut Daemon, _: &mut Tx| {
             crate::dnd::shutdown();
             let _ = foreign_parent::shutdown();
+        })
+        .on_display_close(|| {
+            crate::dnd::shutdown();
+            let _ = foreign_parent::shutdown();
         });
     let daemon_handle = daemon_app.handle();
     if let Some(started) = hooks.started.take() {
@@ -304,6 +308,12 @@ fn open_chooser_window(
     shell::bind_backdrop_blur(&mut state, blur);
     state.open(initial);
     let handle = app.handle();
+    let wake = handle.clone();
+    state
+        .window
+        .set_image_cache(Arc::new(rune::ImageCache::new(Arc::new(move || {
+            wake.wake();
+        }))));
     let window = rune::open_window(WindowSpec::from_app(&token, app).state(state));
     if cancelled.load(Ordering::SeqCst) {
         handle.update_if(crate::chooser::cancel);

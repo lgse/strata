@@ -199,7 +199,8 @@ pub struct SidebarState {
     drop: Option<(DropSite, DropHover)>,
     /// The drag over the sidebar, as its offer said: from this process, and its serial.
     pub(crate) drag: Option<(bool, u64)>,
-    pub(crate) dropped: Option<ItemId>,
+    /// A row press cancelled by a relist before crossing Rune's click slop: swallow its release click.
+    pub(crate) cancelled_press: Option<ItemId>,
     /// Each row's laid-out box, in window points: where a menu the keyboard opens on it goes.
     pub(crate) boxes: HashMap<ItemId, [f32; 4]>,
     pub(crate) resizing: bool,
@@ -219,7 +220,7 @@ impl Default for SidebarState {
             scroll_bar: sidebar_bar(),
             drop: None,
             drag: None,
-            dropped: None,
+            cancelled_press: None,
             boxes: HashMap::new(),
             resizing: false,
             last_shown: Cell::new(None),

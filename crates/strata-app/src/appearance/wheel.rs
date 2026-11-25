@@ -68,10 +68,3 @@ pub(crate) fn heard(app: &mut App, e: WheelEvent, tx: &mut Tx) -> bool {
     }
     true
 }
-
-pub(crate) fn over_grid(app: &mut App, e: WheelEvent, tx: &mut Tx) -> bool {
-    if e.mods.shift {
-        return false;
-    }
-    heard(app, e, tx)
-}

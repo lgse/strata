@@ -84,16 +84,12 @@ pub(crate) fn copy(c: &Content, sel: &TextSelection) -> String {
     }
 }
 
-const RUNE_ROWS: usize = 10_000;
-const RUNE_BYTES: usize = 4 << 20;
-
 pub(crate) fn reads_whole(c: &Content, sel: &TextSelection) -> bool {
     let Some((head, tail)) = c.ends else {
         return false;
     };
     let mut first_path = None;
     let mut last_path = None;
-    let mut bytes = 0usize;
     for t in sel.texts().iter().filter(|t| t.is_selected()) {
         if !t.is_whole() {
             return false;
@@ -102,7 +98,6 @@ pub(crate) fn reads_whole(c: &Content, sel: &TextSelection) -> bool {
             first_path = Some(t.path());
         }
         last_path = Some(t.path());
-        bytes += t.len();
     }
     let (Some(first_path), Some(last_path)) = (first_path, last_path) else {
         return false;
@@ -113,7 +108,5 @@ pub(crate) fn reads_whole(c: &Content, sel: &TextSelection) -> bool {
     let Some(end) = locate(&c.key, last_path) else {
         return false;
     };
-    // Rune's cap counts rows, empty ones too, which have no selected text.
-    let cut = end - head + 1 >= RUNE_ROWS || bytes >= RUNE_BYTES;
-    end == tail || cut
+    end == tail || sel.truncated()
 }

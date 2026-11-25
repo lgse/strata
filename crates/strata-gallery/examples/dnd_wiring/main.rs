@@ -173,6 +173,7 @@ fn main() {
     rune::orderly_exit();
     static DRAWN: AtomicBool = AtomicBool::new(false);
     let result = app
+        .on_display_close(|| shutdown("main", "display-close"))
         .on_ready(|w: &WindowHandle| log("main", "ready", json!({ "key": w.key() })))
         .on_frame_drawn(|_| {
             if !DRAWN.swap(true, Ordering::Relaxed) {

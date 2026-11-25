@@ -305,6 +305,7 @@ fn button<S: 'static>(
         .hover(k.alpha(accent, BUTTON_HOVER_ALPHA))
         .press(k.alpha(accent, BUTTON_CHECKED_ALPHA))
         .focus_ring(BUTTON_RING, -BUTTON_RING, accent)
+        .press_on_return()
         .on_press_tx(move |s: &mut S, _tx: &mut Tx| get_mut(s).toggle())
         .child(
             text(labels.shortcuts.clone())

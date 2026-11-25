@@ -512,6 +512,7 @@ fn build_choice_popup(
             close_choice(app);
             tx.focus(anchor_for_dismiss.clone(), true);
         })
+        .modal_wheel_outside(true)
         .child(scrolled);
     let surface = strata_kit::transparency::raised_popover(look, body, kit.radius.md)
         .border(1.0, look.transparency.frosted_border(kit.c.border_base));

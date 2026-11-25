@@ -30,7 +30,7 @@ pub(crate) struct Handlers<S> {
     pub edit: EditFn<S>,
     pub key: KeyFn<S>,
     pub change: ChangeFn<S>,
-    pub menu: MenuFn<S>,
+    pub menu: Option<MenuFn<S>>,
 }
 
 impl<S> Clone for Handlers<S> {
@@ -57,12 +57,7 @@ pub(crate) fn input<S: 'static>(
     } else {
         k.c.text_base
     };
-    let (on_edit, on_key, on_change, on_menu) = (
-        h.edit.clone(),
-        h.key.clone(),
-        h.change.clone(),
-        h.menu.clone(),
-    );
+    let (on_edit, on_key, on_change) = (h.edit.clone(), h.key.clone(), h.change.clone());
     let mut field = text_input(edit, spec.font)
         .single_line()
         .key(spec.key.to_owned())
@@ -76,10 +71,12 @@ pub(crate) fn input<S: 'static>(
         .on_edit(move |s: &mut S| on_edit(s))
         .on_input_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| on_key(s, ev, tx))
         .on_input_change(move |s: &mut S, tx: &mut Tx| on_change(s, tx))
-        .on_secondary_press(move |s: &mut S, p: PointerPress, tx: &mut Tx| {
-            on_menu(s, Point::new(p.x, p.y), tx)
-        })
         .invalid(spec.invalid);
+    if let Some(on_menu) = h.menu.clone() {
+        field = field.on_secondary_press(move |s: &mut S, p: PointerPress, tx: &mut Tx| {
+            on_menu(s, Point::new(p.x, p.y), tx)
+        });
+    }
     if let Some(p) = spec.placeholder {
         field = field.placeholder(p.to_owned(), k.c.text_faint);
     }
@@ -89,20 +86,10 @@ pub(crate) fn input<S: 'static>(
     field
 }
 
-pub(crate) fn frame<S: 'static>(
-    look: &Look,
-    inner: El,
-    focused: bool,
-    invalid: bool,
-    menu: &MenuFn<S>,
-) -> El {
+pub(crate) fn frame(look: &Look, inner: El, focused: bool, invalid: bool) -> El {
     let k = &look.kit;
-    let on_menu = menu.clone();
     let e = inner
         .role("textbox")
-        .on_secondary_press(move |s: &mut S, p: PointerPress, tx: &mut Tx| {
-            on_menu(s, Point::new(p.x, p.y), tx)
-        })
         .radius(k.radius.md)
         .fill(k.c.bg_base)
         .token_motion(k.motion.control);

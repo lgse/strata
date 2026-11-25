@@ -153,6 +153,12 @@ fn open(
         on_close: close_chooser,
     });
     let handle = app.handle();
+    let wake = handle.clone();
+    state
+        .window
+        .set_image_cache(std::sync::Arc::new(rune::ImageCache::new(
+            std::sync::Arc::new(move || wake.wake()),
+        )));
     super::windowed::follow_queue(&state, handle.clone());
     let attach = handle.clone();
     let app = app.on_window(move |window: &WindowHandle| {

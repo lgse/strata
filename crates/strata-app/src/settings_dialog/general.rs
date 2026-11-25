@@ -854,10 +854,10 @@ pub(super) fn sync_general_fields(
     video_start: &mut NumberFieldState,
     prefs: &Preferences,
 ) {
-    if !workers.edit().focused {
+    if !workers.edit().focused && !workers.held() {
         workers.set_value(prefs.thumbnail_workers as f64);
     }
-    if !video_start.edit().focused {
+    if !video_start.edit().focused && !video_start.held() {
         video_start.set_value(f64::from(prefs.preview_video_start));
     }
 }

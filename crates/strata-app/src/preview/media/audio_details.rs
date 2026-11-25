@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-use rune::{Pixels, Tx};
+use rune::{ImageCache, Pixels, Tx};
 use strata_components::media_player::{Art, AudioTags};
 use strata_core::{file_activity, model::FileEntry};
 use strata_fs::services::SandboxedMedia;
@@ -46,6 +46,7 @@ pub(super) enum Update {
 #[derive(Clone)]
 pub(super) struct Inlet {
     pub(super) later: Later<App>,
+    pub(super) image_cache: Option<Arc<ImageCache>>,
     pub(super) viewer: u64,
     pub(super) deliver: fn(&mut App, u64, Update, &mut Tx) -> bool,
 }
@@ -69,9 +70,15 @@ struct DecodedCover {
 }
 
 impl DecodedCover {
-    fn to_art(&self) -> Art {
+    fn to_art(&self, cache: Option<&ImageCache>) -> Art {
         let pixels = Pixels::new();
-        pixels.set(self.size[0], self.size[1], self.rgba.clone());
+        crate::shell::upload_rgba(
+            cache,
+            &pixels,
+            self.size[0],
+            self.size[1],
+            self.rgba.clone(),
+        );
         Art {
             id: self.id,
             pixels,
@@ -431,7 +438,7 @@ fn spawn_cover<F>(
         if cancelled.is_cancelled() {
             return;
         }
-        let art = cover.map(|decoded| decoded.to_art());
+        let art = cover.map(|decoded| decoded.to_art(inlet.image_cache.as_deref()));
         completion.finish_cover(art.clone(), ok);
         let (viewer, deliver) = (inlet.viewer, inlet.deliver);
         inlet

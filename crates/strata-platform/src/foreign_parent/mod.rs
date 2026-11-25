@@ -3,11 +3,11 @@
 //! Foreign parenting shim for XDG portal dialogs (`wayland:<xdg-foreign>` / `x11:<xid>`).
 //!
 //! Rune lacks transient-for parenting, a pre-map native window hook (on X11, windows must be
-//! created hidden and shown from `on_window`), `xdg_toplevel` access for Wayland modality, and
-//! winit's native display handle.
+//! created hidden and shown from `on_window`), and `xdg_toplevel` access for Wayland modality.
 //!
 //! Call [`release`] from `on_close` and [`shutdown`] on the UI thread before the event loop
-//! ends so `zxdg_imported_v2` handles tear down while winit's display is still alive.
+//! ends (or from `App::on_display_close`) so `zxdg_imported_v2` handles tear down while winit's
+//! display is still alive.
 
 mod outcome;
 mod parent;
@@ -51,8 +51,8 @@ impl<S> Options<S> {
     }
 
     #[doc(hidden)]
-    pub fn as_if_libwayland_below_1_23(mut self) -> Self {
-        self.test.as_if_libwayland_below_1_23 = true;
+    pub fn as_if_no_shared_display(mut self) -> Self {
+        self.test.as_if_no_shared_display = true;
         self
     }
 }

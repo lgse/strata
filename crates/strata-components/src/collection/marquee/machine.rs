@@ -32,11 +32,8 @@ pub enum Outcome {
         /// The spring to glide on.
         spring: Spring,
     },
-    /// Stop the view dead at content offset `y`, where it shows now: a jump, which also ends a glide in progress.
-    StopScroll {
-        /// The offset to stay at.
-        y: f32,
-    },
+    /// Stop the view's active scroll glide dead where it shows now.
+    StopScroll,
     /// Call [`MarqueeMachine::tick`] again after this long (zero: the next frame).
     WakeAfter(Duration),
     /// The band was shown or hidden: the view must commit to add or drop it.
@@ -243,7 +240,7 @@ impl MarqueeMachine {
                 Changed::NONE
             });
         }
-        halt(&band, s.visible(), s);
+        halt(&band, s);
         s.emit(Outcome::Repaint);
     }
 
@@ -256,7 +253,7 @@ impl MarqueeMachine {
         if open {
             s.apply(&mut |sel, _| sel.cancel_band());
         }
-        halt(&band, s.visible(), s);
+        halt(&band, s);
         s.emit(Outcome::Repaint);
         open
     }
@@ -286,7 +283,7 @@ impl MarqueeMachine {
             let Some(band) = self.band.take() else {
                 return false;
             };
-            halt(&band, visible, s);
+            halt(&band, s);
             s.emit(Outcome::Repaint);
             return true;
         }
@@ -388,9 +385,9 @@ fn scroll_speed(band: &Band, s: &dyn Surface, settings: &MarqueeSettings) -> f32
 }
 
 /// Stops `band`'s auto-scroll dead where the view shows now, if it is still moving the view.
-fn halt(band: &Band, visible: Rect, s: &mut dyn Surface) {
+fn halt(band: &Band, s: &mut dyn Surface) {
     if band.speed != 0.0 || band.coasting > 0 {
-        s.emit(Outcome::StopScroll { y: visible.y });
+        s.emit(Outcome::StopScroll);
     }
 }
 

@@ -10,8 +10,8 @@ use strata_components::collection::marquee::MarqueeSettings;
 use strata_components::contract::{EntryId, EntryKind, ListEntry, ListSource, Point, Rect};
 use strata_components::rename::{Initial, RenameEditor, RenameState};
 use strata_components::scroll::{
-    Autoscroll, AutoscrollPointer, AutoscrollSettings, Bar, BarLook, BarMode, OutsideWheel,
-    ScrollFeed, Shield, Start, Stop, Target, overlay,
+    Autoscroll, AutoscrollPointer, AutoscrollSettings, Bar, BarLook, BarMode, ScrollFeed, Shield,
+    Start, Stop, Target, overlay,
 };
 
 use crate::{Gallery, Scene};
@@ -592,10 +592,7 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
                 .child(body),
         );
     if d.pane == Pane::Panel && d.panel {
-        // Over the window, under the panel, in place of a popover's own outside scrim.
-        page = page
-            .child(outside_wheel().scrim(PANEL_SCRIM))
-            .child(sort_panel(g));
+        page = page.child(sort_panel(g));
     }
     if let Some(shield) = Shield::new(|g: &Gallery| &g.c24.auto, |g: &Gallery| g.look())
         .on_stop(|g: &mut Gallery, stop| g.c24.stopped_by(stop))
@@ -609,21 +606,8 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
 /// The stand-in panel's key.
 pub const PANEL: &str = "c24-panel";
 
-/// The layer outside the panel.
-pub const PANEL_SCRIM: &str = "c24-panel-scrim";
-
 /// The stand-in sidebar's key.
 pub const SIDEBAR: &str = "c24-sidebar";
-
-fn outside_wheel() -> OutsideWheel<Gallery> {
-    OutsideWheel::new(|g: &mut Gallery, _| g.c24.panel = false).listings(|g: &Gallery, at| {
-        if g.c24.coll.viewport().contains(at) {
-            vec![Target::vertical(viewport_path(SCOPE), g.c24.feed.clone())]
-        } else {
-            Vec::new()
-        }
-    })
-}
 
 /// The stand-in Sort by panel, pinned over the list's top-right.
 fn sort_panel(g: &Gallery) -> El {
@@ -648,8 +632,8 @@ fn sort_panel(g: &Gallery) -> El {
         .radius(kit.radius.md)
         .fill(kit.c.surface_raised)
         .border(1.0, kit.c.std_border)
-        // A press inside is the panel's, not the scrim's.
-        .on_press(|_: &mut Gallery| {})
+        .modal(true, |g: &mut Gallery| g.c24.panel = false)
+        .modal_wheel_outside(true)
         .child(rows)
 }
 

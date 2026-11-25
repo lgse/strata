@@ -18,7 +18,6 @@ use super::{
     sections::sections,
 };
 use crate::{
-    commands::{Origin, XKey},
     host::offscreen::Offscreen,
     shell,
     test_support::{
@@ -192,13 +191,16 @@ fn a_russian_layout_records_the_latin_key_at_its_place() {
         |mut host| {
             open_keyboard(&mut host, "Rename");
             click(&mut host, &rename_keys().add);
-            // X keycode 26 is physical E, which types Cyrillic 'у' unshifted on `ru`.
-            host.set_key_origin(Some(Origin::from_x(XKey {
-                keycode: 26,
-                base: Some('у'),
-            })));
-            press(&mut host, Key::Text("у".into()), ctrl());
-            host.set_key_origin(None);
+            // Physical E types Cyrillic 'у' unshifted on `ru`.
+            host.runtime().key_with(
+                KeyEvent {
+                    key: Key::Text("у".into()),
+                    mods: ctrl(),
+                },
+                rune::PhysicalKeyCode::KeyE,
+                Some('у'),
+            );
+            while host.turn() {}
             assert_eq!(
                 saved_rename(&host, Map::Default),
                 Some(accelerators(&["F2", "<Control>r", "<Control>e"]))

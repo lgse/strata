@@ -188,9 +188,8 @@ fn scroll(f: &mut Fake, glide: &mut Glide, jumps: bool) {
             Outcome::Glide { y, .. } | Outcome::StopGlide { y, .. } => {
                 glide.aim(spring, f.visible.y, y);
             }
-            Outcome::StopScroll { y } => {
+            Outcome::StopScroll => {
                 *glide = Glide::default();
-                f.visible.y = y;
             }
             _ => {}
         }
@@ -468,7 +467,7 @@ fn holding_at_the_bottom_edge_glides_and_extends_the_selection() {
     m.end(&mut f);
     assert_eq!(f.sel.len(), pointer_row);
     assert!(
-        f.out.contains(&Outcome::StopScroll { y: f.visible.y }),
+        f.out.contains(&Outcome::StopScroll),
         "the release stops the view dead"
     );
 }
@@ -589,11 +588,7 @@ fn the_release_and_escape_stop_the_view_dead() {
         } else {
             assert!(m.cancel(&mut f));
         }
-        assert!(
-            f.out.contains(&Outcome::StopScroll { y: at }),
-            "{how}: {:?}",
-            f.out
-        );
+        assert!(f.out.contains(&Outcome::StopScroll), "{how}: {:?}", f.out);
         assert!(
             glides(&f.out).is_empty() && stops(&f.out) == 0,
             "no glide after it"
@@ -774,9 +769,7 @@ mod adapter {
         let (taken, effects) = with_cx(&mut sel, None, 2.0 / 60.0, |cx| m.cancel(cx));
         assert!(taken);
         assert!(
-            effects
-                .iter()
-                .any(|e| matches!(e, Effect::ScrollTo { y, glide: false } if *y == 0.0)),
+            effects.iter().any(|e| matches!(e, Effect::StopScroll)),
             "a dead stop where the view is: {effects:?}"
         );
         assert!(sel.is_empty(), "the plain band's press had cleared it");

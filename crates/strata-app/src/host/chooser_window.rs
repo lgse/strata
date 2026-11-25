@@ -7,7 +7,7 @@ use strata_platform::{
     csd::{self, Frame},
 };
 
-use crate::{App, commands, shell};
+use crate::{App, commands, menus, shell};
 
 const OPENING_TITLE: &str = "Strata";
 
@@ -38,6 +38,7 @@ pub(crate) fn chooser_app(window: ChooserWindow) -> rune::App<App> {
             ..WindowOptions::default()
         },
     ))
+    .on_field_menu(menus::open_field_menu)
     .on_modifiers(shell::modifiers)
     .on_close(window.on_close)
 }

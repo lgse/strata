@@ -527,7 +527,7 @@ fn pane<S: 'static>(
     let keys = shared.clone();
     let find_keys = parts.find_keys;
     let searchable = parts.caps.searchable;
-    let mut drawer_pane = col()
+    let drawer_pane = col()
         .key("preview-drawer")
         .role("region")
         .label(shared.labels.region.clone())
@@ -535,15 +535,20 @@ fn pane<S: 'static>(
         .h_full()
         .pin(Some(shared.rules.line), Some(0.0), None, Some(0.0))
         .clip_soft(0.0)
-        .preserve_focus_on_press(true)
         .transition(exit)
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
             drawer_key(&keys, s, ev, tx, find_keys, searchable)
         });
+    let mut backdrop = el()
+        .pin(Some(0.0), Some(0.0), Some(0.0), Some(0.0))
+        .a11y_hidden()
+        .preserve_focus_on_press(true);
     if let Some(bg) = shared.background_drag.clone() {
-        drawer_pane = drawer_pane.on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
+        backdrop = backdrop.on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
             bg(s, d, false, tx);
         });
+    } else {
+        backdrop = backdrop.on_background_press(|_: &mut S| {});
     }
     let content = col()
         .child(header::header(shared, st, &parts, look))
@@ -559,7 +564,9 @@ fn pane<S: 'static>(
                 .min_h(0.0)
                 .child(body),
         );
-    drawer_pane.child(focus_accent_bar(look, content))
+    drawer_pane
+        .child(backdrop)
+        .child(focus_accent_bar(look, content))
 }
 
 fn focus_accent_bar(look: &Look, content: El) -> El {
@@ -568,19 +575,6 @@ fn focus_accent_bar(look: &Look, content: El) -> El {
     el().pin(Some(-bleed), Some(indicator), Some(-bleed), Some(-bleed))
         .focus_within_ring(indicator, 0.0, look.kit.c.bg_accent)
         .child(content.pin(Some(bleed), Some(-indicator), Some(bleed), Some(bleed)))
-}
-
-pub(crate) fn return_as_space<S: 'static>(_: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
-    if ev.key != rune::Key::Enter || ev.mods != rune::Mods::default() {
-        return false;
-    }
-    if !tx.key_repeat() {
-        tx.send_key(KeyEvent {
-            key: rune::Key::Text(" ".to_owned()),
-            mods: rune::Mods::default(),
-        });
-    }
-    true
 }
 
 fn drawer_key<S: 'static>(

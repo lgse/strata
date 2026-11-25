@@ -182,7 +182,7 @@ pub(super) fn ready(app: &mut App, arrived: Arrived, tx: &mut Tx) -> Viewer {
         storyboard_done: false,
     };
     viewer.restore_cached_background(tx);
-    viewer.load_audio_details(later, tx);
+    viewer.load_audio_details(later, app.window.image_cache().cloned(), tx);
     let (position, previous, next) = place(app, family, &viewer.entry.location);
     viewer.state.set_listing(position, previous, next);
     Viewer::Media(Box::new(viewer))
@@ -373,7 +373,12 @@ impl MediaViewer {
         }
     }
 
-    fn load_audio_details(&mut self, later: Later<App>, tx: &mut Tx) {
+    fn load_audio_details(
+        &mut self,
+        later: Later<App>,
+        image_cache: Option<std::sync::Arc<rune::ImageCache>>,
+        tx: &mut Tx,
+    ) {
         if self.family != Some(Family::Audio) {
             return;
         }
@@ -385,6 +390,7 @@ impl MediaViewer {
         }
         let inlet = audio_details::Inlet {
             later,
+            image_cache,
             viewer: self.id,
             deliver: audio_detailed,
         };

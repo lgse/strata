@@ -137,7 +137,8 @@ pub(super) fn button<S: 'static>(
         .label(spec.labels.new_tab.clone().into_owned())
         .on_press_tx(move |s: &mut S, tx: &mut Tx| emit(s, TabsIntent::New, tx))
         .build(&look.accent_icon_kit())
-        .key(spec.key.clone());
+        .key(spec.key.clone())
+        .press_on_return();
     let hovered = state.drop_hover() == Some((DropSite::NewTab, DropHover::Accepting));
     if hovered || state.open_drag() {
         // Strata's `.tab-drop-hover`: the header action's radius, an accent ground.

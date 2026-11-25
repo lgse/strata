@@ -749,10 +749,10 @@ pub(super) fn sync_appearance_fields(
     roundness: &mut NumberFieldState,
     prefs: &Preferences,
 ) {
-    if !text_size.edit().focused {
+    if !text_size.edit().focused && !text_size.held() {
         text_size.set_value(f64::from(prefs.text_size.root_font_px()));
     }
-    if !roundness.edit().focused {
+    if !roundness.edit().focused && !roundness.held() {
         roundness.set_value(f64::from(prefs.corner_roundness.percent()));
     }
 }
