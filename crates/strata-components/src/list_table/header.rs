@@ -92,8 +92,8 @@ fn heading_content<S>(
         .child(label);
     if let Some(dir) = sorted {
         let glyph = match dir {
-            SortDir::Ascending => look.icon(IconName::SortAscending),
-            SortDir::Descending => look.icon(IconName::SortDescending),
+            SortDir::Ascending => look.icon(IconName::Up),
+            SortDir::Descending => look.icon(IconName::Down),
         };
         title_row = title_row.child(
             icon(glyph, look.icon_size.sm)

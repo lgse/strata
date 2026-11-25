@@ -221,6 +221,7 @@ icon_names! {
     ViewList = "view_list" => line!(r#"<path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><circle cx="3" cy="4" r="0.8" fill="currentColor" stroke="none"/><circle cx="3" cy="8" r="0.8" fill="currentColor" stroke="none"/><circle cx="3" cy="12" r="0.8" fill="currentColor" stroke="none"/>"#),
     ViewColumns = "view_columns" => line!(r#"<rect x="2.5" y="3" width="11" height="10" rx="1"/><path d="M6.2 3v10M9.8 3v10"/>"#),
     ViewIcons = "view_icons" => line!(r#"<rect x="2.5" y="2.5" width="4.5" height="4.5" rx="0.8"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="0.8"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="0.8"/><rect x="9" y="9" width="4.5" height="4.5" rx="0.8"/>"#),
+    ViewSettings = "view_settings" => line!(r#"<path d="M13.5 5H7M9 11H2.5"/><circle cx="5" cy="5" r="2"/><circle cx="11" cy="11" r="2"/>"#),
     Sidebar = "sidebar" => line!(r#"<rect x="2.5" y="3" width="11" height="10" rx="1"/><path d="M6.5 3v10"/>"#),
     SortAscending = "sort_ascending" => line!(r#"<path d="M5 13V3M2.5 5.5L5 3l2.5 2.5"/><path d="M9 5h2M9 8h3M9 11h4.5"/>"#),
     SortDescending = "sort_descending" => line!(r#"<path d="M5 3v10M2.5 10.5L5 13l2.5-2.5"/><path d="M9 5h4.5M9 8h3M9 11h2"/>"#),
