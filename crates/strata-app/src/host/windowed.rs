@@ -2,9 +2,9 @@
 
 //! Windowed Rune host with the default GLib context pumped on Rune's UI thread.
 //!
-//! GLib callbacks wake Rune via `AppHandle::update_if` because `Waker` does not run `poll`
-//! under a covered Wayland window and `wake_after` throttles to 4 Hz
-//! ([anomalyco/rune#139](https://github.com/anomalyco/rune/issues/139)).
+//! GLib callbacks wake Rune via `AppHandle::update_if` because under a covered Wayland window
+//! `Waker` only requests a withheld redraw and overdue `wake_after` timers run at Rune's
+//! 250 ms `TimerFrame` stall interval, whereas `update_if` runs immediately during drain.
 //!
 //! Refused closes: `App::on_close_request` returns `CloseResponse::Defer` when
 //! `shell::close_guard` refuses closing so the window stays open in place.

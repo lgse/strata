@@ -18,8 +18,6 @@ pub mod foreign_parent;
 pub mod glib_bridge;
 #[cfg(feature = "glib-loop")]
 pub mod glib_loop;
-#[cfg(feature = "icon-theme")]
-pub mod icon_theme;
 #[cfg(feature = "media-audio")]
 pub mod media;
 #[cfg(feature = "single-instance")]

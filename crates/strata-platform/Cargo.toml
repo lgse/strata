@@ -34,9 +34,6 @@ clipboard = ["_transfer"]
 # P4 foreign parenting: src/foreign_parent/
 foreign-parent = ["_transfer", "wayland-protocols/unstable"]
 
-# P6 icon theme lookup: src/icon_theme/. Decodes through Rune's ImageCache; SVG needs rune/svg.
-icon-theme = ["rune/svg"]
-
 # P7 media PCM audio output: src/media/ (zero GStreamer: runtime dlopen of PulseAudio / ALSA with silent clock fallback).
 media-audio = ["dep:libc"]
 
@@ -80,8 +77,6 @@ libc = { workspace = true, optional = true }
 
 # foreign-parent (P4)
 
-# icon-theme (P6)
-
 # media-audio (P7)
 
 # single-instance (P8)
@@ -116,8 +111,6 @@ strata-test-peer.workspace = true
 # clipboard (P2)
 
 # foreign-parent (P4)
-
-# icon-theme (P6)
 
 # media-audio (P7)
 

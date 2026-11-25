@@ -18,7 +18,7 @@ Tinted Base16 entries map colors to Strata tokens as follows: `base00` to backgr
 
 Strata draws its entire interface with Rune and `strata-kit::Look` tokens rather than adopting desktop widget themes:
 
-- Desktop widget themes, icon themes, and accent colors are never applied to Strata's chrome (Open With currently renders bundled icons; `strata-platform`'s optional `icon-theme` shim is not yet enabled in `strata-app`).
+- Desktop widget themes, icon themes, and accent colors are never applied to Strata's chrome (Open With currently renders bundled icons rather than system icon-theme entries via Rune's `ImageCache::themed_icon`).
 - Interface icons (Lucide) and code/config file-type icons (Catppuccin) are bundled into `strata-kit` and follow the active theme live.
 - Menus, popovers, and tooltips render inside Strata's GPU window surface, keeping their corners and shadows everywhere.
 - **Variable surface transparency & frosted glass** (**Settings → Appearance → Transparency**) scale main background and raised chrome surface alpha independently while keeping text, icons, thumbnails, selection fills, and media at full opacity, paired with Rune's GPU backdrop blur and native Wayland compositor blur (`ext_background_effect_v1` / KWin blur).
