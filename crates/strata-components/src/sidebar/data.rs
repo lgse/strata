@@ -295,55 +295,12 @@ impl Device {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub struct DeviceGroup {
-    pub devices: Vec<Device>,
-    pub divided: bool,
-}
-
-impl DeviceGroup {
-    pub fn new(devices: Vec<Device>) -> DeviceGroup {
-        DeviceGroup {
-            devices,
-            divided: true,
-        }
-    }
-
-    pub fn divided(mut self, divided: bool) -> DeviceGroup {
-        self.divided = divided;
-        self
-    }
-}
-
-/// One pass over DEVICES, in order: rows, and the dividers between groups.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum DeviceLine<'a> {
-    /// A divider before the group with this index.
-    Divider(usize),
-    Device(&'a Device),
-}
-
-pub(crate) fn device_lines(groups: &[DeviceGroup]) -> Vec<DeviceLine<'_>> {
-    let mut lines = Vec::new();
-    for (g, group) in groups.iter().enumerate() {
-        if group.devices.is_empty() {
-            continue;
-        }
-        if group.divided && !lines.is_empty() {
-            lines.push(DeviceLine::Divider(g));
-        }
-        lines.extend(group.devices.iter().map(DeviceLine::Device));
-    }
-    lines
-}
-
 /// Everything the sidebar lists this frame.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SidebarData<'a> {
     pub places: &'a [Place],
     pub pins: &'a [Pin],
-    pub devices: &'a [DeviceGroup],
+    pub devices: &'a [Device],
     pub current: Option<&'a ItemId>,
     /// What the sidebar says, in the host's language.
     pub labels: SidebarLabels<'a>,
@@ -403,11 +360,6 @@ impl SidebarLabels<'_> {
 }
 
 impl SidebarData<'_> {
-    /// How many device rows DEVICES holds: what its collapsed count says. Dividers aren't rows.
-    pub fn device_count(&self) -> usize {
-        self.devices.iter().map(|g| g.devices.len()).sum()
-    }
-
     /// The index of the open pin, if the open location is a pin.
     pub fn current_pin(&self) -> Option<usize> {
         match self.current {

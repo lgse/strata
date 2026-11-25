@@ -3,9 +3,8 @@
 use rune::{Cx, El, Key, KeyEvent, Tx, col, el, row, text};
 use strata_components::contract::dnd::DropHover;
 use strata_components::sidebar::{
-    Device, DeviceGroup, DeviceLabels, DropSite, ItemId, LockState, Pin, Place, PlacesSidebar,
-    Release, Section, SidebarData, SidebarIntent, SidebarLabels, SidebarState, Step, Via,
-    WidthToggle,
+    Device, DeviceLabels, DropSite, ItemId, LockState, Pin, Place, PlacesSidebar, Release, Section,
+    SidebarData, SidebarIntent, SidebarLabels, SidebarState, Step, Via, WidthToggle,
 };
 use strata_kit::icons::IconName;
 
@@ -15,7 +14,7 @@ pub struct Demo {
     pub sidebar: SidebarState,
     pub places: Vec<Place>,
     pub pins: Vec<Pin>,
-    pub devices: Vec<DeviceGroup>,
+    pub devices: Vec<Device>,
     pub current: Option<ItemId>,
     pub tenxer: bool,
     /// What the last intent did, shown in `c8-log`.
@@ -60,79 +59,68 @@ fn pins() -> Vec<Pin> {
 }
 
 /// Two drives, then a network share.
-fn devices() -> Vec<DeviceGroup> {
+fn devices() -> Vec<Device> {
     vec![
-        DeviceGroup::new(vec![
-            Device::new("system", "System", IconName::Drive, "/"),
-            Device::new(
-                "data",
-                "129 GB Volume",
-                IconName::Drive,
-                "/run/media/demo/data",
-            )
-            .release(Release::Unmount),
-        ]),
-        DeviceGroup::new(vec![
-            Device::new(
-                "sandisk",
-                "SanDisk",
-                IconName::Usb,
-                "/run/media/demo/SanDisk",
-            )
-            .release(Release::Eject),
-        ]),
-        DeviceGroup::new(vec![Device::new(
+        Device::new("system", "System", IconName::Drive, "/"),
+        Device::new(
+            "data",
+            "129 GB Volume",
+            IconName::Drive,
+            "/run/media/demo/data",
+        )
+        .release(Release::Unmount),
+        Device::new(
+            "sandisk",
+            "SanDisk",
+            IconName::Usb,
+            "/run/media/demo/SanDisk",
+        )
+        .release(Release::Eject),
+        Device::new(
             "share",
             "projects on nas.local",
             IconName::Network,
             "smb://nas.local/projects",
-        )]),
+        ),
     ]
 }
 
-fn all_devices() -> Vec<DeviceGroup> {
+fn all_devices() -> Vec<Device> {
     vec![
-        DeviceGroup::new(vec![
-            Device::new("system", "System", IconName::Drive, "/"),
-            Device::new(
-                "data",
-                "129 GB Volume",
-                IconName::Drive,
-                "/run/media/demo/data",
-            )
-            .release(Release::Unmount),
-        ]),
-        DeviceGroup::new(vec![
-            Device::new(
-                "sandisk",
-                "SanDisk",
-                IconName::Usb,
-                "/run/media/demo/SanDisk",
-            )
+        Device::new("system", "System", IconName::Drive, "/"),
+        Device::new(
+            "data",
+            "129 GB Volume",
+            IconName::Drive,
+            "/run/media/demo/data",
+        )
+        .release(Release::Unmount),
+        Device::new(
+            "sandisk",
+            "SanDisk",
+            IconName::Usb,
+            "/run/media/demo/SanDisk",
+        )
+        .release(Release::Eject),
+        Device::new("vault", "Vault", IconName::Usb, "/dev/sdb2")
+            .mounted(false)
+            .lock(LockState::Locked),
+        Device::new("backup", "Backup", IconName::Usb, "/run/media/demo/Backup")
+            .lock(LockState::Unlocked)
             .release(Release::Eject),
-            Device::new("vault", "Vault", IconName::Usb, "/dev/sdb2")
-                .mounted(false)
-                .lock(LockState::Locked),
-            Device::new("backup", "Backup", IconName::Usb, "/run/media/demo/Backup")
-                .lock(LockState::Unlocked)
-                .release(Release::Eject),
-        ]),
-        DeviceGroup::new(vec![Device::new(
+        Device::new(
             "share",
             "projects on nas.local",
             IconName::Network,
             "smb://nas.local/projects",
-        )]),
-        DeviceGroup::new(vec![
-            Device::new(
-                "camera",
-                "Camera",
-                IconName::Phone,
-                "/run/media/demo/Camera",
-            )
-            .pending(true),
-        ])
-        .divided(false),
+        ),
+        Device::new(
+            "camera",
+            "Camera",
+            IconName::Phone,
+            "/run/media/demo/Camera",
+        )
+        .pending(true),
     ]
 }
 
@@ -170,10 +158,7 @@ impl Demo {
     }
 
     fn device_mut(&mut self, id: &str) -> Option<&mut Device> {
-        self.devices
-            .iter_mut()
-            .flat_map(|g| g.devices.iter_mut())
-            .find(|d| d.id == id)
+        self.devices.iter_mut().find(|d| d.id == id)
     }
 
     /// Strata's part, faked.

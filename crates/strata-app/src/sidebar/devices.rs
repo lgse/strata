@@ -4,7 +4,7 @@ use std::{cell::Cell, collections::HashMap, rc::Rc};
 
 use gio::prelude::*;
 use rune::Tx;
-use strata_components::sidebar::{Device, DeviceGroup, ItemId, LockState, Release};
+use strata_components::sidebar::{Device, ItemId, LockState, Release};
 use strata_core::{i18n::tr, model::Location};
 use strata_kit::icons::IconName;
 
@@ -80,7 +80,7 @@ pub(super) struct Devices {
     /// The monitor's rows, one list per drive, as last read.
     seen: Vec<Vec<Seen>>,
     /// What C8 draws.
-    groups: Vec<DeviceGroup>,
+    shown: Vec<Device>,
     /// The mounted rows, with where each opens.
     rows: Vec<places::Row>,
     watch: Option<Watch>,
@@ -88,8 +88,8 @@ pub(super) struct Devices {
 }
 
 impl Devices {
-    pub(super) fn groups(&self) -> &[DeviceGroup] {
-        &self.groups
+    pub(super) fn shown(&self) -> &[Device] {
+        &self.shown
     }
 
     pub(super) fn rows(&self) -> &[places::Row] {
@@ -115,39 +115,31 @@ impl Devices {
 
     pub(super) fn dress(&mut self, labels: &Labels) {
         let mut live_ids = Vec::new();
-        let mut groups: Vec<DeviceGroup> = self
+        let mut shown: Vec<Device> = self
             .seen
             .iter()
-            .map(|group| {
-                DeviceGroup::new(
-                    group
-                        .iter()
-                        .map(|seen| {
-                            live_ids.push(seen.ids.clone());
-                            device(seen, labels, release::is_pending(&seen.ids))
-                        })
-                        .collect(),
-                )
+            .flatten()
+            .map(|seen| {
+                live_ids.push(seen.ids.clone());
+                device(seen, labels, release::is_pending(&seen.ids))
             })
             .collect();
-        let ghosts: Vec<Device> = unmatched_pending(&live_ids)
-            .into_iter()
-            .enumerate()
-            .map(|(index, key)| {
-                Device::new(
-                    format!("releasing-{index}"),
-                    key.display_name,
-                    IconName::Drive,
-                    "",
-                )
-                .mounted(false)
-                .pending(true)
-            })
-            .collect();
-        if !ghosts.is_empty() {
-            groups.push(DeviceGroup::new(ghosts).divided(false));
-        }
-        self.groups = groups;
+        shown.extend(
+            unmatched_pending(&live_ids)
+                .into_iter()
+                .enumerate()
+                .map(|(index, key)| {
+                    Device::new(
+                        format!("releasing-{index}"),
+                        key.display_name,
+                        IconName::Drive,
+                        "",
+                    )
+                    .mounted(false)
+                    .pending(true)
+                }),
+        );
+        self.shown = shown;
         self.rows = self.seen.iter().flatten().filter_map(place_row).collect();
     }
 }

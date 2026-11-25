@@ -105,6 +105,6 @@ impl super::Sidebar {
         if !self.listed.pins.is_empty() {
             return Some(PINNED_HEADING.to_owned());
         }
-        (!self.devices.groups().is_empty()).then(|| DEVICES_HEADING.to_owned())
+        (!self.devices.shown().is_empty()).then(|| DEVICES_HEADING.to_owned())
     }
 }

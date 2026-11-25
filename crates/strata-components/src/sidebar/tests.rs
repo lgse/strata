@@ -6,7 +6,6 @@ use std::rc::Rc;
 use strata_kit::icons::IconName;
 
 use super::build::gap_at;
-use super::data::{DeviceLine, device_lines};
 use super::*;
 use crate::contract::dnd::{DropAction, DropActions, DropHover, DropOffer, URI_LIST};
 
@@ -188,38 +187,6 @@ fn dev(id: &str) -> Device {
     Device::new(id, id, IconName::Drive, "/")
 }
 
-#[test]
-fn dividers_sit_only_between_groups() {
-    let groups = [
-        DeviceGroup::new(vec![]),
-        DeviceGroup::new(vec![dev("a"), dev("b")]),
-        DeviceGroup::new(vec![dev("c")]),
-        DeviceGroup::new(vec![]),
-        DeviceGroup::new(vec![dev("ghost")]).divided(false),
-    ];
-    let lines: Vec<String> = device_lines(&groups)
-        .into_iter()
-        .map(|l| match l {
-            DeviceLine::Divider(g) => format!("|{g}"),
-            DeviceLine::Device(d) => d.id.clone(),
-        })
-        .collect();
-    assert_eq!(lines, ["a", "b", "|2", "c", "ghost"]);
-}
-
-#[test]
-fn the_devices_count_is_rows_not_dividers() {
-    let groups = [
-        DeviceGroup::new(vec![dev("p1"), dev("p2")]),
-        DeviceGroup::new(vec![dev("usb")]),
-    ];
-    let data = SidebarData {
-        devices: &groups,
-        ..SidebarData::default()
-    };
-    assert_eq!(data.device_count(), 3);
-}
-
 fn gap_zone(check: PinCheck, verdict: PinVerdict) -> crate::contract::dnd::DropZone<SidebarState> {
     let emit: Emit<SidebarState> = Rc::new(|_, _, _| {});
     super::drops::gap(
@@ -274,7 +241,7 @@ struct MountedHost {
     look: strata_kit::look::Look,
     places: Vec<Place>,
     pins: Vec<Pin>,
-    groups: Vec<DeviceGroup>,
+    devices: Vec<Device>,
     intents: Vec<SidebarIntent>,
 }
 
@@ -282,7 +249,7 @@ fn mounted_view(h: &MountedHost, _: &mut rune::Cx<MountedHost>) -> rune::El {
     let data = SidebarData {
         places: &h.places,
         pins: &h.pins,
-        devices: &h.groups,
+        devices: &h.devices,
         labels: SidebarLabels {
             pinned: "PINNED",
             devices: "DEVICES",
@@ -303,10 +270,10 @@ fn mount_sidebar() -> rune::Runtime<MountedHost> {
         look,
         places: vec![Place::folder("home", "Home", IconName::Home)],
         pins: vec![Pin::new("docs", "Docs")],
-        groups: vec![DeviceGroup::new(vec![
+        devices: vec![
             dev("mounted").mounted(true),
             dev("unmounted").mounted(false),
-        ])],
+        ],
         intents: Vec::new(),
     };
     let mut rt = rune::Runtime::new(host, mounted_view, (260.0, 500.0), rune::Env::default());
@@ -397,7 +364,7 @@ fn row_drag_outside_sidebar_reports_start_move_and_outside_release() {
         look,
         places: vec![Place::folder("home", "Home", IconName::Home)],
         pins: vec![Pin::new("docs", "Docs")],
-        groups: Vec::new(),
+        devices: Vec::new(),
         intents: Vec::new(),
     };
     let mut rt = rune::Runtime::new(
@@ -406,7 +373,7 @@ fn row_drag_outside_sidebar_reports_start_move_and_outside_release() {
             let data = SidebarData {
                 places: &h.places,
                 pins: &h.pins,
-                devices: &h.groups,
+                devices: &h.devices,
                 labels: SidebarLabels {
                     pinned: "PINNED",
                     devices: "DEVICES",
@@ -704,10 +671,10 @@ fn device_eject_button_heading_toggle_and_pending_row_behave_cleanly() {
         look,
         places: vec![Place::folder("home", "Home", IconName::Home)],
         pins: vec![Pin::new("docs", "Docs")],
-        groups: vec![DeviceGroup::new(vec![
+        devices: vec![
             dev("usb").mounted(true).release(Release::Eject),
             dev("busy").mounted(true).pending(true),
-        ])],
+        ],
         intents: Vec::new(),
     };
     let mut rt = rune::Runtime::new(host, mounted_view, (260.0, 500.0), rune::Env::default());
@@ -767,7 +734,7 @@ fn overflowing_sidebar_host() -> MountedHost {
         look,
         places,
         pins,
-        groups: vec![DeviceGroup::new(devices)],
+        devices,
         intents: Vec::new(),
     }
 }

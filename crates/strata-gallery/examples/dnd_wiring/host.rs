@@ -32,8 +32,8 @@ use strata_components::location_bar::{
 };
 use strata_components::scroll::Autoscroll;
 use strata_components::sidebar::{
-    DEFAULT_KEY as SIDEBAR, Device, DeviceGroup, DropSite as SideSite, ItemId, Pin, PinVerdict,
-    Place, PlacesSidebar, SidebarData, SidebarIntent, SidebarLabels, SidebarState, Unchecked,
+    DEFAULT_KEY as SIDEBAR, Device, DropSite as SideSite, ItemId, Pin, PinVerdict, Place,
+    PlacesSidebar, SidebarData, SidebarIntent, SidebarLabels, SidebarState, Unchecked,
 };
 use strata_components::tabs::{
     BrowserTabs, BrowserTabsState, Tab, TabId, TabsData, TabsIntent, new_tab_key, tab_key,
@@ -161,7 +161,7 @@ pub struct Win {
     sidebar: SidebarState,
     places: Vec<Place>,
     pins: Vec<Pin>,
-    devices: Vec<DeviceGroup>,
+    devices: Vec<Device>,
     tabs: Vec<TabPane>,
     tabs_state: BrowserTabsState,
     active: TabId,
@@ -207,12 +207,12 @@ impl Win {
         let pins = vec![Pin::new(path_id(&root.join("pinned")), "pinned")];
         let usb = root.join("usb");
         let devices = if usb.is_dir() {
-            vec![DeviceGroup::new(vec![Device::new(
+            vec![Device::new(
                 path_id(&usb),
                 "USB",
                 IconName::Usb,
                 usb.display().to_string(),
-            )])]
+            )]
         } else {
             Vec::new()
         };
