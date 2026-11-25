@@ -60,6 +60,10 @@ pub(crate) fn results(app: &App) -> Collection<App> {
     single::results::<List>(app)
         .roles(Roles::LIST)
         .icon(app.list.thumbs.icon(&app.look))
+        .on_visible(|app: &mut App, range| {
+            app.list.thumbs.see(range);
+            false
+        })
         .row_height(move |_: &App, look: &Look| match paths {
             true => (look.row.list + look.kit.ty.small.line_height + 2.0).round(),
             false => look.row.list,

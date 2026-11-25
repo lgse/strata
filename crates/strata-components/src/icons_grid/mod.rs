@@ -482,24 +482,24 @@ fn sync_thumbs<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S, range: Option<Rang
         let p = (shared.parts)(s);
         (p.collection.per_line().max(1), p.listing)
     };
-    {
-        let grid = (shared.parts)(s).grid;
-        grid.synced.set(Some(step));
-        if range.is_some() {
-            grid.synced_listing.set(Some(listing));
-        }
-    }
     let Some((store, viewer, src)) = thumbs_mut(s) else {
         return false;
     };
-    match range {
+    let has_range = range.is_some();
+    let pruned = match range {
         Some(r) => store.sync(
             viewer,
             src,
             Viewport::new(r, step).per_line(per).listing(listing),
         ),
         None => store.set_step(viewer, src, step),
+    };
+    let grid = (shared.parts)(s).grid;
+    grid.synced.set(Some(step));
+    if has_range {
+        grid.synced_listing.set(Some(listing));
     }
+    pruned
 }
 
 fn resync_thumbs<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S) -> bool {
@@ -507,11 +507,12 @@ fn resync_thumbs<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S) -> bool {
         return false;
     };
     let listing = (shared.parts)(s).listing;
-    (shared.parts)(s).grid.synced_listing.set(Some(listing));
     let Some((store, viewer, src)) = thumbs_mut(s) else {
         return false;
     };
-    store.resync(viewer, src, listing)
+    let pruned = store.resync(viewer, src, listing);
+    (shared.parts)(s).grid.synced_listing.set(Some(listing));
+    pruned
 }
 
 /// Syncs the store when the thumbnail step or listing version changed since the last sync.
@@ -521,10 +522,19 @@ fn sync_stale<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S) -> bool {
     }
     let m = shared.metrics(s);
     let step = shared.step(s, &m);
-    let (synced_step, synced_listing, listing) = {
+    let (synced_step, synced_listing, listing, visible, empty) = {
         let p = (shared.parts)(s);
-        (p.grid.synced.get(), p.grid.synced_listing.get(), p.listing)
+        (
+            p.grid.synced.get(),
+            p.grid.synced_listing.get(),
+            p.listing,
+            p.collection.visible_range(),
+            p.source.is_empty(),
+        )
     };
+    if synced_listing.is_none() && (!visible.is_empty() || empty) {
+        return sync_thumbs(shared, s, Some(visible));
+    }
     let mut pruned = false;
     if synced_step != Some(step) {
         pruned |= sync_thumbs(shared, s, None);

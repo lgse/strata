@@ -181,7 +181,7 @@ impl<S: 'static> Compositor<S> for FxCompositor {
             return;
         }
 
-        let layers: Vec<FxLayer> = slots.iter().map(|s| s.layer).collect();
+        let layers: Vec<FxLayer> = slots.iter().map(|s| s.layer.clone()).collect();
         let placements: Vec<FxSlot> = slots.iter().map(|s| s.placement).collect();
         self.active = true;
         self.animating = layers.iter().any(FxLayer::is_animating);

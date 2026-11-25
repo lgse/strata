@@ -63,7 +63,7 @@ impl Where {
     }
 
     /// Column `depth`'s folder rows, when this view shows them.
-    fn listing(self, app: &App, depth: usize) -> Option<&Column> {
+    pub(super) fn listing(self, app: &App, depth: usize) -> Option<&Column> {
         match self {
             Self::Columns => app.columns.listing(depth),
             pane => pane

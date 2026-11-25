@@ -67,6 +67,18 @@ fn click(rt: &mut Runtime<State>, (x, y): (f32, f32)) -> Option<TitlebarAction> 
     action
 }
 
+fn drag(rt: &mut Runtime<State>, from: (f32, f32), to: (f32, f32)) -> Option<TitlebarAction> {
+    rt.frame(0.01);
+    rt.pointer_move(from.0, from.1);
+    rt.pointer_down(from.0, from.1);
+    let on_down = rt.take_titlebar_action();
+    rt.pointer_move(to.0, to.1);
+    let on_move = rt.take_titlebar_action();
+    rt.pointer_up(to.0, to.1);
+    rt.frame(0.01);
+    on_down.or(on_move)
+}
+
 fn secondary_click(rt: &mut Runtime<State>, (x, y): (f32, f32)) {
     rt.frame(0.01);
     rt.secondary_down(x, y);
@@ -128,17 +140,19 @@ fn a_press_on_each_band_asks_for_a_resize_that_way() {
 fn the_header_moves_the_window_and_a_double_press_maximises_it() {
     let mut rt = runtime(borderless(Backend::Headless));
     let bare = (300.0, 20.0);
-    assert_eq!(click(&mut rt, bare), Some(TitlebarAction::Drag));
+    // On Linux, Rune defers a bare titlebar drag past 8 pt so double-clicks can pair.
+    assert_eq!(
+        drag(&mut rt, bare, (bare.0 + 12.0, bare.1)),
+        Some(TitlebarAction::Drag)
+    );
+    rt.frame(1.0);
+    assert_eq!(click(&mut rt, bare), None);
     assert_eq!(click(&mut rt, bare), Some(TitlebarAction::DoubleClick));
     rt.frame(1.0);
-    assert_eq!(click(&mut rt, bare), Some(TitlebarAction::Drag));
+    assert_eq!(click(&mut rt, bare), None);
     // Rune pairs presses within its fixed 0.5 s (draft U13, not filed).
     rt.frame(0.6);
-    assert_eq!(
-        click(&mut rt, bare),
-        Some(TitlebarAction::Drag),
-        "too slow to pair"
-    );
+    assert_eq!(click(&mut rt, bare), None, "too slow to pair");
 
     assert_eq!(click(&mut rt, (20.0, 20.0)), None, "the header's button");
     assert_eq!(rt.state.button_presses, 1, "keeps its press");

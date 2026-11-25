@@ -143,3 +143,70 @@ fn scrollbar_hover_width_applies_at_startup_and_propagates_across_windows() {
         },
     );
 }
+
+#[test]
+fn scrollbar_hover_defaults_apply_at_startup_before_settings_opens() {
+    in_own_process(
+        &format!("{MODULE}::scrollbar_hover_defaults_apply_at_startup_before_settings_opens"),
+        &[],
+        || {
+            let path = settings_path();
+            std::fs::create_dir_all(path.parent().expect("config dir")).expect("create config dir");
+            std::fs::write(&path, "mode = \"theme\"\ntheme = \"tokyo-night\"\n")
+                .expect("write startup settings omitting scrollbar keys");
+
+            let settings = startup::load_settings();
+            let ui = UiThread::claim().expect("the UI thread");
+            let mut host = Offscreen::new(ui, settings);
+
+            assert!(shell::preferences(host.app()).scrollbar_expand_on_hover);
+            assert_eq!(
+                shell::preferences(host.app()).scrollbar_hover_width.get(),
+                8
+            );
+            assert_eq!(scroll_tokens::hover_width(&host.app().look), Some(8.0));
+            assert_eq!(BarLook::app(&host.app().look).hover_thickness, Some(8.0));
+            assert_eq!(
+                BarLook::listing(&host.app().look).hover_thickness,
+                Some(8.0)
+            );
+
+            host.runtime().update(|app, tx| {
+                shell::saved(app).change(|saved| saved.scrollbar_expand_on_hover = false);
+                shell::follow_look_tx(app, tx);
+            });
+            assert!(scroll_tokens::hover_width(&host.app().look).is_none());
+
+            strata_core::storage::writer::flush_at_exit();
+            let text = std::fs::read_to_string(&path).expect("read persisted settings");
+            let saved: Preferences = toml::from_str(&text).expect("parse persisted settings");
+            assert!(!saved.scrollbar_expand_on_hover);
+        },
+    );
+}
+
+#[test]
+fn scrollbar_hover_explicit_false_clears_look_at_startup() {
+    in_own_process(
+        &format!("{MODULE}::scrollbar_hover_explicit_false_clears_look_at_startup"),
+        &[],
+        || {
+            let path = settings_path();
+            std::fs::create_dir_all(path.parent().expect("config dir")).expect("create config dir");
+            std::fs::write(
+                &path,
+                "mode = \"theme\"\ntheme = \"tokyo-night\"\nscrollbar_expand_on_hover = false\n",
+            )
+            .expect("write startup settings disabling scrollbar hover expansion");
+
+            let settings = startup::load_settings();
+            let ui = UiThread::claim().expect("the UI thread");
+            let host = Offscreen::new(ui, settings);
+
+            assert!(!shell::preferences(host.app()).scrollbar_expand_on_hover);
+            assert_eq!(scroll_tokens::hover_width(&host.app().look), None);
+            assert_eq!(BarLook::app(&host.app().look).hover_thickness, None);
+            assert_eq!(BarLook::listing(&host.app().look).hover_thickness, None);
+        },
+    );
+}
