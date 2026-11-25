@@ -509,6 +509,9 @@ impl LoadedIcon {
         }
     }
 
+    /// Whether the resolved icon is a Freedesktop symbolic icon.
+    ///
+    /// Callers can recolour it to the active text colour with `rune::El::pixels_tint`.
     pub fn is_symbolic(&self) -> bool {
         matches!(
             self.0.outcome.get(),

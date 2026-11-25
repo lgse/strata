@@ -574,14 +574,17 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
         .w_full()
         .h_full()
         .role("main")
-        .pointer_buttons([PointerButton::Back, PointerButton::Forward])
-        .on_drag(
-            |g: &mut Gallery, d: &mut Drag, tx: &mut Tx| match (d.phase, tx.button()) {
-                (rune::Phase::Down, PointerButton::Back) => g.c24.history = "Back".to_owned(),
-                (rune::Phase::Down, PointerButton::Forward) => g.c24.history = "Forward".to_owned(),
-                _ => tx.live_only(),
-            },
-        )
+        .on_button(|g: &mut Gallery, button, _| match button {
+            PointerButton::Back => {
+                g.c24.history = "Back".to_owned();
+                true
+            }
+            PointerButton::Forward => {
+                g.c24.history = "Forward".to_owned();
+                true
+            }
+            _ => false,
+        })
         .child(header)
         .child(
             col()

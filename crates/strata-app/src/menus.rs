@@ -435,10 +435,6 @@ impl Part for Menu {
         (app.menu.state.is_open() || app.menu.field.is_open()).then_some(Holds::Menu)
     }
 
-    fn poll(app: &mut App, _: f64, tx: &mut Tx) -> bool {
-        field::poll(app, tx)
-    }
-
     fn new(_: &Setup<'_>) -> Self {
         Self {
             state: ContextMenuState::default(),

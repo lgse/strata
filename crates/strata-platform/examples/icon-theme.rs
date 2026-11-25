@@ -111,20 +111,28 @@ mod demo {
                 .font(TextStyle::new(12.0, 400.0))
                 .color(Color::WHITE)
         };
-        let cells: Vec<El> = s
-            .shown
-            .iter()
-            .map(|(value, icon)| {
-                let picture = match icon.as_ref().and_then(LoadedIcon::pixels) {
-                    Some(pixels) => el().size(size, size).pixels_fit(pixels, SurfaceFit::Fit),
-                    None => el()
-                        .size(size, size)
-                        .radius(6.0)
-                        .fill(oklch(0.35, 0.02, 250.0)),
-                };
-                col().gap(8.0).center().child(picture).child(label(value))
-            })
-            .collect();
+        let cells: Vec<El> =
+            s.shown
+                .iter()
+                .map(|(value, icon)| {
+                    let picture = match icon.as_ref().and_then(|loaded| {
+                        loaded.pixels().map(|pixels| (pixels, loaded.is_symbolic()))
+                    }) {
+                        Some((pixels, true)) => el()
+                            .size(size, size)
+                            .pixels_fit(pixels, SurfaceFit::Fit)
+                            .pixels_tint(Color::WHITE),
+                        Some((pixels, false)) => {
+                            el().size(size, size).pixels_fit(pixels, SurfaceFit::Fit)
+                        }
+                        None => el()
+                            .size(size, size)
+                            .radius(6.0)
+                            .fill(oklch(0.35, 0.02, 250.0)),
+                    };
+                    col().gap(8.0).center().child(picture).child(label(value))
+                })
+                .collect();
         col()
             .w_full()
             .h_full()

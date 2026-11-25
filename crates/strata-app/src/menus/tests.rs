@@ -915,9 +915,24 @@ fn right_clicking_a_dialog_text_field_opens_the_in_window_field_menu_and_resolve
                 host.runtime().find("field-menu-menu").is_some(),
                 "in-window field menu opens over modal dialog"
             );
-            // Select All (item 3: Cut, Copy, Paste, Select All)
+            // Select All (item 3: Cut, Copy, Paste, Select All) then Copy (item 1).
             click_element(&mut host, "field-menu-item3");
             assert!(host.runtime().find("field-menu-menu").is_none());
+
+            send_key(&mut host, KeyEvent::from(Key::ContextMenu));
+            host.turn();
+            host.turn();
+            assert!(host.runtime().find("field-menu-menu").is_some());
+            click_element(&mut host, "field-menu-item1");
+            assert!(
+                host.runtime().find("field-menu-menu").is_none(),
+                "Copy was enabled and closed the menu"
+            );
+            assert_eq!(element_text(&mut host, &key), "smb://nas/docs");
+            assert_eq!(
+                board.text().as_deref().map(String::as_str),
+                Some("smb://nas/docs")
+            );
 
             // Open again via ContextMenu key (preserving selection) and pick Cut (item 0).
             send_key(&mut host, KeyEvent::from(Key::ContextMenu));
