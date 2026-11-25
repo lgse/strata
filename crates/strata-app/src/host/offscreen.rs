@@ -4,7 +4,6 @@ use std::time::{Duration, Instant};
 
 use rune::{Env, Mods, PhysicalInput, Runtime, text::TextSystem};
 use strata_kit::fonts::{FAMILIES, FONTS};
-use strata_platform::csd::{Backend, Csd, Policy};
 
 use crate::{App, commands, settings::Saved, shell, slots::Entry, startup::UiThread};
 
@@ -37,8 +36,7 @@ impl Offscreen {
     }
 
     fn over(parts: &'static [Entry<App>], ui: UiThread, settings: Saved, size: (f32, f32)) -> Self {
-        let csd = Csd::new(Policy::Auto.frame(), Backend::Headless);
-        let app = App::over(parts, &ui, csd, settings);
+        let app = App::over(parts, &ui, settings);
         Self::from_app(ui, app, size)
     }
 
@@ -63,8 +61,7 @@ impl Offscreen {
     /// Headless host built through `rune::App::headless_runtime` so `App::on_field_menu` is wired.
     #[cfg(test)]
     pub(crate) fn with_field_menu(ui: UiThread, settings: Saved) -> Self {
-        let csd = Csd::new(Policy::Auto.frame(), Backend::Headless);
-        let app = App::over(crate::PARTS, &ui, csd, settings);
+        let app = App::over(crate::PARTS, &ui, settings);
         let runtime = rune::App::new(rune::AppSpec {
             poll: Some(shell::poll),
             on_key: Some(commands::on_key),

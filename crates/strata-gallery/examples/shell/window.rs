@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-//! One shell window: its own Rune app with a `Csd`, drawing the gallery's shell view.
+//! One shell window: its own Rune app drawing the gallery's shell view.
 
-use rune::{App, AppSpec, Cx, El, Tx, WindowHandle, WindowOptions, WindowSpec};
+use rune::{App, AppSpec, Cx, El, Tx, WindowOptions, WindowSpec};
 use serde_json::json;
-use strata_components::header::{WindowAction, WindowButtons, WindowChrome};
+use strata_components::header::{self, WindowAction, WindowButtons, WindowChrome};
 use strata_gallery::scenes::x1::shell::{self, Hooks, ShellWindow, Volumes};
 use strata_kit::look::Look;
-use strata_platform::csd::{self, Backend, Csd, Notice, Outcome};
 
 use crate::controller::{self, Controller, windows};
 use crate::log;
@@ -16,12 +15,8 @@ pub struct Window {
     pub key: String,
     pub shell: ShellWindow,
     pub look: Look,
-    pub csd: Csd,
+    pub borderless: bool,
     titled: bool,
-}
-
-fn csd_of(w: &mut Window) -> &mut Csd {
-    &mut w.csd
 }
 
 fn shell_of(w: &mut Window) -> &mut ShellWindow {
@@ -34,21 +29,8 @@ fn placeholder() -> Window {
         key: String::new(),
         shell: ShellWindow::default(),
         look: Look::fallback(false),
-        csd: Csd::new(csd::Policy::Auto.frame(), Backend::Headless),
+        borderless: true,
         titled: false,
-    }
-}
-
-/// The header's data from what `csd` knows, and the window's focus.
-fn chrome(csd: &Csd, active: bool) -> WindowChrome {
-    let state = csd.state();
-    let caps = csd.capabilities();
-    WindowChrome {
-        maximized: state.maximized,
-        fullscreen: state.fullscreen,
-        can_minimize: caps.minimize,
-        can_maximize: caps.maximize,
-        active,
     }
 }
 
@@ -60,14 +42,16 @@ const HOOKS: Hooks<Window> = Hooks {
 
 fn view(w: &Window, cx: &mut Cx<Window>) -> El {
     let mut shown = w.shell.clone();
-    shown.chrome = chrome(&w.csd, w.shell.chrome.active);
+    let chrome = WindowChrome::from_cx(cx, w.shell.chrome.active);
+    shown.chrome = chrome;
+    let borderless = w.borderless;
     shell::view(
         &shown,
         &w.look,
         cx,
         HOOKS,
-        |bar| csd::header(bar, &w.csd, csd_of),
-        |window| csd::decorate(window, &w.csd, csd_of),
+        |bar| bar,
+        |window| header::resize_bands(window, borderless, &chrome),
     )
 }
 
@@ -81,16 +65,16 @@ fn poll(w: &mut Window, _: f64, tx: &mut Tx) -> bool {
     true
 }
 
-/// The header's window buttons, routed to the window manager through `csd`.
+/// The header's window buttons, routed natively through Rune.
 fn on_action(w: &mut Window, action: WindowAction, tx: &mut Tx) {
-    let outcome = match action {
-        WindowAction::Minimize => w.csd.minimize(tx),
-        WindowAction::ToggleMaximize => w.csd.toggle_maximized(tx),
-        WindowAction::Close => w.csd.close(tx),
-    };
+    match action {
+        WindowAction::Minimize => tx.minimize(),
+        WindowAction::ToggleMaximize => tx.toggle_maximized(),
+        WindowAction::Close => tx.close_window(),
+    }
     log(
         "action",
-        json!({ "window": w.key, "action": format!("{action:?}"), "outcome": format!("{outcome:?}") }),
+        json!({ "window": w.key, "action": format!("{action:?}") }),
     );
 }
 
@@ -99,20 +83,6 @@ fn on_volumes(w: &mut Window) {
     if let Some(c) = controller::controller() {
         c.update(|c: &mut Controller, _| c.list_volumes());
     }
-}
-
-fn observe(csd: &Csd, notice: Notice<'_>) {
-    let fields = match notice {
-        Notice::Attached | Notice::Report => json!({
-            "backend": format!("{:?}", csd.backend()),
-            "state": format!("{:?}", csd.state()),
-            "capabilities": format!("{:?}", csd.capabilities()),
-        }),
-        Notice::Outcome(Outcome::Sent { .. }) => return,
-        Notice::Outcome(outcome) => json!({ "outcome": format!("{outcome:?}") }),
-        Notice::Error(e) => json!({ "error": e }),
-    };
-    log("csd", fields);
 }
 
 fn on_close(w: &mut Window, _: &mut Tx) {
@@ -145,7 +115,7 @@ pub fn open(c: &mut Controller, location: String, token: Option<&str>) {
             ..ShellWindow::default()
         },
         look: c.look.clone(),
-        csd: Csd::new(c.frame, Backend::from_env()).observe(observe),
+        borderless: c.borderless,
         titled: false,
     };
     log(
@@ -161,11 +131,12 @@ pub fn open(c: &mut Controller, location: String, token: Option<&str>) {
     .init(move || state)
     .windowless()
     .args(Vec::new())
-    .window_options(csd::window_options(c.frame, WindowOptions::default()))
+    .window_options(WindowOptions {
+        borderless: c.borderless,
+        ..WindowOptions::default()
+    })
     .on_close(on_close);
     let handle = app.handle();
-    let attach = handle.clone();
-    let app = app.on_window(move |w: &WindowHandle| csd::attach(w, &attach, csd_of));
     // Before the window starts, so it is created with the token.
     match token {
         Some(token) => handle.activate(token),

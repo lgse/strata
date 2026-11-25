@@ -4670,7 +4670,6 @@ name = "strata-platform"
 version = "0.0.1"
 dependencies = [
  "futures-channel",
- "futures-util",
  "gio",
  "glib",
  "libc",
@@ -4682,7 +4681,6 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
- "wayland-protocols-plasma",
  "wayland-protocols-wlr",
  "x11rb",
  "zbus 6.5.0",

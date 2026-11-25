@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use rune::{Cx, DecorationMode, TiledEdges};
 use strata_kit::icons::IconName;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -37,6 +38,8 @@ pub struct WindowChrome {
     /// Whether the Maximize button can work. Only `Some(false)` hides it.
     pub can_maximize: Option<bool>,
     pub active: bool,
+    pub decoration_mode: DecorationMode,
+    pub tiled_edges: Option<TiledEdges>,
 }
 
 impl Default for WindowChrome {
@@ -48,13 +51,39 @@ impl Default for WindowChrome {
             can_minimize: None,
             can_maximize: None,
             active: true,
+            decoration_mode: DecorationMode::Unknown,
+            tiled_edges: None,
         }
     }
 }
 
 impl WindowChrome {
+    /// Captures the reactive window-manager state from Rune's view context.
+    pub fn from_cx<S>(cx: &Cx<S>, active: bool) -> WindowChrome {
+        let actions = cx.window_actions();
+        WindowChrome {
+            maximized: Some(cx.is_maximized()),
+            fullscreen: Some(cx.is_full_screen()),
+            can_minimize: actions.minimize,
+            can_maximize: actions.maximize,
+            active,
+            decoration_mode: cx.decoration_mode(),
+            tiled_edges: cx.tiled_edges(),
+        }
+    }
+
     pub fn framed(&self) -> bool {
-        self.maximized != Some(true) && self.fullscreen != Some(true)
+        self.maximized != Some(true)
+            && self.fullscreen != Some(true)
+            && self.decoration_mode != DecorationMode::Server
+            && !self.tiled_edges.is_some_and(TiledEdges::any)
+    }
+
+    pub(super) fn shows_resize_bands(&self, borderless: bool) -> bool {
+        borderless
+            && self.maximized != Some(true)
+            && self.fullscreen != Some(true)
+            && self.decoration_mode != DecorationMode::Server
     }
 }
 

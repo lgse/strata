@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use std::{path::Path, rc::Rc};
+use std::{cell::Cell, path::Path, rc::Rc};
 
-use rune::{Cx, El, Tx, col, row};
+use rune::{Cx, El, Tx, WindowBackdrop, WindowHandle, col, row};
 use strata_components::contract::EntryId;
 use strata_components::header::{
     self, Header, HeaderLabels, Shown, WindowAction, WindowButtons, WindowChrome,
@@ -21,10 +21,6 @@ use strata_fs::{
     app::{Browser, BrowserEvent, FreshnessInput},
 };
 use strata_kit::icons::IconName;
-use strata_platform::{
-    backdrop_blur::BackdropBlur,
-    csd::{self, Csd},
-};
 
 use crate::{
     App, Built, PARTS, buttons,
@@ -101,8 +97,16 @@ pub(crate) struct Window {
     /// The browser's active location as of the last `poll`: what the title names.
     location: Option<Location>,
     title: String,
-    csd: Csd,
-    backdrop_blur: BackdropBlur,
+    /// Latest window-manager chrome snapshot read from `Cx` during `view` (for `header_last`).
+    chrome: Cell<WindowChrome>,
+    /// Whether the active surface and compositor support `WindowBackdrop::Blur`.
+    backdrop_blur_supported: Cell<bool>,
+    /// Last `WindowBackdrop` requested from Rune for this window.
+    requested_backdrop: Cell<WindowBackdrop>,
+    /// Native window handle bound in `on_window`, used when blur support changes asynchronously.
+    window_handle: Option<WindowHandle>,
+    #[cfg(test)]
+    close_requested: bool,
     /// Whether the window has keyboard focus.
     active: bool,
     /// Whether the window is on screen ([`presence`]).
@@ -291,13 +295,12 @@ fn grouping_changed(app: &App) -> bool {
 }
 
 impl App {
-    pub(crate) fn new(ui: &UiThread, csd: Csd, settings: Saved) -> Self {
-        Self::over(PARTS, ui, csd, settings)
+    pub(crate) fn new(ui: &UiThread, settings: Saved) -> Self {
+        Self::over(PARTS, ui, settings)
     }
 
     pub(crate) fn new_chooser(
         ui: &UiThread,
-        csd: Csd,
         settings: Saved,
         spec: (
             crate::portal::ChooserRequest,
@@ -312,25 +315,19 @@ impl App {
         browser.set_chooser_mode(true);
         browser.set_operation_provider(Rc::new(LocalOperationProvider));
         let title = request.title.clone();
-        let mut app = Self::over_browser(PARTS, csd, settings, (browser, title));
+        let mut app = Self::over_browser(PARTS, settings, (browser, title));
         let _ = ui;
         crate::chooser::mount_request(&mut app, request, source, (destination_host, completion));
         app
     }
 
-    pub(crate) fn over(
-        parts: &'static [Entry<App>],
-        _ui: &UiThread,
-        csd: Csd,
-        settings: Saved,
-    ) -> Self {
+    pub(crate) fn over(parts: &'static [Entry<App>], _ui: &UiThread, settings: Saved) -> Self {
         let browser = browser_for(settings.preferences());
-        Self::over_browser(parts, csd, settings, (browser, title_for(None)))
+        Self::over_browser(parts, settings, (browser, title_for(None)))
     }
 
     fn over_browser(
         parts: &'static [Entry<App>],
-        csd: Csd,
         mut settings: Saved,
         (browser, title): (Rc<Browser>, String),
     ) -> Self {
@@ -341,7 +338,7 @@ impl App {
             &saved.date_format,
         ));
         let (built, mut window, look) =
-            Window::build(parts, csd, settings, (events, &browser, services));
+            Window::build(parts, settings, (events, &browser, services));
         window.title = title;
         Self::assemble(look, browser, window, built)
     }
@@ -385,15 +382,7 @@ impl App {
     }
 
     fn chrome(&self) -> WindowChrome {
-        let state = self.window.csd.state();
-        let capabilities = self.window.csd.capabilities();
-        WindowChrome {
-            maximized: state.maximized,
-            fullscreen: state.fullscreen,
-            can_minimize: capabilities.minimize,
-            can_maximize: capabilities.maximize,
-            active: self.window.active,
-        }
+        self.window.chrome.get()
     }
 }
 
@@ -498,24 +487,49 @@ fn title_for(location: Option<&Location>) -> String {
     )
 }
 
-pub(crate) fn csd_of(app: &mut App) -> &mut Csd {
-    &mut app.window.csd
+pub(crate) fn bind_window_handle(app: &mut App, window: WindowHandle) {
+    let desired = preferences::desired_window_backdrop(
+        app.look.transparency.frosted_glass,
+        app.window.backdrop_blur_supported.get(),
+    );
+    if app.window.requested_backdrop.get() != desired {
+        app.window.requested_backdrop.set(desired);
+        window.set_window_backdrop(desired);
+    }
+    app.window.window_handle = Some(window);
 }
 
-pub(crate) fn bind_backdrop_blur(app: &mut App, blur: BackdropBlur) {
-    app.window.backdrop_blur.detach();
-    blur.set_enabled(app.look.transparency.frosted_glass);
-    app.window.backdrop_blur = blur;
-}
-
-/// Detaches the window's compositor backdrop-blur handle before its native surface closes.
-pub(crate) fn detach_backdrop_blur(app: &mut App) {
-    app.window.backdrop_blur.detach();
+pub(crate) fn backdrop_blur_supported(app: &App) -> bool {
+    app.window.backdrop_blur_supported.get()
 }
 
 #[cfg(test)]
-pub(crate) fn backdrop_blur_enabled(app: &App) -> bool {
-    app.window.backdrop_blur.is_enabled()
+pub(crate) fn requested_window_backdrop(app: &App) -> WindowBackdrop {
+    app.window.requested_backdrop.get()
+}
+
+#[cfg(test)]
+pub(crate) fn close_requested(app: &App) -> bool {
+    app.window.close_requested
+}
+
+fn sync_backdrop_from_cx(app: &App, cx: &Cx<App>) {
+    let supported = cx.window_backdrop_supported(WindowBackdrop::Blur);
+    app.window.backdrop_blur_supported.set(supported);
+    let desired =
+        preferences::desired_window_backdrop(app.look.transparency.frosted_glass, supported);
+    if app.window.requested_backdrop.get() == desired {
+        return;
+    }
+    app.window.requested_backdrop.set(desired);
+    if let Some(window) = &app.window.window_handle {
+        window.set_window_backdrop(desired);
+    } else {
+        app.window.events.later().then(move |_, tx: &mut Tx| {
+            tx.set_window_backdrop(desired);
+            false
+        });
+    }
 }
 
 fn thumbnail_store(saved: &strata_desktop::settings::Preferences) -> ThumbnailStore {
@@ -592,7 +606,6 @@ impl FirstTab {
 impl Window {
     fn build(
         parts: &'static [Entry<App>],
-        csd: Csd,
         settings: Saved,
         (events, browser, services): (Inbox<App>, &Rc<Browser>, WindowServices),
     ) -> (Built, Self, strata_kit::look::Look) {
@@ -609,8 +622,6 @@ impl Window {
                 window_active: true,
             },
         );
-        let backdrop_blur = BackdropBlur::new();
-        backdrop_blur.set_enabled(look.transparency.frosted_glass);
         let window = Self {
             id: siblings::next_id(),
             settings,
@@ -624,8 +635,12 @@ impl Window {
             customizations_dirty: false,
             location: None,
             title: title_for(None),
-            csd,
-            backdrop_blur,
+            chrome: Cell::new(WindowChrome::default()),
+            backdrop_blur_supported: Cell::new(false),
+            requested_backdrop: Cell::new(WindowBackdrop::None),
+            window_handle: None,
+            #[cfg(test)]
+            close_requested: false,
             active: true,
             on_screen: true,
             held: rune::Mods::default(),
@@ -819,13 +834,12 @@ pub(crate) fn listing_viewports(app: &App) -> Vec<String> {
 }
 
 fn on_window_action(app: &mut App, action: WindowAction, tx: &mut Tx) {
-    let csd = &mut app.window.csd;
-    let outcome = match action {
-        WindowAction::Minimize => csd.minimize(tx),
-        WindowAction::ToggleMaximize => csd.toggle_maximized(tx),
+    match action {
+        WindowAction::Minimize => tx.minimize(),
+        WindowAction::ToggleMaximize => tx.toggle_maximized(),
         WindowAction::Close => return close_window(app, tx),
-    };
-    tracing::debug!(?action, ?outcome, "window button");
+    }
+    tracing::debug!(?action, "window button");
 }
 
 pub(crate) fn close_window(app: &mut App, tx: &mut Tx) {
@@ -834,8 +848,12 @@ pub(crate) fn close_window(app: &mut App, tx: &mut Tx) {
         close_guard::tell(app, refusal);
         return;
     }
-    let outcome = app.window.csd.close(tx);
-    tracing::debug!(?outcome, "window closed");
+    #[cfg(test)]
+    {
+        app.window.close_requested = true;
+    }
+    tx.close_window();
+    tracing::debug!("window closed");
 }
 
 struct Button {
@@ -1171,9 +1189,11 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
     let reduced = !look.animations || frame.cx.system_reduced_motion();
     frame.cx.reduced_motion(reduced);
     frame.cx.help_look(look.help_look());
-    let chrome = app.chrome();
+    let chrome = WindowChrome::from_cx(frame.cx, app.window.active);
+    app.window.chrome.set(chrome);
+    sync_backdrop_from_cx(app, frame.cx);
     let placed = Placed::build(app, &chrome, frame);
-    let bar = csd::header(bar(app, &chrome, placed.location), &app.window.csd, csd_of);
+    let bar = bar(app, &chrome, placed.location);
     let tab = col()
         .key(format!("tab-{}", app.window.here.key.0))
         .w_full()
@@ -1189,10 +1209,10 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         .children(placed.tabs)
         .children(crate::dnd::keep_alive(app))
         .child(tab);
-    let window = csd::decorate(
+    let window = header::resize_bands(
         header::frame("window-frame", content, look, &chrome),
-        &app.window.csd,
-        csd_of,
+        true,
+        &chrome,
     );
     rune_kit::root(window, layer)
         .on_key(commands::from_element)

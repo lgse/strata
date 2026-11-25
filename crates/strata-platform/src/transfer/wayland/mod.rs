@@ -39,8 +39,6 @@ use super::gate::Gate;
 use super::pipe;
 use super::windows::Windows;
 use control::Control;
-#[cfg(feature = "backdrop-blur")]
-pub(crate) use display::with_surface;
 use echo::Echoes;
 pub use offer::DragOffer;
 use offer::{AnyOffer, Home, WlSelection};
@@ -163,10 +161,10 @@ impl State {
     }
 
     #[cfg_attr(
-        not(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur")),
+        not(any(feature = "dnd", feature = "foreign-parent")),
         expect(
             dead_code,
-            reason = "the extension point for P1 (dnd), P4 (foreign-parent) and backdrop-blur"
+            reason = "the extension point for P1 (dnd) and P4 (foreign-parent)"
         )
     )]
     pub(crate) fn extension<T: Any + Send + Default>(&mut self) -> &mut T {
@@ -481,10 +479,10 @@ impl Conn {
     }
 
     #[cfg_attr(
-        not(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur")),
+        not(any(feature = "dnd", feature = "foreign-parent")),
         expect(
             dead_code,
-            reason = "the extension point for P1 (dnd), P4 (foreign-parent) and backdrop-blur"
+            reason = "the extension point for P1 (dnd) and P4 (foreign-parent)"
         )
     )]
     pub(crate) fn with_globals<R>(
@@ -670,7 +668,7 @@ impl Conn {
     }
 }
 
-#[cfg(any(feature = "dnd", feature = "backdrop-blur"))]
+#[cfg(feature = "dnd")]
 impl State {
     pub(crate) fn compositor(&self) -> Option<&WlCompositor> {
         self.compositor.as_ref()
@@ -697,7 +695,7 @@ impl State {
     }
 }
 
-#[cfg(any(feature = "dnd", feature = "foreign-parent", feature = "backdrop-blur"))]
+#[cfg(any(feature = "dnd", feature = "foreign-parent"))]
 impl Conn {
     pub(crate) fn flush(&self) {
         self.home.flush();
@@ -724,7 +722,7 @@ impl Conn {
     }
 }
 
-#[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
+#[cfg(feature = "foreign-parent")]
 impl Conn {
     pub(crate) fn roundtrip(&self) -> Result<(), Error> {
         if self.home.ui.is_none() {
@@ -791,7 +789,7 @@ impl Conn {
 }
 
 /// How a failed round trip leaves the connection.
-#[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
+#[cfg(feature = "foreign-parent")]
 #[derive(Debug, PartialEq, Eq)]
 enum Failure {
     /// libwayland has an error: the connection is dead, for good.
@@ -800,7 +798,7 @@ enum Failure {
     Other(String),
 }
 
-#[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
+#[cfg(feature = "foreign-parent")]
 fn classify(e: &wayland_client::DispatchError, last_error: Option<String>) -> Failure {
     use std::io::ErrorKind;
     use wayland_backend::client::WaylandError;
@@ -818,9 +816,9 @@ fn classify(e: &wayland_client::DispatchError, last_error: Option<String>) -> Fa
 }
 
 /// How often a round trip waits for a full socket to drain, and how long each time.
-#[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
+#[cfg(feature = "foreign-parent")]
 const BUSY_TRIES: u32 = 4;
-#[cfg(any(feature = "foreign-parent", feature = "backdrop-blur"))]
+#[cfg(feature = "foreign-parent")]
 const BUSY_WAIT: std::time::Duration = std::time::Duration::from_millis(250);
 
 #[cfg(test)]

@@ -85,15 +85,35 @@ fn look_context(window: &Window) -> LookContext {
     }
 }
 
+pub(super) fn desired_window_backdrop(
+    frosted_glass: bool,
+    supported: bool,
+) -> rune::WindowBackdrop {
+    if frosted_glass && supported {
+        rune::WindowBackdrop::Blur
+    } else {
+        rune::WindowBackdrop::None
+    }
+}
+
+pub(super) fn sync_window_backdrop_tx(app: &App, tx: &mut Tx) {
+    let desired = desired_window_backdrop(
+        app.look.transparency.frosted_glass,
+        app.window.backdrop_blur_supported.get(),
+    );
+    if app.window.requested_backdrop.get() == desired {
+        return;
+    }
+    app.window.requested_backdrop.set(desired);
+    tx.set_window_backdrop(desired);
+}
+
 pub(crate) fn follow_look(app: &mut App) {
     let App { look, window, .. } = app;
     let ctx = look_context(window);
     window
         .themes
         .apply(look, window.settings.preferences(), ctx);
-    window
-        .backdrop_blur
-        .set_enabled(look.transparency.frosted_glass);
     crate::preview::sync_theme(app);
 }
 
@@ -103,9 +123,7 @@ pub(crate) fn follow_look_tx(app: &mut App, tx: &mut Tx) {
     let ctx = look_context(window);
     let next = window.themes.build_look(window.settings.preferences(), ctx);
     window.themes.apply_tx(look, next, tx);
-    window
-        .backdrop_blur
-        .set_enabled(look.transparency.frosted_glass);
+    sync_window_backdrop_tx(app, tx);
     crate::preview::refresh_header(app);
     crate::preview::sync_theme(app);
 }

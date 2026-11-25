@@ -110,9 +110,11 @@ pub(super) fn build(ctx: PageCtx<'_>) -> Option<El> {
                 "Frosted glass",
                 "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.",
             )
-            .note(Some(
-                "Requires a compositor that supports backdrop blur and has it enabled.",
-            ))
+            .note(
+                (!shell::backdrop_blur_supported(app)).then_some(
+                    "Requires a compositor that supports backdrop blur and has it enabled.",
+                ),
+            )
             .indented()
             .disabled(sub_disabled),
             prefs.frosted_glass,

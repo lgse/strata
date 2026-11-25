@@ -5,16 +5,14 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
 use gio::prelude::*;
-use rune::{App, AppHandle, AppSpec, Cx, El, Tx, col};
+use rune::{App, AppHandle, AppSpec, Cx, DesktopSettingWatch, El, Tx, col};
 use serde_json::json;
 use strata_gallery::scenes::x1::reload::{self, Change, Debounce};
 use strata_gallery::scenes::x1::shell::{Desktop, OverridesStatus, Volume, Volumes};
 use strata_kit::look::Look;
 use strata_kit::overrides::Overrides;
 use strata_kit::theme::{DEFAULT_ID, Theme, bundled_theme};
-use strata_platform::csd::{Frame, Policy};
 use strata_platform::glib_bridge::{GlibThread, Keep, Signal, Task, TaskState};
-use strata_platform::settings::{self, DesktopSettings, Event as SettingsEvent};
 use strata_platform::single_instance::{
     AppId, Claim, CommandLine, Event, Launch, Options as ClaimOptions, Primary, claim,
 };
@@ -44,9 +42,11 @@ type Read = Result<Option<Vec<u8>>, String>;
 
 pub struct Controller {
     pub theme: &'static Theme,
-    pub frame: Frame,
+    pub borderless: bool,
     pub all_buttons: bool,
     pub desktop: Desktop,
+    enable_animations: bool,
+    reduced_motion: bool,
     overrides: Overrides,
     pub status: OverridesStatus,
     pub look: Look,
@@ -67,9 +67,11 @@ fn placeholder() -> Controller {
     let desktop = Desktop::default();
     Controller {
         theme,
-        frame: Policy::Auto.frame(),
+        borderless: true,
         all_buttons: false,
         desktop,
+        enable_animations: true,
+        reduced_motion: false,
         look: reload::build(theme, &desktop, &Overrides::default()),
         overrides: Overrides::default(),
         status: OverridesStatus::default(),
@@ -128,6 +130,69 @@ fn start_glib(state: &mut Controller, wake: AppHandle<Controller>) {
     }
 }
 
+fn watch_desktop_settings(handle: AppHandle<Controller>) -> Vec<DesktopSettingWatch> {
+    let text_scale = {
+        let handle = handle.clone();
+        rune::desktop_setting(
+            "org.gnome.desktop.interface",
+            "text-scaling-factor",
+            move |value| {
+                if let Some(scale) = value.as_f64().filter(|s| s.is_finite() && *s > 0.0) {
+                    #[expect(clippy::cast_possible_truncation, reason = "text scale fits f32")]
+                    let scale = scale as f32;
+                    handle.update(move |c: &mut Controller, _| {
+                        c.update_desktop(|c| c.desktop.text_scale = scale);
+                    });
+                }
+            },
+        )
+    };
+    let double_click = {
+        let handle = handle.clone();
+        rune::desktop_setting(
+            "org.gnome.desktop.peripherals.mouse",
+            "double-click",
+            move |value| {
+                if let Some(ms) = value
+                    .as_i64()
+                    .filter(|ms| *ms > 0)
+                    .and_then(|ms| u32::try_from(ms).ok())
+                {
+                    handle.update(move |c: &mut Controller, _| {
+                        c.update_desktop(|c| c.desktop.double_click_ms = ms);
+                    });
+                }
+            },
+        )
+    };
+    let enable_animations = {
+        let handle = handle.clone();
+        rune::desktop_setting(
+            "org.gnome.desktop.interface",
+            "enable-animations",
+            move |value| {
+                if let Some(enabled) = value.as_bool() {
+                    handle.update(move |c: &mut Controller, _| {
+                        c.update_desktop(|c| c.enable_animations = enabled);
+                    });
+                }
+            },
+        )
+    };
+    let reduced_motion = rune::desktop_setting(
+        "org.freedesktop.appearance",
+        "reduced-motion",
+        move |value| {
+            if let Some(reduced) = value.as_i64().map(|v| v == 1) {
+                handle.update(move |c: &mut Controller, _| {
+                    c.update_desktop(|c| c.reduced_motion = reduced);
+                });
+            }
+        },
+    );
+    vec![text_scale, double_click, enable_animations, reduced_motion]
+}
+
 pub fn run(options: Options) -> i32 {
     let primary = match claim_primary() {
         Ok(p) => p,
@@ -155,11 +220,7 @@ pub fn run(options: Options) -> i32 {
 
     let mut state = placeholder();
     state.theme = theme;
-    state.frame = if options.native {
-        Policy::Native.frame()
-    } else {
-        Policy::Auto.frame()
-    };
+    state.borderless = !options.native;
     state.all_buttons = options.all_buttons;
     state.path = options.overrides_path();
 
@@ -168,28 +229,13 @@ pub fn run(options: Options) -> i32 {
     state.first_read(first.unwrap_or(Ok(None)));
     start_glib(&mut state, handle.clone());
 
-    // The watcher's first answer arrives as a snapshot; until then the defaults stand.
-    let settings_handle = handle.clone();
-    let watcher = settings::Watcher::start(settings::Options::default(), move |event| {
-        let settings = match event {
-            SettingsEvent::Snapshot(s) | SettingsEvent::Changed { settings: s, .. } => s,
-            SettingsEvent::Fallback(why) => {
-                log("desktop", json!({ "fallback": format!("{why:?}") }));
-                return;
-            }
-            _ => return,
-        };
-        settings_handle.update(move |c: &mut Controller, _| c.apply_desktop(&settings));
-    });
-    if let Err(e) = &watcher {
-        log("desktop", json!({ "error": e.to_string() }));
-    }
+    let watches = watch_desktop_settings(handle.clone());
 
     let app = app.init(move || state);
     primary.attach_rune(handle, on_event);
     let primary = PRIMARY.get_or_init(|| primary);
     let result = app.try_run();
-    drop(watcher);
+    drop(watches);
     primary.release();
     if let Err(error) = result {
         log("exit-error", json!({ "error": error }));
@@ -397,15 +443,14 @@ impl Controller {
         self.look = reload::build(self.theme, &self.desktop, &self.overrides);
     }
 
-    fn apply_desktop(&mut self, s: &DesktopSettings) {
-        let desktop = Desktop {
-            text_scale: s.text_scale as f32,
-            double_click_ms: u32::try_from(s.double_click.as_millis()).unwrap_or(u32::MAX),
-            animations: s.animations(),
-        };
-        if desktop == self.desktop {
+    fn update_desktop(&mut self, update: impl FnOnce(&mut Controller)) {
+        let before = self.desktop;
+        update(self);
+        self.desktop.animations = self.enable_animations && !self.reduced_motion;
+        if self.desktop == before {
             return;
         }
+        let desktop = self.desktop;
         log(
             "desktop",
             json!({
@@ -414,7 +459,6 @@ impl Controller {
                 "animations": desktop.animations,
             }),
         );
-        self.desktop = desktop;
         self.look = reload::build(self.theme, &self.desktop, &self.overrides);
         self.send_look();
     }

@@ -97,7 +97,6 @@ strata-platform = { version = "0.0.1", path = "crates/strata-platform" }
 strata-test-peer = { version = "0.0.1", path = "crates/strata-platform/tests/support/strata-test-peer" }
 
 # Third-party crates the Rune interface and its platform shims use.
-futures-util = { version = "0.3", default-features = false }
 png = "0.18"
 swash = "0.2.10"
 syntect = { version = "5.3.0", default-features = false }
@@ -109,7 +108,6 @@ wayland-backend = "0.3"
 wayland-client = "0.31"
 wayland-protocols = "0.32"
 wayland-protocols-misc = "0.3"
-wayland-protocols-plasma = "0.3"
 wayland-protocols-wlr = "0.3"
 wgpu = { version = "30.0.1", default-features = false }
 x11rb = "0.13"

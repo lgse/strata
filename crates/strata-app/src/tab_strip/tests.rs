@@ -8,8 +8,6 @@ use strata_core::model::{FolderColor, FolderColorValue, Location};
 use strata_desktop::settings::Preferences;
 use strata_kit::icons::IconName;
 
-use strata_platform::csd::Outcome as Sent;
-
 use super::{named, select, tab_icon};
 use crate::{
     App,
@@ -272,12 +270,9 @@ fn the_window_is_not_closed_while_a_hidden_tab_has_an_operation_running() {
             let said = host.run_until(PATIENCE, |host| dialog(host).is_some());
             assert!(said, "a notice");
             assert_eq!(dialog(&host).as_deref(), Some(OPERATIONS_ACTIVE));
-            let sent = act(&mut host, |app, _| {
-                shell::csd_of(app).last_outcome().cloned()
-            });
             assert!(
-                !matches!(sent, Some(Sent::Sent { .. })),
-                "no close was sent: {sent:?}"
+                !shell::close_requested(host.app()),
+                "no close was requested"
             );
         },
     );

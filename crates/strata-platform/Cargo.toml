@@ -16,7 +16,7 @@ publish = false
 # `optional = true`, and enable it with `dep:<name>` from each feature that uses it. Two blocks
 # declaring the same crate merge cleanly in git but make the manifest invalid.
 #
-# Examples gate their own body on their feature (`#[cfg(feature = "csd")] fn main()`, plus a
+# Examples gate their own body on their feature (`#[cfg(feature = "dnd")] fn main()`, plus a
 # `#[cfg(not(..))] fn main()` that says which feature to enable), so they need no
 # `[[example]]` entry here and still build under `mise run compile-features`.
 [features]
@@ -31,27 +31,8 @@ dnd = ["_transfer", "x11rb/shape", "x11rb/xinput"]
 # P2 clipboard: src/clipboard/
 clipboard = ["_transfer"]
 
-# P3 client-side decorations: src/csd/
-csd = ["dep:x11rb"]
-
 # P4 foreign parenting: src/foreign_parent/
 foreign-parent = ["_transfer", "wayland-protocols/unstable"]
-
-# Wayland backdrop blur: src/backdrop_blur/
-backdrop-blur = ["_transfer", "wayland-protocols/staging", "dep:wayland-protocols-plasma"]
-
-# P5 desktop settings: src/settings/
-settings = [
-    "dep:futures-util",
-    "dep:tokio",
-    "dep:zbus",
-    "tokio/macros",
-    "tokio/rt",
-    "tokio/sync",
-    "tokio/time",
-    "zbus/proxy",
-    "zbus/tokio",
-]
 
 # P6 icon theme lookup: src/icon_theme/. Decodes through Rune's ImageCache; SVG needs rune/svg.
 icon-theme = ["rune/svg"]
@@ -88,11 +69,6 @@ _transfer = ["dep:libc", "dep:wayland-backend", "dep:wayland-client", "dep:wayla
 rune.workspace = true
 
 # Shared by two or more shims: optional, enabled with `dep:` from each feature that uses it.
-# settings (P5) and single-instance (P8): each feature enables the tokio and zbus features it uses.
-tokio = { workspace = true, optional = true }
-zbus = { workspace = true, optional = true }
-# x11rb: csd (P3) and _transfer (P0); each feature names the x11rb features it needs.
-x11rb = { workspace = true, optional = true }
 # glib: glib-bridge (P9) and glib-loop (V5).
 glib = { workspace = true, optional = true }
 # libc: _transfer (P0) and media-audio (P7).
@@ -102,18 +78,15 @@ libc = { workspace = true, optional = true }
 
 # clipboard (P2)
 
-# csd (P3)
-
 # foreign-parent (P4)
-
-# settings (P5)
-futures-util = { workspace = true, optional = true, features = ["std"] }
 
 # icon-theme (P6)
 
 # media-audio (P7)
 
 # single-instance (P8)
+tokio = { workspace = true, optional = true }
+zbus = { workspace = true, optional = true }
 
 # glib-bridge (P9)
 futures-channel = { workspace = true, optional = true }
@@ -126,9 +99,7 @@ wayland-backend = { workspace = true, optional = true, features = ["client_syste
 wayland-client = { workspace = true, optional = true }
 wayland-protocols = { workspace = true, optional = true, features = ["client", "staging"] }
 wayland-protocols-wlr = { workspace = true, optional = true, features = ["client"] }
-
-# backdrop-blur
-wayland-protocols-plasma = { workspace = true, optional = true, features = ["client"] }
+x11rb = { workspace = true, optional = true }
 
 # Tests only. tests/session/ is one binary: each work package's compositor and D-Bus tests run
 # in private sessions from tests/support/ (docs/rune/testing.md). Same layout as [dependencies]: a
@@ -144,19 +115,15 @@ strata-test-peer.workspace = true
 
 # clipboard (P2)
 
-# csd (P3)
-
 # foreign-parent (P4)
-
-# settings (P5): the fake Settings portal the session tests serve on the private bus.
-tokio = { workspace = true, features = ["rt", "sync", "time"] }
-zbus = { workspace = true, features = ["tokio", "service"] }
 
 # icon-theme (P6)
 
 # media-audio (P7)
 
-# single-instance (P8)
+# single-instance (P8): D-Bus client helpers used by tests/session/p8.rs.
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+zbus = { workspace = true, features = ["tokio", "service"] }
 
 # glib-bridge (P9)
 
