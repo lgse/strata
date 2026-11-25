@@ -66,13 +66,16 @@ fn a_tile_cuts_its_name_again_when_the_fonts_move() {
     };
     let text = rune::text::TextSystem::new(&[], ("Inter", "Inter"));
     let mut rt = Runtime::with_text(host, view, (600.0, 400.0), Env::new(false, 1.0), text);
+    // Register Strata's bundled JetBrains Mono alongside Rune's bundled Inter so switching
+    // families never depends on host-installed fonts.
+    rt.add_font(strata_kit::fonts::JETBRAINS_MONO);
     for _ in 0..4 {
         rt.frame(1.0 / 60.0);
     }
     let before = label(&rt);
     assert!(before.contains('…'), "cut in the first font: {before}");
     let epoch = rune::text::font_epoch();
-    rt.update(|_, tx| tx.set_font_families("IBM Plex Mono", "IBM Plex Mono"));
+    rt.update(|_, tx| tx.set_font_families(strata_kit::fonts::FAMILY, strata_kit::fonts::FAMILY));
     for _ in 0..4 {
         rt.frame(1.0 / 60.0);
     }
