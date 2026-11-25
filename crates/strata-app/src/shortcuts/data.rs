@@ -14,12 +14,17 @@ use strata_desktop::keys::{
     shown,
 };
 
-use super::contents::{self, Mention, Mode, Shortcut};
+use super::contents::{self, ChooserScope, Mention, Mode, Shortcut};
 use crate::tenxer::PromptKind;
 
 /// What the reference shows: the sections of `mode`, labelled through the keymap in force.
-pub(super) fn rows(mode: Mode, tenxer: bool, revision: u64) -> ShortcutData {
-    let sections = contents::sections(mode, tenxer)
+pub(super) fn rows(
+    mode: Mode,
+    tenxer: bool,
+    chooser: Option<ChooserScope>,
+    revision: u64,
+) -> ShortcutData {
+    let sections = contents::sections(mode, tenxer, chooser)
         .into_iter()
         .map(|section| reference::Section {
             title: tr(section.title),

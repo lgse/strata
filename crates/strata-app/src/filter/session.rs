@@ -243,13 +243,15 @@ impl Session {
         self.0.query.replace(query.trim().to_owned());
     }
 
-    pub(crate) fn more(&self, query: &str, count: usize) {
+    pub(crate) fn more(&self, query: &str, count: usize) -> bool {
         if *self.0.query.borrow() != query {
-            return;
+            return false;
         }
         if let Some(worker) = self.0.worker.borrow().as_ref() {
             worker.handle.query_candidates(query, count);
+            return true;
         }
+        false
     }
 
     fn ask(&self, query: &str) {

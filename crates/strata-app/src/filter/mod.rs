@@ -532,20 +532,30 @@ fn take_reveal(app: &mut App) -> Option<usize> {
     filter.state.take_reveal(Results { source, selection })
 }
 
-fn eligible(app: &App, batch: &Batch) -> Vec<SearchItem> {
+pub(crate) use hits::entry_of;
+
+pub(crate) fn eligible_results(
+    browser: &strata_fs::app::Browser,
+    session: &session::Session,
+    batch: &Batch,
+) -> (Vec<SearchItem>, bool) {
     let items: Vec<SearchItem> = batch
         .items
         .iter()
-        .filter(|item| app.browser.allows_entry(&hits::entry_of(item)))
+        .filter(|item| browser.allows_entry(&hits::entry_of(item)))
         .take(SEARCH_RESULT_LIMIT)
         .cloned()
         .collect();
-    if batch.has_more && items.len() < SEARCH_RESULT_LIMIT {
-        app.filter
-            .session
-            .more(&batch.query, batch.candidates.saturating_mul(2));
-    }
-    items
+    // Type/folder predicates run on the interface thread, after ranking but before the display cap.
+    // Continue through lower-ranked candidates rather than starving eligible matches.
+    let extended = batch.has_more
+        && items.len() < SEARCH_RESULT_LIMIT
+        && session.more(&batch.query, batch.candidates.saturating_mul(2));
+    (items, extended)
+}
+
+fn eligible(app: &App, batch: &Batch) -> Vec<SearchItem> {
+    eligible_results(&app.browser, &app.filter.session, batch).0
 }
 
 /// Stops the search and forgets its results.

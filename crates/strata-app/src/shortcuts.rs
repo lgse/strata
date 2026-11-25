@@ -19,7 +19,7 @@ mod sections;
 mod tenxer;
 
 pub(crate) use contents::CUSTOM_ACTION;
-use contents::Mode;
+use contents::{ChooserRequest, ChooserScope, Mode};
 pub(crate) use sections::command_sections;
 
 pub(crate) struct Shortcuts {
@@ -33,6 +33,7 @@ pub(crate) struct Shortcuts {
 struct Built {
     keymap: Rc<Keymap>,
     mode: Mode,
+    chooser: Option<ChooserScope>,
     typing: bool,
     tenxer: bool,
     locale: String,
@@ -42,6 +43,7 @@ impl PartialEq for Built {
     fn eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.keymap, &other.keymap)
             && self.mode == other.mode
+            && self.chooser == other.chooser
             && self.typing == other.typing
             && self.tenxer == other.tenxer
             && self.locale == other.locale
@@ -98,6 +100,7 @@ fn refresh(app: &mut App) -> bool {
     let now = Built {
         keymap: active_keymap(),
         mode: mode(app),
+        chooser: chooser_scope(app),
         typing: shell::preferences(app).type_to_search,
         tenxer: shell::preferences(app).tenxer_mode,
         locale: rust_i18n::locale().to_string(),
@@ -107,9 +110,30 @@ fn refresh(app: &mut App) -> bool {
         return false;
     }
     let revision = shortcuts.data.revision + 1;
-    shortcuts.data = data::rows(now.mode, now.tenxer, revision);
+    shortcuts.data = data::rows(now.mode, now.tenxer, now.chooser, revision);
     shortcuts.built = Some(now);
     true
+}
+
+fn chooser_scope(app: &App) -> Option<ChooserScope> {
+    let active = app.chooser.active.as_ref()?;
+    let (request, multiple) = match active.request.kind {
+        crate::portal::ChooserKind::Open {
+            directory: true,
+            multiple,
+        } => (ChooserRequest::Folders, multiple),
+        crate::portal::ChooserKind::Open {
+            directory: false,
+            multiple,
+        } => (ChooserRequest::Files, multiple),
+        crate::portal::ChooserKind::SaveFile { .. } => (ChooserRequest::SaveFile, false),
+        crate::portal::ChooserKind::SaveFiles { .. } => (ChooserRequest::SaveFiles, false),
+    };
+    Some(ChooserScope {
+        request,
+        multiple,
+        confined: active.is_confined(),
+    })
 }
 
 fn mode(app: &App) -> Mode {

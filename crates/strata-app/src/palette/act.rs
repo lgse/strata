@@ -9,6 +9,10 @@ pub(super) fn open(app: &mut App, id: &str, tx: &mut Tx) {
     let Some(found) = app.palette.found.get(id).cloned() else {
         return;
     };
+    if app.browser.is_chooser_mode() {
+        chooser_result(app, &found, true, tx);
+        return;
+    }
     let location = Location::local(found.path.clone());
     shell::publish(app);
     if found.is_directory {
@@ -30,9 +34,33 @@ pub(super) fn reveal(app: &mut App, id: &str, tx: &mut Tx) {
     let Some(found) = app.palette.found.get(id).cloned() else {
         return;
     };
+    if app.browser.is_chooser_mode() {
+        chooser_result(app, &found, false, tx);
+        return;
+    }
     shell::publish(app);
     preview::clear_search_target(app, tx);
     reveal_location(app, Location::local(found.path), tx);
+    shell::settle(app, tx);
+}
+
+fn chooser_result(
+    app: &mut App,
+    found: &strata_fs::services::SearchItem,
+    enter_folders: bool,
+    tx: &mut Tx,
+) {
+    if !app.browser.allows_entry(&filter::entry_of(found)) {
+        return;
+    }
+    let location = Location::local(found.path.clone());
+    shell::publish(app);
+    preview::clear_search_target(app, tx);
+    if enter_folders && found.is_directory {
+        app.browser.navigate(location);
+    } else {
+        reveal_location(app, location, tx);
+    }
     shell::settle(app, tx);
 }
 

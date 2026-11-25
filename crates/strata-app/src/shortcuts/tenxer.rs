@@ -8,42 +8,47 @@ use strata_desktop::keys::{
 };
 
 use super::contents::{
-    MEDIA, Mention, Mode, SELECT_TAB, Section, Shortcut, TEXT_SIZE, VIEW_MODES, default_sections,
-    navigation_title, row, within,
+    ChooserRequest, ChooserScope, MEDIA, Mention, Mode, SELECT_TAB, Section, Shortcut, TEXT_SIZE,
+    VIEW_MODES, default_sections, navigation_title, row, within,
 };
 
 /// `IN_ANY_PREVIEW`.
 const IN_ANY_PREVIEW: &str = "%{keys} in any preview";
 
-/// `tenxer_sections` for the window (no chooser).
-pub(crate) fn tenxer_sections(mode: Mode) -> Vec<Section> {
-    let mut sections = vec![
-        Section {
-            title: navigation_title(mode),
-            rows: tenxer_navigation(mode, false),
-        },
+pub(crate) fn tenxer_sections(mode: Mode, chooser: Option<ChooserScope>) -> Vec<Section> {
+    let mut sections = vec![Section {
+        title: navigation_title(mode),
+        rows: tenxer_navigation(mode, chooser.is_some()),
+    }];
+    if let Some(chooser) = chooser {
+        sections.push(Section {
+            title: "File chooser",
+            rows: chooser_requests(chooser),
+        });
+    }
+    sections.extend([
         Section {
             title: "Places",
-            rows: tenxer_places(false),
+            rows: tenxer_places(chooser.is_some()),
         },
         Section {
             title: "Files and selection",
-            rows: TENXER_FILES.to_vec(),
+            rows: chooser.map_or_else(|| TENXER_FILES.to_vec(), chooser_files),
         },
         Section {
             title: "Preview",
-            rows: tenxer_preview(mode, false),
+            rows: tenxer_preview(mode, chooser.is_some()),
         },
         Section {
             title: "Search and tools",
-            rows: tenxer_tools(mode, false),
+            rows: tenxer_tools(mode, chooser),
         },
         Section {
             title: "Preview media",
             rows: MEDIA.to_vec(),
         },
-    ];
-    let mode_rows = tenxer_mode_rows(mode, false, &sections);
+    ]);
+    let mode_rows = tenxer_mode_rows(mode, chooser.is_some(), &sections);
     let mode_index = sections
         .iter()
         .position(|section| section.title == "Search and tools")
@@ -512,6 +517,103 @@ const COPY_PATH_OR_NAME: Keys = Mixed(&[
     Chord(shown![COPY_AS, COPY_AS_NAME]),
 ]);
 
+fn chooser_requests(chooser: ChooserScope) -> Vec<Shortcut> {
+    let mut shortcuts = match chooser.request {
+        ChooserRequest::Files => vec![
+            within(
+                "%{keys} on a file",
+                Any(shown![ENTER, OPEN]),
+                if chooser.multiple {
+                    "Choose the filled items, or the file"
+                } else {
+                    "Choose the file"
+                },
+            ),
+            within(
+                "%{keys} on a folder",
+                Any(shown![ENTER, OPEN]),
+                "Open the folder",
+            ),
+        ],
+        ChooserRequest::Folders => vec![
+            within(
+                "%{keys} on a folder",
+                Any(shown![ENTER, OPEN]),
+                "Open the folder",
+            ),
+            row(
+                One(CHOOSE_FOLDER.shown()),
+                "Choose a folder, as Accept does",
+            ),
+        ],
+        ChooserRequest::SaveFile => vec![
+            row(One(ENTER.shown()), "Save the name in the current folder"),
+            within(
+                "%{keys} on a file",
+                One(OPEN.shown()),
+                "Save over that file after confirming",
+            ),
+            within("%{keys} on a folder", One(OPEN.shown()), "Open the folder"),
+            row(
+                One(RENAME.shown()),
+                "Edit the name; %{keys} returns to the files",
+            )
+            .mentioning(Mention::Keys(One(ESCAPE.shown()))),
+        ],
+        ChooserRequest::SaveFiles => vec![
+            row(One(ENTER.shown()), "Save the files in the current folder"),
+            within("%{keys} on a folder", One(OPEN.shown()), "Open the folder"),
+        ],
+    };
+    shortcuts.push(row(
+        One(ESCAPE.shown()),
+        "Dismiss one interaction, then cancel the request",
+    ));
+    shortcuts
+}
+
+fn chooser_files(chooser: ChooserScope) -> Vec<Shortcut> {
+    let mut shortcuts = vec![
+        TRASH_AFTER_CONFIRMING,
+        row(
+            One(DELETE_PERMANENTLY.shown()),
+            "Delete permanently after confirming",
+        ),
+        row(
+            One(CREATE.shown()),
+            "Create a file; end with / for a folder",
+        ),
+        row(COPY_PATH_OR_NAME, "Copy path / name"),
+    ];
+    if chooser.request != ChooserRequest::SaveFile {
+        shortcuts.push(row(
+            One(RENAME.shown()),
+            "Rename the focused item in the footer",
+        ));
+    }
+    shortcuts.push(TAB_IN_INLINE_RENAME);
+    shortcuts.push(row(One(NEW_FOLDER.shown()), "Create a folder"));
+    if chooser.multiple {
+        shortcuts.extend_from_slice(&[
+            row(One(SPACE.shown()), "Toggle the focused item and move down"),
+            row(
+                Any(shown![VISUAL_SELECT, VISUAL_UNSET]),
+                "Visual select / visual unset",
+            ),
+            row(
+                One(SELECT_ALL.shown()),
+                "Select all items in the focused pane",
+            ),
+            row(One(INVERT_SELECTION.shown()), "Invert the selection"),
+        ]);
+    }
+    shortcuts.extend_from_slice(&[
+        row(One(PROPERTIES.shown()), "Show item properties"),
+        row(One(CONTEXT_MENU.shown()), "Open the context menu"),
+    ]);
+    shortcuts
+}
+
 /// 10xer rows that a default row already describes with other keys or context.
 const SHARED_WITH_DEFAULT: [(Keys, Option<&str>); 4] = [
     (One(FIRST_ITEM.shown()), None),
@@ -666,6 +768,9 @@ const TENXER_TABS: &[Shortcut] = &[
         "Move the active tab left / right",
     ),
     SELECT_TAB,
+];
+
+const GLOBAL_SEARCH: &[Shortcut] = &[
     row(One(SEARCH.shown()), "Open global search"),
     row(
         One(OPEN_CONTAINING_FOLDER.shown()),
@@ -719,15 +824,18 @@ const TENXER_REFERENCE: &[Shortcut] = &[
     row(One(REFERENCE.shown()), "Show or hide this reference"),
 ];
 
-fn tenxer_tools(mode: Mode, chooser: bool) -> Vec<Shortcut> {
+fn tenxer_tools(mode: Mode, chooser: Option<ChooserScope>) -> Vec<Shortcut> {
     let mut shortcuts = TENXER_FIND.to_vec();
     shortcuts.push(dismiss_search_hits(mode));
     shortcuts.extend_from_slice(TENXER_HEADER_AND_SIDEBAR);
-    if !chooser {
+    if chooser.is_none() {
         shortcuts.extend_from_slice(TENXER_TABS);
     }
+    if chooser.is_none_or(|scope| !scope.confined) {
+        shortcuts.extend_from_slice(GLOBAL_SEARCH);
+    }
     shortcuts.extend_from_slice(TENXER_VIEW);
-    if !chooser {
+    if chooser.is_none() {
         shortcuts.push(row(One(SETTINGS.shown()), "Open Settings"));
     }
     shortcuts.extend_from_slice(TENXER_REFERENCE);

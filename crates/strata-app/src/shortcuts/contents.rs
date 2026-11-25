@@ -15,6 +15,21 @@ pub(crate) enum Mode {
     List,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ChooserScope {
+    pub(crate) request: ChooserRequest,
+    pub(crate) multiple: bool,
+    pub(crate) confined: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ChooserRequest {
+    Files,
+    Folders,
+    SaveFile,
+    SaveFiles,
+}
+
 /// `ReferenceSection`.
 pub(crate) struct Section {
     pub(crate) title: &'static str,
@@ -67,9 +82,9 @@ pub(super) const fn within(context: &'static str, keys: Keys, action: &'static s
     }
 }
 
-pub(crate) fn sections(mode: Mode, tenxer: bool) -> Vec<Section> {
+pub(crate) fn sections(mode: Mode, tenxer: bool, chooser: Option<ChooserScope>) -> Vec<Section> {
     let mut sections = match tenxer {
-        true => super::tenxer::tenxer_sections(mode),
+        true => super::tenxer::tenxer_sections(mode, chooser),
         false => default_sections(mode),
     };
     for section in &mut sections {

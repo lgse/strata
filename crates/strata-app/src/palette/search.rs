@@ -117,18 +117,19 @@ pub(super) fn asked(app: &mut App, query: &PaletteQuery) {
 
 /// A batch for the query the field holds: every result so far, done once the index is read.
 fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
-    let palette = &mut app.palette;
-    if !palette.state.is_open() || batch.generation != palette.session.generation() {
+    if !app.palette.state.is_open() || batch.generation != app.palette.session.generation() {
         return false;
     }
-    palette.found = batch
-        .items
-        .iter()
-        .map(|item| (id(item), item.clone()))
-        .collect();
-    let items = batch.items.iter().map(item).collect();
+    let (found, extended) = if app.browser.is_chooser_mode() {
+        crate::filter::eligible_results(&app.browser, &app.palette.session, &batch)
+    } else {
+        (batch.items, false)
+    };
+    let palette = &mut app.palette;
+    palette.found = found.iter().map(|item| (id(item), item.clone())).collect();
+    let items = found.iter().map(item).collect();
     let mut answer = Answer::new(palette.asked, items);
-    if !batch.indexing {
+    if !batch.indexing && !extended {
         answer = answer.done();
     }
     if batch.coverage.is_partial() {

@@ -8,7 +8,7 @@ use strata_desktop::keys::{
 };
 
 use super::{around_keys, caps, chord, labels, panel_keys, rows};
-use crate::shortcuts::contents::Mode;
+use crate::shortcuts::contents::{ChooserRequest, ChooserScope, Mode};
 
 fn library() {
     crate::startup::install_key_library().expect("the key library");
@@ -49,13 +49,13 @@ fn assert_no_placeholder(context: &str, text: &str) {
     assert!(!text.contains("%{"), "uninterpolated {context}: {text:?}");
 }
 
-fn assert_rows_have_no_placeholders(mode: Mode, tenxer: bool) {
-    let data = rows(mode, tenxer, 1);
+fn assert_rows_have_no_placeholders(mode: Mode, tenxer: bool, chooser: Option<ChooserScope>) {
+    let data = rows(mode, tenxer, chooser, 1);
     assert!(!data.sections.is_empty());
     for section in &data.sections {
         assert_no_placeholder("section title", &section.title);
         for shortcut in &section.rows {
-            let tag = format!("{mode:?} (tenxer={tenxer})");
+            let tag = format!("{mode:?} (tenxer={tenxer}, chooser={chooser:?})");
             assert_no_placeholder(&format!("action in {tag}"), &shortcut.action);
             assert_no_placeholder(&format!("key_text in {tag}"), &shortcut.key_text());
             for term in &shortcut.search {
@@ -90,7 +90,27 @@ fn no_reference_text_leaves_uninterpolated_placeholders() {
 
     for tenxer in [false, true] {
         for mode in [Mode::Columns, Mode::Icons, Mode::List] {
-            assert_rows_have_no_placeholders(mode, tenxer);
+            assert_rows_have_no_placeholders(mode, tenxer, None);
+        }
+    }
+    for request in [
+        ChooserRequest::Files,
+        ChooserRequest::Folders,
+        ChooserRequest::SaveFile,
+        ChooserRequest::SaveFiles,
+    ] {
+        for multiple in [false, true] {
+            for confined in [false, true] {
+                assert_rows_have_no_placeholders(
+                    Mode::List,
+                    true,
+                    Some(ChooserScope {
+                        request,
+                        multiple,
+                        confined,
+                    }),
+                );
+            }
         }
     }
 }
@@ -100,7 +120,7 @@ fn a_saved_keymap_moves_a_rows_keys() {
     library();
     let keymap = Keymap::defaults().with(Map::Default, RENAME, vec![Binding::ctrl(Key::e)]);
     let _keymap = use_keymap(keymap);
-    let data = rows(Mode::Columns, false, 1);
+    let data = rows(Mode::Columns, false, None, 1);
     let rename = data
         .sections
         .iter()
@@ -108,6 +128,69 @@ fn a_saved_keymap_moves_a_rows_keys() {
         .find(|row| row.action == "Rename")
         .expect("a Rename row");
     assert_eq!(rename.key_text(), "Ctrl+E");
+}
+
+#[test]
+fn chooser_reference_lists_global_search_only_when_unconfined() {
+    library();
+    let open = rows(
+        Mode::List,
+        true,
+        Some(ChooserScope {
+            request: ChooserRequest::Files,
+            multiple: false,
+            confined: false,
+        }),
+        1,
+    );
+    let open_rows: Vec<(&str, String)> = open
+        .sections
+        .iter()
+        .flat_map(|section| &section.rows)
+        .map(|row| (row.action.as_str(), row.key_text()))
+        .collect();
+    assert!(
+        open_rows
+            .iter()
+            .any(|(action, keys)| *action == "Open global search" && keys == "Ctrl+K"),
+        "unconfined chooser reference lists Ctrl+K global search"
+    );
+    assert!(
+        open_rows
+            .iter()
+            .any(|(action, _)| *action == "Choose the file"),
+        "chooser reference includes chooser request rows"
+    );
+    for unavailable in [
+        "Yank / cut the selection, or the focused item",
+        "Close the current window",
+        "Toggle folder peek for the focused directory",
+        "Toggle the focused item and move down",
+    ] {
+        assert!(
+            !open_rows.iter().any(|(action, _)| *action == unavailable),
+            "chooser reference omits unavailable row {unavailable:?}"
+        );
+    }
+
+    let confined = rows(
+        Mode::List,
+        true,
+        Some(ChooserScope {
+            request: ChooserRequest::Folders,
+            multiple: false,
+            confined: true,
+        }),
+        1,
+    );
+    assert!(
+        !confined
+            .sections
+            .iter()
+            .flat_map(|section| &section.rows)
+            .any(|row| row.action == "Open global search"),
+        "device-confined chooser reference omits global search"
+    );
 }
 
 #[test]

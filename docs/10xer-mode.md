@@ -754,13 +754,14 @@ allow is refused when it is pressed, not only hidden:
 | **a**, **r** / **F2**, **d** / **D** / **Delete**, **,** sorts, **.**, **c c** / **c n** | As in a window, except **r** / **F2** in a Save request. |
 | **g** places, **g Space**, **z** / **Z** | Local folders and Recent only. Trash, Network, and remote pins flash `Only local folders can be opened here`; a typed remote location shows the unsupported-location error. |
 | **y**, **x**, **p** / **P**, **Y** / **X**, **M** / **C**, **R**, **g +** / **g -**, **Ctrl+C** / **Ctrl+X** / **Ctrl+V**, **O**, **;**, **i**, **Q** | `Not available in the file chooser`. The chooser does not copy, move, or restore files, change pins, open them with an application, run custom actions, peek folders, or open an extra Miller column, and only **Esc** or Cancel ends the request. |
-| **Ctrl+K**, **Ctrl+Shift+K**, **Ctrl+,**, **Ctrl+Z** | Unbound. |
+| **Ctrl+K** | Global search. Enter opens a result folder or reveals a file in the chooser without accepting. Unavailable in device-confined destination choosers. |
+| **Ctrl+Shift+K**, **Ctrl+,**, **Ctrl+Z** | Unbound. |
 
 The request takes the fill, or the cursor item when nothing is filled; the
 automatic first-row selection never counts. A Save request always saves in the
 current folder, and moving the cursor changes neither the name nor the
 destination. While the name or location field has focus, every key but **F1**,
-**Ctrl+Shift+M**, and **Esc** is typed, except that **Tab** and **Shift+Tab**
+**Ctrl+K**, **Ctrl+Shift+M**, and **Esc** is typed, except that **Tab** and **Shift+Tab**
 leave the name field; **Ctrl+A** selects the text. Every request starts with
 focus in the files. **Tab** goes from the files to the header, from the header
 to the name field, then through the request's options (file type, choices the
