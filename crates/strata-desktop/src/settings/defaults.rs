@@ -64,7 +64,7 @@ impl Default for Preferences {
             show_hidden: false,
             text_size: TextSize::default(),
             corner_roundness: CornerRoundness::default(),
-            scrollbar_expand_on_hover: false,
+            scrollbar_expand_on_hover: true,
             scrollbar_hover_width: ScrollbarHoverWidth::default(),
             interface_font: None,
             interface_renderer: InterfaceRenderer::default(),

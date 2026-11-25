@@ -4,7 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 pub const MIN_SCROLLBAR_HOVER_WIDTH: u32 = 6;
 pub const MAX_SCROLLBAR_HOVER_WIDTH: u32 = 24;
-pub const DEFAULT_SCROLLBAR_HOVER_WIDTH: u32 = 12;
+pub const DEFAULT_SCROLLBAR_HOVER_WIDTH: u32 = 8;
 
 /// Scrollbar thickness in logical pixels when hovered or dragged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
