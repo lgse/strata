@@ -560,3 +560,80 @@ fn sliding_open_closing_and_reversing_keep_single_bg_base_fill_across_slot() {
         check(&rt, "close full");
     }
 }
+
+fn preview_doc(units: Vec<crate::document_view::Unit>) -> crate::document_view::DocumentState {
+    use std::sync::Arc;
+
+    crate::document_view::DocumentState::new(Arc::new(crate::document_view::Document::new(units)))
+        .key("preview-document")
+}
+
+fn assert_preview_body_settled(rt: &Runtime<FindHost>, animating: bool) {
+    let els = rt.elements();
+    let body_prefix = format!(
+        "{}/",
+        els.iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some(BODY_KEY))
+            .expect("preview-body")
+            .path
+    );
+    let list_segment = format!("/{}/", rt.state.doc.list_key());
+    let doc_rows: Vec<_> = els
+        .iter()
+        .filter(|e| e.path.starts_with(&body_prefix) && e.path.contains(&list_segment))
+        .collect();
+    assert!(
+        !els.iter()
+            .any(|e| e.path.starts_with(&body_prefix) && e.exiting)
+    );
+    assert!(!doc_rows.is_empty());
+    assert!(doc_rows.iter().all(|e| (e.opacity - 1.0).abs() < 1e-4));
+    assert!(!animating, "preview body updates must land immediately");
+}
+
+#[test]
+fn preview_content_changes_land_immediately_while_drawer_slide_still_animates() {
+    use crate::document_view::{Unit, UnitKind};
+
+    let mut drawer = DrawerState::new();
+    drawer.open_at_once();
+    let look = Look::fallback(false);
+    assert!(look.animations, "test requires animations enabled");
+
+    let doc = preview_doc(vec![
+        Unit::new(UnitKind::Heading(1), "First heading"),
+        Unit::new(UnitKind::Paragraph, "First paragraph body."),
+    ]);
+    let mut rt = Runtime::new(
+        FindHost { drawer, doc, look },
+        find_host_view,
+        (900.0, 500.0),
+        Env::default(),
+    );
+    rt.poll = Some(find_host_poll);
+    rt.frame(0.0);
+    rt.settle_all();
+
+    rt.update(|h, tx| {
+        tx.animated();
+        h.doc = preview_doc(vec![
+            Unit::new(UnitKind::Heading(1), "Second heading"),
+            Unit::new(UnitKind::Paragraph, "Second paragraph line one."),
+            Unit::new(UnitKind::Paragraph, "Second paragraph line two."),
+        ]);
+    });
+    let animating_after_swap = rt.frame(1.0 / 60.0);
+    assert_preview_body_settled(&rt, animating_after_swap);
+
+    rt.update(|h, tx| h.drawer.close(&h.look, tx));
+    assert!(
+        rt.frame(1.0 / 60.0),
+        "outer drawer close must still animate"
+    );
+    assert!(
+        rt.elements()
+            .iter()
+            .any(|e| e.key.as_deref() == Some("preview-drawer") && e.exiting),
+        "preview-drawer must stay mounted during its exit slide"
+    );
+}

@@ -562,6 +562,7 @@ fn pane<S: 'static>(
                 .w_full()
                 .grow(1.0)
                 .min_h(0.0)
+                .instant_changes()
                 .child(body),
         );
     drawer_pane
