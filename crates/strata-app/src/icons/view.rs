@@ -110,12 +110,17 @@ pub(crate) fn results() -> IconsGrid<App> {
             collection: app.filter.pane.collection(),
             grid: &app.filter.pane.grid,
             size: app.icons.size,
-            listing: app.filter.pane.version(),
+            listing: app.filter.pane.thumb_version(),
             look: &app.look,
-            thumbs: None,
+            thumbs: app.icons.thumbs.id().map(|id| (shell::thumbnails(app), id)),
         },
         |app: &mut App| &mut app.filter.pane.grid,
     )
+    .thumbs_mut(|app: &mut App| {
+        let id = app.icons.thumbs.id()?;
+        let source = app.filter.pane.source();
+        Some((app.window.thumbnails_mut(), id, source))
+    })
     .details(
         |app: &App, rcx: &RowCx<'_>| {
             let mut hasher = DefaultHasher::new();

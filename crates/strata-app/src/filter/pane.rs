@@ -131,6 +131,11 @@ impl PaneHits {
         self.swaps.wrapping_shl(40) ^ version
     }
 
+    pub(crate) fn thumb_version(&self) -> u64 {
+        let version = self.hits.as_ref().map_or(0, Column::thumb_version);
+        (1_u64 << 63) ^ self.swaps.wrapping_shl(40) ^ version
+    }
+
     pub(crate) fn set_worn(&mut self, worn: &Rc<Worn>) {
         if let Some(hits) = &mut self.hits {
             hits.set_worn(worn);
@@ -186,6 +191,7 @@ impl PaneHits {
     /// Gives the listing its place back.
     pub(crate) fn drop_hits(&mut self) {
         self.autoscroll.stop_gone(None);
+        self.grid.reset();
         self.keys_handle.end_range();
         if self.hits.take().is_some() {
             self.swaps = self.swaps.wrapping_add(1);
@@ -195,6 +201,7 @@ impl PaneHits {
     /// The results taken out, with their selection, for the view a switch shows.
     pub(crate) fn take(&mut self) -> Option<(Column, Position)> {
         self.autoscroll.stop_gone(None);
+        self.grid.reset();
         self.keys_handle.end_range();
         let position = self.collection.selection.position(self.hits.as_ref()?);
         let hits = self.hits.take()?;

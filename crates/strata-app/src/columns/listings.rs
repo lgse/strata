@@ -148,6 +148,12 @@ impl Listings {
         self.hits.as_ref().is_some_and(|(at, _)| *at == depth)
     }
 
+    pub(super) fn thumb_version(&self, depth: usize) -> u64 {
+        let version = self.shown(depth).map_or(0, Column::thumb_version);
+        let hits = u64::from(self.hits_at(depth)) << 63;
+        hits ^ version ^ self.swaps.wrapping_shl(40)
+    }
+
     /// Shows `hits` in the place of column `depth`'s rows, or replaces the results shown there.
     pub(super) fn show_hits(&mut self, depth: usize, mut hits: Column) {
         hits.set_worn(&self.worn);

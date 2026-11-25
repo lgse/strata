@@ -55,7 +55,10 @@ impl Thumbs {
 
     pub(super) fn icon(&self, look: &Look) -> Slot<App> {
         icon_slot(shell::thumbnails, self.step(look), ROW_THUMBNAIL)
-            .dragging(|app: &App| app.list.thumbs.is_deferring(app.list.table.is_dragging()))
+            .dragging(|app: &App| {
+                !app.filter.pane.shows()
+                    && app.list.thumbs.is_deferring(app.list.table.is_dragging())
+            })
             .badge(
                 crate::file_providers::badge_version,
                 crate::file_providers::badge_pixels,
@@ -77,28 +80,36 @@ fn parts(app: &mut App) -> (&mut Viewer, &mut ThumbnailStore) {
 
 pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let step = app.list.thumbs.step(&app.look);
-    let dragging = app.list.table.is_dragging();
+    let shows_hits = app.filter.pane.shows();
+    let dragging = !shows_hits && app.list.table.is_dragging();
     let store = app.window.thumbnails_mut();
-    let list = &mut app.list;
-    let thumbs = &mut list.thumbs;
+    let thumbs = &mut app.list.thumbs;
     thumbs.viewer.fit(store, 1);
     let restep = thumbs.step.replace(step) != Some(step);
+    let active = match shows_hits {
+        true => app
+            .filter
+            .pane
+            .hits()
+            .map(|hits| (hits, app.filter.pane.thumb_version())),
+        false => app
+            .list
+            .single
+            .pane
+            .listing()
+            .map(|listing| (listing, app.list.single.pane.thumb_version())),
+    };
     let mut deferred = false;
-    let mut pruned = match (thumbs.viewer.id(), list.single.pane.listing()) {
-        (Some(id), Some(listing)) => {
+    let mut pruned = match (thumbs.viewer.id(), active) {
+        (Some(id), Some((listing, version))) => {
             match thumbs
                 .synced
                 .settled_for_drag(listing.location(), clock, dragging)
             {
                 Ok(_) => thumbs
                     .synced
-                    .next(
-                        listing.location(),
-                        listing.thumb_version(),
-                        listing.len(),
-                        restep,
-                    )
-                    .tell(store, id, listing, step),
+                    .next(listing.location(), version, listing.len(), restep)
+                    .tell(store, id, listing, version, step),
                 Err(left) => {
                     tx.wake_after(Duration::from_secs_f64(left));
                     deferred = true;

@@ -55,10 +55,16 @@ fn fill(app: &mut App, clock: f64, tx: &mut Tx) {
 
 fn sync_worn(app: &mut App) {
     single::sync_worn::<Icons>(app);
+    let worn = crate::shell::worn(app).clone();
+    app.filter.pane.set_worn(&worn);
     if let Some(id) = app.icons.thumbs.id() {
-        let pane = &app.icons.single.pane;
-        let version = pane.thumb_version();
-        let source = pane.source();
+        let (source, version) = match app.filter.pane.shows() {
+            true => (app.filter.pane.source(), app.filter.pane.thumb_version()),
+            false => (
+                app.icons.single.pane.source(),
+                app.icons.single.pane.thumb_version(),
+            ),
+        };
         app.window.thumbnails_mut().resync(id, source, version);
     }
 }
@@ -110,6 +116,7 @@ impl Part for Icons {
         pointer_at: None,
         end_gestures: |app| {
             app.icons.grid.reset();
+            app.filter.pane.grid.reset();
             single::end_gestures::<Self>(app);
         },
         rows: single::rows::<Self>(),
@@ -152,8 +159,11 @@ impl Part for Icons {
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let said = single::poll::<Self>(app, clock, tx);
         size::follow_folder(app);
+        let created = app.icons.thumbs.id().is_none();
+        app.icons.thumbs.fit(app.window.thumbnails_mut(), 1);
+        let shows_hits = app.filter.pane.shows();
         // A filter's results tick in the grid's place, and the grid waits under them.
-        let ticked = match app.filter.pane.shows() {
+        let ticked = match shows_hits {
             true => {
                 let results = view::results();
                 let ticked = app.filter.pane.collection().needs_tick()
@@ -169,11 +179,15 @@ impl Part for Icons {
                 ticked | pruned
             }
         };
-        if !app.icons.grid.thumbs_deferred() {
+        let deferred = match shows_hits {
+            true => app.filter.pane.grid.thumbs_deferred(),
+            false => app.icons.grid.thumbs_deferred(),
+        };
+        if !deferred {
             Viewer::pump(app, thumbnail_parts, clock);
         }
         fill(app, clock, tx);
-        ticked | said | redate(app, clock, tx)
+        ticked | said | created | redate(app, clock, tx)
     }
 }
 
