@@ -97,6 +97,12 @@ impl RenderPlan {
         }
     }
 
+    /// Multi-page PDF renders are cached in `PdfState::queue` while open; duplicating
+    /// scrolled pages beyond page 0 in the process-wide preview cache balloons memory.
+    fn skips_preview_cache(&self, page: i32) -> bool {
+        matches!(self.operation, ParseOperation::PreviewPdf(_)) && page > 0
+    }
+
     fn is_heavy(&self) -> bool {
         matches!(
             self.operation,
@@ -708,13 +714,15 @@ impl PreviewLoad {
             return Ok(());
         }
         let modified = self.cache_modified(staged.is_some());
-        let cache_key = modified.map(|modified| PreviewCacheKey {
-            path: path.clone(),
-            modified,
-            pdf_page: plan.pdf_page(self.request.pdf_page),
-            model: plan.model,
-            route: plan.route,
-        });
+        let cache_key = modified
+            .filter(|_| !plan.skips_preview_cache(self.request.pdf_page))
+            .map(|modified| PreviewCacheKey {
+                path: path.clone(),
+                modified,
+                pdf_page: plan.pdf_page(self.request.pdf_page),
+                model: plan.model,
+                route: plan.route,
+            });
         if let Some(cached) = cache_key
             .as_ref()
             .and_then(|key| PREVIEW_CACHE.with(|cache| cache.borrow_mut().get(key)))

@@ -43,6 +43,7 @@ pub(super) fn selected_entry(app: &App) -> (Option<usize>, Option<FileEntry>) {
 }
 
 pub(super) fn cancel_focus_timer(app: &mut App) {
+    app.preview.pending_focus = None;
     if let Some(timer) = app.preview.focus_timer.borrow_mut().take() {
         timer.remove();
     }
@@ -99,6 +100,17 @@ fn refresh_entry_metadata(app: &mut App, entry: FileEntry) {
     }
 }
 
+pub(super) fn evict_current(app: &App) {
+    if let Some(path) = app
+        .preview
+        .current
+        .as_ref()
+        .and_then(|entry| entry.location.native_path())
+    {
+        app.preview.loader.provider().evict(path);
+    }
+}
+
 pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &mut Tx) {
     let other_file = app
         .preview
@@ -106,11 +118,13 @@ pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &m
         .as_ref()
         .is_none_or(|current| current.location != entry.location);
     if other_file {
+        evict_current(app);
         app.preview.drawer.reset_find();
         app.preview.viewer.stop();
         app.preview.viewer = Viewer::Empty;
         app.preview.content_focus = super::ContentFocus::None;
     }
+    app.preview.reload_on_tab_shown = false;
     cancel_focus_timer(app);
     app.preview.click_opening = None;
     let was_open = app.preview.drawer.is_open();
@@ -159,12 +173,15 @@ pub(super) fn show_after_focus_change(
         show(app, entry, depth, tx);
         return;
     }
+    app.preview.reload_on_tab_shown = false;
+    app.preview.pending_focus = Some((entry.clone(), depth));
     app.preview.loader.cancel();
     let later = app.preview.loader.later.clone();
     let slot = app.preview.focus_timer.clone();
     let source = glib::timeout_add_local_once(FOCUS_PREVIEW_DELAY, move || {
         slot.borrow_mut().take();
         later.then(move |app: &mut App, tx: &mut Tx| {
+            app.preview.pending_focus = None;
             if app.preview.enabled {
                 show(app, entry, depth, tx);
                 return true;
@@ -222,6 +239,8 @@ pub(super) fn show_empty_slot_after_switch(app: &mut App, tab_shown: bool, tx: &
 
 pub(super) fn clear_target(app: &mut App, tx: &mut Tx) {
     cancel_focus_timer(app);
+    evict_current(app);
+    app.preview.reload_on_tab_shown = false;
     app.preview.loader.focus_archive_on_ready = false;
     app.preview.loader.cancel();
     app.preview.raw.clear();

@@ -257,3 +257,119 @@ fn a_context_menu_on_a_child_column_file_previews_it() {
         },
     );
 }
+
+#[test]
+fn hiding_a_tab_releases_its_preview_viewer_and_showing_it_reloads() {
+    hosted(
+        MODULE,
+        "hiding_a_tab_releases_its_preview_viewer_and_showing_it_reloads",
+        |mut host| {
+            let folder = listed(&mut host);
+            disable_auto_preview(&mut host);
+            let provider = super::provider::Recorded::default();
+            super::provider::install(&mut host, &provider);
+
+            let todo_path = folder.path().join("todo.txt");
+            let todo = Location::local(&todo_path);
+            select(&mut host, &todo);
+            focus_view(&mut host);
+            space(&mut host);
+            provider.wait_for(&mut host, 0);
+            provider.answer_as(
+                0,
+                "text/plain",
+                strata_fs::services::PreviewContent::Text {
+                    content: "first load".into(),
+                    truncated: false,
+                },
+            );
+            wait_for_code_preview(&mut host);
+
+            let first_tab = crate::shell::tabs::shown_tab(host.app());
+            let other_dir = Location::local(folder.path().join("documents"));
+            host.runtime().update(move |app: &mut App, tx: &mut Tx| {
+                crate::shell::tabs::open(app, Some(other_dir), 1, tx);
+            });
+            while host.turn() {}
+            assert_eq!(
+                provider.evicted(),
+                vec![todo_path.clone()],
+                "hiding a tab evicts its current preview from the cache"
+            );
+
+            let mut viewer_empty_on_return = false;
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                crate::shell::tabs::show(app, first_tab, tx);
+                viewer_empty_on_return = app.preview.viewer.is_empty();
+            });
+            assert!(
+                viewer_empty_on_return,
+                "parked tab dropped its viewer before being shown again"
+            );
+            provider.wait_for(&mut host, 1);
+            assert_eq!(provider.request(1).entry.location, todo);
+            provider.answer_as(
+                1,
+                "text/plain",
+                strata_fs::services::PreviewContent::Text {
+                    content: "reloaded".into(),
+                    truncated: false,
+                },
+            );
+            wait_for_code_preview(&mut host);
+        },
+    );
+}
+
+#[test]
+fn switching_closing_and_resting_evict_preview_caches_without_dropping_visible_viewer() {
+    hosted(
+        MODULE,
+        "switching_closing_and_resting_evict_preview_caches_without_dropping_visible_viewer",
+        |mut host| {
+            let folder = listed(&mut host);
+            disable_auto_preview(&mut host);
+            let provider = super::provider::Recorded::default();
+            super::provider::install(&mut host, &provider);
+
+            let todo_path = folder.path().join("todo.txt");
+            let readme_path = folder.path().join("readme.md");
+            select(&mut host, &Location::local(&todo_path));
+            focus_view(&mut host);
+            space(&mut host);
+            provider.wait_for(&mut host, 0);
+            provider.answer_as(
+                0,
+                "text/plain",
+                strata_fs::services::PreviewContent::Text {
+                    content: "todo".into(),
+                    truncated: false,
+                },
+            );
+            wait_for_code_preview(&mut host);
+
+            // Resting clears idle caches without disturbing the visible viewer.
+            crate::preview::clear_idle_caches(host.app());
+            assert_eq!(provider.clears(), 1);
+            assert!(matches!(host.app().preview.viewer, super::Viewer::Code(_)));
+
+            // Switching to another file evicts the outgoing file.
+            select(&mut host, &Location::local(&readme_path));
+            provider.wait_for(&mut host, 1);
+            assert_eq!(provider.evicted(), vec![todo_path.clone()]);
+            provider.answer_as(
+                1,
+                "text/markdown",
+                strata_fs::services::PreviewContent::Text {
+                    content: "readme".into(),
+                    truncated: false,
+                },
+            );
+            wait_for_code_preview(&mut host);
+
+            // Closing the preview evicts the active file.
+            press(&mut host, Key::Escape, Mods::default());
+            assert_eq!(provider.evicted(), vec![todo_path, readme_path]);
+        },
+    );
+}

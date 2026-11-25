@@ -781,3 +781,141 @@ fn only_an_explicit_restriction_byte_disables_persistent_workers() {
         );
     }
 }
+
+fn synthetic_key(index: u64) -> FileKey {
+    FileKey {
+        path: PathBuf::from(format!("/fixture/cache-{index}.png")),
+        device: 0,
+        inode: index,
+        size: 1,
+        modified: (0, 0),
+        changed: (0, 0),
+    }
+}
+
+#[test]
+fn browser_cache_enforces_byte_budget_and_skips_oversized_items() {
+    let now = Instant::now();
+    let mut cache = Cache::new(100);
+
+    let first = cache.acquire_entry((synthetic_key(1), Operation::PreviewImage), now);
+    cache.record_usage(&first, 60, now);
+    drop(first);
+
+    let second = cache.acquire_entry((synthetic_key(2), Operation::PreviewImage), now);
+    cache.record_usage(&second, 60, now);
+    drop(second);
+
+    assert_eq!(
+        cache.entries.len(),
+        1,
+        "oldest idle entry evicted for byte cap"
+    );
+    assert_eq!(cache.byte_count, 60);
+    assert_eq!(cache.entries[0].key.0, synthetic_key(2));
+
+    let oversized = cache.acquire_entry((synthetic_key(3), Operation::PreviewImage), now);
+    cache.record_usage(&oversized, 150, now);
+    drop(oversized);
+
+    assert_eq!(
+        cache.entries.len(),
+        1,
+        "oversized item skipped without evicting existing entry"
+    );
+    assert_eq!(cache.byte_count, 60);
+    assert_eq!(cache.entries[0].key.0, synthetic_key(2));
+}
+
+#[test]
+fn browser_cache_actively_sweeps_expired_entries_on_insert() {
+    let start = Instant::now();
+    let mut cache = Cache::new(1024);
+
+    let old = cache.acquire_entry((synthetic_key(10), Operation::PreviewImage), start);
+    cache.record_usage(&old, 300, start);
+    drop(old);
+    assert_eq!((cache.entries.len(), cache.byte_count), (1, 300));
+
+    let after_ttl = start + CACHE_TTL;
+    let fresh = cache.acquire_entry((synthetic_key(11), Operation::PreviewImage), after_ttl);
+    assert_eq!(
+        cache.entries.len(),
+        1,
+        "expired entry swept actively when inserting a different key"
+    );
+    assert_eq!(cache.byte_count, 0);
+    cache.record_usage(&fresh, 120, after_ttl);
+    drop(fresh);
+    assert_eq!((cache.entries.len(), cache.byte_count), (1, 120));
+    assert_eq!(cache.entries[0].key.0, synthetic_key(11));
+}
+
+#[test]
+fn clear_preview_cache_drops_idle_entries_and_preserves_in_flight_gates() {
+    let now = Instant::now();
+    // Verify exact byte-count and emptiness invariants on an isolated cache.
+    let mut local = Cache::new(1024);
+    let local_idle = local.acquire_entry((synthetic_key(18), Operation::PreviewImage), now);
+    local.record_usage(&local_idle, 256, now);
+    drop(local_idle);
+    let local_in_flight = local.acquire_entry((synthetic_key(19), Operation::PreviewImage), now);
+    local.clear();
+    assert_eq!(local.byte_count, 0);
+    assert_eq!(local.entries.len(), 1);
+    assert!(Arc::ptr_eq(&local.entries[0].entry, &local_in_flight));
+    drop(local_in_flight);
+    local.clear();
+    assert!(local.entries.is_empty());
+
+    // Verify clear_preview_cache() wires through to preview_pool() without asserting on
+    // entries belonging to parallel tests.
+    let idle = acquire_cache_entry(
+        &preview_pool().cache,
+        synthetic_key(20),
+        Operation::PreviewImage,
+    )
+    .0;
+    preview_pool()
+        .cache
+        .lock()
+        .expect("preview cache")
+        .record_usage(&idle, 256, now);
+    drop(idle);
+
+    let in_flight = acquire_cache_entry(
+        &preview_pool().cache,
+        synthetic_key(21),
+        Operation::PreviewImage,
+    )
+    .0;
+
+    clear_preview_cache();
+    {
+        let cache = preview_pool().cache.lock().expect("preview cache");
+        assert!(
+            cache
+                .entries
+                .iter()
+                .all(|slot| slot.key.0 != synthetic_key(20)),
+            "idle entry evicted by clear_preview_cache"
+        );
+        assert!(
+            cache
+                .entries
+                .iter()
+                .any(|slot| Arc::ptr_eq(&slot.entry, &in_flight)),
+            "in-flight gate preserved until callers drop it"
+        );
+    }
+    drop(in_flight);
+    clear_preview_cache();
+    let cache = preview_pool().cache.lock().expect("preview cache");
+    assert!(
+        cache
+            .entries
+            .iter()
+            .all(|slot| slot.key.0 != synthetic_key(21)),
+        "dropped gate evicted on subsequent clear_preview_cache"
+    );
+}

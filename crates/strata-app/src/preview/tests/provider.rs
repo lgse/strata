@@ -3,6 +3,7 @@
 use std::{
     cell::{Cell, RefCell},
     io::Cursor,
+    path::{Path, PathBuf},
     rc::Rc,
 };
 
@@ -33,6 +34,8 @@ struct RecordedInner {
     requests: Vec<Asked>,
     supports_pdf_text: bool,
     pdf_texts: Vec<AskedPdfText>,
+    evicted: Vec<PathBuf>,
+    clears: usize,
 }
 
 #[derive(Clone, Default)]
@@ -71,9 +74,24 @@ impl PreviewProvider for Recorded {
         });
         Some(LoadHandle::new(move || dropped.set(!seen.get())))
     }
+
+    fn evict(&self, path: &Path) {
+        self.0.borrow_mut().evicted.push(path.to_path_buf());
+    }
+
+    fn clear_cache(&self) {
+        self.0.borrow_mut().clears += 1;
+    }
 }
 
 impl Recorded {
+    pub(super) fn evicted(&self) -> Vec<PathBuf> {
+        self.0.borrow().evicted.clone()
+    }
+
+    pub(super) fn clears(&self) -> usize {
+        self.0.borrow().clears
+    }
     pub(super) fn enable_pdf_text(&self) {
         self.0.borrow_mut().supports_pdf_text = true;
     }

@@ -7,6 +7,8 @@ use strata_core::file_activity;
 
 use super::*;
 
+static FOLDER_CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
 fn png(red: u8) -> Vec<u8> {
     let img = RgbaImage::from_pixel(2, 2, Rgba([red, 40, 80, 255]));
     let mut out = Cursor::new(Vec::new());
@@ -17,6 +19,9 @@ fn png(red: u8) -> Vec<u8> {
 
 #[test]
 fn folder_art_prefers_rank_reuses_cache_and_invalidates_replaced_files() {
+    let _guard = FOLDER_CACHE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     clear_cache();
     let dir = tempfile::tempdir().expect("art directory");
     let job = Cancellation::default();
@@ -75,6 +80,9 @@ fn folder_art_prefers_rank_reuses_cache_and_invalidates_replaced_files() {
 
 #[test]
 fn embedded_cover_beats_folder_art_and_null_falls_back_to_folder() {
+    let _guard = FOLDER_CACHE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     clear_cache();
     let dir = tempfile::tempdir().expect("album directory");
     let song = dir.path().join("track.mp3");
@@ -112,4 +120,58 @@ fn embedded_cover_beats_folder_art_and_null_falls_back_to_folder() {
     );
     assert!(ok);
     assert_eq!(cover.expect("folder fallback").id, expected_folder_id);
+}
+
+#[test]
+fn decode_cover_caps_dimensions_at_max_cover_edge() {
+    let img = RgbaImage::from_pixel(2048, 1536, Rgba([50, 100, 150, 255]));
+    let mut encoded = Cursor::new(Vec::new());
+    img.write_to(&mut encoded, ImageFormat::Png)
+        .expect("encode oversized cover");
+
+    let decoded = decode_cover(encoded.get_ref()).expect("decoded cover");
+    assert_eq!(decoded.size, [1024, 768]);
+    assert_eq!(decoded.rgba.len(), 1024 * 768 * 4);
+}
+
+#[test]
+fn audio_details_lru_enforces_byte_budget_and_clear_caches_empties_folder_cache() {
+    let _guard = FOLDER_CACHE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    clear_caches();
+    let mut cache: Lru<u32, u32> = Lru::with_byte_limit(12, 100);
+    cache.insert_sized(1, 10, 60);
+    cache.insert_sized(2, 20, 60);
+    assert_eq!(
+        cache.get(&1),
+        None,
+        "oldest entry evicted when exceeding byte budget"
+    );
+    assert_eq!(cache.get(&2), Some(20));
+    assert_eq!(cache.byte_count(), 60);
+
+    cache.insert_sized(3, 30, 200);
+    assert_eq!(
+        cache.get(&3),
+        None,
+        "entry larger than budget is not cached"
+    );
+    assert_eq!(cache.get(&2), Some(20));
+    assert_eq!(cache.byte_count(), 60);
+
+    let dir = tempfile::tempdir().expect("folder art clear fixture");
+    let cover = dir.path().join("cover.png");
+    std::fs::write(&cover, png(90)).expect("write cover");
+    let job = Cancellation::default();
+    let parse = |path: &Path, _: ParseOperation, _: &Cancellation| std::fs::read(path).ok();
+    assert!(
+        load_folder_art(dir.path(), &job, &job, &parse)
+            .expect("folder art")
+            .is_some()
+    );
+    assert!(folder_cache().lock().expect("folder cache").byte_count() > 0);
+
+    clear_caches();
+    assert_eq!(folder_cache().lock().expect("folder cache").byte_count(), 0);
 }

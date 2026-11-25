@@ -23,11 +23,13 @@ use super::cache::{Lru, TrackKey};
 use crate::{App, slots::Later};
 
 const DETAILS_CACHE: usize = 12;
+const DETAILS_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
+const FOLDER_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
 /// Fast browsing must not start a tags/cover decode for every track it passes.
 const LOAD_SETTLE: Duration = Duration::from_millis(50);
 const FOLDER_ART_STEMS: [&str; 5] = ["cover", "folder", "front", "album", "albumart"];
 const FOLDER_ART_EXTENSIONS: [&str; 4] = ["jpg", "jpeg", "png", "webp"];
-const MAX_GPU_EDGE: u32 = 8192;
+const MAX_COVER_EDGE: u32 = 1024;
 
 /// Cached tags and album art for one track.
 #[derive(Clone, Default)]
@@ -113,13 +115,14 @@ struct FolderArt {
 
 thread_local! {
     static DETAILS: RefCell<Lru<TrackKey, CachedDetails>> =
-        const { RefCell::new(Lru::new(DETAILS_CACHE)) };
+        const { RefCell::new(Lru::with_byte_limit(DETAILS_CACHE, DETAILS_CACHE_MAX_BYTES)) };
 }
 
 static FOLDER_CACHE: OnceLock<Mutex<Lru<PathBuf, FolderArt>>> = OnceLock::new();
 
 fn folder_cache() -> &'static Mutex<Lru<PathBuf, FolderArt>> {
-    FOLDER_CACHE.get_or_init(|| Mutex::new(Lru::new(DETAILS_CACHE)))
+    FOLDER_CACHE
+        .get_or_init(|| Mutex::new(Lru::with_byte_limit(DETAILS_CACHE, FOLDER_CACHE_MAX_BYTES)))
 }
 
 #[cfg(test)]
@@ -132,10 +135,25 @@ thread_local! {
     pub(in crate::preview) static PARSE: RefCell<Option<ParseFn>> = const { RefCell::new(None) };
 }
 
+pub(crate) fn clear_caches() {
+    DETAILS.with_borrow_mut(Lru::clear);
+    folder_cache()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clear();
+}
+
 #[cfg(test)]
 pub(in crate::preview) fn clear_cache() {
-    DETAILS.with_borrow_mut(Lru::clear);
-    folder_cache().lock().expect("folder artwork cache").clear();
+    clear_caches();
+}
+
+fn art_bytes(art: Option<&Art>) -> usize {
+    art.map_or(0, |art| {
+        (art.size[0] as usize)
+            .saturating_mul(art.size[1] as usize)
+            .saturating_mul(4)
+    })
 }
 
 /// Cached tags and album art for `entry`, if previously decoded cleanly.
@@ -170,10 +188,10 @@ fn decode_cover(bytes: &[u8]) -> Option<Arc<DecodedCover>> {
     let id = content_id(bytes);
     let decoded = image::load_from_memory(bytes).ok()?;
     let (w, h) = (decoded.width().max(1), decoded.height().max(1));
-    let fitted = if w > MAX_GPU_EDGE || h > MAX_GPU_EDGE {
+    let fitted = if w > MAX_COVER_EDGE || h > MAX_COVER_EDGE {
         decoded.resize(
-            MAX_GPU_EDGE,
-            MAX_GPU_EDGE,
+            MAX_COVER_EDGE,
+            MAX_COVER_EDGE,
             image::imageops::FilterType::Triangle,
         )
     } else {
@@ -249,13 +267,18 @@ fn load_folder_art(
     }
     let cover = decode_cover(&parse(&path, ParseOperation::PreviewImage, decode)?)?;
     if !job.is_cancelled() {
-        folder_cache().lock().expect("folder artwork cache").insert(
-            path,
-            FolderArt {
-                version,
-                cover: cover.clone(),
-            },
-        );
+        let bytes = cover.rgba.len();
+        folder_cache()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert_sized(
+                path,
+                FolderArt {
+                    version,
+                    cover: cover.clone(),
+                },
+                bytes,
+            );
     }
     Some(Some(cover))
 }
@@ -316,8 +339,9 @@ impl Completion {
         self.pending.set(self.pending.get() - 1);
         if self.pending.get() == 0 && self.completed.get() && !self.cancellation.is_cancelled() {
             let entry = self.details.borrow().clone();
+            let bytes = art_bytes(entry.art.as_ref());
             let key = self.key.clone();
-            DETAILS.with_borrow_mut(|cache| cache.insert(key, entry));
+            DETAILS.with_borrow_mut(|cache| cache.insert_sized(key, entry, bytes));
         }
     }
 }
