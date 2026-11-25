@@ -309,12 +309,18 @@ fn run_parallel_fill(
             tally
         });
 
-        while let Some(chunk) = next_coalesced_batch(&mut rx, &cancelled).await {
-            if !chunk.is_empty() && !cancelled.is_cancelled() {
+        while let Some(mut chunk) = next_coalesced_batch(&mut rx, &cancelled).await {
+            while !chunk.is_empty() && !cancelled.is_cancelled() {
+                let tail = if chunk.len() > COALESCE_BATCH_SIZE {
+                    chunk.split_off(COALESCE_BATCH_SIZE)
+                } else {
+                    Vec::new()
+                };
                 emit(DirectoryEvent::MetadataFilled {
                     request_id,
                     updates: chunk,
                 });
+                chunk = tail;
             }
         }
 
