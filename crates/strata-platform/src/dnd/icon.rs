@@ -199,17 +199,13 @@ fn render<T: 'static>(
 ) -> Option<DragImage> {
     let gpu = GPU.get_or_init(Gpu::headless);
     let mut rt = Runtime::new(state, view, size, Env::new(dark, scale));
-    // A windowed app's default: a non-sRGB target with sRGB blending (S2, Q7).
-    rt.set_srgb_blend(true);
     rt.frame(0.0);
     let (w, h) = (
         (size.0 * scale).round().max(1.0) as u32,
         (size.1 * scale).round().max(1.0) as u32,
     );
-    let format = OFFSCREEN_FORMAT.remove_srgb_suffix();
-    let mut renderer = Renderer::new(&gpu.device, format);
-    renderer.set_srgb_blend(true);
-    let target = Offscreen::with_format(&gpu.device, w, h, format);
+    let mut renderer = Renderer::new(&gpu.device, OFFSCREEN_FORMAT);
+    let target = Offscreen::new(&gpu.device, w, h);
     renderer.upload_images(&gpu.device, &gpu.queue, &mut rt.images);
     renderer.prepare(
         &gpu.device,

@@ -6,7 +6,7 @@ optional dependencies of its own behind its own cargo feature. Its API carries n
 names.
 
 In Strata's workspace the crate is a workspace member pinned to the same Rune rev as the root
-`Cargo.toml` (`452fd21ae6faced35a6cb296bc0d7dc7b100450b`). Most shims correspond to upstream
+`Cargo.toml` (`f854f5d4a377decbda203b34722de813b54ba7d8`). Most shims correspond to upstream
 Rune asks and are deprecated once Rune ships the capability natively; the GLib shims are outside
 Rune's scope.
 
@@ -40,7 +40,7 @@ across `libwayland-client` versions (including 1.22 on Ubuntu 24.04).
 
 | Workspace | Rune rev | Rust |
 | --- | --- | --- |
-| `strata` | [`452fd21ae6faced35a6cb296bc0d7dc7b100450b`](https://github.com/anomalyco/rune/commit/452fd21ae6faced35a6cb296bc0d7dc7b100450b) | 1.99.1 |
+| `strata` | [`f854f5d4a377decbda203b34722de813b54ba7d8`](https://github.com/anomalyco/rune/commit/f854f5d4a377decbda203b34722de813b54ba7d8) | 1.99.1 |
 
 ## Shim lifecycle
 

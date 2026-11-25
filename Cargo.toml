@@ -85,9 +85,9 @@ strata-test-support = { version = "0.0.0", path = "crates/strata-test-support" }
 # them together, on purpose (docs/rune/plan.md §0).
 # Rune's defaults minus `embedded-fonts` (strata-kit supplies JetBrains Mono; tests enable it),
 # the macOS-only `metal-backend` and `ogg-audio` (MPL-2.0 decoders).
-rune = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "452fd21ae6faced35a6cb296bc0d7dc7b100450b", default-features = false, features = ["accessibility", "dbus", "svg"] }
-rune-kit = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "452fd21ae6faced35a6cb296bc0d7dc7b100450b" }
-rune-fx = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "452fd21ae6faced35a6cb296bc0d7dc7b100450b" }
+rune = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "f854f5d4a377decbda203b34722de813b54ba7d8", default-features = false, features = ["accessibility", "dbus", "svg"] }
+rune-kit = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "f854f5d4a377decbda203b34722de813b54ba7d8" }
+rune-fx = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "f854f5d4a377decbda203b34722de813b54ba7d8" }
 
 strata-app = { version = "0.0.1", path = "crates/strata-app", default-features = false }
 strata-components = { version = "0.0.1", path = "crates/strata-components" }
@@ -206,11 +206,11 @@ unwrap_used = "warn"
 # Patches Rune's root Cargo.toml carries ("Depending on Rune" in crates/rune/README.md).
 # Cargo does not inherit a dependency's [patch] table; move these revs with `rune` above.
 [patch.crates-io]
-winit = { git = "https://github.com/anomalyco/rune", rev = "452fd21ae6faced35a6cb296bc0d7dc7b100450b" }
-sctk-adwaita = { git = "https://github.com/anomalyco/rune", rev = "452fd21ae6faced35a6cb296bc0d7dc7b100450b" }
-parley_engine = { git = "https://github.com/anomalyco/rune", rev = "452fd21ae6faced35a6cb296bc0d7dc7b100450b" }
-wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "452fd21ae6faced35a6cb296bc0d7dc7b100450b" }
-naga = { git = "https://github.com/anomalyco/rune", rev = "452fd21ae6faced35a6cb296bc0d7dc7b100450b" }
-accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "452fd21ae6faced35a6cb296bc0d7dc7b100450b" }
-accesskit_atspi_common = { git = "https://github.com/anomalyco/rune", rev = "452fd21ae6faced35a6cb296bc0d7dc7b100450b" }
-accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "452fd21ae6faced35a6cb296bc0d7dc7b100450b" }
+winit = { git = "https://github.com/anomalyco/rune", rev = "f854f5d4a377decbda203b34722de813b54ba7d8" }
+sctk-adwaita = { git = "https://github.com/anomalyco/rune", rev = "f854f5d4a377decbda203b34722de813b54ba7d8" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "f854f5d4a377decbda203b34722de813b54ba7d8" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "f854f5d4a377decbda203b34722de813b54ba7d8" }
+naga = { git = "https://github.com/anomalyco/rune", rev = "f854f5d4a377decbda203b34722de813b54ba7d8" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "f854f5d4a377decbda203b34722de813b54ba7d8" }
+accesskit_atspi_common = { git = "https://github.com/anomalyco/rune", rev = "f854f5d4a377decbda203b34722de813b54ba7d8" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "f854f5d4a377decbda203b34722de813b54ba7d8" }
