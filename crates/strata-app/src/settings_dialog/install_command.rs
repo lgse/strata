@@ -98,7 +98,7 @@ pub(super) fn run_in_terminal(
     );
 }
 
-fn spawn_reaped(
+pub(super) fn spawn_reaped(
     weak: WeakLater<App>,
     start: impl FnOnce() -> Result<std::process::Child, String> + Send + 'static,
     on_done: impl FnOnce(&mut App, Result<(), String>) -> bool + 'static,

@@ -8,98 +8,18 @@ use strata_components::controls::settings_search::SettingsSearch;
 use strata_core::i18n::tr;
 use strata_desktop::{
     build_info::{AUTHOR, COMMIT, REPOSITORY, build_kind, displayed_version},
-    services::{BuildKind, Channel},
+    services::BuildKind,
 };
 
-use super::controls::{
-    ChoiceOption, ChoiceSpec, PageCtx, RowSpec, choice_menu, group_card, option_row, pref_switch,
-    section_heading,
-};
-use crate::{App, buttons, shell};
+use super::controls::{PageCtx, RowSpec, group_card, option_row, section_heading};
+use crate::{App, buttons};
 
 pub(super) fn updates_page(
     app: &App,
     search: &SettingsSearch<App>,
     menu_layer: &mut Vec<El>,
 ) -> Vec<El> {
-    let ctx = PageCtx { app, search };
-    let prefs = shell::preferences(app);
-    let channel = prefs.release_channel();
-    let channel_desc = match channel {
-        Channel::Stable => "Tested releases recommended for everyday use.",
-        Channel::Preview => "Try upcoming releases with alpha, beta, and release-candidate builds.",
-        Channel::Nightly => "Everything in Preview, plus daily development builds. May break.",
-    };
-    let menu = release_channel_menu(app, channel, !prefs.check_for_updates, menu_layer);
-    let version = text(displayed_version())
-        .font(app.look.kit.ty.ui)
-        .color(app.look.kit.c.text_muted);
-    group_card(
-        &app.look,
-        vec![
-            option_row(ctx, RowSpec::new("check", "Check for updates", ""), version),
-            pref_switch(
-                ctx,
-                RowSpec::new(
-                    "auto-updates",
-                    "Check for updates automatically",
-                    "Look for a new release on GitHub when Strata starts.",
-                ),
-                prefs.check_for_updates,
-                |s, on| s.check_for_updates = on,
-            ),
-            option_row(
-                ctx,
-                RowSpec::new("channel", "Release channel", channel_desc)
-                    .disabled(!prefs.check_for_updates),
-                menu,
-            ),
-        ],
-    )
-    .into_iter()
-    .collect()
-}
-
-fn release_channel_menu(
-    app: &App,
-    channel: Channel,
-    disabled: bool,
-    menu_layer: &mut Vec<El>,
-) -> El {
-    let choices = [
-        ("Stable", Channel::Stable),
-        ("release_channel.preview", Channel::Preview),
-        ("Nightly", Channel::Nightly),
-    ];
-    let current = choices
-        .iter()
-        .find_map(|&(l, c)| (c == channel).then(|| tr(l)))
-        .unwrap_or_else(|| tr("Stable"));
-    choice_menu(
-        app,
-        ChoiceSpec {
-            id: "release-channel",
-            title: "Release channel",
-            current,
-            disabled,
-            options: choices
-                .into_iter()
-                .map(|(label, ch)| {
-                    ChoiceOption::new(tr(label), channel == ch, move |app, _| {
-                        let mut changed = false;
-                        shell::saved(app).mutate(|s| {
-                            changed = s.set_release_channel(ch);
-                            changed
-                        });
-                        if changed {
-                            shell::saved(app).commit();
-                        }
-                    })
-                })
-                .collect(),
-        },
-        menu_layer,
-    )
+    super::updates::build(app, search, menu_layer)
 }
 
 pub(super) fn about_page(app: &App, search: &SettingsSearch<App>) -> Vec<El> {

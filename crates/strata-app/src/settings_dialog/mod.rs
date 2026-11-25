@@ -30,6 +30,8 @@ mod actions;
 mod appearance_page;
 mod controls;
 mod diagnostics;
+mod exclusions;
+mod folder_picker;
 mod general;
 mod general_more;
 mod install_command;
@@ -43,6 +45,7 @@ mod slider_field;
 #[cfg(test)]
 mod tests;
 mod transparency_section;
+mod updates;
 
 const DIALOG_WIDTH: f32 = 1250.0;
 const DIALOG_HEIGHT: f32 = 800.0;
@@ -208,10 +211,15 @@ pub(crate) struct SettingsDialog {
     theme_bar: Bar,
     choice_bar: Bar,
     notice: notice::NoticeState,
+    later: crate::slots::Later<App>,
+    exclusions: exclusions::ExclusionsState,
+    updates: updates::UpdatesState,
     actions: actions::ActionsState,
     keyboard: keyboard::KeyboardState,
     integrations: integrations::IntegrationsState,
     diagnostics: diagnostics::DiagnosticsState,
+    #[cfg(test)]
+    folder_picker: Option<folder_picker::FolderPickerOverride>,
 }
 
 impl SettingsDialog {
@@ -271,10 +279,15 @@ impl SettingsDialog {
             theme_bar: controls::settings_bar(),
             choice_bar: controls::settings_bar(),
             notice: notice::NoticeState::default(),
+            later: later.clone(),
+            exclusions: exclusions::ExclusionsState::new(),
+            updates: updates::UpdatesState::new(),
             actions: actions::ActionsState::new(later.clone()),
             keyboard: keyboard::KeyboardState::default(),
             integrations: integrations::IntegrationsState::new(later.clone()),
             diagnostics: diagnostics::DiagnosticsState::new(later),
+            #[cfg(test)]
+            folder_picker: None,
         }
     }
 
@@ -305,6 +318,7 @@ impl SettingsDialog {
             self.page_bar.release();
             self.theme_bar.release();
             self.choice_bar.release();
+            self.exclusions.release_bar();
             self.keyboard.end_capture();
         }
     }
@@ -314,6 +328,7 @@ impl SettingsDialog {
         self.rail_bar.release();
         self.theme_bar.release();
         self.choice_bar.release();
+        self.exclusions.release_bar();
     }
 
     fn hold_number_fields(&mut self, held: bool) {
@@ -338,6 +353,7 @@ impl SettingsDialog {
             || self.transparency.has_focused_field();
         self.search.edit().focused
             || self.theme_query.focused
+            || self.exclusions.focused()
             || number_focused
             || self.keyboard.query.focused
             || self.actions.has_focused_field()
@@ -389,6 +405,7 @@ pub(crate) fn open_settings_tx(app: &mut App, tx: &mut Tx) {
     let nav_key = state.page.nav_key();
     let on_actions = state.page == PageId::Actions;
     let on_integrations = state.page == PageId::Integrations;
+    let on_updates = state.page == PageId::Updates;
     if on_integrations {
         state.integrations.mark_needs_scan();
     }
@@ -397,6 +414,9 @@ pub(crate) fn open_settings_tx(app: &mut App, tx: &mut Tx) {
     }
     if on_integrations {
         integrations::ensure_scanned(app);
+    }
+    if on_updates {
+        updates::ensure_method_detected(app);
     }
     tx.focus_when_shown(nav_key, tx.focus_visible() || tx.by_keys());
 }
@@ -410,6 +430,8 @@ pub(super) fn close_settings(app: &mut App) {
     state.search = SettingsSearchState::new();
     state.theme_query.replace_text("");
     state.theme_filter = appearance_page::ThemeFilter::All;
+    state.exclusions.closed();
+    state.updates.closed();
     state.actions.closed();
     state.keyboard.closed();
     state.integrations.closed();
@@ -453,6 +475,9 @@ impl Part for SettingsDialog {
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let mut changed = notice::poll(app, tx);
         if !app.settings_dialog.open {
+            if app.settings_dialog.updates.is_installing() {
+                changed |= updates::poll(app, tx);
+            }
             return changed;
         }
         let avail = search_index::Availability {
@@ -475,6 +500,9 @@ impl Part for SettingsDialog {
         if app.settings_dialog.page == PageId::Integrations {
             integrations::ensure_scanned(app);
         }
+        if app.settings_dialog.page == PageId::Updates {
+            updates::ensure_method_detected(app);
+        }
         changed |= controls::search_handle().tick(app, clock, tx);
         let hold_fields = crate::menus::field_menu_open(app);
         app.settings_dialog.hold_number_fields(hold_fields);
@@ -488,6 +516,7 @@ impl Part for SettingsDialog {
         changed |= keyboard::poll(app, tx);
         changed |= integrations::poll(app, clock, tx);
         changed |= diagnostics::poll(app, clock, tx);
+        changed |= updates::poll(app, tx);
         let prefs = shell::preferences(app).clone();
         let transparency = shell::transparency(app);
         let state = &mut app.settings_dialog;
@@ -704,6 +733,9 @@ fn nav_button(app: &App, entry: &NavEntry) -> El {
             }
             if page == PageId::Integrations {
                 integrations::ensure_scanned(app);
+            }
+            if page == PageId::Updates {
+                updates::ensure_method_detected(app);
             }
         });
     if entry.id == app.settings_dialog.opened_page {
