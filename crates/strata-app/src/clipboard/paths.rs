@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashSet, os::unix::ffi::OsStrExt, path::Path};
+use std::{os::unix::ffi::OsStrExt, path::Path};
 
 use gio::prelude::*;
 use strata_core::model::Location;
@@ -29,39 +29,6 @@ pub(crate) fn can_remove(location: &Location) -> bool {
 /// Location equality that also accepts GIO-level equivalence (`file://` URI vs native path).
 pub(crate) fn locations_equal(left: &Location, right: &Location) -> bool {
     left == right || gio_file_for_location(left).equal(&gio_file_for_location(right))
-}
-
-pub(crate) fn same_locations(left: &[Location], right: &[Location]) -> bool {
-    if left.is_empty() || left.len() != right.len() {
-        return false;
-    }
-    let left_set: HashSet<_> = left.iter().collect();
-    let right_set: HashSet<_> = right.iter().collect();
-    if left_set.len() == right_set.len() && left_set == right_set {
-        return true;
-    }
-    let mut used = vec![false; right.len()];
-    left.iter().all(|location| {
-        let found = right
-            .iter()
-            .enumerate()
-            .find(|(i, candidate)| !used[*i] && locations_equal(location, candidate));
-        match found {
-            Some((index, _)) => {
-                used[index] = true;
-                true
-            }
-            None => false,
-        }
-    })
-}
-
-pub(crate) fn retain_untransferred(cut: &mut Vec<Location>, transferred: &[Location]) {
-    cut.retain(|location| {
-        !transferred
-            .iter()
-            .any(|moved| locations_equal(location, moved))
-    });
 }
 
 pub(crate) fn files_for_locations(locations: &[Location], cut: bool) -> Option<(Files, String)> {
