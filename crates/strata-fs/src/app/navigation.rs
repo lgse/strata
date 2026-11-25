@@ -91,6 +91,7 @@ pub struct ColumnState {
     pub(crate) surfaced_leftovers: Cell<usize>,
     // Providers may list a location twice.
     each_location_once: OnceCell<bool>,
+    location_index: OnceCell<HashMap<Location, usize>>,
     metadata_positions: Option<HashMap<Location, usize>>,
     pub selected: Option<usize>,
     selected_locations: SelectedLocations,
@@ -310,11 +311,7 @@ impl NavigationState {
 
     pub fn active_child_position(&self, depth: usize) -> Option<usize> {
         let child = &self.columns.get(depth + 1)?.location;
-        self.columns
-            .get(depth)?
-            .entries
-            .iter()
-            .position(|entry| &entry.location == child)
+        self.columns.get(depth)?.location_position(child)
     }
 
     pub fn cursor_entry(&self, depth: usize) -> Option<FileEntry> {
@@ -387,9 +384,36 @@ impl ColumnState {
     }
 
     fn position_of(&self, location: &Location) -> Option<usize> {
-        self.entries
-            .iter()
-            .position(|entry| entry.location == *location)
+        self.location_position(location)
+    }
+
+    pub(super) fn location_position(&self, location: &Location) -> Option<usize> {
+        const INDEX_THRESHOLD: usize = 128;
+        if let Some(position) = self.selected.filter(|&pos| {
+            self.entries
+                .get(pos)
+                .is_some_and(|e| e.location == *location)
+        }) && self.entries[..position]
+            .first()
+            .is_none_or(|first| first.location != *location)
+            && *self.each_location_once.get().unwrap_or(&false)
+        {
+            return Some(position);
+        }
+        if self.entries.len() < INDEX_THRESHOLD {
+            return self
+                .entries
+                .iter()
+                .position(|entry| entry.location == *location);
+        }
+        let index = self.location_index.get_or_init(|| {
+            let mut map = HashMap::with_capacity(self.entries.len());
+            for (position, entry) in self.entries.iter().enumerate() {
+                map.entry(entry.location.clone()).or_insert(position);
+            }
+            map
+        });
+        index.get(location).copied()
     }
 
     /// A finished or monitored listing is empty or ready.
@@ -418,6 +442,7 @@ impl ColumnState {
     fn invalidate_spliced_entry_indexes(&mut self) {
         self.entry_counts.set(None);
         self.leftovers.take();
+        self.location_index.take();
         self.metadata_positions = None;
         self.selected_locations.forget_positions();
     }

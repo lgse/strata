@@ -417,7 +417,7 @@ struct ViewportTarget {
 struct ViewportFill {
     depth: usize,
     directory_request: RequestId,
-    tokens: Vec<(usize, Location)>,
+    tokens: HashMap<Location, usize>,
     include_icon_details: bool,
 }
 
@@ -485,7 +485,7 @@ pub struct Browser {
     /// The current step of the one departure check that runs at a time.
     departure_probe: RefCell<Option<directory_changes::DepartureProbe>>,
     freshness: freshness::Freshness,
-    metadata_pending: RefCell<HashMap<usize, Vec<ViewportTarget>>>,
+    metadata_pending: RefCell<HashMap<usize, metadata_fills::PendingQueue>>,
     folder_counts_after_load: RefCell<HashMap<usize, RequestId>>,
     metadata_idle: RefCell<Option<gio::glib::SourceId>>,
     staging: RefCell<HashMap<usize, StagingLoad>>,

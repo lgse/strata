@@ -12,7 +12,7 @@ use std::{
     rc::Rc,
     sync::{
         Arc, Mutex, MutexGuard, PoisonError,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
@@ -163,9 +163,15 @@ impl Registry {
 }
 
 static REGISTRY: Mutex<Registry> = Mutex::new(Registry::new());
+static ACTIVE_OPERATIONS: AtomicUsize = AtomicUsize::new(0);
+static ACTIVE_FENCES: AtomicUsize = AtomicUsize::new(0);
 
 fn registry() -> MutexGuard<'static, Registry> {
     REGISTRY.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn has_active_activity() -> bool {
+    ACTIVE_OPERATIONS.load(Ordering::Acquire) != 0 || ACTIVE_FENCES.load(Ordering::Acquire) != 0
 }
 
 pub struct Hold {
@@ -257,20 +263,54 @@ impl Read for HeldFile {
 
 pub struct Listing {
     entries: Option<fs::ReadDir>,
-    hold: Hold,
+    hold: Option<Hold>,
+    folder: Option<PathBuf>,
+    stopped: bool,
 }
 
 pub fn list(folder: &Path) -> io::Result<Listing> {
+    if !has_active_activity() {
+        return Ok(Listing {
+            entries: Some(fs::read_dir(folder)?),
+            hold: None,
+            folder: Some(folder.to_path_buf()),
+            stopped: false,
+        });
+    }
     let hold = hold_real(folder)?;
     Ok(Listing {
         entries: Some(fs::read_dir(folder)?),
-        hold,
+        hold: Some(hold),
+        folder: None,
+        stopped: false,
     })
 }
 
 impl Listing {
     pub fn stopped(&self) -> bool {
-        self.hold.stopped()
+        self.stopped || self.hold.as_ref().is_some_and(Hold::stopped)
+    }
+
+    fn ensure_unfenced(&mut self) -> bool {
+        if let Some(hold) = &self.hold {
+            return !hold.stopped();
+        }
+        if ACTIVE_FENCES.load(Ordering::Acquire) == 0 {
+            return true;
+        }
+        let Some(folder) = self.folder.take() else {
+            return true;
+        };
+        match hold_real(&folder) {
+            Ok(hold) => {
+                self.hold = Some(hold);
+                true
+            }
+            Err(_) => {
+                self.stopped = true;
+                false
+            }
+        }
     }
 }
 
@@ -278,12 +318,12 @@ impl Iterator for Listing {
     type Item = io::Result<fs::DirEntry>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let entries = self.entries.as_mut()?;
-        if self.hold.stopped() {
+        self.entries.as_ref()?;
+        if !self.ensure_unfenced() {
             self.entries = None;
             return Some(Err(Refused.into()));
         }
-        entries.next()
+        self.entries.as_mut()?.next()
     }
 }
 
@@ -318,6 +358,7 @@ pub fn begin(scope: OperationScope) -> Activity {
             trees: Vec::new(),
         },
     );
+    ACTIVE_OPERATIONS.store(registry.operations.len(), Ordering::Release);
     Activity(id)
 }
 
@@ -368,6 +409,7 @@ impl Activity {
                 drained: Vec::new(),
             },
         );
+        ACTIVE_FENCES.store(registry.barriers.len(), Ordering::Release);
         Fence(id)
     }
 }
@@ -378,6 +420,7 @@ impl Activity {
         let Some(Registered { scope, trees }) = registry.operations.remove(&self.0) else {
             return;
         };
+        ACTIVE_OPERATIONS.store(registry.operations.len(), Ordering::Release);
         for root in &scope.roots {
             registry.roots.remove(root);
         }
@@ -453,17 +496,21 @@ impl Drop for Fence {
             for path in &barrier.paths {
                 registry.fenced.remove(path);
             }
+            ACTIVE_FENCES.store(registry.barriers.len(), Ordering::Release);
         }
     }
 }
 
 pub fn is_changing(path: &Path) -> bool {
+    if !has_active_activity() {
+        return false;
+    }
     let registry = registry();
     registry.roots.covers(path) || registry.fenced.covers(path)
 }
 
 pub fn is_releasing() -> bool {
-    !registry().barriers.is_empty()
+    ACTIVE_FENCES.load(Ordering::Acquire) != 0
 }
 
 pub struct EndedOperation {
@@ -527,6 +574,9 @@ pub fn notify(notice: &Notice<'_>) {
 }
 
 pub fn is_active_in(folder: &Path) -> bool {
+    if ACTIVE_OPERATIONS.load(Ordering::Acquire) == 0 {
+        return false;
+    }
     let registry = registry();
     registry.folders.contains(folder) || registry.trees.covers(folder)
 }

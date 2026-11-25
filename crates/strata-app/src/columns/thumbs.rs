@@ -222,23 +222,19 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
             continue;
         };
         let dragging = state.column(depth).is_some_and(|c| c.is_dragging());
-        let rebind = match column.settled_for_drag(listing.location(), clock, dragging) {
-            Ok(rebind) => rebind,
-            Err(left) => {
-                wake = Some(wake.map_or(left, |at| at.min(left)));
-                deferred = true;
-                continue;
-            }
-        };
-        pruned |= rebind
-            | column
-                .next(
-                    listing.location(),
-                    listing.thumb_version(),
-                    listing.len(),
-                    restep,
-                )
-                .tell(store, id, listing, step);
+        if let Err(left) = column.settled_for_drag(listing.location(), clock, dragging) {
+            wake = Some(wake.map_or(left, |at| at.min(left)));
+            deferred = true;
+            continue;
+        }
+        pruned |= column
+            .next(
+                listing.location(),
+                listing.thumb_version(),
+                listing.len(),
+                restep,
+            )
+            .tell(store, id, listing, step);
     }
     if let Some(left) = wake {
         tx.wake_after(Duration::from_secs_f64(left));

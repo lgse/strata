@@ -335,7 +335,11 @@ impl<S: 'static> ColumnsView<S> {
         let serials: Vec<u64> = {
             let p = (self.sh.parts)(s);
             let n = p.sources.len().min(p.state.columns.len());
-            p.state.columns[..n].iter().map(|c| c.serial).collect()
+            p.state.columns[..n]
+                .iter()
+                .filter(|c| c.collection.needs_tick())
+                .map(|c| c.serial)
+                .collect()
         };
         let mut changed = false;
         for serial in serials {
@@ -494,7 +498,7 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
         sh.clone(),
         sh.clone(),
     );
-    let header = std::cell::RefCell::new(Some(column::header(sh, s, depth, serial)));
+    let hdr = sh.clone();
     let tall = sh.clone();
     let c = c
         .name(title)
@@ -503,7 +507,10 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
         .keys_by_host()
         .settings(pointer)
         .settings(autoscroll)
-        .header(move |_: &S| header.borrow_mut().take())
+        .header(move |s: &S| {
+            let depth = depth_of(&hdr, s, serial)?;
+            Some(column::header(&hdr, s, depth, serial))
+        })
         .header_defers_press(threshold)
         .on_header_click(move |s: &mut S, input, tx| {
             header_click(&hdr_click, s, (serial, input), tx)

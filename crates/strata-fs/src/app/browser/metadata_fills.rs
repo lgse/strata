@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     rc::{Rc, Weak},
 };
 
@@ -80,11 +80,11 @@ impl Browser {
         if self.fill_in_flight(depth, &target) {
             return;
         }
-        queue_fill_target(
-            self.metadata_pending.borrow_mut().entry(depth).or_default(),
-            target,
-            visible,
-        );
+        self.metadata_pending
+            .borrow_mut()
+            .entry(depth)
+            .or_default()
+            .enqueue(target, visible);
         self.schedule_metadata_fill();
     }
 
@@ -106,7 +106,7 @@ impl Browser {
             .values_mut()
             .filter(|fill| fill.depth == depth && fill.include_icon_details)
         {
-            fill.tokens.retain(|(_, location)| {
+            fill.tokens.retain(|location, _| {
                 !splices
                     .iter()
                     .flat_map(|splice| &splice.entries)
@@ -120,17 +120,7 @@ impl Browser {
         let Some(targets) = pending.get_mut(&depth) else {
             return;
         };
-        let priorities: HashMap<_, _> = visible
-            .iter()
-            .enumerate()
-            .map(|(i, path)| (path, i))
-            .collect();
-        targets.sort_by_key(|target| {
-            priorities
-                .get(&target.location)
-                .copied()
-                .unwrap_or(usize::MAX)
-        });
+        targets.prioritize(visible);
     }
 
     pub(super) fn request_sort_fill(self: &Rc<Self>, pass: SortPass, batch: SortFillBatch) {
@@ -380,19 +370,23 @@ impl Browser {
             .values()
             .map(|fill| fill.depth)
             .collect();
-        let pending: Vec<(usize, Vec<ViewportTarget>)> = self
+        let pending: Vec<(usize, PendingQueue)> = self
             .metadata_pending
             .borrow_mut()
             .extract_if(|depth, _| !active_depths.contains(depth))
             .collect();
-        for (depth, mut targets) in pending {
+        for (depth, mut queue) in pending {
             let Some(directory_request) = self.state.borrow().request_id_for_depth(depth) else {
                 continue;
             };
-            // Bound the non-preemptible batch so scrolling can reprioritize the backlog.
-            if targets.len() > MAX_VIEWPORT_FILL_BATCH {
-                let remainder = targets.split_off(MAX_VIEWPORT_FILL_BATCH);
-                self.metadata_pending.borrow_mut().insert(depth, remainder);
+            // Bound the non-preemptible batch so scrolling can reprioritize the backlog,
+            // and keep icon-details targets separate from basic-only targets.
+            let Some((targets, include_icon_details)) = queue.take_batch(MAX_VIEWPORT_FILL_BATCH)
+            else {
+                continue;
+            };
+            if !queue.is_empty() {
+                self.metadata_pending.borrow_mut().insert(depth, queue);
             }
             let fill_request = self.new_request_id();
             let weak: Weak<Self> = Rc::downgrade(self);
@@ -401,11 +395,10 @@ impl Browser {
                     browser.handle_directory_event(event);
                 }
             });
-            let tokens: Vec<(usize, Location)> = targets
+            let tokens: HashMap<Location, usize> = targets
                 .iter()
-                .map(|target| (target.position, target.location.clone()))
+                .map(|target| (target.location.clone(), target.position))
                 .collect();
-            let include_icon_details = targets.iter().any(|target| target.include_icon_details);
             // Stored before the provider runs: synchronous fills answer inside the call.
             self.fill_tokens.borrow_mut().insert(
                 fill_request,
@@ -463,45 +456,169 @@ impl ViewportFill {
         self.depth == depth
             && Some(self.directory_request) == directory_request
             && (!target.include_icon_details || self.include_icon_details)
-            && self
-                .tokens
-                .iter()
-                .any(|(index, entry)| *index == target.position && *entry == target.location)
+            && self.tokens.get(&target.location) == Some(&target.position)
     }
 }
 
-fn queue_fill_target(queued: &mut Vec<ViewportTarget>, target: ViewportTarget, visible: bool) {
-    match queued
-        .iter()
-        .position(|queued| queued.location == target.location)
-    {
-        Some(index) => requeue_fill_target(queued, index, target, visible),
-        None => enqueue_fill_target(queued, target, visible),
-    }
+/// O(1)-amortized bounded priority queue for pending viewport metadata fills.
+///
+/// Promotions push a newer sequence number to the front instead of scanning the
+/// deque, and pops ignore older sequence numbers so back-eviction never drops a
+/// promoted entry.
+#[derive(Default)]
+pub(super) struct PendingQueue {
+    order: VecDeque<(Location, u64)>,
+    entries: HashMap<Location, (ViewportTarget, u64)>,
+    next_seq: u64,
 }
 
-fn requeue_fill_target(
-    queued: &mut Vec<ViewportTarget>,
-    index: usize,
-    target: ViewportTarget,
-    visible: bool,
-) {
-    queued[index].position = target.position;
-    queued[index].include_icon_details |= target.include_icon_details;
-    if visible {
-        let target = queued.remove(index);
-        queued.insert(0, target);
+impl PendingQueue {
+    pub(super) fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
-}
 
-fn enqueue_fill_target(queued: &mut Vec<ViewportTarget>, target: ViewportTarget, visible: bool) {
-    if visible {
-        // A saturated offscreen backlog must not strand newly visible details.
-        if queued.len() == MAX_PENDING_FILL_LOCATIONS {
-            queued.pop();
+    #[cfg(test)]
+    pub(super) fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    fn alloc_seq(&mut self) -> u64 {
+        let seq = self.next_seq;
+        self.next_seq = self.next_seq.wrapping_add(1);
+        seq
+    }
+
+    pub(super) fn enqueue(&mut self, target: ViewportTarget, visible: bool) {
+        if self.entries.contains_key(&target.location) {
+            let promoted_seq = visible.then(|| self.alloc_seq());
+            if let Some((existing, seq)) = self.entries.get_mut(&target.location) {
+                existing.position = target.position;
+                existing.include_icon_details |= target.include_icon_details;
+                if let Some(new_seq) = promoted_seq {
+                    *seq = new_seq;
+                    self.order.push_front((target.location, new_seq));
+                    self.compact_if_bloated();
+                }
+            }
+            return;
         }
-        queued.insert(0, target);
-    } else if queued.len() < MAX_PENDING_FILL_LOCATIONS {
-        queued.push(target);
+        if visible {
+            // A saturated offscreen backlog must not strand newly visible details.
+            if self.entries.len() == MAX_PENDING_FILL_LOCATIONS {
+                self.evict_back();
+            }
+            let seq = self.alloc_seq();
+            let loc = target.location.clone();
+            self.entries.insert(loc.clone(), (target, seq));
+            self.order.push_front((loc, seq));
+            self.compact_if_bloated();
+        } else if self.entries.len() < MAX_PENDING_FILL_LOCATIONS {
+            let seq = self.alloc_seq();
+            let loc = target.location.clone();
+            self.entries.insert(loc.clone(), (target, seq));
+            self.order.push_back((loc, seq));
+        }
+    }
+
+    pub(super) fn prioritize(&mut self, visible: &[Location]) {
+        if self.entries.is_empty() || visible.is_empty() {
+            return;
+        }
+        let mut moved = HashSet::with_capacity(visible.len());
+        let mut next = VecDeque::with_capacity(self.entries.len());
+        for loc in visible {
+            if let Some((_, seq)) = self.entries.get(loc)
+                && moved.insert(loc.clone())
+            {
+                next.push_back((loc.clone(), *seq));
+            }
+        }
+        if next.is_empty() {
+            return;
+        }
+        for (loc, seq) in self.order.drain(..) {
+            if !moved.contains(&loc)
+                && self
+                    .entries
+                    .get(&loc)
+                    .is_some_and(|(_, current)| *current == seq)
+            {
+                next.push_back((loc, seq));
+            }
+        }
+        self.order = next;
+    }
+
+    pub(super) fn retain(&mut self, mut keep: impl FnMut(&ViewportTarget) -> bool) {
+        self.entries.retain(|_, (target, _)| keep(target));
+        self.order.retain(|(loc, seq)| {
+            self.entries
+                .get(loc)
+                .is_some_and(|(_, current)| *current == *seq)
+        });
+    }
+
+    pub(super) fn take_batch(&mut self, limit: usize) -> Option<(Vec<ViewportTarget>, bool)> {
+        let mut batch = Vec::with_capacity(limit.min(self.entries.len()));
+        let mut skipped = Vec::new();
+        let mut batch_details = None;
+        while batch.len() < limit {
+            let Some((loc, seq)) = self.order.pop_front() else {
+                break;
+            };
+            let Some((target, current)) = self.entries.get(&loc) else {
+                continue;
+            };
+            if *current != seq {
+                continue;
+            }
+            let want_details = *batch_details.get_or_insert(target.include_icon_details);
+            if target.include_icon_details == want_details {
+                if let Some((target, _)) = self.entries.remove(&loc) {
+                    batch.push(target);
+                }
+            } else {
+                skipped.push((loc, seq));
+            }
+        }
+        for item in skipped.into_iter().rev() {
+            self.order.push_front(item);
+        }
+        batch_details.map(|details| (batch, details))
+    }
+
+    fn evict_back(&mut self) {
+        while let Some((loc, seq)) = self.order.pop_back() {
+            let is_live = self
+                .entries
+                .get(&loc)
+                .is_some_and(|(_, current)| *current == seq);
+            if is_live {
+                self.entries.remove(&loc);
+                return;
+            }
+        }
+    }
+
+    fn compact_if_bloated(&mut self) {
+        if self.order.len() <= MAX_PENDING_FILL_LOCATIONS * 2 {
+            return;
+        }
+        self.order.retain(|(loc, seq)| {
+            self.entries
+                .get(loc)
+                .is_some_and(|(_, current)| *current == *seq)
+        });
+    }
+}
+
+#[cfg(test)]
+impl From<Vec<ViewportTarget>> for PendingQueue {
+    fn from(targets: Vec<ViewportTarget>) -> Self {
+        let mut queue = Self::default();
+        for target in targets {
+            queue.enqueue(target, false);
+        }
+        queue
     }
 }

@@ -126,6 +126,11 @@ impl CollectionState {
         Self::default()
     }
 
+    /// Whether any installed controller has pending work for `Collection::tick`.
+    pub fn needs_tick(&self) -> bool {
+        self.controllers.needs_tick()
+    }
+
     // Reading what the element recorded.
 
     /// The viewport's rect in window points, as last laid out.

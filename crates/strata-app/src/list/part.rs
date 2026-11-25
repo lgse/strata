@@ -166,7 +166,7 @@ impl Part for List {
 
 pub(crate) fn tick_active(app: &mut App, tx: &mut Tx) -> bool {
     match app.filter.pane.shows() {
-        true => view::results(app).tick(app, tx),
-        false => view::ticked(app).tick(app, tx),
+        true => app.filter.pane.collection().needs_tick() && view::results(app).tick(app, tx),
+        false => app.list.single.pane.collection().needs_tick() && view::ticked(app).tick(app, tx),
     }
 }

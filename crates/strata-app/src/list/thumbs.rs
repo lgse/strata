@@ -90,18 +90,15 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
                 .synced
                 .settled_for_drag(listing.location(), clock, dragging)
             {
-                Ok(rebind) => {
-                    rebind
-                        | thumbs
-                            .synced
-                            .next(
-                                listing.location(),
-                                listing.thumb_version(),
-                                listing.len(),
-                                restep,
-                            )
-                            .tell(store, id, listing, step)
-                }
+                Ok(_) => thumbs
+                    .synced
+                    .next(
+                        listing.location(),
+                        listing.thumb_version(),
+                        listing.len(),
+                        restep,
+                    )
+                    .tell(store, id, listing, step),
                 Err(left) => {
                     tx.wake_after(Duration::from_secs_f64(left));
                     deferred = true;

@@ -67,8 +67,7 @@ use stamps::*;
 const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::target-uri,access::can-trash,access::can-delete";
 const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::created,time::modified,unix::mode,access::can-trash,access::can-delete";
 const RECENT_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::target-uri,recent::modified";
-const METADATA_ATTRIBUTES: &str =
-    "standard::type,standard::size,time::created,time::modified,unix::mode";
+const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::created,time::modified,time::modified-nsec,time::changed,time::changed-nsec,unix::mode";
 const STAMP_ATTRIBUTES: &str =
     "standard::type,time::modified,time::modified-usec,time::changed,time::changed-usec";
 

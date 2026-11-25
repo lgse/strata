@@ -194,6 +194,7 @@ type DelaysFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> Option<(Duration, Duration)>>;
 type ReportFn<S> = Rc<dyn Fn(&mut S, RestReport, &mut Tx)>;
 type PartFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> Option<El>>;
 type ViewFn<S> = Rc<dyn Fn(&mut S, RestView) -> bool>;
+type ViewActiveFn<S> = Rc<dyn Fn(&S) -> bool>;
 
 /// Rows that report the pointer resting on them, through Rune's `El::hover_delays`: folder peek.
 pub struct Rest<S> {
@@ -201,6 +202,7 @@ pub struct Rest<S> {
     pub(super) report: ReportFn<S>,
     pub(super) part: Option<(VersionFn<S>, PartFn<S>)>,
     pub(super) view: Option<ViewFn<S>>,
+    pub(super) view_active: Option<ViewActiveFn<S>>,
 }
 
 impl<S> Clone for Rest<S> {
@@ -210,6 +212,7 @@ impl<S> Clone for Rest<S> {
             report: self.report.clone(),
             part: self.part.clone(),
             view: self.view.clone(),
+            view_active: self.view_active.clone(),
         }
     }
 }
@@ -225,6 +228,7 @@ impl<S: 'static> Rest<S> {
             report: Rc::new(report),
             part: None,
             view: None,
+            view_active: None,
         }
     }
 
@@ -241,6 +245,18 @@ impl<S: 'static> Rest<S> {
     /// Hears which entries the viewport shows whenever that changes (a scroll, a listing change).
     pub fn on_view(mut self, f: impl Fn(&mut S, RestView) -> bool + 'static) -> Self {
         self.view = Some(Rc::new(f));
+        self.view_active = None;
+        self
+    }
+
+    /// Like [`Rest::on_view`], but skips building the visible id list whenever `active` is false.
+    pub fn on_view_when(
+        mut self,
+        active: impl Fn(&S) -> bool + 'static,
+        f: impl Fn(&mut S, RestView) -> bool + 'static,
+    ) -> Self {
+        self.view = Some(Rc::new(f));
+        self.view_active = Some(Rc::new(active));
         self
     }
 

@@ -107,7 +107,7 @@ impl Browser {
                     return false;
                 };
                 fill.tokens
-                    .retain(|(_, location)| !locations.contains(location));
+                    .retain(|location, _| !locations.contains(location));
                 fill.tokens.is_empty()
             })
             .map(|(_, fill)| fill.depth)
@@ -188,15 +188,17 @@ impl Browser {
     }
 
     fn apply_viewport_metadata(&self, request_id: RequestId, updates: Vec<MetadataUpdate>) {
-        let fill = self
-            .fill_tokens
-            .borrow()
-            .get(&request_id)
-            .map(|fill| (fill.directory_request, fill.tokens.clone()));
-        let Some((directory_request, tokens)) = fill else {
-            return;
+        let positioned = {
+            let fills = self.fill_tokens.borrow();
+            let Some(fill) = fills.get(&request_id) else {
+                return;
+            };
+            (
+                fill.directory_request,
+                position_updates(&fill.tokens, updates),
+            )
         };
-        let positioned = position_updates(&tokens, updates);
+        let (directory_request, positioned) = positioned;
         let mut state = self.state.borrow_mut();
         if let Some((depth, positions, stale)) =
             state.apply_positioned_metadata(directory_request, positioned)
@@ -221,17 +223,13 @@ impl Browser {
 }
 
 fn position_updates(
-    tokens: &[(usize, Location)],
+    tokens: &HashMap<Location, usize>,
     updates: Vec<MetadataUpdate>,
 ) -> Vec<(usize, MetadataUpdate)> {
-    let positions: HashMap<&Location, usize> = tokens
-        .iter()
-        .map(|(position, location)| (location, *position))
-        .collect();
     let mut positioned = Vec::with_capacity(updates.len());
     for update in updates {
-        if let Some(position) = positions.get(&update.location) {
-            positioned.push((*position, update));
+        if let Some(&position) = tokens.get(&update.location) {
+            positioned.push((position, update));
         }
     }
     positioned

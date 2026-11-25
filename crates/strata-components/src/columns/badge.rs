@@ -10,23 +10,26 @@ use strata_kit::look::Look;
 use strata_kit::slots::columns as tokens;
 
 use super::keys::{BADGE, DETAIL};
-use super::view::Shared;
+use super::view::{ColumnsParts, Shared};
 use crate::collection::element::{ContentSlot, Describe, LABEL, RowCx};
 
 /// The hover's fade in: Strata's `transition: opacity 120ms ease-out`.
 const FADE_IN: Anim = Anim::new(Curve::tween(0.12, Easing::EASE_OUT));
 
-fn shown_text<'s, S: 'static>(
-    sh: &Shared<S>,
-    s: &'s S,
-    serial: u64,
+fn depth_in(p: &ColumnsParts<'_>, serial: u64) -> Option<usize> {
+    p.state.depth_of(serial).filter(|d| *d < p.sources.len())
+}
+
+fn shown_text_in<'s>(
+    p: &ColumnsParts<'s>,
+    depth: Option<usize>,
     rcx: &RowCx<'_>,
+    show_sizes: bool,
 ) -> Option<Cow<'s, str>> {
-    if rcx.state.renaming || !(sh.show_sizes)(s) {
+    if rcx.state.renaming || !show_sizes {
         return None;
     }
-    let p = (sh.parts)(s);
-    let depth = p.state.depth_of(serial).filter(|d| *d < p.sources.len())?;
+    let depth = depth?;
     p.sources.badge(depth, rcx.index).filter(|t| !t.is_empty())
 }
 
@@ -46,14 +49,12 @@ fn version_of(text: Option<&str>, look: &Look) -> u64 {
     h.finish()
 }
 
-fn detail_text<'s, S: 'static>(
-    sh: &Shared<S>,
-    s: &'s S,
-    serial: u64,
+fn detail_text_in<'s>(
+    p: &ColumnsParts<'s>,
+    depth: Option<usize>,
     rcx: &RowCx<'_>,
 ) -> Option<Cow<'s, str>> {
-    let p = (sh.parts)(s);
-    let depth = p.state.depth_of(serial).filter(|d| *d < p.sources.len())?;
+    let depth = depth?;
     if !p.sources.has_details(depth) {
         return None;
     }
@@ -105,29 +106,26 @@ fn shows_tooltip(rcx: &RowCx<'_>) -> bool {
 }
 
 /// Version of column `serial`'s hover tooltip for `rcx`.
-fn tooltip_version<S: 'static>(sh: &Shared<S>, s: &S, serial: u64, rcx: &RowCx<'_>) -> u64 {
+fn tooltip_version_in(p: &ColumnsParts<'_>, depth: Option<usize>, rcx: &RowCx<'_>) -> u64 {
     if !shows_tooltip(rcx) {
         return 0;
     }
-    let p = (sh.parts)(s);
-    let Some(depth) = p.state.depth_of(serial).filter(|d| *d < p.sources.len()) else {
+    let Some(depth) = depth else {
         return 0;
     };
     p.sources.tooltip_version(depth, rcx.index)
 }
 
 /// Column `serial`'s unconditional hover tooltip text for `rcx` (for example `"{name}\n{date}"`).
-fn row_tooltip<'s, S: 'static>(
-    sh: &Shared<S>,
-    s: &'s S,
-    serial: u64,
+fn row_tooltip_in<'s>(
+    p: &ColumnsParts<'s>,
+    depth: Option<usize>,
     rcx: &RowCx<'_>,
 ) -> Option<Cow<'s, str>> {
     if !shows_tooltip(rcx) {
         return None;
     }
-    let p = (sh.parts)(s);
-    let depth = p.state.depth_of(serial).filter(|d| *d < p.sources.len())?;
+    let depth = depth?;
     p.sources
         .tooltip(depth, rcx.index)
         .filter(|t| !t.is_empty())
@@ -137,27 +135,33 @@ pub(super) fn content<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> ContentSlo
     let (v, b) = (sh.clone(), sh.clone());
     ContentSlot::new(
         move |s: &S, rcx: &RowCx<'_>| {
+            let p = (v.parts)(s);
+            let depth = depth_in(&p, serial);
             let mut h = std::hash::DefaultHasher::new();
-            detail_text(&v, s, serial, rcx).hash(&mut h);
-            tooltip_version(&v, s, serial, rcx).hash(&mut h);
-            h.finish() ^ version_of(shown_text(&v, s, serial, rcx).as_deref(), rcx.look)
+            detail_text_in(&p, depth, rcx).hash(&mut h);
+            tooltip_version_in(&p, depth, rcx).hash(&mut h);
+            h.finish()
+                ^ version_of(
+                    shown_text_in(&p, depth, rcx, (v.show_sizes)(s)).as_deref(),
+                    rcx.look,
+                )
         },
         move |s: &S, rcx: &RowCx<'_>, row_icon: El, label: El| {
             let look = rcx.look;
-            let tooltip = row_tooltip(&b, s, serial, rcx);
+            let p = (b.parts)(s);
+            let depth = depth_in(&p, serial);
+            let tooltip = row_tooltip_in(&p, depth, rcx);
             let label = if tooltip.is_none() && shows_tooltip(rcx) {
                 label.help_when_truncated(rcx.entry.name.to_owned())
             } else {
                 label
             };
-            let label = with_detail(label, detail_text(&b, s, serial, rcx).as_deref(), look);
+            let label = with_detail(label, detail_text_in(&p, depth, rcx).as_deref(), look);
             let mut middle = row().grow(1.0).h_full().min_w(0.0).center_y().child(label);
-            let shown = shown_text(&b, s, serial, rcx);
+            let shown = shown_text_in(&p, depth, rcx, (b.show_sizes)(s));
             let live = shown.is_some()
-                && (b.parts)(s)
-                    .state
-                    .depth_of(serial)
-                    .and_then(|d| (b.parts)(s).state.column(d))
+                && depth
+                    .and_then(|d| p.state.column(d))
                     .is_none_or(|c| c.collection.row_hover());
             if let Some(t) = &shown {
                 middle = middle.child(chip(look, t, rcx, live));
@@ -250,26 +254,31 @@ pub(super) fn describe<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> Describe<
     let (v, b) = (sh.clone(), sh.clone());
     Describe::new(
         move |s: &S, rcx: &RowCx<'_>| {
+            let p = (v.parts)(s);
+            let depth = depth_in(&p, serial);
             let mut h = std::hash::DefaultHasher::new();
-            described(&v, s, serial, rcx).hash(&mut h);
-            shown_text(&v, s, serial, rcx).hash(&mut h);
-            detail_text(&v, s, serial, rcx).hash(&mut h);
+            described_in(&p, depth, rcx).hash(&mut h);
+            shown_text_in(&p, depth, rcx, (v.show_sizes)(s)).hash(&mut h);
+            detail_text_in(&p, depth, rcx).hash(&mut h);
             if let Some((ver, _)) = &v.extra_description {
                 ver(s, rcx.entry.id).hash(&mut h);
             }
             h.finish()
         },
         move |s: &S, rcx: &RowCx<'_>| {
+            let p = (b.parts)(s);
+            let depth = depth_in(&p, serial);
             let mut parts: Vec<String> = Vec::new();
-            if let Some(base) = described(&b, s, serial, rcx).filter(|t| !t.is_empty()) {
+            if let Some(base) = described_in(&p, depth, rcx).filter(|t| !t.is_empty()) {
                 parts.push(base.into_owned());
             }
-            if let Some(badge) = shown_text(&b, s, serial, rcx).filter(|t| !t.is_empty())
+            if let Some(badge) =
+                shown_text_in(&p, depth, rcx, (b.show_sizes)(s)).filter(|t| !t.is_empty())
                 && parts.last().map(String::as_str) != Some(badge.as_ref())
             {
                 parts.push(badge.into_owned());
             }
-            if let Some(detail) = detail_text(&b, s, serial, rcx).filter(|t| !t.is_empty()) {
+            if let Some(detail) = detail_text_in(&p, depth, rcx).filter(|t| !t.is_empty()) {
                 parts.push(detail.into_owned());
             }
             if let Some(extra) = b
@@ -285,15 +294,10 @@ pub(super) fn describe<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> Describe<
     )
 }
 
-fn described<'s, S: 'static>(
-    sh: &Shared<S>,
-    s: &'s S,
-    serial: u64,
+fn described_in<'s>(
+    p: &ColumnsParts<'s>,
+    depth: Option<usize>,
     rcx: &RowCx<'_>,
 ) -> Option<Cow<'s, str>> {
-    let p = (sh.parts)(s);
-    p.state
-        .depth_of(serial)
-        .filter(|d| *d < p.sources.len())
-        .and_then(|depth| p.sources.description(depth, rcx.index))
+    depth.and_then(|depth| p.sources.description(depth, rcx.index))
 }

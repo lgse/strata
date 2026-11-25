@@ -142,6 +142,7 @@ fn a_row_is_asked_again_only_after_its_fill_landed() {
     fills.see(0..4);
     fills.request(&browser, 0, &column);
     assert_eq!(browser.take(), vec![0, 1, 2, 3]);
+    assert_eq!(*browser.priorities.borrow(), 1);
 
     {
         let mut entries = browser.entries.borrow_mut();
@@ -163,10 +164,25 @@ fn a_row_is_asked_again_only_after_its_fill_landed() {
         .collect();
     column.apply(Edit::Refill(refilled));
     fills.request(&browser, 0, &column);
+    assert!(
+        browser.take().is_empty(),
+        "MetadataFilled refill alone must not re-scan the viewport"
+    );
+    assert_eq!(
+        *browser.priorities.borrow(),
+        1,
+        "MetadataFilled refill alone must not re-prioritize"
+    );
+
+    // Structural change re-checks the viewport and asks only the row that changed and still lacks.
+    let extra = photo(4);
+    browser.entries.borrow_mut().push(extra.clone());
+    column.apply(Edit::Insert(vec![(4, vec![Row::of(&extra, &ids)])]));
+    fills.request(&browser, 0, &column);
     assert_eq!(
         browser.take(),
-        vec![0],
-        "only the row that changed and still lacks"
+        vec![0, 4],
+        "only the row whose partial fill changed and the newly inserted row"
     );
 
     fills.see(0..3);

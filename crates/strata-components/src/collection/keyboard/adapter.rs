@@ -73,6 +73,10 @@ impl KeyController for Keyboard {
         Flow::Handled
     }
 
+    fn needs_tick(&self) -> bool {
+        self.machine.handle().pending()
+    }
+
     fn pointer_seen(&mut self, input: &PointerInput) {
         if input.phase == PointerPhase::Down && input.button == PointerButton::Primary {
             self.machine.pressed();

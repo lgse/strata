@@ -9,6 +9,7 @@ use strata_components::footer::{
 use strata_core::{
     i18n::{count, file_size, integer, list, tr},
     model::{FileEntry, Location, MetadataValue},
+    util::DateFormat,
 };
 use strata_fs::{
     app::{Browser, BrowserEvent},
@@ -16,6 +17,18 @@ use strata_fs::{
 };
 
 use crate::{App, filter, shell, slots::Listener};
+
+/// Cheap inputs to `poll`; if unchanged and no browser event landed, `poll` is a no-op.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct PollKey {
+    depth: usize,
+    request_id: Option<RequestId>,
+    selected_count: usize,
+    filter: Option<FilterCounts>,
+    show_modified: bool,
+    date_format: DateFormat,
+    date_bucket: u64,
+}
 
 /// What the footer counted at the last poll, and what it knows of the metadata it asks for.
 #[derive(Default)]
@@ -27,6 +40,7 @@ pub(super) struct Counted {
     /// The selection's positions at the last poll: a new selection asks for its metadata.
     selected: Vec<usize>,
     unreadable: HashSet<Location>,
+    last_poll: Option<PollKey>,
 }
 
 pub(super) fn listener() -> Listener<App> {
@@ -54,7 +68,30 @@ pub(super) fn listener() -> Listener<App> {
     })
 }
 
-pub(super) fn poll(app: &mut App) -> bool {
+fn poll_key(app: &App, depth: usize, filter: Option<FilterCounts>, clock: f64) -> PollKey {
+    let browser = &app.browser;
+    let request_id = browser.column_request_id(depth);
+    let selected_count = browser.selected_count();
+    let show_modified = shows_modified_date(app);
+    let date_format = strata_core::util::date_format();
+    let date_bucket = if show_modified && date_format == DateFormat::Relative && selected_count == 1
+    {
+        (clock.max(0.0) / 30.0) as u64
+    } else {
+        0
+    };
+    PollKey {
+        depth,
+        request_id,
+        selected_count,
+        filter,
+        show_modified,
+        date_format,
+        date_bucket,
+    }
+}
+
+pub(super) fn poll(app: &mut App, clock: f64) -> bool {
     let filter_counts = filter::footer_counts(app);
     let browser = Rc::clone(&app.browser);
     let Some(depth) = browser.active_depth() else {
@@ -63,7 +100,14 @@ pub(super) fn poll(app: &mut App) -> bool {
         *counted = Counted::default();
         return shown;
     };
-    let under = Some((depth, browser.column_request_id(depth)));
+    let key = poll_key(app, depth, filter_counts, clock);
+    if !app.footer.counted.heard
+        && app.footer.counted.listing.is_some()
+        && app.footer.counted.last_poll == Some(key)
+    {
+        return false;
+    }
+    let under = Some((depth, key.request_id));
     let (selected, replaced, reselected, heard) = {
         let counted = &mut app.footer.counted;
         let replaced = counted.under != under;
@@ -71,7 +115,7 @@ pub(super) fn poll(app: &mut App) -> bool {
             counted.under = under;
             counted.unreadable.clear();
         }
-        let selected = if browser.selected_count() <= DETAILED_SELECTION {
+        let selected = if key.selected_count <= DETAILED_SELECTION {
             browser.selected_positions(depth)
         } else {
             Vec::new()
@@ -94,6 +138,7 @@ pub(super) fn poll(app: &mut App) -> bool {
     }
     let listing = Some(read(app, depth, &selected, filter_counts));
     let counted = &mut app.footer.counted;
+    counted.last_poll = Some(key);
     if counted.listing == listing {
         return false;
     }

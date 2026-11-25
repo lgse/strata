@@ -201,10 +201,7 @@ impl NavigationState {
     pub fn selection_anchor_position(&self, depth: usize) -> Option<usize> {
         let column = self.columns.get(depth)?;
         let anchor = column.selection_anchor.as_ref()?;
-        column
-            .entries
-            .iter()
-            .position(|entry| &entry.location == anchor)
+        column.location_position(anchor)
     }
 
     pub fn set_selection_anchor(&mut self, depth: usize, position: usize) -> bool {

@@ -630,10 +630,14 @@ pub(crate) fn moved(app: &mut App, tx: &mut Tx) {
 
 pub(crate) fn listing_marks<V: SinglePane>(app: &App, id: EntryId) -> RowMarks {
     let marks = crate::dnd::with_marks(app, id, crate::clipboard::marks(app, id));
-    let row = pane::<V>(app)
-        .listing()
-        .and_then(|column| column.row_of(id));
-    let marks = highlight::listing_marks(app, row.map(crate::listing::Row::name), marks);
+    let marks = if highlight::has_find(app) {
+        let row = pane::<V>(app)
+            .listing()
+            .and_then(|column| column.row_of(id));
+        highlight::listing_marks(app, row.map(crate::listing::Row::name), marks)
+    } else {
+        marks
+    };
     crate::peek::with_marks(app, V::KEY, id, marks)
 }
 

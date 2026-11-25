@@ -433,6 +433,11 @@ pub trait PointerController {
         Flow::Pass
     }
 
+    /// Whether `tick` has pending work (a timeout or active gesture); defaults to `true`.
+    fn needs_tick(&self) -> bool {
+        true
+    }
+
     /// Hears every key the collection hears, before the keyboard controller and whether or not anything takes it.
     fn key_seen(&mut self, _input: &KeyInput<'_>) {}
 
@@ -448,6 +453,11 @@ pub trait KeyController {
     /// As `PointerController::tick` (a type-ahead timeout).
     fn tick(&mut self, _cx: &mut Ctx<'_>) -> Flow {
         Flow::Pass
+    }
+
+    /// Whether `tick` has pending queued commands; defaults to `true`.
+    fn needs_tick(&self) -> bool {
+        true
     }
 
     /// Hears every pointer input the collection routes, before the pointer controller and the marquee.
@@ -487,6 +497,11 @@ pub trait MarqueeController {
         Flow::Pass
     }
 
+    /// Whether `tick` has an active marquee band; defaults to `true`.
+    fn needs_tick(&self) -> bool {
+        true
+    }
+
     /// Drops an open band without touching the selection, which the new folder replaces (`CollectionState::enter`).
     fn reset(&mut self) {}
 
@@ -508,6 +523,13 @@ pub struct Controllers {
 }
 
 impl Controllers {
+    /// Whether any installed controller has pending work for `Collection::tick`.
+    pub fn needs_tick(&self) -> bool {
+        self.pointer.as_ref().is_some_and(|p| p.needs_tick())
+            || self.keyboard.as_ref().is_some_and(|k| k.needs_tick())
+            || self.marquee.as_ref().is_some_and(|m| m.needs_tick())
+    }
+
     /// Drops every controller's gesture in progress.
     pub fn reset(&mut self) {
         if let Some(p) = self.pointer.as_mut() {

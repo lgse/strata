@@ -200,3 +200,37 @@ fn calendar_rendering_converts_entries_into_now_timezone() {
         assert_eq!(modified_date_at(&modified, &now, format), expected);
     }
 }
+
+#[test]
+fn cached_local_clock_matches_direct_formatting_across_formats() {
+    use super::{DateDisplay, modified_date_for_seconds, set_date_format};
+
+    let now = glib::DateTime::now_local().expect("local now");
+    let now_unix = now.to_unix();
+    let offsets = [
+        -3600,
+        -120,
+        0,
+        30,
+        300,
+        7200,
+        3 * 86_400,
+        14 * 86_400,
+        90 * 86_400,
+        400 * 86_400,
+    ];
+    for format in [DateFormat::Relative, DateFormat::Iso8601, DateFormat::Long] {
+        set_date_format(format);
+        for offset in offsets {
+            let seconds = now_unix - offset;
+            let modified = glib::DateTime::from_unix_local(seconds).expect("local modified");
+            let expected = modified_date_at(&modified, &now, format);
+            assert_eq!(
+                modified_date_for_seconds(seconds, DateDisplay::Preferred),
+                expected,
+                "format={format:?} offset={offset}"
+            );
+        }
+    }
+    set_date_format(DateFormat::Relative);
+}

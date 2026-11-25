@@ -156,13 +156,15 @@ impl Part for Icons {
         let ticked = match app.filter.pane.shows() {
             true => {
                 let results = view::results();
-                let ticked = results.collection(app).tick(app, tx);
+                let ticked = app.filter.pane.collection().needs_tick()
+                    && results.collection(app).tick(app, tx);
                 let pruned = results.poll(app, tx);
                 ticked | pruned
             }
             false => {
                 let grid = view::grid();
-                let ticked = grid.collection(app).tick(app, tx);
+                let ticked = app.icons.single.pane.collection().needs_tick()
+                    && grid.collection(app).tick(app, tx);
                 let pruned = grid.poll(app, tx);
                 ticked | pruned
             }
@@ -196,7 +198,13 @@ fn redate(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
 
 pub(crate) fn tick_active(app: &mut App, tx: &mut Tx) -> bool {
     match app.filter.pane.shows() {
-        true => view::results().collection(app).tick(app, tx),
-        false => view::grid().collection(app).tick(app, tx),
+        true => {
+            app.filter.pane.collection().needs_tick()
+                && view::results().collection(app).tick(app, tx)
+        }
+        false => {
+            app.icons.single.pane.collection().needs_tick()
+                && view::grid().collection(app).tick(app, tx)
+        }
     }
 }
