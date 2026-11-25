@@ -13,8 +13,11 @@ use std::{
 
 use gio::prelude::*;
 use glib::variant::{ObjectPath, ToVariant};
+use rune::Tx;
 use strata_core::i18n::tr;
 use strata_fs::services::UNEXPECTED_SYSTEM_ERROR;
+
+use crate::App;
 
 const PORTAL_BUS: &str = "org.freedesktop.portal.Desktop";
 const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
@@ -25,12 +28,42 @@ const CALL_TIMEOUT_MSEC: i32 = 15_000;
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
+#[cfg(test)]
+pub(super) type FolderPickerOverride = Rc<dyn Fn(&str) -> Result<Option<PathBuf>, String>>;
+
+pub(super) fn pick_folder(
+    app: &App,
+    title: String,
+    on_done: impl FnOnce(&mut App, &mut Tx, Result<Option<PathBuf>, String>) -> bool + 'static,
+) {
+    let weak = app.settings_dialog.later.downgrade();
+    let override_result = test_pick_folder(app, &title);
+    glib::MainContext::default().spawn_local(async move {
+        let picked = match override_result {
+            Some(result) => result,
+            None => select_folder(title).await,
+        };
+        let Some(later) = weak.upgrade() else {
+            return;
+        };
+        later.then(move |app, tx| on_done(app, tx, picked));
+    });
+}
+
+fn test_pick_folder(_app: &App, _title: &str) -> Option<Result<Option<PathBuf>, String>> {
+    #[cfg(test)]
+    if let Some(hook) = &_app.settings_dialog.folder_picker {
+        return Some(hook(_title));
+    }
+    None
+}
+
 pub(super) async fn select_folder(title: String) -> Result<Option<PathBuf>, String> {
     let connection = gio::bus_get_future(gio::BusType::Session)
         .await
         .map_err(dbus_error)?;
     let token = format!(
-        "strata_actions_{}_{}",
+        "strata_settings_{}_{}",
         std::process::id(),
         NEXT_TOKEN.fetch_add(1, Ordering::Relaxed)
     );

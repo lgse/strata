@@ -490,14 +490,6 @@ fn search_limit_rows(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<Option<E
         },
         menu_layer,
     );
-    let exclusions_summary = if prefs.search_exclusions.is_empty() {
-        tr("Default")
-    } else {
-        prefs.search_exclusions.join(", ")
-    };
-    let exclusions = text(exclusions_summary)
-        .font(app.look.kit.ty.small)
-        .color(app.look.kit.c.text_muted);
     vec![
         option_row(
             ctx,
@@ -517,15 +509,7 @@ fn search_limit_rows(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<Option<E
             ),
             entry_menu,
         ),
-        option_row(
-            ctx,
-            RowSpec::new(
-                "search-exclusions",
-                "Global search exclusions",
-                "Exclude folder names or directory paths from global search.",
-            ),
-            exclusions,
-        ),
+        super::exclusions::build_row(ctx),
     ]
 }
 

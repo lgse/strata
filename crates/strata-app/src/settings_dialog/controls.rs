@@ -88,6 +88,9 @@ pub(super) fn search_handle() -> SettingsSearch<App> {
             if page == PageId::Integrations {
                 super::integrations::ensure_scanned(app);
             }
+            if page == PageId::Updates {
+                super::updates::ensure_method_detected(app);
+            }
         }
     })
     .on_escape(|app: &mut App, _| {
@@ -458,6 +461,7 @@ pub(super) fn choice_menu(app: &App, spec: ChoiceSpec<'_>, menu_layer: &mut Vec<
         .role("button")
         .label(title)
         .description(current)
+        .disabled(spec.disabled)
         .focusable(false)
         .child(inner)
 }

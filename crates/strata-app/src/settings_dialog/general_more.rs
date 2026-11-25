@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use rune::{El, Tx, row, text};
+use rune::{El, Tx, row};
 use rune_kit::{Button, ButtonVariant};
 use strata_components::controls::number_field::NumberField;
 use strata_core::{
@@ -17,11 +17,21 @@ use strata_desktop::settings::{
 use strata_fs::services::CrossVolumeDropStrategy;
 use strata_preview::sandbox::{MediaPreviewBackend, browser, polaris_gpu_available};
 
-use super::controls::{
-    ChoiceOption, ChoiceSpec, PageCtx, RowSpec, choice_menu, group_card, number_field, option_row,
-    pref_switch, section_heading, switch_row,
+use super::{
+    controls::{
+        ChoiceOption, ChoiceSpec, PageCtx, RowSpec, choice_menu, group_card, number_field,
+        option_row, pref_switch, section_heading, switch_row,
+    },
+    folder_picker,
 };
-use crate::{App, buttons, launch, shell};
+use crate::{
+    App, buttons,
+    error_dialog::{self, Error},
+    launch, shell,
+};
+
+#[cfg(test)]
+mod tests;
 
 pub(super) fn workers_field() -> NumberField<App> {
     number_field(
@@ -329,9 +339,11 @@ fn startup_section(ctx: PageCtx<'_>) -> Option<El> {
         || tr("Home directory"),
         |dir| abbreviate_home(Path::new(dir)),
     );
-    let dir_badge = text(default_dir_label)
-        .font(app.look.kit.ty.ui)
-        .color(app.look.kit.c.text_base);
+    let choose = Button::new(default_dir_label)
+        .variant(ButtonVariant::Neutral)
+        .on_press_tx(choose_default_directory)
+        .build(&app.look.kit)
+        .description(tr("Select default directory"));
     let reset = Button::new(tr("Reset"))
         .variant(ButtonVariant::Neutral)
         .disabled(prefs.default_directory.is_none())
@@ -353,7 +365,7 @@ fn startup_section(ctx: PageCtx<'_>) -> Option<El> {
                 row()
                     .gap(app.look.space.sm)
                     .items_center()
-                    .child(dir_badge)
+                    .child(buttons::on_return("settings-default-dir-choose", choose))
                     .child(buttons::on_return("settings-default-dir-reset", reset)),
             ),
             pref_switch(
@@ -370,7 +382,25 @@ fn startup_section(ctx: PageCtx<'_>) -> Option<El> {
     )
 }
 
-fn abbreviate_home(path: &Path) -> String {
+fn choose_default_directory(app: &mut App, _: &mut Tx) {
+    folder_picker::pick_folder(
+        app,
+        tr("Select default directory"),
+        |app, _, picked| match picked {
+            Ok(Some(path)) => {
+                shell::saved(app).change(|s| s.default_directory = Some(path));
+                true
+            }
+            Ok(None) => false,
+            Err(message) => {
+                error_dialog::show(app, Error::new(tr("Default directory"), message));
+                true
+            }
+        },
+    );
+}
+
+pub(super) fn abbreviate_home(path: &Path) -> String {
     let home = launch::home_directory();
     match path.strip_prefix(&home) {
         Ok(rest) if rest.as_os_str().is_empty() => "~".to_owned(),

@@ -3,7 +3,7 @@
 mod editor;
 mod editor_view;
 mod examples;
-mod folder_picker;
+pub(super) use super::folder_picker;
 mod icon_chooser;
 mod readiness;
 #[cfg(test)]
@@ -533,6 +533,10 @@ fn refresh_catalog(app: &mut App) {
 fn test_pick_folder(_app: &App, _title: &str) -> Option<Result<Option<PathBuf>, String>> {
     #[cfg(test)]
     if let Some(hook) = &_app.settings_dialog.actions.folder_picker {
+        return Some(hook(_title));
+    }
+    #[cfg(test)]
+    if let Some(hook) = &_app.settings_dialog.folder_picker {
         return Some(hook(_title));
     }
     None
