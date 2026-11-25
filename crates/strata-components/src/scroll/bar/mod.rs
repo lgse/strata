@@ -295,17 +295,23 @@ impl Bar {
         inner.restyle(look);
         let fade = if look.animations { FADE } else { Spring::NONE };
         let tint = if look.animations { TINT } else { Spring::NONE };
-        let resize = tint;
+        let bind_rect = |live: &Live<[f32; 4]>| {
+            if look.animations && look.hover_thickness.is_some() {
+                live.smooth(tint)
+            } else {
+                live.into()
+            }
+        };
         let thumb = col()
             .key("thumb")
             .absolute(0.0, 0.0)
-            .live_rect(inner.thumb.smooth(resize))
+            .live_rect(bind_rect(&inner.thumb))
             .radius(look.thumb_radius)
             .fill(look.thumb);
         let mut trough = col()
             .key("trough")
             .absolute(0.0, 0.0)
-            .live_rect(inner.trough.smooth(resize))
+            .live_rect(bind_rect(&inner.trough))
             .radius(look.trough_radius)
             .live_fill(inner.fill.smooth(tint))
             .child(thumb);
@@ -315,7 +321,7 @@ impl Bar {
         let mut band = col()
             .key(key.to_owned())
             .absolute(0.0, 0.0)
-            .live_rect(inner.band.smooth(resize))
+            .live_rect(bind_rect(&inner.band))
             .live_opacity(inner.opacity.smooth(fade).rest(fade))
             .cursor(Cursor::Default)
             .a11y_hidden()
@@ -427,6 +433,9 @@ impl Inner {
         let Some(look) = self.look() else {
             return;
         };
+        if look.hover_thickness.is_none() {
+            return;
+        }
         let (band, trough, thumb) = self.rects(look);
         if look.animations {
             self.band.set(band);
