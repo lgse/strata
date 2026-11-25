@@ -496,3 +496,32 @@ fn fast_trough_click_rebinds_skipped_thumbnails_on_next_poll() {
         "destination tile thumbnail reached Ready"
     );
 }
+
+#[test]
+fn poll_rebuilds_view_when_host_changes_size_without_size_changed() {
+    let mut rt = runtime(host(1, 900.0, 600.0), 1.0);
+    rt.poll = Some(|s: &mut Host, _dt: f64, tx: &mut Tx| grid(s).poll(s, tx));
+
+    let views = rt.state.views.get();
+    rt.frame(DT);
+    assert_eq!(
+        rt.state.views.get(),
+        views,
+        "first poll records initial size without forcing an extra rebuild"
+    );
+
+    rt.state.size = 96.0;
+    rt.frame(DT);
+    assert_eq!(
+        rt.state.views.get(),
+        views + 1,
+        "poll must request a view rebuild when host size changes from Some(prev)"
+    );
+
+    rt.frame(DT);
+    assert_eq!(
+        rt.state.views.get(),
+        views + 1,
+        "subsequent idle poll does not rebuild again"
+    );
+}

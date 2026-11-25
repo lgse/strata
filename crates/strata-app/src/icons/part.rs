@@ -151,7 +151,7 @@ impl Part for Icons {
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let said = single::poll::<Self>(app, clock, tx);
-        size::follow_folder(app);
+        let resized = size::follow_folder(app);
         // A filter's results tick in the grid's place, and the grid waits under them.
         let ticked = match app.filter.pane.shows() {
             true => {
@@ -173,7 +173,7 @@ impl Part for Icons {
             Viewer::pump(app, thumbnail_parts, clock);
         }
         fill(app, clock, tx);
-        ticked | said | redate(app, clock, tx)
+        ticked | said | resized | redate(app, clock, tx)
     }
 }
 

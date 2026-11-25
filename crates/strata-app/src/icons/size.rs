@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use rune::Tx;
-use strata_components::icons_grid::{SizeCommand, SizeRequest};
+use strata_components::icons_grid::{IconsGrid, SizeCommand, SizeRequest};
 use strata_core::model::Location;
 use strata_desktop::{
     keys::{
@@ -54,10 +54,18 @@ fn reset(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     apply(app, SizeCommand::Reset, tx)
 }
 
+fn active_grid(app: &App) -> IconsGrid<App> {
+    if app.filter.pane.shows() {
+        view::results()
+    } else {
+        view::grid()
+    }
+}
+
 /// C3 works the step out and lays the grid out again; [`resized`] keeps the size.
 fn apply(app: &mut App, command: SizeCommand, tx: &mut Tx) -> Outcome {
     crate::tenxer::cancel_chord(app);
-    view::grid().apply_size(app, command, tx);
+    active_grid(app).apply_size(app, command, tx);
     Outcome::Ran
 }
 
@@ -74,6 +82,7 @@ pub(super) fn resized(app: &mut App, request: SizeRequest, tx: &mut Tx) {
         }
         SizeRequest::Reset => reset_to(app, shown.as_ref(), tx),
     };
+    sync_resolved(app, shown);
     app.icons.size = size;
 }
 
@@ -90,7 +99,13 @@ pub(crate) fn shown(app: &App) -> i32 {
 pub(crate) fn set(app: &mut App, size: i32, tx: &mut Tx) {
     let shown = shown_folder(app).cloned();
     keep(app, shown.as_ref(), size, tx);
-    app.icons.size = tile_size(size);
+    let next = tile_size(size);
+    let changed = app.icons.size != next;
+    sync_resolved(app, shown);
+    app.icons.size = next;
+    if changed {
+        active_grid(app).size_changed(app, tx);
+    }
 }
 
 pub(crate) fn make_default(app: &mut App, size: i32, tx: &mut Tx) {
@@ -98,6 +113,9 @@ pub(crate) fn make_default(app: &mut App, size: i32, tx: &mut Tx) {
     shell::saved(app).change(|settings| prune = policy::set_default_icons_size(settings, size));
     if let Some(prune) = prune {
         folder_views::change(app, |views| prune.apply(views), tx);
+    }
+    if follow_folder(app) {
+        active_grid(app).size_changed(app, tx);
     }
 }
 
@@ -110,6 +128,9 @@ pub(crate) fn reset_folder(app: &mut App, tx: &mut Tx) {
         |views| views.update(&key, |view| view.icons_size = None),
         tx,
     );
+    if follow_folder(app) {
+        active_grid(app).size_changed(app, tx);
+    }
 }
 
 pub(crate) fn differs_from_default(app: &App) -> bool {
@@ -154,13 +175,30 @@ fn reset_to(app: &mut App, location: Option<&Location>, tx: &mut Tx) -> f32 {
     tile_size(size)
 }
 
-pub(super) fn follow_folder(app: &mut App) {
+fn size_policy(app: &App) -> (bool, i32) {
+    let prefs = shell::preferences(app);
+    (prefs.remember_folder_views, prefs.icons_thumbnail_size)
+}
+
+fn sync_resolved(app: &mut App, shown: Option<Location>) {
     let revision = folder_views::revision(app);
+    let policy = size_policy(app);
+    let resolved = folder_size(app, shown.as_ref());
+    let icons = &mut app.icons;
+    icons.sized_for = shown;
+    icons.sized_at = revision;
+    icons.sized_policy = policy;
+    icons.resolved = resolved;
+}
+
+pub(super) fn follow_folder(app: &mut App) -> bool {
+    let revision = folder_views::revision(app);
+    let policy = size_policy(app);
     let icons = &app.icons;
     let shown = shown_folder(app);
     let moved = icons.sized_for.as_ref() != shown;
-    if !moved && icons.sized_at == revision {
-        return;
+    if !moved && icons.sized_at == revision && icons.sized_policy == policy {
+        return false;
     }
     let shown = shown.cloned();
     let size = folder_size(app, shown.as_ref());
@@ -168,9 +206,14 @@ pub(super) fn follow_folder(app: &mut App) {
     let resolved_anew = moved || icons.resolved != size;
     icons.sized_for = shown;
     icons.sized_at = revision;
+    icons.sized_policy = policy;
     icons.resolved = size;
     if resolved_anew {
+        let changed = icons.size != size;
         icons.size = size;
+        changed
+    } else {
+        false
     }
 }
 

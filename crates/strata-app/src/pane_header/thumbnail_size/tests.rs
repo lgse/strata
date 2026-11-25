@@ -170,18 +170,49 @@ fn make_default_and_reset_follow_the_remembered_folder() {
             None,
             "the default pruned it"
         );
+        let default_step = host.app().icons.synced_step();
 
         open_popover(&mut host);
-        press(&mut host, Key::Right);
-        let offered = host.run_until(PATIENCE, |host| drawn(host, RESET));
-        assert!(offered, "the actions again at 96");
-        return_on(&mut host, RESET);
-        wait_closed(&mut host, "Reset to default size");
-        let back = host.run_until(PATIENCE, |host| size::shown(host.app()) == 80);
+        for _ in 0..5 {
+            press(&mut host, Key::Right);
+        }
+        let offered = host.run_until(PATIENCE, |host| {
+            size::shown(host.app()) == 160 && drawn(host, RESET)
+        });
+        assert!(offered, "the actions again at 160");
+        assert_ne!(
+            host.app().icons.synced_step(),
+            default_step,
+            "larger tile size uses a larger thumbnail step"
+        );
+
+        host.runtime()
+            .update(|_: &mut App, tx: &mut Tx| tx.focus(RESET, true));
+        idle(&mut host);
+        let poll = host.runtime().poll.take();
+        send_key(
+            &mut host,
+            KeyEvent {
+                key: Key::Enter,
+                mods: Mods::default(),
+            },
+        );
+        host.runtime().frame(1.0 / 60.0);
+        host.runtime().settle_all();
+        host.runtime().poll = poll;
         assert!(
-            back,
-            "the folder follows the default: {}",
-            size::shown(host.app())
+            !drawn(&host, SLIDER),
+            "Reset to default size closed the popover on the press frame"
+        );
+        assert_eq!(
+            size::shown(host.app()),
+            80,
+            "Reset to default size resized immediately without waiting for poll or save delay"
+        );
+        assert_eq!(
+            host.app().icons.synced_step(),
+            default_step,
+            "Reset to default size synced the grid immediately on the press turn"
         );
         assert_eq!(default_size(&host), 80);
         assert_eq!(

@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rune::{Key, Mods};
+use rune::{Key, Mods, Tx};
 use strata_core::model::Location;
 use strata_desktop::settings::{
     folder_views::{FolderViews, key_for_location},
@@ -10,6 +10,7 @@ use strata_desktop::settings::{
 };
 
 use crate::{
+    folder_views,
     host::offscreen::Offscreen,
     shell,
     test_support::{
@@ -205,4 +206,36 @@ fn folder_saved(folder: &Path) -> Option<Option<i32>> {
 fn wait_folder_saved(host: &mut Offscreen, folder: &Path, size: Option<i32>) {
     let saved = host.run_until(PATIENCE, |_| folder_saved(folder) == Some(size));
     assert!(saved, "folder-views.toml holds {:?}", folder_saved(folder));
+}
+
+#[test]
+fn follow_folder_size_change_requests_repaint_on_next_poll() {
+    let name = "follow_folder_size_change_requests_repaint_on_next_poll";
+    let saved = "remember_folder_views = true\nicons_thumbnail_size = 64\n".to_owned();
+    hosted_with(MODULE, "icons", saved, name, |mut host| {
+        let folder = fixture();
+        opened(&mut host, folder.path());
+
+        chord(&mut host, '=');
+        assert_eq!(size(&host), 72.0);
+        while host.turn() {
+            host.runtime().settle_all();
+        }
+
+        let mut tx = Tx::default();
+        folder_views::forget_all(host.app_mut(), &mut tx);
+        let clock = host.runtime().clock;
+        assert!(
+            shell::poll(host.app_mut(), clock, &mut tx),
+            "clearing folder views must request a view rebuild on the next poll"
+        );
+        assert_eq!(size(&host), 64.0, "size followed the cleared folder views");
+
+        shell::saved(host.app_mut()).change(|settings| settings.icons_thumbnail_size = 96);
+        assert!(
+            shell::poll(host.app_mut(), clock, &mut tx),
+            "changing the default size must request a view rebuild on the next poll"
+        );
+        assert_eq!(size(&host), 96.0, "size followed the updated default");
+    });
 }
