@@ -76,6 +76,8 @@ pub(crate) struct Preview {
     owns_focus: bool,
     focus_handoff: Option<FocusHandoff>,
     tab_shown: bool,
+    reload_on_tab_shown: bool,
+    pending_focus: Option<(FileEntry, Option<usize>)>,
     click_opening: Option<ClickOpening>,
     focus_timer: Rc<RefCell<Option<glib::SourceId>>>,
     released_from: Option<Option<usize>>,
@@ -173,6 +175,13 @@ pub(crate) fn sync_preferences(app: &mut App) {
     sync_theme(app);
 }
 
+/// Drops idle process-wide preview caches without disturbing any visible viewer.
+pub(crate) fn clear_idle_caches(app: &App) {
+    app.preview.loader.provider().clear_cache();
+    strata_preview::sandbox::clear_preview_cache();
+    media::clear_idle_caches();
+}
+
 impl Part for Preview {
     const PLACE: Place<App> = Place::Drawer(wrap);
     const COMMANDS: &'static [Action<App>] = keys::COMMANDS;
@@ -201,6 +210,8 @@ impl Part for Preview {
             owns_focus: false,
             focus_handoff: None,
             tab_shown: false,
+            reload_on_tab_shown: false,
+            pending_focus: None,
             click_opening: None,
             focus_timer: Rc::default(),
             released_from: None,
@@ -274,6 +285,26 @@ impl Part for Preview {
         }
     }
 
+    fn tab_hidden(app: &mut App, _tx: &mut Tx) {
+        let pending = app.preview.pending_focus.take();
+        session::cancel_focus_timer(app);
+        app.preview.loader.focus_archive_on_ready = false;
+        app.preview.loader.cancel();
+        app.preview.raw.clear();
+        app.preview.media_checks.stop();
+        app.preview.stepped = None;
+        app.preview.viewer.stop();
+        app.preview.viewer = Viewer::Empty;
+        clear_focus_handoff(app);
+        app.preview.content_focus = ContentFocus::None;
+        session::evict_current(app);
+        if let Some((entry, depth)) = pending {
+            app.preview.current = Some(entry);
+            app.preview.current_depth = depth;
+        }
+        app.preview.reload_on_tab_shown = app.preview.enabled && app.preview.current.is_some();
+    }
+
     fn tab_shown(app: &mut App, _tx: &mut Tx) {
         app.preview.tab_shown = true;
         clear_focus_handoff(app);
@@ -282,6 +313,14 @@ impl Part for Preview {
         let prefs = shell::preferences(app);
         app.columns.refresh_mirror_preferences(prefs);
         session::sync_reservation(app);
+        let reload = std::mem::take(&mut app.preview.reload_on_tab_shown);
+        if reload
+            && app.preview.enabled
+            && app.preview.focus_timer.borrow().is_none()
+            && let Some(entry) = app.preview.current.clone()
+        {
+            load::reload_keeping_view(app, entry);
+        }
     }
 }
 

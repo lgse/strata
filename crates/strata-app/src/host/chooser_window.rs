@@ -21,6 +21,11 @@ pub(crate) struct ChooserWindow {
     pub(crate) on_close: fn(&mut App, &mut Tx),
 }
 
+fn on_rest(app: &mut App, _: &mut Tx) -> bool {
+    crate::preview::clear_idle_caches(app);
+    false
+}
+
 /// The chooser's app, over a state the host builds with `App::new_chooser`.
 pub(crate) fn chooser_app(window: ChooserWindow) -> rune::App<App> {
     rune::App::new(AppSpec {
@@ -40,6 +45,7 @@ pub(crate) fn chooser_app(window: ChooserWindow) -> rune::App<App> {
     ))
     .on_field_menu(menus::open_field_menu)
     .on_modifiers(shell::modifiers)
+    .on_rest(on_rest)
     .on_close(window.on_close)
 }
 

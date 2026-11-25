@@ -212,6 +212,11 @@ pub(crate) fn run_with(
     run_initial(ui, settings, initial, extend)
 }
 
+fn on_rest(app: &mut App, _: &mut Tx) -> bool {
+    crate::preview::clear_idle_caches(app);
+    false
+}
+
 fn on_close_request(app: &mut App, _: &mut Tx) -> CloseResponse {
     let last = is_last_window(shell::window_id(app));
     let Some(refusal) = close_guard::refusal(app, last) else {
@@ -263,6 +268,7 @@ fn window(ui: UiThread, settings: Saved, initial: launch::Initial) -> rune::App<
     .on_modifiers(shell::modifiers)
     .on_focus(focused)
     .on_visibility(shell::window_shown)
+    .on_rest(on_rest)
     // Rune's own flags (`--snap`, `--tree`) are not this binary's.
     .args(Vec::new())
     .window_options(csd::window_options(

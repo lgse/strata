@@ -102,9 +102,13 @@ thread_local! {
         const { std::cell::Cell::new(None) };
 }
 
+pub(crate) fn clear_caches() {
+    STORYBOARDS.with_borrow_mut(Lru::clear);
+}
+
 #[cfg(test)]
 pub(in crate::preview) fn clear_cache() {
-    STORYBOARDS.with_borrow_mut(Lru::clear);
+    clear_caches();
 }
 
 enum Source {

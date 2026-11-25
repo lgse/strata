@@ -26,6 +26,8 @@ mod worker;
 pub use worker::run;
 
 const CACHE_ENTRIES: usize = 64;
+const THUMB_CACHE_MAX_BYTES: usize = 8 * 1024 * 1024;
+const PREVIEW_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
 const CACHE_TTL: Duration = Duration::from_secs(30);
 const WAIT_QUANTUM: Duration = Duration::from_millis(20);
 pub const MAX_WORKERS: usize = 16;
@@ -105,31 +107,152 @@ struct Cached {
 }
 
 // A source version may have distinct render sizes; keep operations separate.
-type Cache = VecDeque<((FileKey, Operation), Arc<Mutex<Cached>>)>;
+struct CacheSlot {
+    key: (FileKey, Operation),
+    entry: Arc<Mutex<Cached>>,
+    bytes: usize,
+    completed: Option<Instant>,
+}
 
-fn cache_entry(cache: &Mutex<Cache>, key: FileKey, operation: Operation) -> Arc<Mutex<Cached>> {
-    let key = (key, operation);
-    let mut cache = cache.lock().unwrap_or_else(|p| p.into_inner());
-    if let Some(index) = cache.iter().position(|(candidate, _)| candidate == &key) {
-        let entry = cache.remove(index).expect("existing cache entry");
-        let result = entry.1.clone();
-        cache.push_back(entry);
-        return result;
+struct Cache {
+    entries: VecDeque<CacheSlot>,
+    byte_count: usize,
+    max_bytes: usize,
+}
+
+impl Default for Cache {
+    fn default() -> Self {
+        Self::new(THUMB_CACHE_MAX_BYTES)
     }
-    let result = Arc::new(Mutex::new(Cached::default()));
-    // Never evict an in-flight gate: duplicate callers must share its work.
-    if cache.len() >= CACHE_ENTRIES {
-        if let Some(index) = cache
-            .iter()
-            .position(|(_, entry)| Arc::strong_count(entry) == 1)
-        {
-            cache.remove(index);
-        } else {
-            return result;
+}
+
+impl Cache {
+    fn new(max_bytes: usize) -> Self {
+        Self {
+            entries: VecDeque::new(),
+            byte_count: 0,
+            max_bytes,
         }
     }
-    cache.push_back((key, result.clone()));
-    result
+
+    fn sweep_expired(&mut self, now: Instant) {
+        let mut retained_bytes = 0usize;
+        self.entries.retain(|slot| {
+            let expired = Arc::strong_count(&slot.entry) == 1
+                && slot
+                    .completed
+                    .is_some_and(|at| now.saturating_duration_since(at) >= CACHE_TTL);
+            if !expired {
+                retained_bytes = retained_bytes.saturating_add(slot.bytes);
+            }
+            !expired
+        });
+        self.byte_count = retained_bytes;
+    }
+
+    fn evict_one_idle(&mut self) -> bool {
+        let Some(index) = self
+            .entries
+            .iter()
+            .position(|slot| Arc::strong_count(&slot.entry) == 1)
+        else {
+            return false;
+        };
+        if let Some(removed) = self.entries.remove(index) {
+            self.byte_count = self.byte_count.saturating_sub(removed.bytes);
+        }
+        true
+    }
+
+    fn evict_to_budget(&mut self) {
+        while self.entries.len() > CACHE_ENTRIES || self.byte_count > self.max_bytes {
+            if !self.evict_one_idle() {
+                break;
+            }
+        }
+    }
+
+    fn acquire_entry(&mut self, key: (FileKey, Operation), now: Instant) -> Arc<Mutex<Cached>> {
+        self.sweep_expired(now);
+        self.evict_to_budget();
+        if let Some(index) = self.entries.iter().position(|slot| slot.key == key) {
+            let slot = self.entries.remove(index).expect("existing cache entry");
+            let result = slot.entry.clone();
+            self.entries.push_back(slot);
+            return result;
+        }
+        let result = Arc::new(Mutex::new(Cached::default()));
+        // Never evict an in-flight gate: duplicate callers must share its work.
+        if self.entries.len() >= CACHE_ENTRIES && !self.evict_one_idle() {
+            return result;
+        }
+        self.entries.push_back(CacheSlot {
+            key,
+            entry: result.clone(),
+            bytes: 0,
+            completed: None,
+        });
+        result
+    }
+
+    fn record_usage(&mut self, entry: &Arc<Mutex<Cached>>, bytes: usize, completed: Instant) {
+        self.sweep_expired(completed);
+        let Some(index) = self
+            .entries
+            .iter()
+            .position(|slot| Arc::ptr_eq(&slot.entry, entry))
+        else {
+            return;
+        };
+        if bytes > self.max_bytes {
+            if let Some(removed) = self.entries.remove(index) {
+                self.byte_count = self.byte_count.saturating_sub(removed.bytes);
+            }
+            return;
+        }
+        let slot = &mut self.entries[index];
+        self.byte_count = self
+            .byte_count
+            .saturating_sub(slot.bytes)
+            .saturating_add(bytes);
+        slot.bytes = bytes;
+        slot.completed = Some(completed);
+        self.evict_to_budget();
+    }
+
+    fn clear(&mut self) {
+        let mut retained_bytes = 0usize;
+        self.entries.retain(|slot| {
+            let in_flight = Arc::strong_count(&slot.entry) > 1;
+            if in_flight {
+                retained_bytes = retained_bytes.saturating_add(slot.bytes);
+            }
+            in_flight
+        });
+        self.byte_count = retained_bytes;
+        if self.entries.is_empty() {
+            self.entries.shrink_to_fit();
+        }
+    }
+}
+
+fn acquire_cache_entry(
+    cache: &Mutex<Cache>,
+    key: FileKey,
+    operation: Operation,
+) -> (Arc<Mutex<Cached>>, usize) {
+    let mut cache = cache.lock().unwrap_or_else(|p| p.into_inner());
+    let entry = cache.acquire_entry((key, operation), Instant::now());
+    (entry, cache.max_bytes)
+}
+
+#[cfg(test)]
+fn cache_entry(cache: &Mutex<Cache>, key: FileKey, operation: Operation) -> Arc<Mutex<Cached>> {
+    acquire_cache_entry(cache, key, operation).0
+}
+
+pub fn clear_preview_cache() {
+    preview_pool().clear_cache();
 }
 
 pub struct Thumbnail {
@@ -265,6 +388,134 @@ fn request(
     hold.settle(request_held(pool, path, operation, cancellation))
 }
 
+struct RenderedResponse {
+    png: Option<Vec<u8>>,
+    metadata: Option<MediaMetadata>,
+    payload_bytes: usize,
+}
+
+fn lock_cached<'a>(
+    entry: &'a Mutex<Cached>,
+    cancellation: &Cancellation,
+) -> Result<std::sync::MutexGuard<'a, Cached>, String> {
+    loop {
+        if cancellation.is_cancelled() {
+            return Err("Browser request cancelled".into());
+        }
+        match entry.try_lock() {
+            Ok(guard) => return Ok(guard),
+            Err(std::sync::TryLockError::Poisoned(p)) => return Ok(p.into_inner()),
+            Err(std::sync::TryLockError::WouldBlock) => std::thread::sleep(WAIT_QUANTUM),
+        }
+    }
+}
+
+fn decode_metadata(operation: Operation, raw: &[u8]) -> Result<MediaMetadata, String> {
+    if operation == Operation::RawMetadata {
+        return super::raw_metadata::RawMetadata::from_json(raw).map(|raw| MediaMetadata {
+            dimensions: raw.dimensions,
+            ..MediaMetadata::default()
+        });
+    }
+    let image = matches!(
+        operation,
+        Operation::Image | Operation::Raw | Operation::ImageMetadata
+    );
+    MediaMetadata::from_json(raw, image)
+}
+
+fn execute_browser_request(
+    pool: &Pool,
+    path: &Path,
+    file: &File,
+    key: &FileKey,
+    operation: Operation,
+    cancellation: &Cancellation,
+) -> Result<RenderedResponse, String> {
+    let queued = Instant::now();
+    let mut lease = pool.acquire(operation, cancellation)?;
+    let queue_ms = queued.elapsed().as_millis() as u64;
+    if cancellation.is_cancelled() {
+        return Err("Browser request cancelled".into());
+    }
+    let started = Instant::now();
+    let response = lease.execute(file, operation, cancellation)?;
+    if FileKey::read(path, file).map_err(|e| e.to_string())? != *key {
+        return Err("Browser input changed while rendering".into());
+    }
+    let payload_bytes = response.png.len().saturating_add(response.metadata.len());
+    let png = if response.png.is_empty() {
+        None
+    } else if response.png.len() as u64 > wire::MAX_OUTPUT_BYTES
+        || !super::valid_output(parse_operation(operation), &response.png)
+    {
+        lease.discard();
+        return Err(invalid_output_label(operation).into());
+    } else {
+        Some(response.png)
+    };
+    let metadata = if response.metadata.is_empty() {
+        None
+    } else {
+        match decode_metadata(operation, &response.metadata) {
+            Ok(metadata) => Some(metadata),
+            Err(error) => {
+                lease.discard();
+                return Err(error);
+            }
+        }
+    };
+    tracing::debug!(
+        ?operation,
+        queue_ms,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "browser worker completed"
+    );
+    Ok(RenderedResponse {
+        png,
+        metadata,
+        payload_bytes,
+    })
+}
+
+fn store_cached(
+    cached: &mut Cached,
+    rendered: RenderedResponse,
+    metadata_only: bool,
+    completed: Instant,
+) {
+    if let Some(png) = rendered.png {
+        cached.png = Some(png);
+    } else if !metadata_only {
+        cached.failed_thumbnail = true;
+    }
+    if let Some(metadata) = rendered.metadata {
+        cached.metadata = Some(metadata);
+    } else if metadata_only {
+        cached.failed_metadata = true;
+    }
+    cached.completed = Some(completed);
+}
+
+fn check_input_size(operation: Operation, size: u64, metadata_only: bool) -> Result<(), String> {
+    // The thumbnail is in a bounded header or block; the toolpath is not read.
+    if metadata_only || operation == Operation::Video || operation == Operation::GcodeThumbnail {
+        return Ok(());
+    }
+    let input_limit = if matches!(
+        operation,
+        Operation::ThreeMfThumbnail | Operation::FreeCadThumbnail
+    ) {
+        crate::services::model_preview::MAX_MODEL_INPUT_BYTES
+    } else {
+        super::MAX_RASTER_INPUT_BYTES
+    };
+    if size > input_limit {
+        return Err("Browser input exceeds the supported size limit".into());
+    }
+    Ok(())
+}
+
 fn request_held(
     pool: &Pool,
     path: &Path,
@@ -277,36 +528,12 @@ fn request_held(
         operation,
         Operation::ImageMetadata | Operation::MediaMetadata | Operation::RawMetadata
     );
-    let input_limit = if matches!(
-        operation,
-        Operation::ThreeMfThumbnail | Operation::FreeCadThumbnail
-    ) {
-        crate::services::model_preview::MAX_MODEL_INPUT_BYTES
-    } else {
-        super::MAX_RASTER_INPUT_BYTES
-    };
-    // The thumbnail is in a bounded header or block; the toolpath is not read.
-    if !metadata_only
-        && operation != Operation::Video
-        && operation != Operation::GcodeThumbnail
-        && key.size > input_limit
-    {
-        return Err("Browser input exceeds the supported size limit".into());
-    }
-    let entry = cache_entry(&pool.cache, key.clone(), operation);
-    let mut cached = loop {
-        if cancellation.is_cancelled() {
-            return Err("Browser request cancelled".into());
-        }
-        match entry.try_lock() {
-            Ok(guard) => break guard,
-            Err(std::sync::TryLockError::Poisoned(p)) => break p.into_inner(),
-            Err(std::sync::TryLockError::WouldBlock) => std::thread::sleep(WAIT_QUANTUM),
-        }
-    };
+    check_input_size(operation, key.size, metadata_only)?;
+    let (entry, max_cache_bytes) = acquire_cache_entry(&pool.cache, key.clone(), operation);
+    let mut cached = lock_cached(&entry, cancellation)?;
     if cached
         .completed
-        .is_some_and(|time| time.elapsed() > CACHE_TTL)
+        .is_some_and(|time| time.elapsed() >= CACHE_TTL)
     {
         *cached = Cached::default();
     }
@@ -315,69 +542,38 @@ fn request_held(
     } else {
         cached.png.is_some() || cached.failed_thumbnail
     };
+    let mut oversized_parts = None;
+    let mut usage = None;
     if !hit {
-        let queued = Instant::now();
-        let mut lease = pool.acquire(operation, cancellation)?;
-        let queue_ms = queued.elapsed().as_millis() as u64;
-        if cancellation.is_cancelled() {
-            return Err("Browser request cancelled".into());
+        let rendered = execute_browser_request(pool, path, &file, &key, operation, cancellation)?;
+        let completed = Instant::now();
+        let payload_bytes = rendered.payload_bytes;
+        if payload_bytes <= max_cache_bytes {
+            store_cached(&mut cached, rendered, metadata_only, completed);
+        } else {
+            oversized_parts = Some(ResultParts {
+                png: (!metadata_only).then_some(rendered.png).flatten(),
+                metadata: rendered.metadata,
+            });
         }
-        let started = Instant::now();
-        let response = lease.execute(&file, operation, cancellation)?;
-        if FileKey::read(path, &file).map_err(|e| e.to_string())? != key {
-            return Err("Browser input changed while rendering".into());
-        }
-        if !response.png.is_empty() {
-            if response.png.len() as u64 > wire::MAX_OUTPUT_BYTES
-                || !super::valid_output(parse_operation(operation), &response.png)
-            {
-                lease.discard();
-                return Err(invalid_output_label(operation).into());
-            }
-            cached.png = Some(response.png);
-        } else if !metadata_only {
-            cached.failed_thumbnail = true;
-        }
-        if !response.metadata.is_empty() {
-            let metadata = if operation == Operation::RawMetadata {
-                super::raw_metadata::RawMetadata::from_json(&response.metadata).map(|raw| {
-                    MediaMetadata {
-                        dimensions: raw.dimensions,
-                        ..MediaMetadata::default()
-                    }
-                })
-            } else {
-                let image = matches!(
-                    operation,
-                    Operation::Image | Operation::Raw | Operation::ImageMetadata
-                );
-                MediaMetadata::from_json(&response.metadata, image)
-            };
-            match metadata {
-                Ok(metadata) => cached.metadata = Some(metadata),
-                Err(error) => {
-                    lease.discard();
-                    return Err(error);
-                }
-            }
-        } else if metadata_only {
-            cached.failed_metadata = true;
-        }
-        cached.completed = Some(Instant::now());
-        tracing::debug!(
-            ?operation,
-            queue_ms,
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            "browser worker completed"
-        );
+        usage = Some((payload_bytes, completed));
     }
-    if cancellation.is_cancelled() {
-        return Err("Browser request cancelled".into());
+    let result = if cancellation.is_cancelled() {
+        Err("Browser request cancelled".into())
+    } else {
+        Ok(oversized_parts.unwrap_or_else(|| ResultParts {
+            png: (!metadata_only).then(|| cached.png.clone()).flatten(),
+            metadata: cached.metadata.clone(),
+        }))
+    };
+    drop(cached);
+    if let Some((payload_bytes, completed)) = usage {
+        pool.cache
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .record_usage(&entry, payload_bytes, completed);
     }
-    Ok(ResultParts {
-        png: (!metadata_only).then(|| cached.png.clone()).flatten(),
-        metadata: cached.metadata.clone(),
-    })
+    result
 }
 
 fn open_source(path: &Path) -> io::Result<File> {
@@ -431,7 +627,7 @@ fn pool() -> &'static Pool {
                 .ok()
                 .as_deref(),
         ),
-        cache: Mutex::default(),
+        cache: Mutex::new(Cache::new(THUMB_CACHE_MAX_BYTES)),
     })
 }
 
@@ -448,7 +644,7 @@ fn preview_pool() -> &'static Pool {
                 .ok()
                 .as_deref(),
         ),
-        cache: Mutex::default(),
+        cache: Mutex::new(Cache::new(PREVIEW_CACHE_MAX_BYTES)),
     })
 }
 
@@ -485,6 +681,10 @@ pub fn workers_supported() -> bool {
 }
 
 impl Pool {
+    fn clear_cache(&self) {
+        self.cache.lock().unwrap_or_else(|p| p.into_inner()).clear();
+    }
+
     fn set_limit(&self, limit: usize) {
         let _state = self.state.lock().unwrap_or_else(|p| p.into_inner());
         self.limit

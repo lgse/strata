@@ -286,6 +286,11 @@ pub(super) fn reload_rendered(app: &mut App, entry: FileEntry) {
     start_request(app, entry, true, None);
 }
 
+pub(super) fn reload_keeping_view(app: &mut App, entry: FileEntry) {
+    let render_document = app.preview.document_view == DocumentView::Rendered;
+    start_request(app, entry, render_document, None);
+}
+
 fn start_request(
     app: &mut App,
     entry: FileEntry,

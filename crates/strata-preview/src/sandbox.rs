@@ -31,6 +31,7 @@ mod operation;
 mod output;
 mod process;
 
+pub use browser::clear_preview_cache;
 #[cfg(test)]
 use command::polaris_gpu_available_at;
 #[cfg(any(test, feature = "rar"))]

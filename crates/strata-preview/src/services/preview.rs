@@ -235,6 +235,10 @@ pub trait PreviewProvider {
     ) -> Option<LoadHandle> {
         None
     }
+
+    fn evict(&self, _path: &Path) {}
+
+    fn clear_cache(&self) {}
 }
 
 /// Leading bytes read to decide a local file's preview family.

@@ -160,6 +160,33 @@ impl PreviewCache {
             }
         }
     }
+
+    fn evict_path(&mut self, path: &Path) {
+        self.recent.retain(|key| key.path != path);
+        let mut freed = 0usize;
+        self.entries.retain(|key, content| {
+            if key.path == path {
+                freed = freed.saturating_add(preview_content_size(content));
+                false
+            } else {
+                true
+            }
+        });
+        self.byte_count = self.byte_count.saturating_sub(freed);
+        if self.entries.is_empty() {
+            self.byte_count = 0;
+            self.entries.shrink_to_fit();
+            self.recent.shrink_to_fit();
+        }
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.recent.clear();
+        self.byte_count = 0;
+        self.entries.shrink_to_fit();
+        self.recent.shrink_to_fit();
+    }
 }
 
 fn preview_content_size(content: &PreviewContent) -> usize {
@@ -269,6 +296,14 @@ impl PreviewProvider for LocalPreviewProvider {
             cancellation.cancel();
             task.abort();
         }))
+    }
+
+    fn evict(&self, path: &Path) {
+        PREVIEW_CACHE.with(|cache| cache.borrow_mut().evict_path(path));
+    }
+
+    fn clear_cache(&self) {
+        PREVIEW_CACHE.with(|cache| cache.borrow_mut().clear());
     }
 }
 

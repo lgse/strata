@@ -55,6 +55,11 @@ pub(in crate::preview) use stream::START as START_DECODER;
 pub(crate) use sequence::Checks;
 use stream::{Inlet, Received, Stream};
 
+pub(super) fn clear_idle_caches() {
+    audio_details::clear_caches();
+    storyboard::clear_caches();
+}
+
 /// Key of the media player inside the preview drawer.
 pub(crate) const MEDIA_KEY: &str = "preview-media";
 
