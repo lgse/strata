@@ -3,7 +3,13 @@
 use std::path::Path;
 
 use rune::{ElementInfo, Key, KeyEvent, Mods};
-use strata_components::tabs::{TabId, tab_key};
+use strata_components::{
+    contract::{
+        EntryId,
+        dnd::{DragPayload, DropActions, DropData, DropOffer, Dropped, URI_LIST, file_uri},
+    },
+    tabs::{TabId, tab_key},
+};
 use strata_core::model::Location;
 
 use crate::{
@@ -301,6 +307,103 @@ fn dragging_folder_back_over_itself_does_not_spring_open_while_other_folder_does
             );
             idle(&mut host);
             escape_and_release(&mut host, archive);
+        },
+    );
+}
+
+struct NarrowedDrop<'a> {
+    source: &'a Path,
+    dest: &'a Path,
+    local_actions: Option<DropActions>,
+    mods: Mods,
+}
+
+fn commit_narrowed_drop(host: &mut Offscreen, drop: NarrowedDrop<'_>) {
+    let uri = file_uri(drop.source);
+    let offer = DropOffer::new(vec![URI_LIST.into()], DropActions::COPY)
+        .local(drop.local_actions.is_some())
+        .uris(vec![uri.clone()]);
+    let mut data = DropData::files(&[drop.source.to_path_buf()]);
+    if let Some(actions) = drop.local_actions {
+        data = data.local(DragPayload::new(vec![EntryId::new(1)], vec![uri]).actions(actions));
+    }
+    let dropped = Dropped::new(offer, data, drop.mods);
+    let destination = Location::local(drop.dest);
+    host.runtime().update(move |app, tx| {
+        assert!(super::commit_file_drop(app, destination, &dropped, tx));
+    });
+    host.turn();
+}
+
+#[test]
+fn in_app_same_volume_drop_keeps_move_when_offer_is_narrowed_to_copy() {
+    hosted(
+        MODULE,
+        "in_app_same_volume_drop_keeps_move_when_offer_is_narrowed_to_copy",
+        |mut host| {
+            let dir = fixture();
+            let root = dir.path();
+            let archive = root.join("archive");
+            let documents = root.join("documents");
+            open_listed(&mut host, root);
+
+            // In-app drag offering COPY|MOVE whose platform offer was narrowed to COPY still moves.
+            let moved = root.join("todo.txt");
+            commit_narrowed_drop(
+                &mut host,
+                NarrowedDrop {
+                    source: &moved,
+                    dest: &archive,
+                    local_actions: Some(DropActions::COPY | DropActions::MOVE),
+                    mods: Mods::default(),
+                },
+            );
+            wait_path(&mut host, &archive.join("todo.txt"), true);
+            wait_path(&mut host, &moved, false);
+
+            // Ctrl at drop still copies even when the in-app source offered COPY|MOVE.
+            let ctrl_copied = root.join("readme.md");
+            commit_narrowed_drop(
+                &mut host,
+                NarrowedDrop {
+                    source: &ctrl_copied,
+                    dest: &archive,
+                    local_actions: Some(DropActions::COPY | DropActions::MOVE),
+                    mods: Mods {
+                        ctrl: true,
+                        ..Mods::default()
+                    },
+                },
+            );
+            wait_path(&mut host, &archive.join("readme.md"), true);
+            assert!(ctrl_copied.exists());
+
+            // An in-app source that offered COPY only still copies.
+            commit_narrowed_drop(
+                &mut host,
+                NarrowedDrop {
+                    source: &ctrl_copied,
+                    dest: &documents,
+                    local_actions: Some(DropActions::COPY),
+                    mods: Mods::default(),
+                },
+            );
+            wait_path(&mut host, &documents.join("readme.md"), true);
+            assert!(ctrl_copied.exists());
+
+            // An external drop narrowed/limited to COPY still copies.
+            let external = archive.join("todo.txt");
+            commit_narrowed_drop(
+                &mut host,
+                NarrowedDrop {
+                    source: &external,
+                    dest: &documents,
+                    local_actions: None,
+                    mods: Mods::default(),
+                },
+            );
+            wait_path(&mut host, &documents.join("todo.txt"), true);
+            assert!(external.exists());
         },
     );
 }
