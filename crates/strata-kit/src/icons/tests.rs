@@ -221,3 +221,17 @@ fn single_colour_icons_honour_stroke_miterlimit_on_paths_and_groups() {
         "group stroke-miterlimit inherits to child paths"
     );
 }
+
+#[test]
+fn sort_and_view_settings_resolve_to_expected_lucide_assets() {
+    let expected = [
+        (IconName::SortAscending, "strata-arrow-up-narrow-wide"),
+        (IconName::SortDescending, "strata-arrow-down-wide-narrow"),
+        (IconName::ViewSettings, "strata-settings-2"),
+    ];
+    for set in k3_sets() {
+        for (name, asset) in expected {
+            assert_eq!((set.icon)(name).name, asset, "{}: {name:?}", set.name);
+        }
+    }
+}

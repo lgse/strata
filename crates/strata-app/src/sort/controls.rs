@@ -85,7 +85,7 @@ fn menu_button(app: &App, depth: usize, anchor: &str, list: bool, in_columns: bo
             .on_press_tx(press)
             .build(&look.kit)
             .expanded(pressed),
-        None => header::action(look, IconName::Settings, &app.sort.labels.choose)
+        None => header::action(look, IconName::ViewSettings, &app.sort.labels.choose)
             .on_press_tx(press)
             .build(&look.accent_icon_kit())
             .expanded(pressed),

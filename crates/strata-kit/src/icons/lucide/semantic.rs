@@ -96,9 +96,10 @@ pub(super) const fn index(name: IconName) -> usize {
         IconName::ViewList => i::STRATA_LIST,
         IconName::ViewColumns => i::STRATA_COLUMNS,
         IconName::ViewIcons => i::STRATA_ICONS,
+        IconName::ViewSettings => i::STRATA_SETTINGS_2,
         IconName::Sidebar => i::STRATA_PANEL_LEFT_SYMBOLIC,
-        IconName::SortAscending => i::STRATA_ARROW_UP,
-        IconName::SortDescending => i::STRATA_ARROW_DOWN,
+        IconName::SortAscending => i::STRATA_ARROW_UP_NARROW_WIDE,
+        IconName::SortDescending => i::STRATA_ARROW_DOWN_WIDE_NARROW,
 
         // Status.
         IconName::Info => i::STRATA_INFO,
