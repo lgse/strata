@@ -131,7 +131,7 @@ impl SliderField {
         self.number_field().poll(app, tx)
     }
 
-    pub(super) fn build(self, app: &App) -> El {
+    pub(super) fn build(self, app: &App, compact: bool) -> El {
         let look = &app.look;
         let access = self.access;
         let on_change = self.on_change;
@@ -147,17 +147,26 @@ impl SliderField {
                 on_change(app, value, tx);
             })
             .build(app, look);
-        row()
+        let slider_slot = if compact {
+            row().grow(1.0).min_w(0.0).items_center().child(slider)
+        } else {
+            row().w(SLIDER_WIDTH).items_center().child(slider)
+        };
+        let mut container = row()
             .gap(look.space.md)
             .items_center()
-            .child(row().w(SLIDER_WIDTH).items_center().child(slider))
+            .child(slider_slot)
             .child(
                 row()
                     .min_w(FIELD_SLOT_WIDTH)
                     .justify_end()
                     .items_center()
                     .child(field),
-            )
+            );
+        if compact {
+            container = container.w_full().min_w(0.0);
+        }
+        container
     }
 
     fn number_field(&self) -> NumberField<App> {

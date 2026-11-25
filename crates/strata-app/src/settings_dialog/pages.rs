@@ -4,7 +4,6 @@
 
 use rune::{El, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant};
-use strata_components::controls::settings_search::SettingsSearch;
 use strata_core::i18n::tr;
 use strata_desktop::{
     build_info::{AUTHOR, COMMIT, REPOSITORY, build_kind, displayed_version},
@@ -14,16 +13,11 @@ use strata_desktop::{
 use super::controls::{PageCtx, RowSpec, group_card, option_row, section_heading};
 use crate::{App, buttons};
 
-pub(super) fn updates_page(
-    app: &App,
-    search: &SettingsSearch<App>,
-    menu_layer: &mut Vec<El>,
-) -> Vec<El> {
-    super::updates::build(app, search, menu_layer)
+pub(super) fn updates_page(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<El> {
+    super::updates::build(ctx, menu_layer)
 }
 
-pub(super) fn about_page(app: &App, search: &SettingsSearch<App>) -> Vec<El> {
-    let ctx = PageCtx { app, search };
+pub(super) fn about_page(ctx: PageCtx<'_>) -> Vec<El> {
     vec![
         about_identity(ctx),
         section_heading(ctx, "about-build", "BUILD"),
@@ -61,20 +55,33 @@ fn about_identity(ctx: PageCtx<'_>) -> Option<El> {
             app.clipboard.write_text(&version_info_string());
         })
         .build(kit);
-    let line = row()
-        .w_full()
-        .px(18.0)
-        .py(18.0)
-        .gap(look.space.xl)
-        .items_center()
-        .child(
-            col().grow(1.0).gap(3.0).child(heading).child(
-                text(tr("Navigate every layer."))
-                    .font(kit.ty.small)
-                    .color(kit.c.text_muted),
-            ),
-        )
-        .child(buttons::on_return("settings-about-copy", copy_btn));
+    let copy_action = buttons::on_return("settings-about-copy", copy_btn);
+    let identity_copy = col().min_w(0.0).gap(3.0).child(heading).child(
+        text(tr("Navigate every layer."))
+            .font(kit.ty.small)
+            .color(kit.c.text_muted)
+            .wrap(),
+    );
+    let line = if ctx.layout.compact_content {
+        col()
+            .w_full()
+            .min_w(0.0)
+            .px(18.0)
+            .py(18.0)
+            .gap(look.space.md)
+            .child(identity_copy.w_full())
+            .child(copy_action)
+    } else {
+        row()
+            .w_full()
+            .min_w(0.0)
+            .px(18.0)
+            .py(18.0)
+            .gap(look.space.xl)
+            .items_center()
+            .child(identity_copy.grow(1.0))
+            .child(copy_action)
+    };
     group_card(look, vec![Some(line)])
 }
 
@@ -90,7 +97,7 @@ fn about_build_card(ctx: PageCtx<'_>) -> Option<El> {
         ("Toolkit", "Rune"),
     ]
     .into_iter()
-    .map(|(label, val)| Some(detail_row(app, &tr(label), val)))
+    .map(|(label, val)| Some(detail_row(ctx, &tr(label), val)))
     .collect();
     let card = group_card(&app.look, rows)?;
     ctx.search.row(app, &app.look, "version", card)
@@ -132,33 +139,44 @@ fn about_links_card(ctx: PageCtx<'_>) -> Option<El> {
                 RowSpec::new(id, label, ""),
                 text(right)
                     .font(app.look.kit.ty.small)
-                    .color(app.look.kit.c.text_muted),
+                    .color(app.look.kit.c.text_muted)
+                    .wrap(),
             )
         })
         .collect();
     group_card(&app.look, rows)
 }
 
-fn detail_row(app: &App, label: &str, value: &str) -> El {
-    let look = &app.look;
-    row()
-        .w_full()
-        .px(18.0)
-        .py(16.0)
-        .gap(look.space.xl)
-        .items_center()
-        .child(
-            text(label.to_owned())
-                .font(look.kit.ty.ui_medium)
-                .color(look.kit.c.text_base)
-                .grow(1.0),
-        )
-        .child(
-            text(value.to_owned())
-                .font(look.kit.ty.mono)
-                .color(look.kit.c.text_muted)
-                .selectable(true),
-        )
+fn detail_row(ctx: PageCtx<'_>, label: &str, value: &str) -> El {
+    let look = &ctx.app.look;
+    let label_el = text(label.to_owned())
+        .font(look.kit.ty.ui_medium)
+        .color(look.kit.c.text_base);
+    let value_el = text(value.to_owned())
+        .font(look.kit.ty.mono)
+        .color(look.kit.c.text_muted)
+        .selectable(true)
+        .wrap();
+    if ctx.layout.narrow_controls {
+        col()
+            .w_full()
+            .min_w(0.0)
+            .px(18.0)
+            .py(16.0)
+            .gap(look.space.xs)
+            .child(label_el)
+            .child(value_el)
+    } else {
+        row()
+            .w_full()
+            .min_w(0.0)
+            .px(18.0)
+            .py(16.0)
+            .gap(look.space.xl)
+            .items_center()
+            .child(label_el.grow(1.0).min_w(0.0))
+            .child(value_el)
+    }
 }
 
 fn version_info_string() -> String {

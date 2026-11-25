@@ -83,7 +83,7 @@ fn transfers_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
         .find_map(|&(l, s)| (s == current).then(|| tr(l)))
         .unwrap_or_else(|| tr("Always ask"));
     let menu = choice_menu(
-        app,
+        ctx,
         ChoiceSpec {
             id: "cross-volume-drop",
             title: "Drag & drop to another device",
@@ -152,7 +152,7 @@ fn date_time_section(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Option<El> {
         })
         .collect();
     let menu = choice_menu(
-        app,
+        ctx,
         ChoiceSpec {
             id: "date-format",
             title: "Modified date format",
@@ -213,7 +213,7 @@ fn video_preview_rows(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<Option<
     let app = ctx.app;
     let prefs = shell::preferences(app);
     let hw_accel = configured_hardware_acceleration(prefs, polaris_gpu_available());
-    let backend_menu = video_backend_menu(app, hw_accel, menu_layer);
+    let backend_menu = video_backend_menu(ctx, hw_accel, menu_layer);
     let accel_toggle = switch_row(
         ctx,
         RowSpec::new(
@@ -237,7 +237,8 @@ fn video_preview_rows(ctx: PageCtx<'_>, menu_layer: &mut Vec<El>) -> Vec<Option<
     vec![accel_toggle, backend_row]
 }
 
-fn video_backend_menu(app: &App, hw_accel: bool, menu_layer: &mut Vec<El>) -> El {
+fn video_backend_menu(ctx: PageCtx<'_>, hw_accel: bool, menu_layer: &mut Vec<El>) -> El {
+    let app = ctx.app;
     let selected = configured_video_preview_backend(shell::preferences(app));
     let backends = [
         ("Automatic", MediaPreviewBackend::Automatic),
@@ -250,7 +251,7 @@ fn video_backend_menu(app: &App, hw_accel: bool, menu_layer: &mut Vec<El>) -> El
         MediaPreviewBackend::Automatic | MediaPreviewBackend::Software => tr("Automatic"),
     };
     choice_menu(
-        app,
+        ctx,
         ChoiceSpec {
             id: "video-backend",
             title: "Video preview hardware backend",
@@ -352,6 +353,14 @@ fn startup_section(ctx: PageCtx<'_>) -> Option<El> {
         })
         .build(&app.look.kit)
         .description(tr("Restore the home directory as default"));
+    let mut dir_controls = row()
+        .gap(app.look.space.sm)
+        .items_center()
+        .child(buttons::on_return("settings-default-dir-choose", choose))
+        .child(buttons::on_return("settings-default-dir-reset", reset));
+    if ctx.layout.compact_content {
+        dir_controls = dir_controls.w_full().min_w(0.0).flex_wrap();
+    }
     group_card(
         &app.look,
         vec![
@@ -362,11 +371,7 @@ fn startup_section(ctx: PageCtx<'_>) -> Option<El> {
                     "Default directory",
                     "Open this folder when launching Strata without a target.",
                 ),
-                row()
-                    .gap(app.look.space.sm)
-                    .items_center()
-                    .child(buttons::on_return("settings-default-dir-choose", choose))
-                    .child(buttons::on_return("settings-default-dir-reset", reset)),
+                dir_controls,
             ),
             pref_switch(
                 ctx,

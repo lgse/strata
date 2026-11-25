@@ -5,7 +5,10 @@ use serde_json::Value;
 use strata_core::util::{DateDisplay, modified_date_for_seconds};
 use strata_preview::sandbox::MediaPreviewBackend;
 
-use super::SettingsDialog;
+use super::{
+    COMPACT_SEARCH_KEY, COMPACT_SEARCH_POPOVER_KEY, PageId, SettingsDialog,
+    responsive::ResponsiveLayout,
+};
 use crate::{
     commands::Holds,
     host::offscreen::Offscreen,
@@ -16,6 +19,7 @@ use crate::{
         view::{self, Shape, hosted_with, idle, open},
     },
 };
+use strata_desktop::settings::TextSize;
 
 const LIST: Shape = Shape {
     described: "List view",
@@ -844,6 +848,221 @@ fn appearance_scrollbar_controls_toggle_width_slider_and_update_look_live() {
             ));
             assert!(is_mounted(&host, "settings-scrollbar-hover-width"));
             assert!(is_mounted(&host, "settings-scrollbar-hover-width-field"));
+        },
+    );
+}
+
+fn click_chrome(host: &mut Offscreen, key: &str) {
+    let rect = node_bounds(&host.tree(), key).expect("chrome node bounds");
+    click_at(host, rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0);
+}
+
+fn element_help(host: &Offscreen, key: &str) -> Option<String> {
+    host.elements()
+        .into_iter()
+        .find(|el| !el.exiting && el.key.as_deref() == Some(key))
+        .and_then(|el| el.help)
+}
+
+fn resize_window(host: &mut Offscreen, size: (f32, f32)) {
+    host.runtime().set_viewport(size, 1.0);
+    host.runtime().frame(0.016);
+    host.runtime().frame(0.016);
+    idle(host);
+}
+
+fn type_text(host: &mut Offscreen, query: &str) {
+    for ch in query.chars() {
+        press(host, Key::Text(ch.to_string()), Mods::default());
+    }
+    host.runtime().frame(0.2);
+    idle(host);
+}
+
+#[test]
+fn responsive_breakpoints_follow_dialog_width_and_text_scale() {
+    let wide = ResponsiveLayout::from_dimensions(Some(1280), 24.0, TextSize::DEFAULT);
+    assert!(!wide.compact_nav);
+    assert!(!wide.compact_content);
+    assert!(!wide.narrow_controls);
+
+    let stacked_rows = ResponsiveLayout::from_dimensions(Some(960), 24.0, TextSize::DEFAULT);
+    assert!(!stacked_rows.compact_nav);
+    assert!(stacked_rows.compact_content);
+    assert!(!stacked_rows.narrow_controls);
+
+    let compact_rail = ResponsiveLayout::from_dimensions(Some(880), 24.0, TextSize::DEFAULT);
+    assert!(compact_rail.compact_nav);
+    assert!(compact_rail.compact_content);
+    assert!(!compact_rail.narrow_controls);
+
+    let narrow = ResponsiveLayout::from_dimensions(Some(600), 24.0, TextSize::DEFAULT);
+    assert!(narrow.compact_nav);
+    assert!(narrow.compact_content);
+    assert!(narrow.narrow_controls);
+
+    // Larger interface text scales logical width down and triggers compact breakpoints earlier.
+    let large_text = ResponsiveLayout::from_dimensions(Some(1280), 24.0, TextSize::new(22));
+    assert!(large_text.compact_nav);
+    assert!(large_text.compact_content);
+}
+
+fn assert_wide_rail(host: &Offscreen) {
+    assert_eq!(
+        (
+            is_mounted(host, "settings-search-field"),
+            is_mounted(host, COMPACT_SEARCH_KEY),
+            is_mounted(host, COMPACT_SEARCH_POPOVER_KEY),
+        ),
+        (true, false, false),
+        "wide rail mounts inline search without compact button or popover"
+    );
+    assert_eq!(
+        (
+            element_help(host, "settings-nav-general"),
+            element_help(host, "settings-nav-theme"),
+        ),
+        (None, None),
+        "labelled wide nav buttons carry no tooltips"
+    );
+}
+
+fn assert_compact_rail(host: &Offscreen) {
+    assert_eq!(
+        (
+            is_mounted(host, COMPACT_SEARCH_KEY),
+            is_mounted(host, "settings-search-field"),
+            is_mounted(host, COMPACT_SEARCH_POPOVER_KEY),
+        ),
+        (true, false, false),
+        "compact rail mounts icon-only search button without inline search or open popover"
+    );
+    assert_eq!(
+        (
+            element_help(host, COMPACT_SEARCH_KEY).as_deref(),
+            element_help(host, "settings-nav-general").as_deref(),
+            element_help(host, "settings-nav-theme").as_deref(),
+        ),
+        (Some("Search settings"), Some("General"), Some("Appearance")),
+        "icon-only compact rail buttons expose tooltips"
+    );
+}
+
+#[test]
+fn compact_rail_collapses_on_narrow_window_and_popover_search_filters_and_dismisses() {
+    hosted(
+        MODULE,
+        "compact_rail_collapses_on_narrow_window_and_popover_search_filters_and_dismisses",
+        |mut host| {
+            click(&mut host, "header-settings");
+            assert_wide_rail(&host);
+
+            resize_window(&mut host, (800.0, 720.0));
+            assert_compact_rail(&host);
+
+            click(&mut host, "settings-nav-theme");
+            assert_eq!(host.app().settings_dialog.page, PageId::Appearance);
+
+            click_chrome(&mut host, COMPACT_SEARCH_KEY);
+            assert_eq!(
+                (
+                    is_mounted(&host, COMPACT_SEARCH_POPOVER_KEY),
+                    is_mounted(&host, "settings-search-field"),
+                    SettingsDialog::keyboard(host.app()),
+                ),
+                (true, true, Some(Holds::Modal { field: true }))
+            );
+
+            type_text(&mut host, "Folder peeking");
+            assert_eq!(
+                (
+                    is_mounted(&host, COMPACT_SEARCH_POPOVER_KEY),
+                    host.app().settings_dialog.page,
+                    is_mounted(&host, "settings-switch-peeking"),
+                    is_mounted(&host, "settings-switch-previews"),
+                ),
+                (true, PageId::General, true, false)
+            );
+
+            // First Escape clears the query; second Escape dismisses only the popover.
+            press(&mut host, Key::Escape, Mods::default());
+            assert_eq!(
+                (
+                    host.app().settings_dialog.search.text().is_empty(),
+                    is_mounted(&host, COMPACT_SEARCH_POPOVER_KEY),
+                    host.app().settings_dialog.is_open(),
+                ),
+                (true, true, true)
+            );
+            press(&mut host, Key::Escape, Mods::default());
+            assert_eq!(
+                (
+                    is_mounted(&host, COMPACT_SEARCH_POPOVER_KEY),
+                    host.app().settings_dialog.is_open(),
+                ),
+                (false, true)
+            );
+
+            // Enter jumps to the matched row and closes the popover.
+            click_chrome(&mut host, COMPACT_SEARCH_KEY);
+            type_text(&mut host, "Folder peeking");
+            press(&mut host, Key::Enter, Mods::default());
+            assert_eq!(
+                (
+                    is_mounted(&host, COMPACT_SEARCH_POPOVER_KEY),
+                    host.app().settings_dialog.is_open(),
+                    is_mounted(&host, "settings-switch-peeking"),
+                ),
+                (false, true, true)
+            );
+
+            // Widening back above the compact breakpoint dismisses the popover and clears nav tooltips.
+            click_chrome(&mut host, COMPACT_SEARCH_KEY);
+            assert!(is_mounted(&host, COMPACT_SEARCH_POPOVER_KEY));
+            resize_window(&mut host, (1280.0, 800.0));
+            assert_wide_rail(&host);
+        },
+    );
+}
+
+#[test]
+fn settings_body_settles_immediately_without_layout_animation_on_page_switch_and_resize() {
+    hosted(
+        MODULE,
+        "settings_body_settles_immediately_without_layout_animation_on_page_switch_and_resize",
+        |mut host| {
+            click(&mut host, "header-settings");
+
+            let assert_body_settled = |host: &Offscreen, context: &str| {
+                let animated: Vec<_> = host
+                    .elements()
+                    .into_iter()
+                    .filter(|el| el.path.contains("settings-body") && (el.moving || el.exiting))
+                    .map(|el| (el.key, el.moving, el.exiting))
+                    .collect();
+                assert!(
+                    animated.is_empty(),
+                    "{context}: expected zero spatial layout animations inside settings-body, found {animated:?}"
+                );
+            };
+
+            // Trigger a page switch via pointer press and advance only a single 16 ms frame.
+            let (nx, ny) = reveal_and_center(&mut host, "settings-nav-theme");
+            host.runtime().pointer_move(nx, ny);
+            host.runtime().pointer_down(nx, ny);
+            host.runtime().frame(0.016);
+            host.runtime().pointer_up(nx, ny);
+            host.runtime().frame(0.016);
+            assert_eq!(host.app().settings_dialog.page, PageId::Appearance);
+            assert!(!is_mounted(&host, "settings-switch-peeking"));
+            assert_body_settled(&host, "switching from General to Appearance");
+
+            // Resize into compact layout and check immediately after layout + one frame.
+            host.runtime().set_viewport((800.0, 720.0), 1.0);
+            host.runtime().frame(0.016);
+            host.runtime().frame(0.016);
+            assert!(is_mounted(&host, COMPACT_SEARCH_KEY));
+            assert_body_settled(&host, "resizing Settings into compact layout");
         },
     );
 }

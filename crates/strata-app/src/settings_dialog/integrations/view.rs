@@ -3,7 +3,7 @@
 use std::rc::Rc;
 
 use rune::{Color, Cursor, El, Icon, Pixels, SurfaceFit, Tx, col, el, icon, row, text};
-use strata_components::{controls::settings_search::SettingsSearch, dialog::keep_words_whole};
+use strata_components::dialog::keep_words_whole;
 use strata_core::i18n::{integer, tr};
 use strata_desktop::services::integration_catalog::Category;
 use strata_kit::{icons::IconName, look::Look};
@@ -11,37 +11,40 @@ use strata_kit::{icons::IconName, look::Look};
 use super::{catalog, installed, open_folder, refresh};
 use crate::{
     App, buttons,
-    settings_dialog::controls::{PickHandler, group_card, panel_border},
+    settings_dialog::controls::{PageCtx, PickHandler, group_card, panel_border},
 };
 
 const HEADER_DESCRIPTION: &str = "Optional integrations bundled with Strata connect the context menu to other apps and services, such as sending files to a phone. They run with your permissions, like any program you install.";
-const COMPACT_WINDOW_WIDTH: i32 = 1000;
 
-pub(in crate::settings_dialog) fn build(app: &App, search: &SettingsSearch<App>) -> Vec<El> {
-    if !search.shows_row(app, "integrations") {
+pub(in crate::settings_dialog) fn build(ctx: PageCtx<'_>) -> Vec<El> {
+    let app = ctx.app;
+    if !ctx.search.shows_row(app, "integrations") {
         return Vec::new();
     }
     let state = &app.settings_dialog.integrations;
     let mut items = Vec::new();
-    if let Some(header) = header_card(app, search) {
+    if let Some(header) = header_card(ctx) {
         items.push(header);
     }
-    if let Some(section) = installed::section(app, state) {
+    if let Some(section) = installed::section(app, state, ctx.layout.compact_content) {
         items.push(section);
     }
-    items.extend(catalog::section(app, state));
+    items.extend(catalog::section(app, state, ctx.layout));
     items
 }
 
-fn header_card(app: &App, search: &SettingsSearch<App>) -> Option<El> {
+fn header_card(ctx: PageCtx<'_>) -> Option<El> {
+    let app = ctx.app;
     let look = &app.look;
     let kit = &look.kit;
     let c = &kit.c;
     let description = tr(HEADER_DESCRIPTION);
     let mut actions = row()
         .w_full()
+        .min_w(0.0)
         .pt(8.0)
         .gap(8.0)
+        .flex_wrap()
         .justify_end()
         .items_center()
         .child(icon_label_button(
@@ -74,7 +77,10 @@ fn header_card(app: &App, search: &SettingsSearch<App>) -> Option<El> {
         .px(18.0)
         .py(16.0)
         .gap(3.0)
-        .child(search.title(app, look, &tr("Integrations"), kit.ty.ui_medium))
+        .child(
+            ctx.search
+                .title(app, look, &tr("Integrations"), kit.ty.ui_medium),
+        )
         .child(
             text(keep_words_whole(&description))
                 .label(description)
@@ -83,13 +89,8 @@ fn header_card(app: &App, search: &SettingsSearch<App>) -> Option<El> {
                 .wrap(),
         )
         .child(actions);
-    let wrapped = search.row(app, look, "integrations", content);
+    let wrapped = ctx.search.row(app, look, "integrations", content);
     group_card(look, vec![wrapped])
-}
-
-pub(super) fn is_compact(app: &App) -> bool {
-    app.window_size()
-        .is_some_and(|(w, _)| w < COMPACT_WINDOW_WIDTH)
 }
 
 pub(super) fn counted_heading(look: &Look, heading: &str, count: usize) -> El {

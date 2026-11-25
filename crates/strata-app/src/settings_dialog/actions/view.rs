@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use rune::{Color, Cursor, El, Tx, col, icon, row, text};
 use strata_components::{
-    controls::{settings_search::SettingsSearch, switch::Switch},
+    controls::switch::Switch,
     dialog::{Focus, MESSAGE_WIDTH, StrataDialog, Tone},
 };
 use strata_core::{
@@ -27,8 +27,9 @@ use crate::{
 pub(super) const NEW_ACTION_KEY: &str = "settings-actions-new";
 pub(super) const IMPORT_ACTION_KEY: &str = "settings-actions-import";
 
-pub(in crate::settings_dialog) fn build(app: &App, search: &SettingsSearch<App>) -> Vec<El> {
-    let ctx = PageCtx { app, search };
+pub(in crate::settings_dialog) fn build(ctx: PageCtx<'_>) -> Vec<El> {
+    let app = ctx.app;
+    let search = ctx.search;
     let show_list = search.shows_row(app, "custom-actions");
     let show_new = search.shows_row(app, "new-action") || show_list;
     let show_import = search.shows_row(app, "import-action") || show_list;
@@ -52,7 +53,12 @@ pub(in crate::settings_dialog) fn build(app: &App, search: &SettingsSearch<App>)
     items.push(toolbar(look, show_new, show_import));
     if show_list {
         let catalog = app.settings_dialog.actions.catalog(app);
-        items.extend(installed_card(look, catalog.actions(), catalog.failures()));
+        items.extend(installed_card(
+            look,
+            catalog.actions(),
+            catalog.failures(),
+            ctx.layout.compact_content,
+        ));
         if !catalog.failures().is_empty() {
             items.extend(problems_section(look, catalog.failures()));
         }
@@ -63,9 +69,11 @@ pub(in crate::settings_dialog) fn build(app: &App, search: &SettingsSearch<App>)
 fn toolbar(look: &Look, show_new: bool, show_import: bool) -> El {
     let mut bar = row()
         .w_full()
+        .min_w(0.0)
         .pt(12.0)
         .pb(12.0)
         .gap(8.0)
+        .flex_wrap()
         .justify_end()
         .items_center();
     if show_new {
@@ -119,6 +127,7 @@ fn installed_card(
     look: &Look,
     actions: &[Rc<ActionHandle>],
     failures: &[ActionLoadFailure],
+    compact: bool,
 ) -> Option<El> {
     let mut rows = Vec::new();
     if actions.is_empty() && failures.is_empty() {
@@ -134,13 +143,13 @@ fn installed_card(
         ));
     } else {
         for action in actions {
-            rows.push(Some(action_row(look, action)));
+            rows.push(Some(action_row(look, action, compact)));
         }
     }
     group_card(look, rows)
 }
 
-fn action_row(look: &Look, action: &Rc<ActionHandle>) -> El {
+fn action_row(look: &Look, action: &Rc<ActionHandle>, compact: bool) -> El {
     let kit = &look.kit;
     let c = &kit.c;
     let id = action.id().to_owned();
@@ -170,26 +179,62 @@ fn action_row(look: &Look, action: &Rc<ActionHandle>) -> El {
                 .color(c.text_muted)
                 .wrap(),
         );
-    row()
-        .key(format!("settings-action-row-{id}"))
+    let glyph = icon(
+        action_icon_glyph(look, action.definition.icon.as_deref()),
+        20.0,
+    )
+    .color(c.icon_accent)
+    .a11y_hidden();
+    let action_buttons = action_row_buttons(look, &id, &name);
+    let key = format!("settings-action-row-{id}");
+    if compact {
+        compact_action_row(look, key, (glyph, copy, enabled_switch), action_buttons)
+    } else {
+        row()
+            .key(key)
+            .w_full()
+            .min_w(0.0)
+            .min_h(64.0)
+            .px(18.0)
+            .py(14.0)
+            .gap(12.0)
+            .items_center()
+            .child(glyph)
+            .child(copy)
+            .child(enabled_switch)
+            .child(action_buttons)
+    }
+}
+
+fn compact_action_row(
+    look: &Look,
+    key: String,
+    (glyph, copy, enabled_switch): (El, El, El),
+    action_buttons: El,
+) -> El {
+    let top = row()
         .w_full()
         .min_w(0.0)
-        .min_h(64.0)
-        .px(18.0)
-        .py(14.0)
         .gap(12.0)
         .items_center()
-        .child(
-            icon(
-                action_icon_glyph(look, action.definition.icon.as_deref()),
-                20.0,
-            )
-            .color(c.icon_accent)
-            .a11y_hidden(),
-        )
+        .child(glyph)
         .child(copy)
-        .child(enabled_switch)
-        .child(action_row_buttons(look, &id, &name))
+        .child(enabled_switch);
+    col()
+        .key(key)
+        .w_full()
+        .min_w(0.0)
+        .px(18.0)
+        .py(14.0)
+        .gap(look.space.sm)
+        .child(top)
+        .child(
+            row()
+                .w_full()
+                .min_w(0.0)
+                .justify_end()
+                .child(action_buttons),
+        )
 }
 
 fn action_row_buttons(look: &Look, id: &str, name: &str) -> El {

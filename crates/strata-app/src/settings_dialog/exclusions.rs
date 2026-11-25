@@ -80,7 +80,7 @@ pub(super) fn build_row(ctx: PageCtx<'_>) -> Option<El> {
         .py(16.0)
         .gap(look.space.sm)
         .child(header_copy(ctx))
-        .child(input_row(look, state));
+        .child(input_row(ctx, state));
 
     if let Some(error) = &state.error {
         content = content.child(
@@ -118,7 +118,8 @@ fn header_copy(ctx: PageCtx<'_>) -> El {
         )
 }
 
-fn input_row(look: &Look, state: &ExclusionsState) -> El {
+fn input_row(ctx: PageCtx<'_>, state: &ExclusionsState) -> El {
+    let look = &ctx.app.look;
     let kit = &look.kit;
     let mut field = TextInput::new(&state.input)
         .label(tr("Search exclusion"))
@@ -139,7 +140,7 @@ fn input_row(look: &Look, state: &ExclusionsState) -> El {
     if let Some(error) = &state.error {
         field = field.description(error.clone());
     }
-    let input = field.build(kit).key(INPUT_KEY).grow(1.0).min_w(0.0);
+    let input = field.build(kit).key(INPUT_KEY);
 
     let browse = Button::new(tr("Browse…"))
         .variant(ButtonVariant::Neutral)
@@ -149,15 +150,35 @@ fn input_row(look: &Look, state: &ExclusionsState) -> El {
         .variant(ButtonVariant::Neutral)
         .on_press_tx(|app: &mut App, _: &mut Tx| add_exclusion(app))
         .build(kit);
+    let browse_btn = buttons::on_return(BROWSE_KEY, browse);
+    let add_btn = buttons::on_return(ADD_KEY, add);
 
-    row()
-        .w_full()
-        .min_w(0.0)
-        .gap(look.space.sm)
-        .items_center()
-        .child(input)
-        .child(buttons::on_return(BROWSE_KEY, browse))
-        .child(buttons::on_return(ADD_KEY, add))
+    if ctx.layout.compact_content {
+        col()
+            .w_full()
+            .min_w(0.0)
+            .gap(look.space.sm)
+            .child(input.w_full().min_w(0.0))
+            .child(
+                row()
+                    .w_full()
+                    .min_w(0.0)
+                    .gap(look.space.sm)
+                    .justify_end()
+                    .items_center()
+                    .child(browse_btn)
+                    .child(add_btn),
+            )
+    } else {
+        row()
+            .w_full()
+            .min_w(0.0)
+            .gap(look.space.sm)
+            .items_center()
+            .child(input.grow(1.0).min_w(0.0))
+            .child(browse_btn)
+            .child(add_btn)
+    }
 }
 
 fn exclusions_list(look: &Look, list_bar: &Bar, exclusions: &[String]) -> El {
