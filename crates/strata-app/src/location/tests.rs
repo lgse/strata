@@ -2,6 +2,7 @@
 
 //! The bar on the offscreen host: where the keyboard goes when an edit ends.
 
+use gio::prelude::FileExt;
 use rune::{Cursor, Key, KeyEvent, Mods, Tx};
 use strata_core::model::Location;
 
@@ -349,6 +350,59 @@ fn the_hierarchy_menu_holds_the_keyboard_while_it_is_open() {
                 "the menu opened"
             );
             assert_eq!(holds(&host), [commands::Holds::Menu]);
+        },
+    );
+}
+
+#[test]
+fn typed_location_strips_outer_quotes_from_uris_and_passes_local_paths_through() {
+    assert_eq!(
+        super::intents::typed(" 'smb://alice:secret@host/share' "),
+        Ok("smb://alice@host/share".to_owned())
+    );
+    assert_eq!(
+        super::intents::typed(r#" "file:///tmp/my%20docs" "#),
+        Ok("file:///tmp/my%20docs".to_owned())
+    );
+    assert_eq!(
+        super::intents::typed(r"/tmp/my\ docs"),
+        Ok(r"/tmp/my\ docs".to_owned())
+    );
+}
+
+#[test]
+fn pasted_shell_paths_and_file_uris_open_from_the_location_bar() {
+    hosted(
+        MODULE,
+        "pasted_shell_paths_and_file_uris_open_from_the_location_bar",
+        |mut host| {
+            let folder = open(&mut host);
+            let target = folder.path().join("my docs");
+            std::fs::create_dir(&target).expect("target folder");
+            let target_loc = Location::local(&target);
+            let escaped = format!("{}/my\\ docs", folder.path().display());
+            let quoted = format!("'{}'", target.display());
+            let uri = gio::File::for_path(&target).uri().to_string();
+
+            for pasted in [escaped, quoted, uri] {
+                host.app().open(Location::local(folder.path()));
+                assert!(host.run_until(PATIENCE, |h| {
+                    h.app().location.shown == Some(Location::local(folder.path()))
+                }));
+                idle(&mut host);
+
+                submit(&mut host, &pasted);
+                assert!(
+                    host.run_until(PATIENCE, |h| h.app().location.shown.as_ref()
+                        == Some(&target_loc)),
+                    "location bar opened {pasted}"
+                );
+                idle(&mut host);
+            }
+
+            submit(&mut host, "file://other-host/tmp");
+            dismiss(&mut host);
+            assert_eq!(host.app().location.shown.as_ref(), Some(&target_loc));
         },
     );
 }

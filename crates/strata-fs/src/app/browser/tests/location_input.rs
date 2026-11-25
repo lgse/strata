@@ -44,7 +44,7 @@ fn home_relative_input_preserves_the_native_home_path() {
     let home = Path::new("/home/fixture");
 
     assert_eq!(
-        location_from_input_with_home("~//Documents", home),
+        location_from_input_with_home("~//Documents", None, home),
         Ok(Location::local("/home/fixture/Documents"))
     );
 }
@@ -53,21 +53,21 @@ fn home_relative_input_preserves_the_native_home_path() {
 fn typed_paths_drop_trailing_slashes_so_files_reveal() {
     let home = Path::new("/home/fixture");
 
-    let file = location_from_input_with_home("/fixture/report.pdf/", home)
+    let file = location_from_input_with_home("/fixture/report.pdf/", None, home)
         .expect("a trailing slash is still a valid typed path");
     assert_eq!(
         file.native_path().map(Path::as_os_str),
         Some(OsStr::new("/fixture/report.pdf"))
     );
 
-    let home_file = location_from_input_with_home("~/Documents/report.pdf/", home)
+    let home_file = location_from_input_with_home("~/Documents/report.pdf/", None, home)
         .expect("a home-relative trailing slash is still valid");
     assert_eq!(
         home_file.native_path().map(Path::as_os_str),
         Some(OsStr::new("/home/fixture/Documents/report.pdf"))
     );
 
-    let root = location_from_input_with_home("/", home).expect("the root stays the root");
+    let root = location_from_input_with_home("/", None, home).expect("the root stays the root");
     assert_eq!(
         root.native_path().map(Path::as_os_str),
         Some(OsStr::new("/"))
@@ -77,7 +77,7 @@ fn typed_paths_drop_trailing_slashes_so_files_reveal() {
 #[test]
 fn other_users_home_shorthand_is_rejected() {
     assert!(matches!(
-        location_from_input_with_home("~other-user/Documents", Path::new("/home/fixture")),
+        location_from_input_with_home("~other-user/Documents", None, Path::new("/home/fixture")),
         Err(LocationValidationError::UnsupportedShorthand(_))
     ));
 }
@@ -96,7 +96,7 @@ fn typed_absolute_and_home_paths_resolve_dot_segments_lexically() {
         ("/fixture/report.pdf/..", "/fixture"),
     ] {
         assert_eq!(
-            location_from_input_with_home(input, home)
+            location_from_input_with_home(input, None, home)
                 .map(|location| location.native_path().map(Path::to_path_buf)),
             Ok(Some(PathBuf::from(expected))),
             "{input}"
@@ -106,7 +106,7 @@ fn typed_absolute_and_home_paths_resolve_dot_segments_lexically() {
     let dotted_home = Path::new("/home/other/../fixture");
     for input in ["~", "~/"] {
         assert_eq!(
-            location_from_input_with_home(input, dotted_home)
+            location_from_input_with_home(input, None, dotted_home)
                 .map(|location| location.native_path().map(Path::to_path_buf)),
             Ok(Some(PathBuf::from("/home/fixture"))),
             "{input}"
@@ -119,9 +119,117 @@ fn typed_absolute_and_home_paths_resolve_dot_segments_lexically() {
         ("~/Documents/../Music", home.join("Music")),
     ] {
         assert_eq!(
-            location_from_input_with_home(input, home)
+            location_from_input_with_home(input, None, home)
                 .map(|location| location.native_path().map(Path::to_path_buf)),
             Ok(Some(expected)),
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn pasted_paths_read_shell_quoting_and_file_uris_as_the_literal_path() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let home = Path::new("/home/fixture");
+    for (input, expected) in [
+        (
+            r"/path/with\ spaces/file.txt",
+            &b"/path/with spaces/file.txt"[..],
+        ),
+        (
+            r#""/path/with spaces/file.txt""#,
+            b"/path/with spaces/file.txt",
+        ),
+        (
+            "' /path/with spaces/file.txt '",
+            b"/path/with spaces/file.txt",
+        ),
+        (
+            r"/tmp/archive\ \(final\)\ v1.2.tar.gz",
+            b"/tmp/archive (final) v1.2.tar.gz",
+        ),
+        (r"'/tmp/it'\''s here'", b"/tmp/it's here"),
+        (r#"'/tmp/it'"'"'s here'"#, b"/tmp/it's here"),
+        (
+            r#""/tmp/\$draft \"v2\" \final""#,
+            br#"/tmp/$draft "v2" \final"#,
+        ),
+        ("'/tmp/line\nbreak'", b"/tmp/line\nbreak"),
+        (
+            r"/mnt/Mass\ 1/$'bad\xff\nname.txt'",
+            b"/mnt/Mass 1/bad\xff\nname.txt",
+        ),
+        (r"~/folder\ name", b"/home/fixture/folder name"),
+        ("'~/folder name'", b"/home/fixture/folder name"),
+        (
+            "file:///path/with%20spaces/file.txt",
+            b"/path/with spaces/file.txt",
+        ),
+        (
+            "'file://localhost/tmp/My%20Documents/'",
+            b"/tmp/My Documents",
+        ),
+        ("FILE:///tmp/bad%FF/", b"/tmp/bad\xff"),
+        // A backslash before a letter is no shell escape, so the whole path is literal.
+        (r"/tmp/My\ Documents\notes", br"/tmp/My\ Documents\notes"),
+        (r"/tmp/report\ (1).txt", br"/tmp/report\ (1).txt"),
+        ("/tmp/$draft `v2` (1)", b"/tmp/$draft `v2` (1)"),
+        ("/home/fixture/bob's notes", b"/home/fixture/bob's notes"),
+        ("/srv/Mom's and Dad's", b"/srv/Mom's and Dad's"),
+        (r"$'/tmp/nul\0byte'", br"$'/tmp/nul\0byte'"),
+    ] {
+        assert_eq!(
+            location_from_input_with_home(input, None, home)
+                .map(|location| location.native_path().map(Path::to_path_buf)),
+            Ok(Some(PathBuf::from(OsStr::from_bytes(expected)))),
+            "{input}"
+        );
+    }
+
+    assert_eq!(
+        location_from_input_with_home("'child dir'/sub", Some(Path::new("/fixture")), home),
+        Ok(Location::local("/fixture/child dir/sub"))
+    );
+    assert_eq!(
+        location_from_input_with_home(" 'SMB://host/share' ", None, home),
+        Ok(Location::uri("smb://host/share"))
+    );
+}
+
+#[test]
+fn pasted_paths_that_stay_unsupported_after_unquoting_are_rejected() {
+    let home = Path::new("/home/fixture");
+    for (input, expected) in [
+        ("''", LocationValidationError::Empty),
+        (
+            "file://other-host/tmp/report.pdf",
+            LocationValidationError::UnsupportedShorthand(""),
+        ),
+        ("file:///tmp/a%2Fb", LocationValidationError::InvalidUri),
+        (
+            "'~other-user/Documents'",
+            LocationValidationError::UnsupportedShorthand(""),
+        ),
+        (
+            "'user@host:path'",
+            LocationValidationError::UnsupportedShorthand(""),
+        ),
+        (
+            "\"https://example.com/files\"",
+            LocationValidationError::UnsupportedScheme("https".into()),
+        ),
+        (r#""'/tmp/nested'""#, LocationValidationError::NotAbsolute),
+    ] {
+        let result = location_from_input_with_home(input, None, home).and_then(|location| {
+            match location.native_path() {
+                Some(path) if !path.is_absolute() => Err(LocationValidationError::NotAbsolute),
+                _ => Ok(location),
+            }
+        });
+        assert_eq!(
+            result.map_err(|error| std::mem::discriminant(&error)),
+            Err(std::mem::discriminant(&expected)),
             "{input}"
         );
     }
@@ -291,11 +399,7 @@ fn location_input_rejects_unsupported_uri_schemes() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.navigate(Location::local("/fixture"));
 
-    for uri in [
-        "https://example.com/files",
-        "file:///tmp",
-        "custom://host/path",
-    ] {
+    for uri in ["https://example.com/files", "custom://host/path"] {
         assert!(matches!(
             browser.navigate_input(uri),
             Err(LocationValidationError::UnsupportedScheme(_))
@@ -659,6 +763,31 @@ fn location_input_naming_a_file_reveals_it_inside_its_parent() {
     assert_eq!(*reveal_pending_on_add.borrow(), [true]);
     assert!(!browser.column_snapshot(0).expect("column").reveal_pending);
     assert_eq!(*preview_requested.borrow(), vec![(file, false)]);
+}
+
+#[test]
+fn pasted_quoted_file_paths_reveal_the_file_inside_its_parent() {
+    let file = Location::local("/fixture/annual report.pdf");
+    for input in [
+        r"/fixture/annual\ report.pdf",
+        "  '/fixture/annual report.pdf'  ",
+        "file:///fixture/annual%20report.pdf",
+    ] {
+        let browser = Browser::new(Rc::new(TypedPathSource::containing(
+            file.clone(),
+            vec![listing_file(file.clone(), "annual report.pdf", false)],
+        )));
+        browser.navigate(Location::local("/start"));
+
+        assert_eq!(browser.navigate_input(input), Ok(()), "{input}");
+
+        assert_eq!(
+            browser.active_location(),
+            Some(Location::local("/fixture")),
+            "{input}"
+        );
+        assert_eq!(selected_locations(&browser), vec![file.clone()], "{input}");
+    }
 }
 
 #[test]

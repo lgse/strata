@@ -8,7 +8,7 @@ pub use browser::{
     Browser, BrowserColumnSnapshot, BrowserEvent, CursorToggle, FreshnessInput, Presence,
     SelectionUpdate, VisibleDepths, VisualKind,
 };
-pub use browser::{folder_destination_texts, trash_destination_texts};
+pub use browser::{folder_destination_texts, trash_destination_texts, typed_location_uri};
 pub use navigation::{
     EntryInsertion, EntrySplice, FolderSortResolver, compare_display_names, compare_type_groups,
 };

@@ -14,6 +14,8 @@ pub struct Collection {
     pub drag_opacity: Option<f32>,
     pub file_icon_opacity: Option<f32>,
     pub peek_fill: Option<Color>,
+    pub active_path_fill: Option<Color>,
+    pub active_parent_fill: Option<Color>,
 }
 
 pub fn row_inset(look: &Look) -> f32 {
@@ -46,6 +48,20 @@ pub fn peek_fill(look: &Look) -> Color {
     })
 }
 
+pub fn active_path_fill(look: &Look) -> Color {
+    look.slots.collection.active_path_fill.unwrap_or_else(|| {
+        let accent = look.kit.c.bg_accent;
+        look.kit.alpha(accent, accent.a * 0.24)
+    })
+}
+
+pub fn active_parent_fill(look: &Look) -> Color {
+    look.slots.collection.active_parent_fill.unwrap_or_else(|| {
+        let accent = look.kit.c.bg_accent;
+        look.kit.alpha(accent, accent.a * 0.28)
+    })
+}
+
 pub const TOKENS: &[Token] = &[
     Token::length("collection.row.inset", row_inset, |l, v| {
         l.slots.collection.row_inset = Some(v)
@@ -69,4 +85,12 @@ pub const TOKENS: &[Token] = &[
     Token::color("collection.peek.fill", peek_fill, |l, v| {
         l.slots.collection.peek_fill = Some(v)
     }),
+    Token::color("collection.active_path.fill", active_path_fill, |l, v| {
+        l.slots.collection.active_path_fill = Some(v)
+    }),
+    Token::color(
+        "collection.active_parent.fill",
+        active_parent_fill,
+        |l, v| l.slots.collection.active_parent_fill = Some(v),
+    ),
 ];

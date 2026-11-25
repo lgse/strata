@@ -347,6 +347,23 @@ when released. In
 
 Every mode has a compact footer with **F1 · Shortcuts** on the left and clipboard status and the item count on the right. **Settings → General → Browsing → Show F1 Shortcuts button** controls the button's visibility (on by default). The preference is saved and updates all open windows immediately. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the complete, mode-specific reference; closing it restores the button's configured visibility. F1, Escape, or a click outside it closes the reference, which blocks file operations and commands such as **F5**, **Ctrl+K** and **Ctrl+,** while open. Its search field still takes text-editing and input method keys, such as **Ctrl+Left** and **Ctrl+Space**. It stays open when the window loses focus. The reference is the only in-app keybinding list; it shows only the currently active map and live-updates when 10xer mode changes.
 
+## Copy path and pasted paths
+
+**Copy path** copies the literal local path, without shell quoting, so it can be
+pasted into a file dialog. Local folder paths end in `/`; file paths do not.
+For a selection, paths are separated by newlines. Remote locations are copied
+as URIs. If a local filename is not valid UTF-8, Strata copies a `file://` URI
+instead so the clipboard text still identifies the exact file. When pasting a
+path into a shell command, quote it for that shell yourself.
+
+The location bar (**Ctrl+L**) also accepts a path as a terminal writes it.
+Backslash escapes and `'…'`, `"…"` or `$'…'` quoting are read as a shell would,
+so `~/My\ Documents` and `'~/My Documents'` open the same folder, and a
+`file://` URI opens its local path. Text not written that way, such as a path
+with a backslash before a letter, an unquoted space, or an apostrophe inside a
+name, is read literally. A URI with another scheme only loses one pair of
+surrounding quotes, and a `file://` URI that names another host is rejected.
+
 ## 10xer mode
 
 **Settings → General → Browsing → 10xer mode** (off by default,

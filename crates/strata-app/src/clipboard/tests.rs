@@ -72,26 +72,46 @@ fn entry_id(app: &App, name: &str) -> EntryId {
 }
 
 #[test]
-fn copy_path_text_escapes_shell_characters_and_appends_directory_slash() {
-    let cases = [
-        (Path::new("/tmp/plain.txt"), false, "/tmp/plain.txt"),
-        (Path::new("/tmp/my folder"), true, "/tmp/my\\ folder/"),
-        (
-            Path::new("/tmp/a$b'c(d).txt"),
-            false,
-            "/tmp/a\\$b\\'c\\(d\\).txt",
-        ),
-        (
-            Path::new("/tmp/line\nbreak.txt"),
-            false,
-            "'/tmp/line\nbreak.txt'",
-        ),
-    ];
-    for (path, is_dir, expected) in cases {
+fn copy_path_text_keeps_native_filenames_literal() {
+    for path in [
+        "/mnt/Mass 1/Movies⁄TV/12-10-2026 (1).txt",
+        r#"/tmp/$draft `v2` \final "notes""#,
+        "/tmp/line\nbob's notes",
+    ] {
+        assert_eq!(paths::copy_path_text(&Location::local(path), false), path);
+    }
+}
+
+#[test]
+fn copy_path_text_adds_trailing_slash_to_directories_only() {
+    for (path, expected) in [("/My Documents", "/My Documents/"), ("/", "/")] {
         assert_eq!(
-            paths::copy_path_text(&Location::local(path), is_dir),
+            paths::copy_path_text(&Location::local(path), true),
             expected
         );
+    }
+}
+
+#[test]
+fn copy_path_text_keeps_uris_unescaped() {
+    let remote = Location::uri("smb://host/share/My%20Files");
+    assert_eq!(
+        paths::copy_path_text(&remote, true),
+        "smb://host/share/My%20Files"
+    );
+}
+
+#[test]
+fn copy_path_text_preserves_non_utf8_paths_as_file_uris() {
+    use gio::prelude::FileExt;
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let path = Path::new(OsStr::from_bytes(b"/tmp/My Documents/bad\xff"));
+    for is_directory in [false, true] {
+        let copied = paths::copy_path_text(&Location::local(path), is_directory);
+        assert_eq!(copied.ends_with('/'), is_directory);
+        assert_eq!(gio::File::for_uri(&copied).path().as_deref(), Some(path));
     }
 }
 

@@ -6,7 +6,9 @@ handles keys: browser windows, the file chooser, previews, Settings, and dialogs
 What individual keys do is documented with each feature, for example in
 [keyboard navigation](keyboard-navigation.md) and [10xer mode](10xer-mode.md).
 How users rebind keys, in **Settings → Keyboard** or `settings.toml`, is in
-[Keymap](keymap.md).
+[Keymap](keymap.md). **Copy path** (`y` in the default map when type-to-search is
+off, `c c` in 10xer mode) copies literal local paths for pasting into a file
+dialog, not shell-escaped arguments.
 
 ## How a key press becomes a shortcut
 

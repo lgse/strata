@@ -16,6 +16,7 @@ use strata_core::{
 };
 use strata_fs::{
     adapters::gio_file_for_location,
+    app::typed_location_uri,
     services::{NavigationHistory, RefusedFolders, sanitize_uri_credentials},
 };
 
@@ -299,7 +300,9 @@ fn deliver_empty(app: &mut App, generation: u64, hint: Option<&str>, tx: &mut Tx
 fn complete_folder(app: &mut App, kind: PromptKind, query: CompletionQuery, tx: &mut Tx) {
     let current = active_folder(app);
     let home = glib::home_dir();
-    if kind == PromptKind::Go && looks_like_uri(query.text.trim()) {
+    if kind == PromptKind::Go
+        && (looks_like_uri(query.text.trim()) || typed_location_uri(query.text.trim()).is_some())
+    {
         return deliver_empty(app, query.generation, None, tx);
     }
     let scope = match picker_scope(&query.text, current.as_deref(), &home) {
@@ -528,10 +531,9 @@ fn submit_go(app: &mut App, text: &str, picked: Option<String>, tx: &mut Tx) {
         shell::settle(app, tx);
         return;
     }
-    let input = if text.contains("://") {
-        sanitize_uri_credentials(text).map(|(sanitized, _)| sanitized)
-    } else {
-        Ok(text.to_owned())
+    let input = match typed_location_uri(text).filter(|uri| uri.contains("://")) {
+        Some(uri) => sanitize_uri_credentials(uri).map(|(sanitized, _)| sanitized),
+        None => Ok(text.to_owned()),
     };
     let result = input.and_then(|cleaned| app.browser.navigate_input_located(&cleaned, None));
     shell::settle(app, tx);

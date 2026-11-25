@@ -438,12 +438,9 @@ fn build_item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, index: usiz
             .map(|f| f(s, &rcx)),
     ];
     let place = (frame.per_line > 1 || frame.grouped).then_some((index, frame.len));
-    // Only rows that draw them read the rest hook and the peek fill.
+    // Only rows that draw them read the rest hook and the slot-token mark fill.
     let rest = cfg.rest.as_ref().map(|r| r.version(s, &rcx));
-    let peek_fill = state
-        .marks
-        .peek_anchor
-        .then(|| color_key(tokens::peek_fill(look)));
+    let mark_fill = mark_fill_key(look, state);
     let version = (
         (
             entry.name,
@@ -460,9 +457,39 @@ fn build_item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, index: usiz
         frame.hover_live,
         versions,
         place,
-        (rest, peek_fill),
+        (rest, mark_fill),
     );
     memo(row_key(id), version, || item(cfg, frame, s, &rcx))
+}
+
+fn row_fill(look: &Look, state: RowState) -> Option<rune::Color> {
+    if state.marks.active_path && state.marks.active_parent {
+        Some(tokens::active_parent_fill(look))
+    } else if state.marks.active_path {
+        Some(tokens::active_path_fill(look))
+    } else if state.selected || state.drop_target {
+        Some(rune_kit::TableStyle::from_kit(&look.kit).selected)
+    } else if state.marks.peek_anchor {
+        Some(tokens::peek_fill(look))
+    } else {
+        None
+    }
+}
+
+fn row_hover_enabled(frame: &Frame, state: RowState) -> bool {
+    frame.hover_live && !(state.marks.active_path && !state.marks.active_parent)
+}
+
+fn mark_fill_key(look: &Look, state: RowState) -> Option<[u32; 4]> {
+    if state.marks.active_path && state.marks.active_parent {
+        Some(color_key(tokens::active_parent_fill(look)))
+    } else if state.marks.active_path {
+        Some(color_key(tokens::active_path_fill(look)))
+    } else if state.marks.peek_anchor {
+        Some(color_key(tokens::peek_fill(look)))
+    } else {
+        None
+    }
 }
 
 fn item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, rcx: &RowCx<'_>) -> El {
@@ -531,12 +558,11 @@ fn item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, rcx: &RowCx<'_>) 
         .px(look.space.xs)
         .center_y()
         .clip_soft(0.0);
-    if state.selected || state.drop_target {
-        inner = inner.fill(rune_kit::TableStyle::from_kit(kit).selected);
-    } else if state.marks.peek_anchor {
-        inner = inner.fill(tokens::peek_fill(look));
+    if let Some(fill) = row_fill(look, state) {
+        inner = inner.fill(fill);
     }
-    if frame.hover_live {
+    // Keep ancestor open-folder fills steady without stacking a hover overlay on top.
+    if row_hover_enabled(frame, state) {
         inner = inner.hover(kit.c.hover);
     }
     if state.cursor_shown {

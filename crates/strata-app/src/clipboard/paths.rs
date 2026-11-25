@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-use std::{os::unix::ffi::OsStrExt, path::Path};
-
 use gio::prelude::*;
 use strata_core::model::Location;
 use strata_fs::adapters::{gio_file_for_location, location_for_file};
@@ -56,105 +54,16 @@ pub(crate) fn locations_from_files(files: &Files) -> Vec<Location> {
 }
 
 pub(crate) fn copy_path_text(location: &Location, is_directory: bool) -> String {
-    match location.native_path() {
-        Some(path) => {
-            let mut text = shell_escape_path(path);
-            if is_directory && !text.ends_with(std::path::MAIN_SEPARATOR) {
-                text.push(std::path::MAIN_SEPARATOR);
-            }
-            text
-        }
-        None => location.display_path(),
-    }
-}
-
-fn shell_escape_path(path: &Path) -> String {
-    let bytes = path.as_os_str().as_bytes();
-    let Ok(text) = std::str::from_utf8(bytes) else {
-        return bytes
-            .split(|&byte| byte == b'/')
-            .map(escape_bytes_segment)
-            .collect::<Vec<_>>()
-            .join("/");
+    let Some(path) = location.native_path() else {
+        return location.display_path();
     };
-    if text.contains('\n') {
-        return format!("'{}'", text.replace('\'', "'\\''"));
+    // Clipboard text is UTF-8; a file URI preserves otherwise unrepresentable bytes.
+    let mut text = path.to_str().map_or_else(
+        || gio_file_for_location(location).uri().to_string(),
+        str::to_owned,
+    );
+    if is_directory && !text.ends_with(std::path::MAIN_SEPARATOR) {
+        text.push(std::path::MAIN_SEPARATOR);
     }
-    backslash_escape(text)
-}
-
-fn escape_bytes_segment(segment: &[u8]) -> String {
-    match std::str::from_utf8(segment) {
-        Ok(text) if !text.contains('\n') => backslash_escape(text),
-        _ => ansi_c_quote(segment),
-    }
-}
-
-fn backslash_escape(text: &str) -> String {
-    let mut escaped = String::with_capacity(text.len());
-    for c in text.chars() {
-        if needs_shell_escape(c) {
-            escaped.push('\\');
-        }
-        escaped.push(c);
-    }
-    escaped
-}
-
-fn ansi_c_quote(bytes: &[u8]) -> String {
-    let mut quoted = String::from("$'");
-    for chunk in bytes.utf8_chunks() {
-        for c in chunk.valid().chars() {
-            append_quoted_char(&mut quoted, c);
-        }
-        push_hex_escapes(&mut quoted, chunk.invalid());
-    }
-    quoted.push('\'');
-    quoted
-}
-
-fn append_quoted_char(quoted: &mut String, c: char) {
-    match c {
-        '\'' | '\\' => {
-            quoted.push('\\');
-            quoted.push(c);
-        }
-        c if c.is_control() => push_hex_escapes(quoted, c.encode_utf8(&mut [0; 4]).as_bytes()),
-        c => quoted.push(c),
-    }
-}
-
-fn push_hex_escapes(text: &mut String, bytes: &[u8]) {
-    use std::fmt::Write;
-    for byte in bytes {
-        let _ = write!(text, "\\x{byte:02x}");
-    }
-}
-
-fn needs_shell_escape(c: char) -> bool {
-    c.is_whitespace()
-        || c.is_control()
-        || matches!(
-            c,
-            '"' | '\''
-                | '\\'
-                | '$'
-                | '`'
-                | '!'
-                | '#'
-                | '&'
-                | '*'
-                | ';'
-                | '<'
-                | '>'
-                | '?'
-                | '['
-                | ']'
-                | '{'
-                | '}'
-                | '('
-                | ')'
-                | '|'
-                | '~'
-        )
+    text
 }

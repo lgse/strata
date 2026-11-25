@@ -293,7 +293,7 @@ cursor or **v** then motion → **y** / **x** → **h** / **l** / **g h** / **g 
 | **o** / **O** | Open / Open With |
 | **M** / **C** | Move / copy the selection (or the focused item) to a folder typed in the footer |
 | **R** | Restore the selection (or the focused item) from Trash, with confirmation |
-| **c c** / **c n** | Copy path / name |
+| **c c** / **c n** | Copy path / name. **c c** copies a plain, unescaped local path for pasting into file dialogs and other apps. |
 | **; 1**–**; 9** / **; 0** | Run the first 10 matching custom actions |
 | **; . 1**–**; . 9** / **; . 0** | Run the first 10 custom actions for the keyboard-focused folder |
 | **; t** | Open a terminal in the keyboard-focused folder |
@@ -490,9 +490,11 @@ Typing never navigates; it lists matching folders through the
 When nothing is listed, such as for a URI or a path no folder matches, or when
 the typed path names an existing file or folder, **Enter** submits the text through the same navigation as the location bar
 (**Ctrl+L**). `.` and `..` in a local path resolve as text, without checking the
-filesystem. A path naming a file opens its folder with the file selected, and
-URI input is submitted unchanged, except that a password typed in the URI moves
-into the mount operation instead of the location. A missing or unreachable
+filesystem. Quoted and shell-escaped paths and `file://` URIs are read as in the
+location bar; see [pasted paths](keyboard-navigation.md#copy-path-and-pasted-paths). A path naming a
+file opens its folder with the file selected, and URI input is submitted
+unchanged apart from one pair of surrounding quotes, except that a password typed
+in the URI moves into the mount operation instead of the location. A missing or unreachable
 destination shows the location bar's error and leaves the current folder open.
 Empty **Enter** just closes the prompt. **Esc** cancels without navigating;
 clicking a listing row ends the prompt and keeps the clicked selection. The
