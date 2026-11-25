@@ -2,7 +2,7 @@
 
 use rune::{Color, Cx, El, Key, KeyEvent, Mods, ScrollSpec, Tx, col, el, icon, row, text};
 use strata_components::sidebar::{
-    Device, DeviceGroup, ItemId, Pin, Place, PlacesSidebar, SidebarData, SidebarState,
+    Device, ItemId, Pin, Place, PlacesSidebar, SidebarData, SidebarState,
 };
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
@@ -98,7 +98,7 @@ pub struct Demo {
     pub sidebar: SidebarState,
     places: Vec<Place>,
     pins: Vec<Pin>,
-    devices: Vec<DeviceGroup>,
+    devices: Vec<Device>,
     current: Option<ItemId>,
 }
 
@@ -139,12 +139,7 @@ fn open(g: &mut Gallery, dark: bool, shown: Shown) {
             Place::trash("Trash", false),
         ],
         pins: vec![Pin::new("projects", "Projects")],
-        devices: vec![DeviceGroup::new(vec![Device::new(
-            "system",
-            "System",
-            IconName::Drive,
-            "/",
-        )])],
+        devices: vec![Device::new("system", "System", IconName::Drive, "/")],
         current: Some(ItemId::Place("documents".into())),
     };
 }

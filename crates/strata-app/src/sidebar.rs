@@ -411,7 +411,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let data = SidebarData {
         places: &sidebar.listed.places,
         pins: &sidebar.listed.pins,
-        devices: sidebar.devices.groups(),
+        devices: sidebar.devices.shown(),
         current: sidebar.current.as_ref(),
         labels: SidebarLabels {
             pinned: &pinned,

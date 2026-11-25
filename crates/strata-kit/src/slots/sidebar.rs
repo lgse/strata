@@ -21,7 +21,6 @@ pub struct Sidebar {
     pub selected_icon: Option<Color>,
     pub hover_fill: Option<Color>,
     pub divider_color: Option<Color>,
-    pub divider_inset: Option<f32>,
     pub gap_open: Option<f32>,
     pub gap_reach: Option<f32>,
     pub heading_height: Option<f32>,
@@ -73,13 +72,6 @@ pub fn divider_color(look: &Look) -> Color {
         .unwrap_or_else(|| k.alpha(k.c.border_base, 0.24))
 }
 
-pub fn divider_inset(look: &Look) -> f32 {
-    look.slots
-        .sidebar
-        .divider_inset
-        .unwrap_or(look.space.md + look.space.xxs)
-}
-
 pub fn gap_open(look: &Look) -> f32 {
     look.slots
         .sidebar
@@ -128,9 +120,6 @@ pub const TOKENS: &[Token] = &[
     }),
     Token::color("sidebar.divider.color", divider_color, |l, v| {
         l.slots.sidebar.divider_color = Some(v)
-    }),
-    Token::length("sidebar.divider.inset", divider_inset, |l, v| {
-        l.slots.sidebar.divider_inset = Some(v)
     }),
     Token::length("sidebar.gap.open", gap_open, |l, v| {
         l.slots.sidebar.gap_open = Some(v)

@@ -21,8 +21,8 @@ use crate::contract::dnd::{DropAction, DropOffer};
 
 pub use build::PlacesSidebar;
 pub use data::{
-    Device, DeviceGroup, DeviceLabels, ItemId, LockState, Pin, Place, PlaceKind, Release, RowIcon,
-    SidebarData, SidebarLabels,
+    Device, DeviceLabels, ItemId, LockState, Pin, Place, PlaceKind, Release, RowIcon, SidebarData,
+    SidebarLabels,
 };
 pub use drag::{Landing, RowDrag, Rows, landing};
 pub use drops::pin_action;

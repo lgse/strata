@@ -8,7 +8,7 @@ use rune::{Drag, El, Mods, Phase, PointerPress, ScrollSpec, Tx, col, el};
 use strata_kit::look::Look;
 use strata_kit::slots::sidebar as slot;
 
-use super::data::{DeviceLine, ItemId, SidebarData, device_lines};
+use super::data::{ItemId, SidebarData};
 use super::drag::{Block, Landing};
 use super::heading::heading;
 use super::intent::{DropSite, Gap, Section, SidebarIntent};
@@ -475,7 +475,7 @@ fn gap<S: 'static>(
 
 fn devices<S: 'static>(ctx: &Ctx<'_, S>, data: &SidebarData<'_>) -> Option<El> {
     let look = ctx.look;
-    let n = data.device_count();
+    let n = data.devices.len();
     if n == 0 {
         return None;
     }
@@ -493,30 +493,10 @@ fn devices<S: 'static>(ctx: &Ctx<'_, S>, data: &SidebarData<'_>) -> Option<El> {
     if collapsed {
         return Some(section);
     }
-    for line in device_lines(data.devices) {
-        section = section.child(match line {
-            DeviceLine::Divider(g) => divider(ctx, g),
-            DeviceLine::Device(d) => device_row(ctx, d, data.current == Some(&d.item())),
-        });
+    for d in data.devices {
+        section = section.child(device_row(ctx, d, data.current == Some(&d.item())));
     }
     Some(section)
-}
-
-fn divider<S>(ctx: &Ctx<'_, S>, g: usize) -> El {
-    let look = ctx.look;
-    let pad = look.space.xs;
-    let inset = if ctx.rail {
-        look.space.xxs
-    } else {
-        slot::divider_inset(look)
-    };
-    el().key(format!("{}-divider-{g}", ctx.key))
-        .h(1.0)
-        .w_full()
-        .my(look.space.xs)
-        .px((inset - pad).max(0.0))
-        .child(el().w_full().h(1.0).fill(slot::divider_color(look)))
-        .a11y_hidden()
 }
 
 /// The rail's separator above a section, which the full sidebar's heading rule replaces.

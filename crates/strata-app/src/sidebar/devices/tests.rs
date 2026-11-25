@@ -756,12 +756,11 @@ fn encrypted_rows_ghost_stand_in_and_device_context_menus_work_in_hosted_sidebar
                 keyed(&tree, "sidebar-device-vault-open-lock").expect("unlocked row lock button");
             assert_eq!(text(lock_btn, "name"), "Lock");
 
-            // Disappeared device mid-release keeps a stand-in ghost row without a divider.
-            let groups = host.app().sidebar.devices.groups();
-            let ghost_group = groups.last().expect("ghost group");
-            assert!(!ghost_group.divided, "ghost row has no leading divider");
-            assert_eq!(ghost_group.devices[0].label, "Ghost USB");
-            assert!(ghost_group.devices[0].pending);
+            // Disappeared device mid-release keeps a stand-in ghost row.
+            let shown = host.app().sidebar.devices.shown();
+            let ghost = shown.last().expect("ghost row");
+            assert_eq!(ghost.label, "Ghost USB");
+            assert!(ghost.pending);
             let ghost_row = keyed(&tree, "sidebar-device-releasing-0").expect("ghost row in tree");
             assert_eq!(text(ghost_row, "name"), "Ghost USB");
 
