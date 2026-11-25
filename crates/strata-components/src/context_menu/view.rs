@@ -148,7 +148,8 @@ impl<S: 'static> Render<'_, S> {
         layer.push(
             el().key(point_key.clone())
                 .absolute(self.at.x, self.at.y)
-                .size(0.0, 0.0),
+                .size(0.0, 0.0)
+                .a11y_hidden(),
         );
         let scrim_dismiss = self.on_dismiss.clone();
         let mut scrim = el()
