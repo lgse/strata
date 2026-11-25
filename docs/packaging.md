@@ -128,7 +128,7 @@ scripts/
   test_build_srpm.py
 .github/workflows/
   publish-copr.yml            submits a release to COPR
-  rpm.yml                     builds, lints, and installs the RPM
+  rpm.yml                     validates the source RPM on PRs/pushes; builds binary RPMs on manual dispatch
 ```
 
 Unlike the AUR packages, nothing rendered is committed: the source RPM is built from the tagged commit itself, so the only reviewed inputs are the template and the script.
@@ -178,7 +178,7 @@ rpmbuild --rebuild target/rpm/strata-*.src.rpm
 rpmlint target/rpm/strata-*.src.rpm ~/rpmbuild/RPMS/*/strata-*.rpm
 ```
 
-`--ref` packages any commit under a release tag's identity, which `.github/workflows/rpm.yml` uses to build pull requests. Pull requests run it only when they change the packaging itself: the spec template, `build_srpm.py` and the scripts it imports, or the RPM workflows, because a full build takes about 20 minutes. Every push to `main` that changes any of the package's inputs, including the workspace's `Cargo.toml` files and `Cargo.lock`, runs it too, so a dependency update that adds a crate under a license COPR does not accept fails there, before a release. It builds on `x86_64` with the newest Fedora only; the COPR builds at release time cover the other releases and `aarch64`, and a failed one can be retried with `publish-copr.yml`. `--release` raises the RPM release number to rebuild a version that is already published.
+`--ref` packages any commit under a release tag's identity, which `.github/workflows/rpm.yml` uses on pull requests and pushes. Pull requests and pushes to `main` that change any of the package's inputs (the spec template, `build_srpm.py` and the scripts it imports, the RPM workflows, or workspace `Cargo.toml` / `Cargo.lock` and packaged assets) build and `rpmlint` the source RPM only, catching `cargo vendor-filterer` and license-metadata failures in under a minute. The full binary `rpmbuild --rebuild`, build-configuration verification, binary `rpmlint`, and `dnf install` checks run on manual `workflow_dispatch` (in addition to `@lgse/strata-preview` COPR builds on prerelease/RC tags via `publish-copr.yml`), while `ci.yml` runs `STRATA_UPDATER=disabled cargo check --locked --workspace --no-default-features` on every PR. Manual dispatches build on `x86_64` with the newest Fedora only; the COPR builds at release time cover the other releases and `aarch64`, and a failed one can be retried with `publish-copr.yml`. `--release` raises the RPM release number to rebuild a version that is already published.
 
 ### Publishing
 
