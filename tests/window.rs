@@ -82,7 +82,7 @@ mod window {
 
         assert_eq!(
             launched.window.app_id.as_deref(),
-            Some("io.github.lgse.Strata.Rune")
+            Some("io.github.lgse.Strata")
         );
         let took = change_reaches_poll(&launched.app, &launched.folder, "shown.txt");
         eprintln!("a change reached poll in {took:?}");

@@ -13,7 +13,7 @@ use strata_desktop::{
 
 use crate::settings::Saved;
 
-pub(crate) const APPLICATION_ID: &str = "io.github.lgse.Strata.Rune";
+pub(crate) const APPLICATION_ID: &str = "io.github.lgse.Strata";
 
 pub(crate) fn initialize_process() -> Saved {
     glib::set_prgname(Some(APPLICATION_ID));
