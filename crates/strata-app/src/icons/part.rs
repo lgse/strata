@@ -158,7 +158,7 @@ impl Part for Icons {
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let said = single::poll::<Self>(app, clock, tx);
-        size::follow_folder(app);
+        let resized = size::follow_folder(app);
         let created = app.icons.thumbs.id().is_none();
         app.icons.thumbs.fit(app.window.thumbnails_mut(), 1);
         let shows_hits = app.filter.pane.shows();
@@ -187,7 +187,7 @@ impl Part for Icons {
             Viewer::pump(app, thumbnail_parts, clock);
         }
         fill(app, clock, tx);
-        ticked | said | created | redate(app, clock, tx)
+        ticked | said | resized | created | redate(app, clock, tx)
     }
 }
 

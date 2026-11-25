@@ -48,6 +48,8 @@ pub(crate) struct Icons {
     sized_for: Option<Location>,
     /// The folder views' revision the size was last read at: a change there is read again.
     sized_at: u64,
+    /// `(remember_folder_views, icons_thumbnail_size)` when the size was last resolved.
+    sized_policy: (bool, i32),
     resolved: f32,
     /// The grid's viewer in the window's thumbnails.
     thumbs: Viewer,
@@ -88,6 +90,10 @@ impl Icons {
             size: size::tile_size(settings.icons_thumbnail_size),
             sized_for: None,
             sized_at: 0,
+            sized_policy: (
+                settings.remember_folder_views,
+                settings.icons_thumbnail_size,
+            ),
             resolved: size::tile_size(settings.icons_thumbnail_size),
             thumbs: Viewer::new(setup.later.clone(), part::locate),
             fills: Fills::new(Details::All),
@@ -109,5 +115,9 @@ impl Icons {
 impl Icons {
     pub(crate) fn source(&self) -> &dyn strata_components::contract::EntrySource {
         self.single.pane.source()
+    }
+
+    pub(crate) fn synced_step(&self) -> Option<strata_components::thumbnails::Step> {
+        self.grid.synced_step()
     }
 }

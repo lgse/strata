@@ -319,7 +319,7 @@ impl<S: 'static> IconsGrid<S> {
         };
         let mut rebuild = false;
         if last != Some(size) {
-            size_changed(&shared, s, tx);
+            rebuild |= size_changed(&shared, s, tx) || last.is_some();
         } else {
             rebuild |= flush_thumbs(&shared, s, tx);
         }
