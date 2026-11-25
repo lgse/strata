@@ -213,8 +213,10 @@ impl Part for Preview {
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
-        (app.preview.drawer.is_find_focused() || app.preview.viewer.is_prompt_focused())
-            .then_some(Holds::Field)
+        (app.preview.drawer.is_find_focused()
+            || app.preview.viewer.is_prompt_focused()
+            || app.preview.viewer.is_page_input_focused())
+        .then_some(Holds::Field)
     }
 
     fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
@@ -293,6 +295,7 @@ pub(crate) fn owns_focus(app: &App) -> bool {
         && (app.preview.owns_focus
             || app.preview.drawer.is_find_focused()
             || app.preview.viewer.is_prompt_focused()
+            || app.preview.viewer.is_page_input_focused()
             || crate::menus::is_preview_text_menu(app))
 }
 
@@ -370,6 +373,7 @@ fn preview_owns_focus(app: &App, tx: &Tx) -> bool {
     }
     if app.preview.drawer.is_find_focused()
         || app.preview.viewer.is_prompt_focused()
+        || app.preview.viewer.is_page_input_focused()
         || crate::menus::is_preview_text_menu(app)
     {
         return true;
@@ -604,6 +608,7 @@ pub(crate) fn in_document_body(app: &App, at: &Situation) -> bool {
     let available = app.preview.enabled
         && !app.preview.drawer.is_find_focused()
         && !app.preview.viewer.is_prompt_focused()
+        && !app.preview.viewer.is_page_input_focused()
         && !at.within("preview-grip");
     available && is_document_viewer(&app.preview.viewer) && focused_in_document_body(at)
 }

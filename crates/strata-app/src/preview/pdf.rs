@@ -178,6 +178,16 @@ pub(super) fn labels() -> PdfLabels {
     labels.locked = tr("This PDF is password protected.");
     labels.open = tr("Open");
     labels.page_text = tr("PDF page text");
+    labels.page_navigation = tr("Page navigation");
+    labels.page_indicator = rust_i18n::t!(
+        "Page %{input} / %{pages}",
+        input = "{input}",
+        pages = "{pages}"
+    )
+    .into_owned();
+    labels.go_to_page = tr("Go to page");
+    labels.previous_page = tr("Previous page");
+    labels.next_page = tr("Next page");
     labels
 }
 
@@ -249,9 +259,11 @@ fn viewer_mut(app: &mut App, id: u64) -> Option<&mut PdfViewer> {
 }
 
 pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+    let hold = crate::menus::field_menu_open(app);
     let Viewer::Pdf(pdf) = &mut app.preview.viewer else {
         return false;
     };
+    pdf.state.hold_page_input(hold);
     let changed = pdf.state.tick(clock) | pdf.state.flush(tx);
     changed | pump(app)
 }

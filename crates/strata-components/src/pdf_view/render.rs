@@ -11,6 +11,7 @@ use rune_kit::Spinner;
 use strata_kit::look::Look;
 
 use super::model::{Content, Shared};
+use super::page_nav;
 use super::queue::Slot;
 use super::state::{Gesture, PdfState};
 use super::zoom::GAP;
@@ -112,21 +113,7 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look) -> 
             }
         })
         .child(list);
-    let bars = [
-        st.bar
-            .build::<S>(&format!("{key}-bar"), &scroll_key, BarLook::app(look)),
-        st.sideways.build::<S>(
-            &format!("{key}-sideways"),
-            &scroll_key,
-            BarLook::app(look).horizontal(),
-        ),
-    ];
-    let body = st.bar.area(st.sideways.area(overlay(viewport, bars)));
-    let cursor = match st.gesture {
-        Gesture::Pan(_) => Cursor::Grabbing,
-        _ if st.over_text => Cursor::Text,
-        _ => Cursor::Grab,
-    };
+    let body = build_body(&ctx, st, viewport, look);
     let position = labels
         .position
         .replace("{page}", &(st.current + 1).to_string())
@@ -146,32 +133,17 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look) -> 
         .focusable(true)
         // Inside the edge: the drawer's slot clips anything outside.
         .focus_ring(FOCUS_RING_WIDTH, -FOCUS_RING_WIDTH, ctx.paint.focus)
-        .cursor(cursor)
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| key_in(&keys_ctx, s, ev, tx))
-        .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
-            let shift = tx.mods().shift;
-            if !get_mut(s).drag(d, shift, tx) {
-                tx.live_only();
-            }
-        })
         // Ctrl+wheel bubbles past the scroll viewport and covers the bars too.
         .on_wheel(move |s: &mut S, e: WheelEvent, tx: &mut Tx| wheel(get_mut(s), e, tx))
-        .on_pointer_move_local(move |s: &mut S, e: PointerEvent, tx: &mut Tx| {
-            if !get_mut(s).hover([e.window_x, e.window_y]) {
-                tx.live_only();
-            }
-        })
-        .on_hover_change(move |s: &mut S, inside: bool, tx: &mut Tx| {
-            if !inside {
-                get_mut(s).leave();
-            }
-            tx.live_only();
-        })
         .child(body);
     if let Some(emit) = menu_intent {
         root = root.on_secondary_press(move |s: &mut S, p: PointerPress, tx: &mut Tx| {
             emit(s, PdfIntent::ContextMenu(Point::new(p.x, p.y)), tx);
         });
+    }
+    if n > 1 {
+        root = root.child(page_nav::build(&ctx, st, look));
     }
     if st.wake > 0 {
         root = root.child(
@@ -188,6 +160,52 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look) -> 
         );
     }
     root
+}
+
+fn build_body<S: 'static>(ctx: &Ctx<S>, st: &PdfState, viewport: El, look: &Look) -> El {
+    let key = st.key();
+    let scroll_key = st.scroll_key();
+    let get_mut = ctx.get_mut;
+    let bars = [
+        st.bar
+            .build::<S>(&format!("{key}-bar"), &scroll_key, BarLook::app(look)),
+        st.sideways.build::<S>(
+            &format!("{key}-sideways"),
+            &scroll_key,
+            BarLook::app(look).horizontal(),
+        ),
+    ];
+    let cursor = match st.gesture {
+        Gesture::Pan(_) => Cursor::Grabbing,
+        _ if st.over_text => Cursor::Text,
+        _ => Cursor::Grab,
+    };
+    // Wrap `st.bar.area(...)` in a separate container so attaching `on_pointer_move_local` here
+    // does not overwrite the vertical scrollbar's own `on_pointer_move_any` reveal handler.
+    col()
+        .w_full()
+        .h_full()
+        .min_h(0.0)
+        .min_w(0.0)
+        .cursor(cursor)
+        .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
+            let shift = tx.mods().shift;
+            if !get_mut(s).drag(d, shift, tx) {
+                tx.live_only();
+            }
+        })
+        .on_pointer_move_local(move |s: &mut S, e: PointerEvent, tx: &mut Tx| {
+            if !get_mut(s).hover([e.window_x, e.window_y]) {
+                tx.live_only();
+            }
+        })
+        .on_hover_change(move |s: &mut S, inside: bool, tx: &mut Tx| {
+            if !inside {
+                get_mut(s).leave();
+            }
+            tx.live_only();
+        })
+        .child(st.bar.area(st.sideways.area(overlay(viewport, bars))))
 }
 
 fn wheel(st: &mut PdfState, e: WheelEvent, tx: &mut Tx) -> bool {
@@ -330,6 +348,9 @@ fn layer_children<S>(
 fn key_in<S: 'static>(ctx: &Ctx<S>, s: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
     let m = ev.mods;
     let st = (ctx.get_mut)(s);
+    if st.is_page_input_focused() {
+        return false;
+    }
     if (ctx.reset)(ev) {
         // Consumed even at fitted width: Strata's text size never hears it.
         st.reset_zoom(tx);
