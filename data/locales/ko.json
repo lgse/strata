@@ -1612,5 +1612,13 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "반투명 대화 상자, 메뉴, 팝오버에 배경 흐림과 은은한 유리 광택을 적용합니다.",
   "Requires a compositor that supports backdrop blur and has it enabled.": "배경 흐림을 지원하고 활성화한 컴포지터가 필요합니다.",
   "Unfocused window multiplier": "비활성 창 배율",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "창이 포커스를 잃었을 때 투명도에 곱하는 배율입니다(높을수록 더 투명하며 1.00×는 동일 유지)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "창이 포커스를 잃었을 때 투명도에 곱하는 배율입니다(높을수록 더 투명하며 1.00×는 동일 유지).",
+  "SCROLLBARS": "스크롤바",
+  "Expand scrollbars on hover": "마우스를 올리면 스크롤바 넓히기",
+  "Widen scrollbars when hovering over them so they are easier to grab.": "스크롤바 위에 포인터를 올리면 폭을 넓혀 더 쉽게 잡을 수 있게 합니다.",
+  "Expanded scrollbar width": "확장된 스크롤바 너비",
+  "Width in pixels when hovering over a scrollbar.": "스크롤바 위에 포인터를 올렸을 때의 너비(픽셀 단위)입니다.",
+  "Expanded scrollbar width in pixels": "확장된 스크롤바 너비(픽셀)",
+  "settings_keywords.scrollbar-expand-on-hover": "모양 스크롤바 넓히기 확장 호버 두껍게 잡기 접근성",
+  "settings_keywords.scrollbar-hover-width": "모양 스크롤바 너비 두께 크기 픽셀 호버"
 }

@@ -1612,5 +1612,13 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Aplica desenfoque de fondo y un sutil brillo esmerilado a los diálogos, menús y paneles emergentes translúcidos.",
   "Requires a compositor that supports backdrop blur and has it enabled.": "Requiere un compositor compatible con el desenfoque de fondo y que lo tenga activado.",
   "Unfocused window multiplier": "Multiplicador de ventana desenfocada",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplica la transparencia cuando la ventana no tiene el foco (más alto es más transparente; 1,00× la mantiene igual)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Multiplica la transparencia cuando la ventana no tiene el foco (más alto es más transparente; 1,00× la mantiene igual).",
+  "SCROLLBARS": "BARRAS DE DESPLAZAMIENTO",
+  "Expand scrollbars on hover": "Ampliar las barras de desplazamiento al pasar el cursor",
+  "Widen scrollbars when hovering over them so they are easier to grab.": "Ensancha las barras de desplazamiento al pasar el cursor por encima para agarrarlas más fácilmente.",
+  "Expanded scrollbar width": "Ancho ampliado de la barra de desplazamiento",
+  "Width in pixels when hovering over a scrollbar.": "Ancho en píxeles al pasar el cursor sobre una barra de desplazamiento.",
+  "Expanded scrollbar width in pixels": "Ancho ampliado de la barra de desplazamiento en píxeles",
+  "settings_keywords.scrollbar-expand-on-hover": "apariencia barras desplazamiento ensanchar ampliar expandir cursor grosor agarrar accesibilidad",
+  "settings_keywords.scrollbar-hover-width": "apariencia barras desplazamiento ancho grosor tamaño píxeles cursor"
 }

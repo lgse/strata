@@ -1612,5 +1612,13 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "为半透明对话框、菜单和弹出面板应用背景模糊与细腻的磨砂光泽。",
   "Requires a compositor that supports backdrop blur and has it enabled.": "需要支持并启用背景模糊的合成器。",
   "Unfocused window multiplier": "失焦窗口倍率",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "窗口失去焦点时对透明度应用的倍率（越高越通透，1.00× 保持不变）。"
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "窗口失去焦点时对透明度应用的倍率（越高越通透，1.00× 保持不变）。",
+  "SCROLLBARS": "滚动条",
+  "Expand scrollbars on hover": "悬停时加宽滚动条",
+  "Widen scrollbars when hovering over them so they are easier to grab.": "将指针悬停在滚动条上时加宽滚动条，以便更容易拖动。",
+  "Expanded scrollbar width": "悬停时的滚动条宽度",
+  "Width in pixels when hovering over a scrollbar.": "将指针悬停在滚动条上时的宽度（单位：像素）。",
+  "Expanded scrollbar width in pixels": "悬停时的滚动条宽度（像素）",
+  "settings_keywords.scrollbar-expand-on-hover": "外观 滚动条 加宽 展开 悬停 粗细 拖动 辅助功能",
+  "settings_keywords.scrollbar-hover-width": "外观 滚动条 宽度 粗细 大小 像素 悬停"
 }

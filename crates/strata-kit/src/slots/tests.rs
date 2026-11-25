@@ -76,3 +76,17 @@ fn the_media_bubble_styling_is_overridable_by_name() {
         assert!(tokens::get(&look, name).is_ok(), "{name}");
     }
 }
+
+#[test]
+fn scroll_hover_width_token_toggles_optional_hover_thickness() {
+    let mut look = Look::fallback(false);
+    assert_eq!(super::scroll::hover_width(&look), None);
+    assert_eq!(length(&look, "scroll.bar.hover_width"), 0.0);
+
+    tokens::set(&mut look, "scroll.bar.hover_width", Value::Length(14.0)).expect("set");
+    assert_eq!(super::scroll::hover_width(&look), Some(14.0));
+    assert_eq!(length(&look, "scroll.bar.hover_width"), 14.0);
+
+    tokens::set(&mut look, "scroll.bar.hover_width", Value::Length(0.0)).expect("clear");
+    assert_eq!(super::scroll::hover_width(&look), None);
+}

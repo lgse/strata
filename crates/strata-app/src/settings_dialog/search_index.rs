@@ -340,6 +340,20 @@ const TARGETS: &[TargetDef] = &[
         "appearance corners radius rounded square shape borders",
     ),
     row!(
+        "scrollbar-expand-on-hover",
+        "theme",
+        "scrollbars",
+        "Expand scrollbars on hover",
+        "appearance scrollbars scroll bar widen expand hover thick grab accessibility",
+    ),
+    row!(
+        "scrollbar-hover-width",
+        "theme",
+        "scrollbars",
+        "Expanded scrollbar width",
+        "appearance scrollbars scroll bar width thickness size pixels hover",
+    ),
+    row!(
         "file-icon-colors",
         "theme",
         "file-icons",
@@ -557,6 +571,11 @@ pub(super) fn build_index(revision: u64, avail: Availability) -> SearchIndex {
         .into_owned();
         let mut entry =
             IndexRow::new(target.id, target.page, shown.clone()).keywords(target.aliases);
+        let keyword_key = format!("settings_keywords.{}", target.id);
+        let localized_keywords = tr(&keyword_key);
+        if localized_keywords != keyword_key && localized_keywords != target.aliases {
+            entry = entry.keywords(localized_keywords);
+        }
         if shown != english {
             entry = entry.source_title(english);
         }

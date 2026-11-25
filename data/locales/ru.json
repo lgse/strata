@@ -1612,5 +1612,13 @@
   "Apply backdrop blur and a subtle frosted sheen to translucent dialogs, menus, and popovers.": "Применять размытие фона и лёгкий матовый блик к полупрозрачным диалогам, меню и всплывающим окнам.",
   "Requires a compositor that supports backdrop blur and has it enabled.": "Требуется композитор, который поддерживает размытие фона и в котором оно включено.",
   "Unfocused window multiplier": "Множитель для неактивного окна",
-  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Умножать прозрачность при потере фокуса окна (больше — прозрачнее; 1,00× без изменений)."
+  "Multiply transparency when the window is unfocused (higher is more see-through; 1.00× keeps it unchanged).": "Умножать прозрачность при потере фокуса окна (больше — прозрачнее; 1,00× без изменений).",
+  "SCROLLBARS": "ПОЛОСЫ ПРОКРУТКИ",
+  "Expand scrollbars on hover": "Расширять полосы прокрутки при наведении",
+  "Widen scrollbars when hovering over them so they are easier to grab.": "Увеличивает ширину полос прокрутки при наведении указателя, чтобы их было проще захватывать.",
+  "Expanded scrollbar width": "Ширина расширенной полосы прокрутки",
+  "Width in pixels when hovering over a scrollbar.": "Ширина в пикселях при наведении указателя на полосу прокрутки.",
+  "Expanded scrollbar width in pixels": "Ширина расширенной полосы прокрутки в пикселях",
+  "settings_keywords.scrollbar-expand-on-hover": "внешний вид полосы прокрутки скроллбар расширять увеличивать наведение толщина захват доступность",
+  "settings_keywords.scrollbar-hover-width": "внешний вид полосы прокрутки скроллбар ширина толщина размер пиксели наведение"
 }

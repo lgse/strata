@@ -183,6 +183,10 @@ impl ThemeEngine {
             ..LookParams::default()
         };
         let mut look = theme.look().with_params(&params);
+        if saved.scrollbar_expand_on_hover {
+            let hover_width = u16::try_from(saved.scrollbar_hover_width.get()).unwrap_or(u16::MAX);
+            look.slots.scroll.hover_width = Some(f32::from(hover_width));
+        }
         look.icons = match saved.file_icon_colors {
             FileIconColors::Brand => catppuccin::for_background(dark_bg),
             FileIconColors::Theme => lucide::SET,
