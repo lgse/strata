@@ -113,7 +113,9 @@ isolation, resource limits, or the other narrow optional runtime mounts.
 
 - GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
   images to dimension- and size-bounded PNG images. WebP is decoded first by the
-  built-in decoder, so it needs no system pixbuf loader or ImageMagick.
+  built-in decoder, so it needs no system pixbuf loader or ImageMagick. A WebP
+  whose header declares an animation (the `VP8X` animation flag) plays in the
+  media sandbox instead; static WebP files keep the still-image preview.
 - `ffmpegthumbnailer` (or the software FFmpeg fallback) produces bounded media thumbnails. Browser thumbnails and
   media details share the bounded, reusable sandbox supervisors described below.
   Duplicate requests share work, obsolete targets detach, and thumbnail failures
@@ -650,6 +652,16 @@ covering that point. Short GIFs still batch loops into a 30-second generation,
 with seeks mapped to their animation phase to avoid restarting a process every
 cycle; this does not truncate the animation. Longer GIFs play their complete
 animation before looping.
+
+Animated WebP follows the same timing and looping rules, decoded inside the
+sandbox by the built-in WebP decoder rather than FFmpeg so it does not depend on
+FFmpeg's `webp_anim` demuxer. The cycle period is the sum of the `ANMF` frame
+durations (0 ms delays fall back to 100 ms), read from chunk headers without
+decoding pixels, bounded by the 50 MP source pixel budget and a 100,000-frame
+limit. Short animations under 30 seconds loop inside a 30-second generation with
+phase-preserving seeks and a bounded 32 MiB single-cycle decoded frame cache;
+longer animations play their complete animation before looping and seek
+linearly, and storyboards are rejected.
 
 Files without a reported duration play until decoded EOF. Their timeline remains
 unknown and seeking is disabled until the actual end is established; pause/idle

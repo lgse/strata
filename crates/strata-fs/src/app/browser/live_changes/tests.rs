@@ -166,3 +166,23 @@ fn a_rescan_reported_during_a_burst_reloads_the_folder() {
 
     assert_eq!(column_names(browser, 0), ["child"]);
 }
+
+#[test]
+fn dropping_a_browser_removes_its_pending_flush() {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
+    let watched = watched_browser();
+    report_burst(&watched);
+    let flush = gio::glib::MainContext::default()
+        .find_source_by_id(
+            watched
+                .browser
+                .live_changes
+                .timer
+                .borrow()
+                .as_ref()
+                .expect("a queued burst schedules a flush"),
+        )
+        .expect("the flush is attached to the default context");
+    drop(watched);
+    assert!(flush.is_destroyed());
+}
