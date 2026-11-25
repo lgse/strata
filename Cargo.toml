@@ -118,7 +118,7 @@ zbus = { version = "6", default-features = false }
 
 [package]
 name = "strata"
-version = "1.2.1"
+version = "1.2.2"
 edition.workspace = true
 description = "A fast, keyboard-first file manager for Linux"
 authors.workspace = true
