@@ -24,8 +24,8 @@ binary:
   converters, and `unsquashfs` are looked up with `sandbox::sandbox_tool`, which
   searches the configured `STRATA_SANDBOX_PATH`, not the user's `PATH`, because
   helpers run inside the sandbox.
-- **Audio playback** checks the zero-GStreamer Linux PCM audio sink
-  (`strata-platform`'s `media-audio` runtime lookup for PulseAudio/PipeWire
+- **Audio playback** checks Rune's Linux PCM audio sink
+  (`rune::AudioOutput`'s runtime lookup for PulseAudio/PipeWire
   `libpulse-simple` or ALSA `libasound`).
 - **GVfs** checks that GIO's default VFS is GVfs, and each backend looks for
   its URI scheme among the schemes GVfs supports. `GIO_USE_VFS=local` means

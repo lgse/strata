@@ -570,7 +570,6 @@ start a compositor session.
 | `STRATA_SWAY_DEBUG=1` | Enables `sway` debug logging in `sway.log` |
 | `STRATA_TEST_PEER` | Overrides path to `strata-test-peer` |
 | `STRATA_TEST_NAUTILUS=1` | Opts into best-effort Nautilus drag/clipboard interop tests in `x2`/`x3` |
-| `STRATA_PLATFORM_TONE=1` | Opts into the audible 440 Hz output test in `strata-platform`'s `media-audio` |
 
 `strata-test-peer` (`crates/strata-platform/tests/support/strata-test-peer/`) acts
 as the second Wayland/X11 client for clipboard, INCR transfer, Wayland/XDND drag

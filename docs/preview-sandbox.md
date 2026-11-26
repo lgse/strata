@@ -620,14 +620,14 @@ One original local file (read-only)
   -> bubblewrap: ffprobe + FFmpeg video/audio decoding and scaling
   -> bounded, validated RGBA frames and PCM blocks
   -> Strata media player: Rune GPU frame presentation
-                        + strata-platform zero-GStreamer Linux PCM audio output
-                          (dlopen PulseAudio/PipeWire or ALSA, silent clock fallback)
+                        + Rune PCM audio output (`rune::AudioOutput`:
+                          dlopen PulseAudio/PipeWire or ALSA, silent clock fallback)
 ```
 
 There is no compressed-video encoding, normalized MP4/WebM temporary file,
 compressed-media pipeline, or original-file URI in the player. FFmpeg's
 `rawvideo` output packs RGBA pixels; `pcm_s16le` packs decoded samples.
-`strata-platform`'s `media-audio` shim receives only validated fixed-format PCM
+`rune::AudioOutput` receives only validated fixed-format PCM
 blocks and streams them through runtime-loaded `libpulse-simple` or `libasound`
 (falling back to a silent software clock when neither audio server is available).
 No decoder-provided path, pipeline, caps string, or compressed packet crosses

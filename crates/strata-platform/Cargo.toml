@@ -34,9 +34,6 @@ clipboard = ["_transfer"]
 # P4 foreign parenting: src/foreign_parent/
 foreign-parent = ["_transfer", "wayland-protocols/unstable"]
 
-# P7 media PCM audio output: src/media/ (zero GStreamer: runtime dlopen of PulseAudio / ALSA with silent clock fallback).
-media-audio = ["dep:libc"]
-
 # P8 single instance and activation: src/single_instance/
 single-instance = [
     "dep:tokio",
@@ -68,16 +65,12 @@ rune.workspace = true
 # Shared by two or more shims: optional, enabled with `dep:` from each feature that uses it.
 # glib: glib-bridge (P9) and glib-loop (V5).
 glib = { workspace = true, optional = true }
-# libc: _transfer (P0) and media-audio (P7).
-libc = { workspace = true, optional = true }
 
 # dnd (P1)
 
 # clipboard (P2)
 
 # foreign-parent (P4)
-
-# media-audio (P7)
 
 # single-instance (P8)
 tokio = { workspace = true, optional = true }
@@ -90,6 +83,7 @@ gio = { workspace = true, optional = true }
 # glib-loop (V5)
 
 # _transfer (P0)
+libc = { workspace = true, optional = true }
 wayland-backend = { workspace = true, optional = true, features = ["client_system"] }
 wayland-client = { workspace = true, optional = true }
 wayland-protocols = { workspace = true, optional = true, features = ["client", "staging"] }
@@ -111,8 +105,6 @@ strata-test-peer.workspace = true
 # clipboard (P2)
 
 # foreign-parent (P4)
-
-# media-audio (P7)
 
 # single-instance (P8): D-Bus client helpers used by tests/session/p8.rs.
 tokio = { workspace = true, features = ["rt", "sync", "time"] }

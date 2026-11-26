@@ -26,10 +26,3 @@ libx11-xcb1
 libxcursor1
 libxi6
 libxrandr2
-
-# P7: `--all-features` builds media-audio, which links GStreamer and gstreamer-app; the ignored
-# tone test (skipped without STRATA_PLATFORM_TONE=1) builds with it. No sound server: the session
-# tests play nothing.
-libgstreamer1.0-dev
-libgstreamer-plugins-base1.0-dev
-gstreamer1.0-plugins-base

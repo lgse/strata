@@ -1865,9 +1865,8 @@ worker:
   link is undone, and a destination that cannot be checked is written only by an exclusive create,
   which never replaces.
 - Search results are checked on the search worker, and only hits proven gone are dropped.
-- A media preview's audio output is built, opened, played, paused, and closed on an audio worker
-  (`strata-platform`'s `media-audio` PCM sink), since loading audio libraries, opening the output
-  device, and draining or closing it can wait on the sound server.
+- A media preview's audio output is streamed, drained, and closed on Rune's audio worker
+  (`rune::AudioOutput`), keeping device writes and draining off the UI thread.
 - The file chooser reads a downloaded link's image type, checks that an earlier download of the
   same link is still there and gives it its image extension on a worker; Open waits for that step.
 - Programs and terminals are resolved and started on a worker, since starting a child waits until

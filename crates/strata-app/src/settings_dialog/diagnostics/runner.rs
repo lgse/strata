@@ -191,10 +191,7 @@ fn system_checks(sender: &Sender<Check>) {
     let send = |check| {
         let _ = sender.send(check);
     };
-    send(audio_playback(strata_platform::media::probe_backend(
-        "Strata",
-        "Diagnostics",
-    )));
+    send(audio_playback(probe_audio_backend()));
     let vfs = detect_vfs();
     send(gvfs(&vfs));
     let session = bus_names(gio::BusType::Session);
@@ -213,6 +210,16 @@ fn system_checks(sender: &Sender<Check>) {
     send(drives(session.as_ref(), system.as_ref()));
     send(session_service(CheckId::Portal, session.as_ref()));
     send(session_service(CheckId::SecretService, session.as_ref()));
+}
+
+fn probe_audio_backend() -> rune::AudioBackend {
+    let spec = rune::AudioOutputSpec::new(rune::SampleFormat::I16, 48_000, 2)
+        .app_name("Strata")
+        .stream_name("Diagnostics");
+    match rune::AudioOutput::open(spec) {
+        Ok(output) => output.backend(),
+        Err(_) => rune::AudioBackend::Silent,
+    }
 }
 
 fn network_checks(sender: &Sender<Check>) {
