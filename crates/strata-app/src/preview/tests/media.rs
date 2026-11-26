@@ -159,7 +159,17 @@ fn ctrl_alt() -> Mods {
 }
 
 fn play_pause(host: &mut Offscreen) {
-    press(host, Key::Text(" ".to_owned()), ctrl_alt());
+    // Playing audio spins the vinyl disc with a looping animation; after Rune's
+    // same-frame follow-up poll, draining `while host.turn() {}` here would spin
+    // until EOF instead of returning once the key has been handled.
+    send_key(
+        host,
+        KeyEvent {
+            key: Key::Text(" ".to_owned()),
+            mods: ctrl_alt(),
+        },
+    );
+    host.turn();
 }
 
 #[test]

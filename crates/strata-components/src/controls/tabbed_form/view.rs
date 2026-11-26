@@ -137,6 +137,7 @@ impl<S: 'static> TabbedForm<S> {
         let last = pages.len().saturating_sub(1);
         let chosen = state.selected().min(last);
         let visit = state.visits;
+        state.built_visit.set(visit);
         let k = &look.kit;
         let n = pages.len();
         let tabs = pages

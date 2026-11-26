@@ -1056,6 +1056,7 @@ fn a_second_copy_press_keeps_the_check_two_seconds_from_itself() {
 fn the_double_click_time_is_the_hosts() {
     for (interval, gap, opens) in [(0.2, 0.3, 2), (1.0, 0.6, 1)] {
         let (mut rt, at) = link_runtime();
+        rt.double_click_interval = interval;
         rt.update(|h, _| h.doc.set_double_click_interval(interval));
         click(&mut rt, at);
         rt.frame(gap);

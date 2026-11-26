@@ -37,6 +37,9 @@ struct Open {
     view: Option<&'static str>,
     /// In Columns, where the keyboard goes when it closes.
     returns: Option<&'static str>,
+    /// Frame clock when a disappearing row queued `tx.focus(SURFACE, false)`, so a same-frame
+    /// follow-up poll does not misread the still-focused disappearing row as focus leaving.
+    focusing_surface_at: Option<f64>,
 }
 
 /// The words, translated once: the language changes only on restart.
@@ -114,6 +117,7 @@ pub(crate) fn toggle(app: &mut App, opener: Opener, tx: &mut Tx) {
         over,
         view,
         returns: opener.in_columns.then_some(view).flatten(),
+        focusing_surface_at: None,
     });
     if let Some(first) = menu::stops(app).first() {
         tx.focus_when_shown(*first, true);
@@ -141,7 +145,14 @@ impl Sort {
     }
 }
 
-fn follow(app: &mut App, tx: &mut Tx) -> bool {
+pub(super) fn focus_surface(app: &mut App, tx: &mut Tx) {
+    if let Some(open) = app.sort.open.as_mut() {
+        open.focusing_surface_at = Some(tx.clock());
+    }
+    tx.focus(menu::SURFACE, false);
+}
+
+fn follow(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     if let Some(key) = app.sort.refocus.take() {
         tx.focus_when_shown(key, true);
         return true;
@@ -151,7 +162,9 @@ fn follow(app: &mut App, tx: &mut Tx) -> bool {
     };
     // A Columns column's button takes no focus: the view keeps it while the menu opens.
     let anchor = open.returns.unwrap_or(&open.anchor);
-    let left = popover::focus_left(tx, anchor, &menu::stops(app), &[menu::SURFACE]);
+    let focusing_surface = open.focusing_surface_at == Some(clock);
+    let left =
+        !focusing_surface && popover::focus_left(tx, anchor, &menu::stops(app), &[menu::SURFACE]);
     let moved =
         shell::view_focus(app) != open.view || app.browser.location_at(open.depth) != open.over;
     if left || moved {
@@ -178,8 +191,8 @@ impl Part for Sort {
         }
     }
 
-    fn poll(app: &mut App, _: f64, tx: &mut Tx) -> bool {
-        follow(app, tx)
+    fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+        follow(app, clock, tx)
     }
 
     fn keyboard(app: &App) -> Option<Holds> {

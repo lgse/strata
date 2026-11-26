@@ -19,23 +19,31 @@ use crate::{App, slots::Frame};
 #[derive(Default)]
 pub(super) struct FieldMenu {
     state: ContextMenuState,
+    /// Frame clock when `tx.resolve_field_menu` was queued; focus returns to the target field
+    /// when Rune latches that request at end-of-frame, after any same-frame follow-up poll.
+    resolving_at: Option<f64>,
 }
 
 impl FieldMenu {
     pub(super) fn is_open(&self) -> bool {
         self.state.is_open()
     }
+
+    pub(super) fn holds_focus(&self, clock: f64) -> bool {
+        self.state.is_open() || self.resolving_at == Some(clock)
+    }
 }
 
 /// Whether the in-window text-field context menu is holding focus for its target field.
-pub(crate) fn is_open(app: &App) -> bool {
-    app.menu.field.is_open()
+pub(crate) fn is_open(app: &App, tx: &Tx) -> bool {
+    app.menu.field.holds_focus(tx.clock())
 }
 
 /// Opens Strata's styled, localized field menu for a `FieldMenuRequest` delivered by Rune.
 pub(crate) fn open(app: &mut App, request: FieldMenuRequest, tx: &mut Tx) {
     let model = map_menu(request.menu().entries());
     let point = request.point();
+    app.menu.field.resolving_at = None;
     app.menu
         .field
         .state
@@ -59,12 +67,14 @@ pub(crate) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     Some(menu.build(app, &app.look, frame.layer))
 }
 
-fn chosen(_: &mut App, intent: MenuIntent, tx: &mut Tx) {
+fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     let MenuIntent::Activate { action, .. } = intent;
+    app.menu.field.resolving_at = Some(tx.clock());
     tx.resolve_field_menu(Some(&action));
 }
 
-fn dismissed(_: &mut App, _: MenuTarget, tx: &mut Tx) {
+fn dismissed(app: &mut App, _: MenuTarget, tx: &mut Tx) {
+    app.menu.field.resolving_at = Some(tx.clock());
     tx.resolve_field_menu(None);
 }
 

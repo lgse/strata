@@ -259,7 +259,7 @@ fn viewer_mut(app: &mut App, id: u64) -> Option<&mut PdfViewer> {
 }
 
 pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
-    let hold = crate::menus::field_menu_open(app);
+    let hold = crate::menus::field_menu_open(app, tx);
     let Viewer::Pdf(pdf) = &mut app.preview.viewer else {
         return false;
     };

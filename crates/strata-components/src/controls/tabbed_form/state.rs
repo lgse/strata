@@ -2,6 +2,7 @@
 
 //! The form's state: the chosen page and a keyboard being carried out of a hidden page.
 
+use std::cell::Cell;
 use std::time::Duration;
 
 use rune::Tx;
@@ -45,6 +46,9 @@ pub struct TabbedFormState {
     selected: usize,
     /// Counts page changes: a rebuilt page's body is keyed by it, so each visit mounts afresh.
     pub(super) visits: u64,
+    /// Last `visits` value committed by `TabbedForm::build`, so a same-frame follow-up poll does
+    /// not overwrite the tab focus before the new panel has mounted.
+    pub(super) built_visit: Cell<u64>,
     /// Where a page switch from the keyboard sends a keyboard the hidden page dropped.
     carry: Option<Carry>,
 }
@@ -94,6 +98,10 @@ impl TabbedFormState {
     }
 
     pub fn tick(&mut self, tx: &mut Tx) -> bool {
+        if self.carry.is_some() && self.built_visit.get() != self.visits {
+            tx.wake_after(Duration::ZERO);
+            return false;
+        }
         match self.carry.take() {
             None => false,
             Some(Carry::Panel { panel, ring }) => {
