@@ -289,6 +289,11 @@ fn wayland_window_offers_three_types_over_shared_data_control() {
         return;
     }
     assert_eq!(probe.attached["own"], false, "{}", probe.attached);
+    assert_eq!(
+        threads_named(probe.app.pid(), "transfer-wl"),
+        0,
+        "shared display uses rune::watch_display_queue, not a background reader thread"
+    );
     let peer = s.peer(Display::Wayland);
     window_offers_three(
         &probe,
@@ -1107,6 +1112,11 @@ fn a_window_attached_after_the_only_attached_one_closed_hears_the_clipboard() {
         (&json!(true), &json!(true)),
         "{first}"
     );
+    assert_eq!(
+        threads_named(app.pid(), "transfer-wl"),
+        0,
+        "shared display uses rune::watch_display_queue, not a background reader thread"
+    );
     let (at, mime) = offer("one");
     app.wait_json_from(at, "the peer's first selection", |v| heard(v, &mime));
 
@@ -1118,21 +1128,15 @@ fn a_window_attached_after_the_only_attached_one_closed_hears_the_clipboard() {
         assert!(std::time::Instant::now() < deadline, "w1 never went");
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
+    // With `rune::watch_display_queue`, winit's event loop dispatches the shared queue on the UI
+    // thread even after the last attached window closed, without waiting for another window.
     let (at, two) = offer("two");
-    std::thread::sleep(std::time::Duration::from_millis(500));
-    assert!(
-        !app.lines()[at..]
-            .iter()
-            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-            .any(|v| heard(&v, &two)),
-        "heard with no live window attached: the reader wasn't waiting"
-    );
+    app.wait_json_from(at, "the selection while no attached window lived", |v| {
+        heard(v, &two)
+    });
 
     let second = open("w2");
     assert_eq!(second["fresh"], false, "{second}");
-    app.wait_json_from(at, "the selection queued while no window lived", |v| {
-        heard(v, &two)
-    });
     let (at, mime) = offer("three");
     app.wait_json_from(at, "a selection after w2 attached", |v| heard(v, &mime));
     let at = app.line_count();
@@ -1208,10 +1212,10 @@ fn an_x11_window_hears_it_lost_the_clipboard() {
         Via::X11,
         &[Offer::text(UTF8, "the peer's")],
     );
-    probe.wait(at, "losing the clipboard", |v| {
+    let (at, _) = probe.wait(at, "losing the clipboard", |v| {
         v["ev"] == "cancelled" && v["source"] == source
     });
-    probe.wait(at, "the peer's selection", |v| {
+    probe.wait(at + 1, "the peer's selection", |v| {
         v["ev"] == "selection"
             && v["via"] == "x11"
             && v["mimes"]

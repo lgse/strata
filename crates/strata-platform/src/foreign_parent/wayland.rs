@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use rune::{AppHandle, WindowHandle};
+use rune::WindowHandle;
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 use wayland_protocols::xdg::foreign::zv2::client::zxdg_imported_v2::{self, ZxdgImportedV2};
 use wayland_protocols::xdg::foreign::zv2::client::zxdg_importer_v2::ZxdgImporterV2;
@@ -12,7 +12,7 @@ use super::outcome::{Fallback, Outcome, Reason, WindowSystem};
 use super::parent::WaylandHandle;
 use super::policy;
 use crate::transfer::wayland::{Conn, State};
-use crate::transfer::{Error, Status, Transfer, Turn, Unsupported, Wants};
+use crate::transfer::{Error, Status, Transfer, Unsupported, Wants};
 
 /// Runs a window's `on_lost` in its app, through `AppHandle::update`.
 pub(super) type Lost = Box<dyn FnOnce() + Send>;
@@ -66,25 +66,17 @@ pub(super) struct Test {
 }
 
 /// Makes `window` (a Wayland window, key `key`) transient for the window `handle` names.
-pub(super) fn apply<S: 'static>(
+pub(super) fn apply(
     window: &WindowHandle,
-    app: &AppHandle<S>,
     handle: &WaylandHandle,
     lost: Option<Lost>,
     test: Test,
 ) -> Outcome {
-    let handle_app = app.clone();
-    let turn: Turn = Arc::new(move |f| {
-        handle_app.update_if(move |_, _| {
-            f();
-            false
-        });
-    });
     let wants = Wants {
         as_if_no_shared_display: test.as_if_no_shared_display,
         ..Wants::default()
     };
-    let transfer = match Transfer::attach(window, turn, wants) {
+    let transfer = match Transfer::attach(window, wants) {
         Ok((t, _)) => t,
         Err(e) => return attach_failed(&e),
     };

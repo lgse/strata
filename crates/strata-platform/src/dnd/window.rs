@@ -136,10 +136,6 @@ impl<S: 'static> Sink for Core<S> {
 
 /// Runs `job` for window `key`, on the UI thread, in its update. True if app code ran.
 fn run<S: 'static>(key: &str, job: Job, s: &mut S, tx: &mut Tx) -> bool {
-    if let Job::Run(f) = job {
-        f();
-        return false;
-    }
     hub::route();
     let Some(core) = hub::core::<Core<S>>(key) else {
         return false;
@@ -152,7 +148,7 @@ impl<S: 'static> Core<S> {
     fn run_job(self: &Rc<Self>, job: Job, s: &mut S, tx: &mut Tx) -> bool {
         let core = self;
         match job {
-            Job::Pump | Job::Run(_) => core.drain(s, tx),
+            Job::Pump => core.drain(s, tx),
             Job::Dropped(id) => core.deliver(id, s, tx),
             Job::Peeked {
                 serial,

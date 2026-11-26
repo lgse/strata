@@ -2,21 +2,23 @@
 
 //! Internal transfer substrate shared by `dnd`, `clipboard`, and `foreign-parent`.
 //!
-//! Uses `WindowHandle::with_raw_display_handle` to share winit's Wayland display; Rune still
-//! lacks an every-turn dispatch hook for a custom Wayland queue ([anomalyco/rune#522]).
+//! Uses `WindowHandle::with_raw_display_handle` to share winit's Wayland display and
+//! `rune::watch_display_queue` to dispatch its secondary queue on the UI thread without a
+//! background reader thread. A separate `Connection::connect_to_env` connection (for data control
+//! when winit's display cannot be shared or `DataControl::Own` is requested) runs its own reader
+//! thread (`transfer-wl-own`) on its private socket.
 //!
 //! Invariants:
-//! - On winit's Wayland display, every request and dispatch must run on the UI thread (the
-//!   reader thread never dispatches).
+//! - On winit's Wayland display, every request and dispatch runs on the UI thread.
 //! - Call [`Transfer::shutdown`] on the UI thread before the event loop tears down the display
 //!   (from `App::on_display_close`, `App::on_quit`, or the last window's `on_close`) so proxies
 //!   bound on winit's display are destroyed while the display is still alive; dropping them after
-//!   winit frees the display segfaults.
+//!   winit frees the display segfaults. Rune stops and drops `DisplayQueueWatch` closures strictly
+//!   before `App::on_display_close`.
 
 mod data;
 mod error;
 mod event;
-mod gate;
 pub mod mime;
 pub(crate) mod pipe;
 pub(crate) mod wayland;
@@ -36,8 +38,6 @@ pub use x11::HandOff;
 
 use event::Subscribers;
 use windows::Windows;
-
-pub type Turn = Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
 
 /// Where data control goes on Wayland.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -115,7 +115,7 @@ struct Hub {
     /// The thread that attached: the UI thread.
     ui: std::thread::ThreadId,
     status: Status,
-    /// Every attached window, with its turn.
+    /// Every attached window, used to map Wayland drag target surfaces to window keys.
     windows: Arc<Windows>,
     subs: Subscribers,
     backend: Backend,
@@ -135,21 +135,10 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 pub struct Transfer(Arc<Hub>);
 
 impl Transfer {
-    pub fn attach(
-        window: &WindowHandle,
-        turn: Turn,
-        wants: Wants,
-    ) -> Result<(Transfer, bool), Error> {
+    pub fn attach(window: &WindowHandle, wants: Wants) -> Result<(Transfer, bool), Error> {
         let mut hub = lock(&HUB);
         if let Some(h) = hub.as_ref() {
-            h.windows.attach(window.clone(), turn);
-            // The reader may be waiting on turns posted only to windows that closed since.
-            if let Backend::Wayland {
-                shared: Some(c), ..
-            } = &h.backend
-            {
-                c.wake_reader();
-            }
+            h.windows.attach(window.clone());
             return Ok((Transfer(h.clone()), false));
         }
         let kind = window
@@ -161,7 +150,7 @@ impl Transfer {
             .map_err(Error::WindowClosed)?
             .map_err(|k| Error::Unsupported(Unsupported::NotLinux(k)))?;
         let windows = Arc::new(Windows::default());
-        windows.attach(window.clone(), turn);
+        windows.attach(window.clone());
         let subs = Subscribers::default();
         let (backend, status) = match kind {
             "wayland" => wayland_backend(window, &windows, &subs, wants)?,

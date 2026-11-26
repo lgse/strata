@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use rune::raw_window_handle::RawWindowHandle;
 use rune::{DragOutcome, Mods, WindowHandle};
 
-use crate::transfer::{self, ReadError, Subscription, Transfer, Turn, Wants};
+use crate::transfer::{self, ReadError, Subscription, Transfer, Wants};
 
 use super::api::{Actions, DragAction, DragItem, Error, Status};
 use super::icon::{self, DragImage};
@@ -29,11 +29,7 @@ pub(crate) enum Job {
         bytes: Vec<u8>,
     },
     /// The picture of drag `id`, rendered.
-    Icon {
-        id: u64,
-        image: Option<DragImage>,
-    },
-    Run(Box<dyn FnOnce() + Send>),
+    Icon { id: u64, image: Option<DragImage> },
 }
 
 pub(crate) type Poster = Arc<dyn Fn(Job) + Send + Sync>;
@@ -196,14 +192,12 @@ pub(crate) fn attach(
 ) -> Result<Status, Error> {
     let fresh = HUB.with(|h| h.borrow().is_none());
     if fresh {
-        let turn_poster = poster.clone();
-        let turn: Turn = Arc::new(move |f| turn_poster(Job::Run(f)));
         let wants = Wants {
             as_if_no_shared_display: test.as_if_no_shared_display,
             as_if_no_data_control: test.as_if_no_data_control,
             ..Wants::default()
         };
-        let (t, _) = Transfer::attach(window, turn, wants)?;
+        let (t, _) = Transfer::attach(window, wants)?;
         let posters = Posters::default();
         let wake = posters.clone();
         let sub = t.subscribe(move || wake.wake_all());
@@ -251,11 +245,9 @@ pub(crate) fn attach(
             sink,
             core,
         });
-        let turn_poster = poster.clone();
         hub.posters.set(&key, poster);
         if !fresh {
-            let turn: Turn = Arc::new(move |f| turn_poster(Job::Run(f)));
-            let _ = Transfer::attach(window, turn, Wants::default());
+            let _ = Transfer::attach(window, Wants::default());
         }
         if let (Some(x), Some(xid)) = (hub.transfer.x11(), xid) {
             x11::add_window(x, &key, xid);

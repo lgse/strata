@@ -7,13 +7,14 @@ mod offer;
 mod reader;
 
 use std::any::{Any, TypeId};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rune::WindowHandle;
 use rune::raw_window_handle::RawWindowHandle;
+use rune::{DisplayQueueWatch, WindowHandle};
 use wayland_backend::client::ObjectId;
 use wayland_client::globals::{GlobalList, GlobalListContents, registry_queue_init};
 use wayland_client::protocol::wl_callback::{self, WlCallback};
@@ -35,7 +36,6 @@ use wayland_client::{
 use super::data::SourceSpec;
 use super::error::{Error, Unsupported};
 use super::event::{Action, Event, Route, Selection, SelectionOffer, SourceId, Subscribers};
-use super::gate::Gate;
 use super::pipe;
 use super::windows::Windows;
 use control::Control;
@@ -43,6 +43,11 @@ use echo::Echoes;
 pub use offer::DragOffer;
 use offer::{AnyOffer, Home, WlSelection};
 use reader::Reader;
+
+thread_local! {
+    /// UI-thread watch on winit's shared `wl_display` queue; dropped on shutdown or fatal error.
+    static WATCH: RefCell<Option<DisplayQueueWatch>> = const { RefCell::new(None) };
+}
 
 /// Which data-control protocol to bind when the compositor has both.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -271,15 +276,13 @@ pub(crate) struct Conn {
     qh: QueueHandle<State>,
     /// Kept for the protocols other modules bind later ([`Conn::with_globals`]).
     globals: Mutex<Option<GlobalList>>,
-    gate: Arc<Gate>,
+    /// Background reader for a separate `Kind::Own` connection; `None` for `Kind::Shared`.
     reader: Mutex<Option<Reader>>,
     subs: Subscribers,
-    /// The attached windows (winit's display): the reader's turns go through them.
+    /// The attached windows (winit's display), used to map drag target surfaces to window keys.
     windows: Arc<Windows>,
     /// A dispatch failed: the connection is dead, and that was reported once.
     failed: AtomicBool,
-    /// A Turn ran dispatch off the UI thread, and that was reported once.
-    misrouted: AtomicBool,
 }
 
 impl Conn {
@@ -344,67 +347,52 @@ impl Conn {
         queue
             .roundtrip(&mut state)
             .map_err(|e| Error::Connection(e.to_string()))?;
-        let gate = Arc::new(Gate::default());
         let c = Arc::new(Conn {
             queue: Mutex::new(Some(queue)),
             home,
             globals: Mutex::new(Some(globals)),
             failed: AtomicBool::new(false),
-            misrouted: AtomicBool::new(false),
             state: Mutex::new(state),
             qh,
-            gate: gate.clone(),
             reader: Mutex::new(None),
             subs: subs.clone(),
             windows: windows.clone(),
         });
         let weak = Arc::downgrade(&c);
-        let failed = {
-            let weak = weak.clone();
-            move |message: String| {
-                if let Some(c) = weak.upgrade() {
-                    c.report_failure(message);
-                }
-            }
-        };
-        let reader = match kind {
+        match kind {
             Kind::Shared => {
-                let gate = gate.clone();
-                Reader::spawn(
-                    "transfer-wl",
-                    conn,
-                    gate.clone(),
+                let pending_weak = weak.clone();
+                let dispatch_weak = weak;
+                let watch = rune::watch_display_queue(
+                    move || pending_weak.upgrade().is_some_and(|c| c.has_pending()),
                     move || {
-                        let before = gate.turns();
-                        windows.post(|| {
-                            let weak: Weak<Conn> = weak.clone();
-                            Box::new(move || {
-                                if let Some(c) = weak.upgrade()
-                                    && let Err(e) = c.dispatch()
-                                {
-                                    c.report_misrouted_turn(e);
-                                }
-                            })
-                        });
-                        gate.wait(before);
+                        if let Some(c) = dispatch_weak.upgrade() {
+                            let _ = c.dispatch();
+                        }
                     },
-                    failed,
-                )
+                );
+                WATCH.with(|slot| *slot.borrow_mut() = Some(watch));
             }
-            Kind::Own => Reader::spawn(
-                "transfer-wl-own",
-                conn,
-                gate,
-                move || {
-                    if let Some(c) = weak.upgrade() {
-                        c.dispatch_here();
-                    }
-                },
-                failed,
-            ),
+            Kind::Own => {
+                let fail_weak = weak.clone();
+                let reader = Reader::spawn(
+                    "transfer-wl-own",
+                    conn,
+                    move || {
+                        if let Some(c) = weak.upgrade() {
+                            c.dispatch_here();
+                        }
+                    },
+                    move |message| {
+                        if let Some(c) = fail_weak.upgrade() {
+                            c.report_failure(message);
+                        }
+                    },
+                )
+                .map_err(|e| Error::Connection(e.to_string()))?;
+                *lock(&c.reader) = Some(reader);
+            }
         }
-        .map_err(|e| Error::Connection(e.to_string()))?;
-        *lock(&c.reader) = Some(reader);
         Ok(c)
     }
 
@@ -416,18 +404,21 @@ impl Conn {
         lock(&self.state).device.is_some()
     }
 
+    fn has_pending(&self) -> bool {
+        if self.failed.load(Ordering::Acquire) {
+            return false;
+        }
+        let queue = lock(&self.queue);
+        queue.as_ref().is_some_and(|q| q.prepare_read().is_none())
+    }
+
     pub(crate) fn dispatch(&self) -> Result<bool, Error> {
         if !self.home.here() {
             return Err(Error::Refused(ON_UI));
         }
         let any = self.dispatch_here();
-        self.gate.turned();
         self.windows.prune();
         Ok(any)
-    }
-
-    pub(crate) fn wake_reader(&self) {
-        self.gate.turned();
     }
 
     fn dispatch_here(&self) -> bool {
@@ -463,16 +454,13 @@ impl Conn {
         any
     }
 
-    fn report_misrouted_turn(&self, e: Error) {
-        if !self.misrouted.swap(true, Ordering::AcqRel) {
-            self.subs.emit(vec![Event::Failed {
-                message: format!("the Turn ran dispatch off the UI thread, so events stop: {e}"),
-            }]);
-        }
-    }
-
     fn report_failure(&self, message: String) {
         if !self.failed.swap(true, Ordering::AcqRel) {
+            if self.home.ui.is_some() && self.home.here() {
+                WATCH.with(|slot| {
+                    slot.borrow_mut().take();
+                });
+            }
             lock(&self.state).forget_all();
             self.subs.emit(vec![Event::Failed { message }]);
         }
@@ -613,6 +601,11 @@ impl Conn {
     }
 
     pub(crate) fn shutdown(&self) {
+        if self.home.ui.is_some() {
+            WATCH.with(|slot| {
+                slot.borrow_mut().take();
+            });
+        }
         if let Some(reader) = lock(&self.reader).take() {
             reader.stop();
         }
@@ -776,7 +769,6 @@ impl Conn {
             (std::mem::take(&mut state.events), outcome)
         };
         self.subs.emit(events);
-        self.gate.turned();
         match dead {
             Ok(Some(message)) => {
                 self.report_failure(message.clone());
