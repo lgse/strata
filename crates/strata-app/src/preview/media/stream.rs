@@ -7,10 +7,12 @@ use std::{
     time::Duration,
 };
 
-use rune::Tx;
+use rune::{
+    AudioEvent, AudioOutput, AudioOutputError, AudioOutputSpec, AudioOutputState, AudioPushError,
+    SampleFormat, Tx,
+};
 use strata_components::media_player::{PlaybackClock, PlaybackState};
 use strata_fs::services::{MediaPreviewSize, SandboxedMedia};
-use strata_platform::media::{OutputConfig, OutputError, PcmOutput, PcmSpec, SampleFormat};
 use strata_preview::{
     media::{self, Frame, Header, Packet},
     sandbox::media::{Event, Session},
@@ -20,8 +22,8 @@ use super::{history::PcmHistory, positions};
 use crate::{App, slots::Later};
 
 pub(super) const PRESENTATION_QUEUE: usize = 3;
-/// Interleaved PCM format emitted by the sandboxed decoder (48 kHz stereo S16LE).
-const AUDIO_SPEC: PcmSpec = PcmSpec::new(SampleFormat::S16Le, media::SAMPLE_RATE as u32, 2);
+/// Interleaved stereo PCM emitted by the sandboxed decoder (48 kHz S16LE).
+const AUDIO_CHANNELS: u16 = 2;
 /// Lookahead buffered in the PCM sink: covers the first record's lead plus presentation slack.
 const AUDIO_LOOKAHEAD: Duration =
     Duration::from_micros((media::AUDIO_LEAD_TICKS as u64 + 12) * 1_000_000 / media::FPS as u64);
@@ -151,7 +153,7 @@ pub(super) struct Stream {
     starting: Option<f64>,
     header: Option<Header>,
     frames: VecDeque<Frame>,
-    audio: Option<PcmOutput>,
+    audio: Option<AudioOutput>,
     history: Option<PcmHistory>,
     pending_audio: VecDeque<Vec<u8>>,
     audio_chunks: u32,
@@ -246,7 +248,7 @@ impl Stream {
     }
 
     fn played_frame(&self) -> Option<u64> {
-        self.audio.as_ref().map(PcmOutput::position_frames)
+        self.audio.as_ref().map(AudioOutput::heard_frames)
     }
 
     fn clear_history(&mut self) {
@@ -261,7 +263,7 @@ impl Stream {
         }
     }
 
-    /// Applies linear output volume (`0.0..=1.0+`) and mute immediately to live audio.
+    /// Applies linear output volume (`0.0..=1.0`) and mute immediately to live audio.
     pub(super) fn set_audio(&mut self, volume: f32, muted: bool) {
         self.volume = volume;
         self.muted = muted;
@@ -275,7 +277,7 @@ impl Stream {
     pub(in crate::preview) fn audio_levels(&self) -> Option<(f32, bool)> {
         self.audio
             .as_ref()
-            .map(|audio| (audio.volume(), audio.is_muted()))
+            .map(|audio| (audio.volume(), audio.muted()))
     }
 
     pub(super) fn error(&self) -> Option<&str> {
@@ -391,6 +393,7 @@ impl Stream {
         self.settle_resize();
         self.release_idle();
         self.start_waiting(tx);
+        self.poll_audio_events();
         self.drain_pending_audio();
         self.trim_history();
         self.flush_room();
@@ -526,25 +529,48 @@ impl Stream {
             return;
         }
         if let Some(audio) = &self.audio {
-            audio.pause();
-            audio.flush();
-            audio.set_volume(self.volume);
-            audio.set_muted(self.muted);
-            return;
+            if !matches!(audio.state(), AudioOutputState::DeviceLost(_)) {
+                audio.pause();
+                audio.flush();
+                audio.set_volume(self.volume);
+                audio.set_muted(self.muted);
+                return;
+            }
+            self.audio = None;
         }
-        let config = OutputConfig::new(AUDIO_SPEC)
-            .app_name("Strata")
-            .stream_name("Media preview")
-            .buffer_duration(AUDIO_LOOKAHEAD)
-            .volume(self.volume)
-            .muted(self.muted)
-            .silent_only(cfg!(test));
-        match PcmOutput::open(config) {
+        match open_audio_output(self.volume, self.muted) {
             Ok(output) => self.audio = Some(output),
             Err(error) => {
                 tracing::warn!(%error, "unable to open PCM audio output; using silent clock");
             }
         }
+    }
+
+    fn poll_audio_events(&mut self) {
+        let Some(audio) = &self.audio else {
+            return;
+        };
+        let mut device_lost = None;
+        for event in audio.take_events() {
+            if let AudioEvent::DeviceLost(reason) = event {
+                device_lost = Some(reason);
+            }
+        }
+        if let Some(reason) = device_lost {
+            tracing::warn!(%reason, "audio output device lost; using silent clock");
+            self.degrade_to_silent_clock();
+        }
+    }
+
+    fn degrade_to_silent_clock(&mut self) {
+        self.capture();
+        self.audio = None;
+        self.pending_audio.clear();
+        self.audio_eos_pending = false;
+        if self.playing && self.first_frame {
+            self.anchor = Some((self.now, self.position_us));
+        }
+        self.flush_room();
     }
 
     fn on_end(&mut self, duration: u64) {
@@ -610,9 +636,17 @@ impl Stream {
         if self.pending_audio.is_empty()
             && let Some(audio) = &self.audio
         {
-            match audio.push(block) {
-                Ok(()) => return,
-                Err(OutputError::BufferFull) => {}
+            match audio.push_bytes(block) {
+                Ok(written) if written >= block.len() => return,
+                Ok(written) => {
+                    self.pending_audio.push_back(block[written..].to_vec());
+                    return;
+                }
+                Err(AudioPushError::Full) => {}
+                Err(AudioPushError::DeviceLost) => {
+                    self.degrade_to_silent_clock();
+                    return;
+                }
                 Err(_) => return,
             }
         }
@@ -620,21 +654,38 @@ impl Stream {
     }
 
     fn drain_pending_audio(&mut self) {
-        while let Some(front) = self.pending_audio.front() {
+        let mut device_lost = false;
+        while let Some(front) = self.pending_audio.front_mut() {
             let Some(audio) = &self.audio else {
                 self.pending_audio.clear();
                 break;
             };
-            match audio.push(front) {
-                Ok(()) => {
+            match audio.push_bytes(front) {
+                Ok(written) if written >= front.len() => {
                     self.pending_audio.pop_front();
                 }
-                Err(OutputError::BufferFull) => break,
+                Ok(0) | Err(AudioPushError::Full) => break,
+                Ok(written) => {
+                    front.drain(..written);
+                    break;
+                }
+                Err(AudioPushError::DeviceLost) => {
+                    device_lost = true;
+                    break;
+                }
                 Err(_) => {
                     self.pending_audio.pop_front();
                 }
             }
         }
+        if device_lost {
+            self.degrade_to_silent_clock();
+            return;
+        }
+        self.finish_audio_if_eos();
+    }
+
+    fn finish_audio_if_eos(&mut self) {
         if self.audio_eos_pending && self.pending_audio.is_empty() {
             self.audio_eos_pending = false;
             if let Some(audio) = &self.audio {
@@ -647,9 +698,12 @@ impl Stream {
         if !self.pending_audio.is_empty() {
             return false;
         }
-        self.audio
-            .as_ref()
-            .is_none_or(|audio| audio.has_capacity(media::AUDIO_BYTES))
+        self.audio.as_ref().is_none_or(|audio| {
+            !matches!(
+                audio.state(),
+                AudioOutputState::Draining | AudioOutputState::Ended
+            ) && audio.free_bytes() >= media::AUDIO_BYTES
+        })
     }
 
     fn flush_room(&mut self) {
@@ -698,7 +752,7 @@ impl Stream {
             if !self.first_frame {
                 return;
             }
-            let heard_us = u64::try_from(audio.position().as_micros()).unwrap_or(u64::MAX);
+            let heard_us = u64::try_from(audio.heard_duration().as_micros()).unwrap_or(u64::MAX);
             self.position_us = self.audio_base_us.saturating_add(heard_us).min(limit);
             return;
         }
@@ -715,7 +769,8 @@ impl Stream {
         };
         if let Some(audio) = &self.audio {
             let by_time = self.position_us.saturating_add(AUDIO_END_TOLERANCE_US) >= end;
-            let by_drain = self.pending_audio.is_empty() && audio.is_drained();
+            let by_drain =
+                self.pending_audio.is_empty() && audio.state() == AudioOutputState::Ended;
             if by_time || by_drain {
                 self.position_us = end;
                 return true;
@@ -775,6 +830,22 @@ impl Stream {
             positions::forget(&path);
         }
     }
+}
+
+fn open_audio_output(volume: f32, muted: bool) -> Result<AudioOutput, AudioOutputError> {
+    let spec = AudioOutputSpec::new(SampleFormat::I16, media::SAMPLE_RATE as u32, AUDIO_CHANNELS)
+        .app_name("Strata")
+        .stream_name("Media preview")
+        .buffer_duration(AUDIO_LOOKAHEAD)
+        .volume(volume)
+        .muted(muted);
+    if cfg!(test) {
+        return AudioOutput::open_silent(spec);
+    }
+    AudioOutput::open(spec.clone()).or_else(|error| {
+        tracing::debug!(%error, "unable to open system audio output; using silent sink");
+        AudioOutput::open_silent(spec)
+    })
 }
 
 impl Drop for Stream {

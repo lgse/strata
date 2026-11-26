@@ -462,7 +462,7 @@ fn audio_preview_advances_on_pcm_clock_applies_mute_and_reaches_eof() {
             let muted = host.run_until(PATIENCE, |host| {
                 audio_levels(host).is_some_and(|(_, muted)| muted)
             });
-            assert!(muted, "mute state propagates to PcmOutput");
+            assert!(muted, "mute state propagates to AudioOutput");
 
             play_pause(&mut host);
             shows(&mut host, MediaState::playing, "audio playing on PCM clock");
@@ -495,7 +495,7 @@ fn video_with_audio_paces_frames_to_pcm_clock_and_reaches_eof() {
             shows(&mut host, ready, "first frame and duration with audio");
             assert!(
                 audio_levels(&host).is_some(),
-                "video with audio opens PcmOutput"
+                "video with audio opens AudioOutput"
             );
 
             play_pause(&mut host);

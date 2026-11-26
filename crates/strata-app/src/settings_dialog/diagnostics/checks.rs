@@ -4,9 +4,9 @@
 
 use std::{collections::HashSet, path::Path};
 
+use rune::AudioBackend;
 use strata_desktop::services::package_manager::PackageManager;
 use strata_fs::services::network_error::NetworkError;
-use strata_platform::media::BackendKind;
 use strata_preview::sandbox::browser::WorkerSupport;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -442,21 +442,21 @@ pub(super) fn media_previews(
     sample_check(id, read)
 }
 
-pub(super) fn audio_playback(backend: BackendKind) -> Check {
+pub(super) fn audio_playback(backend: AudioBackend) -> Check {
     match backend {
-        BackendKind::PulseAudio => Check::passed(
+        AudioBackend::PulseAudio => Check::passed(
             CheckId::AudioPlayback,
             Finding::AudioOutput {
                 sink: "PulseAudio".to_owned(),
             },
         ),
-        BackendKind::Alsa => Check::passed(
+        AudioBackend::Alsa => Check::passed(
             CheckId::AudioPlayback,
             Finding::AudioOutput {
                 sink: "ALSA".to_owned(),
             },
         ),
-        BackendKind::Silent => Check::not_run(CheckId::AudioPlayback),
+        _ => Check::not_run(CheckId::AudioPlayback),
     }
 }
 

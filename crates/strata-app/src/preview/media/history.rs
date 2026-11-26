@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 
 pub(super) const HISTORY_SAMPLES: usize = 48_000;
 
-/// Mono PCM indexed by samples since the last restart/flush, matching `PcmOutput::position_frames`.
+/// Mono PCM indexed by samples since the last restart/flush, matching `AudioOutput::heard_frames`.
 #[derive(Default)]
 pub(super) struct PcmHistory {
     samples: VecDeque<f32>,
