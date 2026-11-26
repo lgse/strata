@@ -91,7 +91,7 @@ pub(super) fn poll(app: &mut App, tx: &mut Tx) -> bool {
     app.customize
         .custom
         .picker
-        .hold(crate::menus::field_menu_open(app));
+        .hold(crate::menus::field_menu_open(app, tx));
     picker().poll(app, tx)
 }
 

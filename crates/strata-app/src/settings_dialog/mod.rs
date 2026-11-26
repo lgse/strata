@@ -499,7 +499,7 @@ impl Part for SettingsDialog {
         }
         changed |= sync_open_settings(app);
         changed |= controls::search_handle().tick(app, clock, tx);
-        let hold_fields = crate::menus::field_menu_open(app);
+        let hold_fields = crate::menus::field_menu_open(app, tx);
         app.settings_dialog.hold_number_fields(hold_fields);
         changed |= general_more::workers_field().poll(app, tx);
         changed |= general::video_start_field().poll(app, tx);

@@ -174,7 +174,9 @@ impl Part for Bar {
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
-        app.location.state.hold(crate::menus::field_menu_open(app));
+        app.location
+            .state
+            .hold(crate::menus::field_menu_open(app, tx));
         let polled = app.location.state.tick(clock, tx);
         let changed = polled.changed;
         intents::route_ticked(app, polled, tx);

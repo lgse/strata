@@ -40,6 +40,9 @@ pub struct RenameState {
 enum Hold {
     #[default]
     None,
+    /// Set by `menu_opened` before the commit that mounts the menu; survives a same-frame
+    /// follow-up poll while the field still holds focus.
+    Opening,
     Opened,
     /// The menu has the keyboard.
     Lost,
@@ -188,7 +191,10 @@ impl RenameState {
         }
         if self.edit.focused {
             self.seen_focus = true;
-            self.hold = Hold::None;
+            self.hold = match self.hold {
+                Hold::Opening => Hold::Opened,
+                Hold::Opened | Hold::Lost | Hold::None => Hold::None,
+            };
         } else if self.seen_focus {
             if self.hold == Hold::None {
                 return self.commit(By::Blur);
@@ -201,7 +207,7 @@ impl RenameState {
     /// The host opened a field menu for a `RenameIntent::FieldMenu`, one that takes the keyboard.
     pub fn menu_opened(&mut self) {
         if self.open.is_some() {
-            self.hold = Hold::Opened;
+            self.hold = Hold::Opening;
         }
     }
 

@@ -447,7 +447,7 @@ fn make_default(app: &mut App, tx: &mut Tx) {
     if let Some(prune) = prune {
         folder_views::change_sorts(app, |views| prune.apply(views), tx);
     }
-    tx.focus(SURFACE, false);
+    super::focus_surface(app, tx);
 }
 
 fn reset(app: &mut App, tx: &mut Tx) {
@@ -463,5 +463,5 @@ fn reset(app: &mut App, tx: &mut Tx) {
         folder_views::change_sorts(app, |views| forgotten.apply(views), tx);
     }
     browser.restore_default_sort(depth, browser.preferences().sort_options());
-    tx.focus(SURFACE, false);
+    super::focus_surface(app, tx);
 }

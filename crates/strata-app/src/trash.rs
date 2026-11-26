@@ -401,6 +401,12 @@ fn show(app: &mut App, entries: Vec<FileEntry>, kind: Kind) {
         app.trash.waiting = Some((entries, kind));
         return;
     }
+    if let Some((asked, _)) = &mut app.trash.waiting {
+        not_again(asked, &entries);
+        if asked.is_empty() {
+            app.trash.waiting = None;
+        }
+    }
     let reach = deletion_reach(&entries);
     let trash = &mut app.trash;
     trash.opened += 1;
