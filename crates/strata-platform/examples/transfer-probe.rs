@@ -23,7 +23,7 @@ mod probe {
     use serde_json::{Value, json};
     use strata_platform::transfer::{
         Action, DataControl, DragOffer, Event, Prefer, ReadLimits, Route, Selection, SourceId,
-        SourceSpec, Transfer, Turn, Wants, Writer,
+        SourceSpec, Transfer, Wants, Writer,
     };
     use strata_test_peer::protocol::{self, Offer, Via, fnv1a64};
 
@@ -107,20 +107,8 @@ mod probe {
         Transfer::current()
     }
 
-    fn attach<S: 'static>(
-        w: &WindowHandle,
-        handle: &AppHandle<S>,
-        wants: Wants,
-        key: Option<&str>,
-    ) {
-        let turn_handle = handle.clone();
-        let turn: Turn = Arc::new(move |f| {
-            turn_handle.update_if(move |_, _| {
-                f();
-                false
-            });
-        });
-        match Transfer::attach(w, turn, wants) {
+    fn attach(w: &WindowHandle, wants: Wants, key: Option<&str>) {
+        match Transfer::attach(w, wants) {
             Ok((t, fresh)) => {
                 let s = t.status();
                 log(
@@ -428,10 +416,9 @@ mod probe {
             extra_view,
         ))
         .on_close(|s: &mut Extra, _: &mut Tx| log("window-closed", json!({ "key": s.key })));
-        let handle = app.handle();
         let k = key.to_owned();
         let wants = WANTS.get().copied().unwrap_or_default();
-        let app = app.on_window(move |w: &WindowHandle| attach(w, &handle, wants, Some(&k)));
+        let app = app.on_window(move |w: &WindowHandle| attach(w, wants, Some(&k)));
         let spec = WindowSpec::from_app(key, app).state(Extra {
             key: key.to_owned(),
         });
@@ -507,7 +494,6 @@ mod probe {
                 stdin_handle.update(move |_, tx| command(&line, tx, &h));
             }
         });
-        let attach_handle = handle.clone();
         let _ = WANTS.set(wants);
         let host = flag("--host");
         static DRAWN: AtomicBool = AtomicBool::new(false);
@@ -515,7 +501,7 @@ mod probe {
         let result = app
             .on_window(move |w: &WindowHandle| {
                 if !host {
-                    attach(w, &attach_handle, wants, None);
+                    attach(w, wants, None);
                 }
             })
             .on_ready(|_: &WindowHandle| log("ready", json!({})))

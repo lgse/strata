@@ -8,9 +8,7 @@ use std::time::Duration;
 
 use rune::WindowHandle;
 
-use crate::transfer::{
-    self, SelectionOffer, SourceId, SourceSpec, Subscription, Transfer, Turn, Wants,
-};
+use crate::transfer::{self, SelectionOffer, SourceId, SourceSpec, Subscription, Transfer, Wants};
 
 use super::api::{
     Change, Closed, CopyId, CopyState, Data, Error, HandOff, Limits, Offered, ReadError, Route,
@@ -24,7 +22,6 @@ use super::handle::TestRoute;
 pub(super) enum Job {
     /// Take in what the platform reported, then deliver this handle's changes.
     Pump,
-    Run(Box<dyn FnOnce() + Send>),
     /// Read `id` finished.
     Read {
         id: u64,
@@ -146,8 +143,6 @@ pub(super) fn attach(
 ) -> Result<Status, Error> {
     let fresh = HUB.with(|h| h.borrow().is_none());
     if fresh {
-        let turn_poster = poster.clone();
-        let turn: Turn = Arc::new(move |f| turn_poster(Job::Run(f)));
         let wants = Wants {
             as_if_no_shared_display: test.as_if_no_shared_display,
             as_if_no_data_control: test.as_if_no_data_control,
@@ -155,7 +150,7 @@ pub(super) fn attach(
             x11_fallback: true,
             ..Wants::default()
         };
-        let (t, _) = Transfer::attach(window, turn, wants)?;
+        let (t, _) = Transfer::attach(window, wants)?;
         let (route, status) = route_of(&t)?;
         let posters = Posters::default();
         let wake = posters.clone();
@@ -185,9 +180,7 @@ pub(super) fn attach(
         // Events read while binding wait for a dispatch (winit's display).
         let _ = t.dispatch();
     } else {
-        let turn_poster = poster.clone();
-        let turn: Turn = Arc::new(move |f| turn_poster(Job::Run(f)));
-        let _ = Transfer::attach(window, turn, Wants::default());
+        let _ = Transfer::attach(window, Wants::default());
     }
     let (status, now) = with(|hub| {
         hub.sinks.retain(|(i, s)| *i != id && s.strong_count() > 0);

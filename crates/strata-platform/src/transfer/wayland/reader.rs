@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: MIT
 
+//! Background reader for a separate Wayland connection (`Connection::connect_to_env`, used when
+//! data control cannot share winit's `wl_display`).
+//!
+//! Winit's shared `wl_display` is driven on the UI thread via `rune::watch_display_queue` and
+//! never spawns a reader thread.
+
 use std::io;
 use std::os::fd::{AsFd, OwnedFd};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 
 use wayland_backend::client::WaylandError;
 use wayland_client::Connection;
 
-use super::super::gate::Gate;
 use super::super::pipe;
 
 pub(super) struct Reader {
-    gate: Arc<Gate>,
+    stopped: Arc<AtomicBool>,
     stop: Option<OwnedFd>,
     thread: Option<JoinHandle<()>>,
 }
@@ -21,18 +27,17 @@ impl Reader {
     pub(super) fn spawn(
         name: &str,
         conn: Connection,
-        gate: Arc<Gate>,
         mut on_events: impl FnMut() + Send + 'static,
         on_fail: impl FnOnce(String) + Send + 'static,
     ) -> io::Result<Reader> {
         let (stop_r, stop_w) = pipe::pipe()?;
-        let thread_gate = gate.clone();
+        let stopped = Arc::new(AtomicBool::new(false));
+        let thread_stopped = stopped.clone();
         let thread = std::thread::Builder::new()
             .name(name.to_owned())
             .spawn(move || {
-                let gate = thread_gate;
                 let failed = loop {
-                    if gate.stopped() {
+                    if thread_stopped.load(Ordering::Acquire) {
                         break None;
                     }
                     let Some(guard) = conn.prepare_read() else {
@@ -55,7 +60,7 @@ impl Reader {
                         Ok(r) => r,
                         Err(e) => break Some(format!("poll: {e}")),
                     };
-                    if revents[1] != 0 || gate.stopped() {
+                    if revents[1] != 0 || thread_stopped.load(Ordering::Acquire) {
                         // Dropping the guard is cancel_read on an intent we hold.
                         drop(guard);
                         break None;
@@ -76,14 +81,14 @@ impl Reader {
                 }
             })?;
         Ok(Reader {
-            gate,
+            stopped,
             stop: Some(stop_w),
             thread: Some(thread),
         })
     }
 
     pub(super) fn stop(mut self) {
-        self.gate.stop();
+        self.stopped.store(true, Ordering::Release);
         // Closing the write end makes the read end readable (POLLHUP), which ends the poll.
         drop(self.stop.take());
         if let Some(thread) = self.thread.take() {

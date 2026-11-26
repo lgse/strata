@@ -28,7 +28,8 @@ Each module's Rustdoc documents its exact contract and limits.
 ## Supported systems
 
 On Wayland, shared-display shims (`dnd`, `clipboard`, `foreign-parent`) reach
-winit's `wl_display` directly through Rune's `WindowHandle::with_raw_display_handle`, working
+winit's `wl_display` directly through Rune's `WindowHandle::with_raw_display_handle` and
+dispatch their secondary queue on the UI thread via `rune::watch_display_queue`, working
 across `libwayland-client` versions (including 1.22 on Ubuntu 24.04).
 
 ## Supported Rune rev

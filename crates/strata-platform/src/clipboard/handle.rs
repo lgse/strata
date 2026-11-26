@@ -77,15 +77,11 @@ impl<S: 'static> Default for Clipboard<S> {
 }
 
 fn run<S: 'static>(id: u64, job: Job, s: &mut S, tx: &mut Tx) -> bool {
-    if let Job::Run(f) = job {
-        f();
-        return false;
-    }
     let Some(core) = core::<S>(id) else {
         return false;
     };
     match job {
-        Job::Pump | Job::Run(_) => {
+        Job::Pump => {
             hub::pump();
             core.drain(s, tx)
         }

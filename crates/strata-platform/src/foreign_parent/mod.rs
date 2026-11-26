@@ -106,7 +106,7 @@ pub fn apply<S: 'static>(
                 let app = app.clone();
                 Box::new(move || app.update(f)) as wayland::Lost
             });
-            wayland::apply(window, app, handle, lost, options.test)
+            wayland::apply(window, handle, lost, options.test)
         }
         Parent::X11(_) => {
             wayland::release(window.key());
