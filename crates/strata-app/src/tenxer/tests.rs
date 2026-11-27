@@ -514,11 +514,11 @@ fn compress_chord_targets_keyboard_focused_column_over_hovered_column() {
             });
             while host.turn() {}
             tap(&mut host, char_key("l"), Mods::default());
+            // The view takes the child column a turn after the browser lists it.
             assert!(host.run_until(PATIENCE, |h| {
-                h.app()
-                    .browser()
-                    .column_entry_counts(1)
-                    .is_some_and(|counts| counts.total == 1)
+                let listed = h.app().browser().column_entry_counts(1);
+                listed.is_some_and(|counts| counts.total == 1)
+                    && h.app().columns.active_depth() == 1
             }));
             while host.turn() {}
             host.runtime().update(|app, _| {
