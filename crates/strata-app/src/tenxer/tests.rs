@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: MIT
 
+use std::rc::Rc;
+
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_core::model::Location;
 
 use crate::{
-    App,
+    App, archive,
     host::offscreen::Offscreen,
     preview, shell,
     test_support::{
-        PATIENCE, folder_of, hosted, hosted_after, send_key,
+        PATIENCE, folder_of,
+        held::HeldExtractions,
+        hosted, hosted_after, send_key,
         view::{all, text},
     },
 };
@@ -510,11 +514,11 @@ fn compress_chord_targets_keyboard_focused_column_over_hovered_column() {
             });
             while host.turn() {}
             tap(&mut host, char_key("l"), Mods::default());
+            // The view takes the child column a turn after the browser lists it.
             assert!(host.run_until(PATIENCE, |h| {
-                h.app()
-                    .browser()
-                    .column_entry_counts(1)
-                    .is_some_and(|counts| counts.total == 1)
+                let listed = h.app().browser().column_entry_counts(1);
+                listed.is_some_and(|counts| counts.total == 1)
+                    && h.app().columns.active_depth() == 1
             }));
             while host.turn() {}
             host.runtime().update(|app, _| {
@@ -707,6 +711,54 @@ fn a_revisit_keeps_the_view_and_the_browser_on_one_cursor() {
                 host.app().browser().column_entry_counts(1).is_none(),
                 "Columns opens no child column for the load's cursor"
             );
+        },
+    );
+}
+
+#[test]
+fn extract_chords_take_several_archives_here_but_one_archive_to_a_folder() {
+    hosted(
+        MODULE,
+        "extract_chords_take_several_archives_here_but_one_archive_to_a_folder",
+        |mut host| {
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| s.tenxer_mode = true);
+            });
+            let _folder = open_names_and_focus(&mut host, &["a.zip", "b.zip", "notes.txt"]);
+            let held = Rc::new(HeldExtractions::default());
+            host.app().browser().set_operation_provider(held.clone());
+            let select = |host: &mut Offscreen, names: [&str; 2]| {
+                let names = names.map(str::to_owned);
+                assert!(host.app().browser().select_entries_by_name_at(0, &names));
+                while host.turn() {}
+            };
+            let shift = Mods {
+                shift: true,
+                ..Mods::default()
+            };
+
+            // `; e` on an archive and a plain file extracts neither.
+            select(&mut host, ["a.zip", "notes.txt"]);
+            tap(&mut host, char_key(";"), Mods::default());
+            tap(&mut host, char_key("e"), Mods::default());
+            assert_eq!(
+                node_name(&host, "footer-flash").as_deref(),
+                Some("Can’t extract these items")
+            );
+
+            // `; E` still takes one archive; `; e` starts the first of the two.
+            select(&mut host, ["a.zip", "b.zip"]);
+            tap(&mut host, char_key(";"), Mods::default());
+            tap(&mut host, char_key("E"), shift);
+            assert_eq!(
+                node_name(&host, "footer-flash").as_deref(),
+                Some("Extract one archive at a time")
+            );
+            assert_eq!(held.asked(), 0);
+            tap(&mut host, char_key(";"), Mods::default());
+            tap(&mut host, char_key("e"), Mods::default());
+            assert_eq!(held.asked(), 1);
+            assert_eq!(archive::batch_position(host.app()), Some((1, 2)));
         },
     );
 }

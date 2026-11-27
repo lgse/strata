@@ -3,7 +3,7 @@
 use rune::Tx;
 use strata_core::{
     i18n::tr,
-    model::{ArchiveFormat, FileEntry, Location, SortDirection, SortKey},
+    model::{FileEntry, Location, SortDirection, SortKey},
 };
 use strata_desktop::keys::{
     self as key_catalog, Binding, Command, KeyPress, Keys, Modifiers, bindings::*,
@@ -14,7 +14,9 @@ use super::{
     ChordKind, arm_chord, bookmarks, cancel_chord, command_targets, focused_listing_depth, go,
 };
 use crate::{
-    App, archive, clipboard,
+    App,
+    archive::{self, Refused},
+    clipboard,
     commands::{self, On, Outcome},
     compress::{self, CompressAttempt},
     custom_actions,
@@ -254,15 +256,16 @@ fn open_action_compress(app: &mut App, tx: &mut Tx) {
 }
 
 fn run_action_extract(app: &mut App, tx: &mut Tx) {
-    match extract_target(app) {
-        Ok(entry) => archive::extract_entry(app, entry, tx),
+    match extract_targets(app, false) {
+        Ok(entries) => archive::extract_entries(app, entries, tx),
         Err(reason) => app.tenxer.flash.show(tr(reason), tx),
     }
 }
 
 fn run_action_extract_to(app: &mut App, tx: &mut Tx) {
-    match extract_target(app) {
-        Ok(entry) => super::prompts::open_extract_to(app, entry, tx),
+    match extract_targets(app, true).map(|mut entries| entries.pop()) {
+        Ok(Some(entry)) => super::prompts::open_extract_to(app, entry, tx),
+        Ok(None) => {}
         Err(reason) => app.tenxer.flash.show(tr(reason), tx),
     }
 }
@@ -313,15 +316,16 @@ fn complete_numbered_slot(
     true
 }
 
-fn extract_target(app: &mut App) -> Result<FileEntry, &'static str> {
-    let mut entries = command_targets(app);
-    let entry = match entries.len() {
-        0 => return Err("Nothing to extract"),
-        1 => entries.remove(0),
-        _ => return Err("Extract one archive at a time"),
-    };
-    if ArchiveFormat::for_entry(&entry).is_none() {
-        return Err("Not an archive");
+/// The archives a chord extracts, or the flash saying why not; "Extract to" takes `one` only.
+fn extract_targets(app: &mut App, one: bool) -> Result<Vec<FileEntry>, &'static str> {
+    let entries = command_targets(app);
+    if one && entries.len() > 1 {
+        return Err("Extract one archive at a time");
     }
-    Ok(entry)
+    match archive::extractable(&entries) {
+        Ok(()) => Ok(entries),
+        Err(Refused::Nothing) => Err("Nothing to extract"),
+        Err(Refused::NotArchives) if entries.len() == 1 => Err("Not an archive"),
+        Err(Refused::NotArchives) => Err("Can’t extract these items"),
+    }
 }

@@ -378,6 +378,8 @@ pub enum BrowserEvent {
     },
     ArchiveCompleted {
         select_name: String,
+        /// The archive operation ended by cancellation; `OperationCancelled` follows.
+        cancelled: bool,
     },
     TransferCompleted,
     TransferReveal {

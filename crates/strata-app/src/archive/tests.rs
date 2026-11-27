@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
+use strata_fs::services::{CancelledOperation, OperationEvent};
 
 use super::{Archive, extract_entry, extract_to_chosen, on_background_completed};
 use crate::{
@@ -12,7 +17,7 @@ use crate::{
     host::offscreen::Offscreen,
     shell,
     slots::Part,
-    test_support::{PATIENCE, fixture, hosted, send_key, view::idle},
+    test_support::{PATIENCE, fixture, held::HeldExtractions, hosted, send_key, view::idle},
 };
 
 const MODULE: &str = "archive::tests";
@@ -63,6 +68,32 @@ fn has_a11y_node(node: &serde_json::Value, role: &str, name: &str) -> bool {
                     .iter()
                     .any(|child| has_a11y_node(child, role, name))
             })
+}
+
+fn mentions(node: &serde_json::Value, needle: &str) -> bool {
+    match node {
+        serde_json::Value::String(text) => text.contains(needle),
+        serde_json::Value::Array(nodes) => nodes.iter().any(|node| mentions(node, needle)),
+        serde_json::Value::Object(fields) => fields.values().any(|node| mentions(node, needle)),
+        _ => false,
+    }
+}
+
+fn select_names(host: &mut Offscreen, names: &[&str]) {
+    let names: Vec<String> = names.iter().map(|name| (*name).to_owned()).collect();
+    assert!(
+        host.app().browser().select_entries_by_name_at(0, &names),
+        "{names:?} are listed"
+    );
+    while host.turn() {}
+}
+
+fn selected_names(host: &Offscreen) -> Vec<String> {
+    let selected = host.app().browser().selected_entries();
+    selected
+        .into_iter()
+        .map(|entry| entry.display_name)
+        .collect()
 }
 
 fn dummy_archive_at(path: &Path, name: &str) -> FileEntry {
@@ -413,6 +444,153 @@ fn background_completion_from_another_folder_navigates_and_unrelated_reset_clear
             idle(&mut host);
             assert!(host.app().archive.pending_destination.is_none());
             assert!(host.app().archive.pending_select.is_empty());
+        },
+    );
+}
+
+#[test]
+fn several_archives_extract_in_turn_past_a_damaged_one_and_a_mixed_selection_runs_none() {
+    hosted(
+        MODULE,
+        "several_archives_extract_in_turn_past_a_damaged_one_and_a_mixed_selection_runs_none",
+        |mut host| {
+            let folder = fixture();
+            let first = folder.path().join("first.tar");
+            write_single_file_tar(&first, "first.txt", b"one\n");
+            write_single_file_tar(&folder.path().join("last.tar"), "last.txt", b"two\n");
+            std::fs::write(folder.path().join("damaged.zip"), "not a zip").expect("seed damage");
+            open_fixture(&mut host, folder.path());
+
+            // An archive selected with a plain file extracts nothing.
+            select_names(&mut host, &["first.tar", "readme.md"]);
+            run_row_command(&mut host, "extract", &first);
+            assert_eq!(host.app().browser().last_started_operation(), None);
+
+            // damaged.zip is first in the listing: its failure does not stop the two after it.
+            select_names(&mut host, &["damaged.zip", "first.tar", "last.tar"]);
+            run_row_command(&mut host, "extract", &first);
+            let revealed = |h: &Offscreen| {
+                let selected = selected_names(h);
+                h.app().archive.batch.is_none()
+                    && ["first.txt", "last.txt"]
+                        .iter()
+                        .all(|name| selected.iter().any(|selected| selected == name))
+            };
+            assert!(
+                host.run_until(PATIENCE, revealed),
+                "both valid archives extract and their results are selected"
+            );
+            let tree = host.tree();
+            assert!(has_a11y_node(&tree, "dialog", "Completed with errors"));
+            assert!(mentions(&tree, "damaged.zip"));
+        },
+    );
+}
+
+#[test]
+fn a_protected_archive_in_a_batch_prompts_and_closing_the_prompt_starts_no_further_archive() {
+    hosted(
+        MODULE,
+        "a_protected_archive_in_a_batch_prompts_and_closing_the_prompt_starts_no_further_archive",
+        |mut host| {
+            let folder = fixture();
+            let encrypted = folder.path().join("content-encrypted.7z");
+            std::fs::copy(
+                repo_fixture("tests/qa/fixtures/content-encrypted.7z"),
+                &encrypted,
+            )
+            .expect("seed encrypted 7z");
+            let later = folder.path().join("later.txt");
+            write_single_file_tar(&folder.path().join("later.tar"), "later.txt", b"after\n");
+            open_fixture(&mut host, folder.path());
+            let batch = ["content-encrypted.7z", "later.tar"];
+
+            select_names(&mut host, &batch);
+            run_row_command(&mut host, "extract", &encrypted);
+            assert!(
+                host.run_until(PATIENCE, |h| h.app().archive.open),
+                "the protected archive asks for its password"
+            );
+            let asked = host.app().browser().last_started_operation();
+            press(&mut host, Key::Escape, Mods::default());
+            idle(&mut host);
+            assert!(host.app().archive.batch.is_none());
+            assert_eq!(host.app().browser().last_started_operation(), asked);
+            assert!(!later.exists());
+
+            // With its password the protected archive extracts, and later.tar follows it.
+            select_names(&mut host, &batch);
+            run_row_command(&mut host, "extract", &encrypted);
+            assert!(
+                host.run_until(PATIENCE, |h| h.app().archive.open),
+                "the protected archive asks again"
+            );
+            type_text(&mut host, "secret");
+            press(&mut host, Key::Enter, Mods::default());
+            let protected = folder.path().join("protected.txt");
+            assert!(
+                host.run_until(PATIENCE, |_| protected.exists() && later.exists()),
+                "both archives extract once the password is given"
+            );
+        },
+    );
+}
+
+#[test]
+fn a_batch_shows_which_archive_it_is_on_and_cancelling_starts_no_further_archive() {
+    hosted(
+        MODULE,
+        "a_batch_shows_which_archive_it_is_on_and_cancelling_starts_no_further_archive",
+        |mut host| {
+            let folder = fixture();
+            let names = ["a.zip", "b.zip", "c.zip"];
+            for name in names {
+                std::fs::write(folder.path().join(name), "held").expect("seed archive");
+            }
+            open_fixture(&mut host, folder.path());
+            let held = Rc::new(HeldExtractions::default());
+            host.app().browser().set_operation_provider(held.clone());
+            // The progress bar pulses for as long as it shows, so these wait on what is shown.
+            let shows = |host: &mut Offscreen, title: &str| {
+                held.report(|request_id| OperationEvent::ArchiveStarted {
+                    request_id,
+                    total: 0,
+                });
+                host.run_until(PATIENCE, |h| has_a11y_node(&h.tree(), "dialog", title))
+            };
+
+            select_names(&mut host, &names);
+            run_row_command(&mut host, "extract", &folder.path().join("a.zip"));
+            assert_eq!(held.asked(), 1);
+            assert!(shows(&mut host, "Extracting archive 1 of 3"));
+
+            held.report(|request_id| OperationEvent::Extracted {
+                request_id,
+                first_name: None,
+                created: Vec::new(),
+            });
+            assert!(
+                host.run_until(PATIENCE, |_| held.asked() == 2),
+                "b.zip starts once a.zip is extracted"
+            );
+            assert!(shows(&mut host, "Extracting archive 2 of 3"));
+
+            host.app().browser().cancel_file_operation();
+            held.report(|request_id| OperationEvent::Cancelled {
+                request_id,
+                result: CancelledOperation {
+                    completed: Vec::new(),
+                    failed: Vec::new(),
+                    not_attempted: Vec::new(),
+                    affected_locations: HashSet::new(),
+                },
+            });
+            let cancelled =
+                |h: &Offscreen| has_a11y_node(&h.tree(), "dialog", "Operation cancelled");
+            assert!(host.run_until(PATIENCE, cancelled));
+            idle(&mut host);
+            assert_eq!(held.asked(), 2, "c.zip never starts");
+            assert!(host.app().archive.batch.is_none());
         },
     );
 }

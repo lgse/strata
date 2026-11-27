@@ -193,6 +193,25 @@ fn an_archive_and_a_program_get_their_rows_after_the_open_rows() {
 }
 
 #[test]
+fn several_archives_offer_extract_here_and_a_mixed_selection_does_not() {
+    let archives = [file("photos.zip"), file("backup.tar.gz")];
+    for (other, expected) in [
+        (None, vec!["Open With…", "Extract here"]),
+        (Some(file("notes.txt")), vec!["Open With…"]),
+        (
+            Some(directory("folder.zip")),
+            vec!["Open With…", "Open in…"],
+        ),
+    ] {
+        let entries: Vec<FileEntry> = archives.iter().cloned().chain(other).collect();
+
+        let menu = entry(&of(&entries[0], &entries, true));
+
+        assert_eq!(sections(&menu)[2], expected);
+    }
+}
+
+#[test]
 fn several_entries_get_the_selections_menu_under_their_count_and_names() {
     let entries = [file("a.txt"), directory("b"), file("c.txt"), file("d.txt")];
 
