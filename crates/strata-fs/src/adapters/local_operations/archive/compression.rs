@@ -1130,7 +1130,7 @@ const INCOMPRESSIBLE_EXTS: &[&str] = &[
     "zip", "7z", "gz", "tgz", "bz2", "tbz", "tbz2", "xz", "txz", "zst", "tzst", "rar", "lz", "lz4",
     "br", "mp4", "mkv", "mov", "webm", "flv", "wmv", "jpg", "jpeg", "png", "webp", "gif", "heic",
     "avif", "mp3", "flac", "aac", "ogg", "opus", "wma", "m4a", "pdf", "epub", "docx", "xlsx",
-    "pptx", "odt", "ods", "odp", "deb", "rpm", "apk", "jar", "war",
+    "pptx", "odt", "ods", "odp", "deb", "rpm", "apk", "jar", "war", "skill",
 ];
 
 /// Returns whether `path`'s extension is in [`INCOMPRESSIBLE_EXTS`].

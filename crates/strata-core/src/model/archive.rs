@@ -32,7 +32,7 @@ impl ArchiveFormat {
             Some(Self::TarGz)
         } else if lower.ends_with(".tar") {
             Some(Self::Tar)
-        } else if lower.ends_with(".zip") {
+        } else if lower.ends_with(".zip") || lower.ends_with(".skill") {
             Some(Self::Zip)
         } else if lower.ends_with(".7z") {
             Some(Self::SevenZ)
