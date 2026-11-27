@@ -99,7 +99,7 @@ pub(super) fn reported_trash_child(root: &Path, error: &glib::Error) -> Option<P
     let format = glib::dgettext(Some("glib20"), "Unable to trash child file %s");
     if let Some(path) = interpolate_path(message, format.as_bytes()) {
         let child = child_of(root, Path::new(OsStr::from_bytes(path)))?;
-        return Some(refusing_entry(root, child));
+        return refusing_entry(root, child);
     }
     child_of(root, &unreadable_directory(message)?)
 }
@@ -117,13 +117,13 @@ fn child_of(root: &Path, path: &Path) -> Option<PathBuf> {
 
 /// GIO refuses a folder the user does not own by naming the first entry it lists
 /// there, so the folder is the blocker unless that entry is blocked as well.
-fn refusing_entry(root: &Path, child: PathBuf) -> PathBuf {
-    match child.parent() {
-        Some(folder) if !folder.as_os_str().is_empty() && !removal_refused(&root.join(&child)) => {
-            folder.to_owned()
-        }
-        _ => child,
+/// `None` when that folder is the requested target itself.
+fn refusing_entry(root: &Path, child: PathBuf) -> Option<PathBuf> {
+    if removal_refused(&root.join(&child)) {
+        return Some(child);
     }
+    let folder = child.parent()?;
+    (!folder.as_os_str().is_empty()).then(|| folder.to_owned())
 }
 
 fn removal_refused(entry: &Path) -> bool {

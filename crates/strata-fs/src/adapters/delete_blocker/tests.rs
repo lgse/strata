@@ -59,16 +59,25 @@ fn a_trash_refusal_names_the_folder_unless_the_listed_entry_is_blocked() -> std:
     if as_root() {
         return Ok(());
     }
-    for (folder_mode, expected) in [(0o500, "nested/mine.txt"), (0o700, "nested")] {
+    for (folder, folder_mode, expected) in [
+        ("nested", 0o500, Some("nested/mine.txt")),
+        ("nested", 0o700, Some("nested")),
+        ("", 0o500, Some("mine.txt")),
+        ("", 0o700, None),
+    ] {
         let fixture = tempfile::tempdir()?;
         let root = fixture.path().join("to-delete");
-        let nested = root.join("nested");
-        std::fs::create_dir_all(&nested)?;
-        std::fs::write(nested.join("mine.txt"), b"mine")?;
-        std::fs::set_permissions(&nested, Permissions::from_mode(folder_mode))?;
-        let named = reported_trash_child(&root, &refusal(&nested.join("mine.txt")));
-        std::fs::set_permissions(&nested, Permissions::from_mode(0o700))?;
-        assert_eq!(named, Some(PathBuf::from(expected)), "{folder_mode:o}");
+        let folder = root.join(folder);
+        std::fs::create_dir_all(&folder)?;
+        std::fs::write(folder.join("mine.txt"), b"mine")?;
+        std::fs::set_permissions(&folder, Permissions::from_mode(folder_mode))?;
+        let named = reported_trash_child(&root, &refusal(&folder.join("mine.txt")));
+        std::fs::set_permissions(&folder, Permissions::from_mode(0o700))?;
+        assert_eq!(
+            named,
+            expected.map(PathBuf::from),
+            "{folder:?} {folder_mode:o}"
+        );
     }
     Ok(())
 }
