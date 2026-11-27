@@ -137,6 +137,10 @@ fn archive_formats_are_detected_by_extension() {
         Some(ArchiveFormat::Zip)
     );
     assert_eq!(
+        ArchiveFormat::from_extension("helper.SKILL"),
+        Some(ArchiveFormat::Zip)
+    );
+    assert_eq!(
         ArchiveFormat::from_extension("backup.tar.gz"),
         Some(ArchiveFormat::TarGz)
     );

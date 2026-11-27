@@ -223,8 +223,8 @@ pub(in crate::ui) fn icon_for_name(name: &str) -> &'static str {
             | "smarty" | "tpl",
         ) => catppuccin::HTML,
         Some(
-            "zip" | "7z" | "tar" | "gz" | "tgz" | "tbz" | "tbz2" | "txz" | "tzst" | "bz2" | "xz"
-            | "zst" | "rar" | "lz" | "lzma" | "lzo" | "rz" | "sz" | "cab" | "arj" | "cpio",
+            "zip" | "skill" | "7z" | "tar" | "gz" | "tgz" | "tbz" | "tbz2" | "txz" | "tzst" | "bz2"
+            | "xz" | "zst" | "rar" | "lz" | "lzma" | "lzo" | "rz" | "sz" | "cab" | "arj" | "cpio",
         ) => crate::assets::icons::FILE_ARCHIVE,
         Some(
             "deb" | "rpm" | "pkg" | "appimage" | "msi" | "exe" | "apk" | "jar" | "war" | "ear"
