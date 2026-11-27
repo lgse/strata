@@ -11,9 +11,9 @@ use gio::prelude::*;
 
 use super::{
     super::{
-        await_cancellable, cancelled_event, deletion_error_message, deletion_error_summary,
-        deletion_undone_when_cancelled, is_trash_unsupported_failure, join_local_tasks,
-        leftovers::Deadline, translated_io_error,
+        ITEM_ERROR_DETAIL_LIMIT, await_cancellable, cancelled_event, deletion_error_message,
+        deletion_error_summary, deletion_undone_when_cancelled, is_trash_unsupported_failure,
+        join_local_tasks, leftovers::Deadline, translated_io_error,
     },
     parallel::{DeleteWorkers, permanently_delete_maybe_local_with_workers},
     workers::deletion_worker_count,
@@ -27,7 +27,7 @@ use crate::{
         },
     },
     model::{FileEntry, Location},
-    services::{ItemIdentity, OperationEvent, OperationRequestId},
+    services::{DeleteBlocker, ItemIdentity, OperationEvent, OperationRequestId},
 };
 
 #[derive(Clone)]
@@ -254,21 +254,22 @@ impl Deleter {
             .await;
         }
         if is_trash_item(&target.location) {
-            delete_trash_item(&file, &self.cancellable).await
-        } else {
-            permanently_delete_maybe_local_with_workers(
-                file,
-                target.is_directory,
-                self.cancellable.clone(),
-                DeleteWorkers {
-                    count: self.local_tree_worker_count,
-                    deadline: self.deadline,
-                },
-            )
-            .await
+            return delete_trash_item(&file, &self.cancellable)
+                .await
+                .map(|()| None)
+                .map_err(TrashError::permanent);
         }
+        permanently_delete_maybe_local_with_workers(
+            file,
+            target.is_directory,
+            self.cancellable,
+            DeleteWorkers {
+                count: self.local_tree_worker_count,
+                deadline: self.deadline,
+            },
+        )
+        .await
         .map(|()| None)
-        .map_err(TrashError::permanent)
     }
 }
 
@@ -309,6 +310,7 @@ impl Progress {
 #[derive(Default)]
 struct Outcome {
     errors: Vec<String>,
+    blockers: Vec<DeleteBlocker>,
     deleted_locations: Vec<Location>,
     failed_locations: Vec<Location>,
     retryable_locations: Vec<Location>,
@@ -413,10 +415,31 @@ impl Deletion {
                 .retryable_locations
                 .push(target.location.clone());
         }
+        let label = self.failure_label(target, error);
         self.outcome
             .errors
-            .push(deletion_error_message(&target.display_name, error));
+            .push(deletion_error_message(&label, error));
         self.outcome.failed_locations.push(target.location.clone());
+    }
+
+    fn failure_label<'a>(
+        &mut self,
+        target: &'a DeletionTarget,
+        error: &TrashError,
+    ) -> std::borrow::Cow<'a, str> {
+        let Some(child) = &error.child else {
+            return target.display_name.as_str().into();
+        };
+        if self.outcome.errors.len() < ITEM_ERROR_DETAIL_LIMIT
+            && let Some(root) = target.location.native_path()
+        {
+            self.outcome.blockers.push(DeleteBlocker {
+                root: root.to_owned(),
+                child: child.clone(),
+                one_of_several: false,
+            });
+        }
+        format!("{}/{}", target.display_name, child.display()).into()
     }
 
     fn record_deleted(&mut self, target: &DeletionTarget, identity: Option<ItemIdentity>) {
@@ -474,12 +497,27 @@ impl Deletion {
             return;
         }
         let has_non_retryable_failures = outcome.errors.len() > outcome.retryable_locations.len();
+        let mut message = deletion_error_summary(&outcome.errors, self.deleter.permanent);
+        let removed_any =
+            self.deleter.deadline.removed() > 0 || !outcome.deleted_locations.is_empty();
+        if self.deleter.permanent && removed_any {
+            message.push_str("\n\n");
+            message.push_str(&crate::i18n::tr("Some entries were already deleted."));
+        }
+        let one_of_several = outcome.errors.len() > 1;
+        let blocker = DeleteBlocker::first_revealable(outcome.blockers)
+            .await
+            .map(|blocker| DeleteBlocker {
+                one_of_several,
+                ..blocker
+            });
         (self.emit)(OperationEvent::CompletedWithErrors {
             request_id: self.request_id,
             deleted_locations: outcome.deleted_locations,
             retryable_locations: outcome.retryable_locations,
             has_non_retryable_failures,
-            message: deletion_error_summary(&outcome.errors, self.deleter.permanent),
+            message,
+            blocker,
         });
     }
 }

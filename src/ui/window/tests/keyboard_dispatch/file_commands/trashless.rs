@@ -292,6 +292,7 @@ fn first_delete_is_refused_by_the_mount(
             retryable_locations: vec![Location::local(directory.join("a.txt"))],
             has_non_retryable_failures: false,
             message: "a.txt: This location doesn't support Trash.".into(),
+            blocker: None,
         },
     );
     wait_focused_button(fixture, "Cancel");

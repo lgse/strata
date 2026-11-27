@@ -26,6 +26,181 @@ fn deletion_error_summaries_are_bounded_and_report_the_failure_count() {
 }
 
 #[test]
+fn permanent_deletion_reports_an_entry_removed_inside_a_failed_tree() -> Result<(), Box<dyn Error>>
+{
+    let _serial = serial()?;
+    for remove_child in [false, true] {
+        let fixture = tempfile::tempdir()?;
+        let root = fixture.path().join("to-delete");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested)?;
+        let removable = nested.join("removable.txt");
+        if remove_child {
+            fs::write(&removable, b"remove")?;
+        }
+        let _quirks = FsQuirks::install(
+            fixture.path(),
+            Quirks {
+                fail: vec![(Op::Unlink, "nested", 0, rustix::io::Errno::ACCESS)],
+                ..Quirks::ext4()
+            },
+        );
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let sink = events.clone();
+        let _operation = LocalOperationProvider.delete(
+            DeleteRequest {
+                id: OperationRequestId(25),
+                entries: vec![directory_entry(&root)],
+                permanent: true,
+            },
+            Rc::new(move |event| sink.borrow_mut().push(event)),
+        );
+        wait_for_operation(&events, |event| {
+            matches!(
+                event,
+                OperationEvent::CompletedWithErrors { .. } | OperationEvent::Deleted { .. }
+            )
+        });
+        let events = events.borrow();
+        let Some(OperationEvent::CompletedWithErrors {
+            message,
+            blocker,
+            deleted_locations,
+            ..
+        }) = events.last()
+        else {
+            panic!("expected a partial failure: {events:?}");
+        };
+        assert!(
+            message.contains("to-delete/nested: Permission denied"),
+            "{message}"
+        );
+        assert_eq!(
+            message.contains("Some entries were already deleted."),
+            remove_child,
+            "{message}"
+        );
+        assert!(deleted_locations.is_empty());
+        assert_eq!(
+            *blocker,
+            Some(crate::services::DeleteBlocker {
+                root,
+                child: PathBuf::from("nested"),
+                one_of_several: false,
+            })
+        );
+        assert!(nested.is_dir());
+        assert!(!removable.exists());
+    }
+    Ok(())
+}
+
+#[test]
+fn a_blocker_listed_with_other_failures_is_marked_as_one_of_several() -> Result<(), Box<dyn Error>>
+{
+    let _serial = serial()?;
+    let fixture = tempfile::tempdir()?;
+    let roots = ["first", "second"].map(|name| fixture.path().join(name));
+    for (root, nested) in roots.iter().zip(["kept-a", "kept-b"]) {
+        fs::create_dir_all(root.join(nested))?;
+    }
+    let _quirks = FsQuirks::install(
+        fixture.path(),
+        Quirks {
+            fail: vec![
+                (Op::Unlink, "kept-a", 0, rustix::io::Errno::ACCESS),
+                (Op::Unlink, "kept-b", 0, rustix::io::Errno::ACCESS),
+            ],
+            ..Quirks::ext4()
+        },
+    );
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let sink = events.clone();
+    let _operation = LocalOperationProvider.delete(
+        DeleteRequest {
+            id: OperationRequestId(26),
+            entries: roots.iter().map(|root| directory_entry(root)).collect(),
+            permanent: true,
+        },
+        Rc::new(move |event| sink.borrow_mut().push(event)),
+    );
+    let ended =
+        |event: &OperationEvent| matches!(event, OperationEvent::CompletedWithErrors { .. });
+    wait_for_operation(&events, ended);
+    let events = events.borrow();
+    let Some(OperationEvent::CompletedWithErrors { blocker, .. }) = events.last() else {
+        panic!("expected two failures: {events:?}");
+    };
+    assert_eq!(
+        *blocker,
+        Some(crate::services::DeleteBlocker {
+            root: roots[0].clone(),
+            child: PathBuf::from("kept-a"),
+            one_of_several: true,
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn a_delete_through_gio_reports_the_nested_entry_it_failed_on() -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    if rustix::process::geteuid().is_root() {
+        return Ok(());
+    }
+    let _serial = serial()?;
+    let fixture = tempfile::tempdir()?;
+    let root = fixture.path().join("to-delete");
+    let nested = root.join("nested");
+    fs::create_dir_all(&nested)?;
+    fs::write(nested.join("blocked.txt"), b"keep")?;
+    fs::set_permissions(&nested, fs::Permissions::from_mode(0o500))?;
+    let result = glib::MainContext::default().block_on(
+        super::super::super::deletion::permanently_delete_counted(
+            gio::File::for_path(&root),
+            true,
+            gio::Cancellable::new(),
+            Deadline::default(),
+        ),
+    );
+    fs::set_permissions(&nested, fs::Permissions::from_mode(0o700))?;
+    let error = result.expect_err("the read-only folder keeps its file");
+    assert_eq!(error.child, Some(PathBuf::from("nested/blocked.txt")));
+    assert!(error.error.matches(gio::IOErrorEnum::PermissionDenied));
+    Ok(())
+}
+
+#[test]
+fn a_cleanup_delete_names_the_nested_entry_it_could_not_remove() -> Result<(), Box<dyn Error>> {
+    let _serial = serial()?;
+    let fixture = tempfile::tempdir()?;
+    let root = fixture.path().join("moved-source");
+    fs::create_dir_all(root.join("nested"))?;
+    fs::write(root.join("nested/blocked.txt"), b"keep")?;
+    let _quirks = FsQuirks::install(
+        fixture.path(),
+        Quirks {
+            fail: vec![(Op::Unlink, "blocked.txt", 0, rustix::io::Errno::ACCESS)],
+            ..Quirks::ext4()
+        },
+    );
+    let error = glib::MainContext::default()
+        .block_on(permanently_delete_local_path_if_unchanged(
+            root,
+            None,
+            gio::Cancellable::new(),
+        ))
+        .expect_err("the refused file keeps its folders");
+    assert!(
+        error.message().contains("blocked.txt"),
+        "{}",
+        error.message()
+    );
+    Ok(())
+}
+
+#[test]
 fn large_deletion_progress_reports_every_completed_location() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
     let root = tempfile::tempdir()?;

@@ -161,6 +161,7 @@ fn sequential_delete_local(
         let step_name = name.clone();
         let step = super::super::run_local_delete_step(move || {
             super::super::open_local_delete_target(&step_parent, &step_name, None, false)
+                .map_err(|error| error.to_string())
         })
         .await
         .map_err(|error| error.to_string())?;

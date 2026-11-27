@@ -21,7 +21,7 @@ pub(super) use focus::{
 };
 pub(crate) use focus::{remember_persistent_modal_focus, set_modal_focus_fallback};
 pub(super) use messages::{
-    show_delete_error_dialog, show_error_dialog, show_error_dialog_after_close,
+    DeleteErrorAction, show_delete_error_dialog, show_error_dialog, show_error_dialog_after_close,
     show_error_dialog_with_action, show_error_dialog_with_summary, show_information_dialog,
     show_information_dialog_with_summary, show_partial_failure_dialog,
 };

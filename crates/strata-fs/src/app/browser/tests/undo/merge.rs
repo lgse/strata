@@ -119,6 +119,7 @@ fn assert_a_kept_item_stays_out_of_the_merge_undo(
             retryable_locations: Vec::new(),
             has_non_retryable_failures: true,
             message: "kept.txt: It was kept".to_owned(),
+            blocker: None,
         }
     });
 

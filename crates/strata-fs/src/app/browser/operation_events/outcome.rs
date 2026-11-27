@@ -109,6 +109,7 @@ impl Browser {
                 retryable_locations,
                 has_non_retryable_failures,
                 message,
+                blocker,
                 ..
             } => {
                 self.remove_deleted_locations(&deleted_locations, outcome.rescanning);
@@ -118,6 +119,7 @@ impl Browser {
                     message,
                     retryable_locations,
                     has_non_retryable_failures,
+                    blocker,
                     report: outcome.take_report(),
                 });
             }
@@ -168,6 +170,7 @@ impl Browser {
                 message,
                 retryable_locations: Vec::new(),
                 has_non_retryable_failures: true,
+                blocker: None,
                 report: outcome.take_report(),
             });
         }

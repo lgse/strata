@@ -370,6 +370,7 @@ fn a_rescan_elsewhere_still_drops_what_an_operation_removed_from_an_unwatched_fo
         retryable_locations: Vec::new(),
         has_non_retryable_failures: true,
         message: "one item failed".to_owned(),
+        blocker: None,
     };
     let restored: Ending = |request_id, gone| OperationEvent::Restored {
         request_id,

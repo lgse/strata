@@ -5,11 +5,14 @@ use std::{
     os::fd::{AsFd, OwnedFd},
 };
 
-use super::super::{
-    fs_ops::{Entry, EntryStat, fs},
-    leftovers,
-    mount_profile::identity_at,
-    native_fs::{self, Recorded, local_directory_children, os_error_detail, retry_local_open},
+use super::{
+    super::{
+        fs_ops::{Entry, EntryStat, fs},
+        leftovers,
+        mount_profile::identity_at,
+        native_fs::{self, Recorded, local_directory_children, os_error_detail, retry_local_open},
+    },
+    error::LocalDeleteError,
 };
 use crate::model::hidden_names;
 
@@ -94,21 +97,22 @@ pub(in crate::adapters::local_operations) fn open_local_delete_target<Fd: AsFd>(
     name: &OsStr,
     expected: Option<Recorded>,
     leftovers_stay: bool,
-) -> Result<LocalDeleteStep, String> {
+) -> Result<LocalDeleteStep, LocalDeleteError> {
     let is_leftover = || leftovers_stay && leftovers::is_leftover(fs(), parent.as_fd(), name);
     let stat = match fs().stat(Entry::new(parent, name), false) {
         Ok(stat) => stat,
         Err(rustix::io::Errno::NOENT) if is_leftover() => return Ok(LocalDeleteStep::Leftover),
-        Err(error) => return Err(inspect_failed(name, error)),
+        Err(error) => return Err(inspect_failed(name, error).into()),
     };
     ensure_expected_local_identity(parent, name, &stat, expected)?;
     if stat.is_directory() {
-        return open_directory_target(parent, name, expected);
+        return Ok(open_directory_target(parent, name, expected)?);
     }
     if is_leftover() {
         return Ok(LocalDeleteStep::Leftover);
     }
-    unlink_local_file(parent, name)?;
+    fs().unlink(Entry::new(parent, name), rustix::fs::AtFlags::empty())
+        .map_err(|error| LocalDeleteError::refused(name, os_error_detail(error)))?;
     Ok(LocalDeleteStep::Removed)
 }
 
@@ -133,18 +137,6 @@ fn inspect_failed(name: &OsStr, error: rustix::io::Errno) -> String {
         error = os_error_detail(error)
     )
     .into_owned()
-}
-
-fn unlink_local_file<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<(), String> {
-    fs().unlink(Entry::new(parent, name), rustix::fs::AtFlags::empty())
-        .map_err(|error| {
-            rust_i18n::t!(
-                "Could not delete “%{name}”: %{error}",
-                name = name.to_string_lossy(),
-                error = os_error_detail(error)
-            )
-            .into_owned()
-        })
 }
 
 /// Reject symlinks swapped in after the type check, including intermediate components.

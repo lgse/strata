@@ -365,8 +365,8 @@ fn a_folder_kept_by_an_open_file_does_not_stop_the_rest_of_the_delete() -> Resul
     let events = delete_permanently(std::slice::from_ref(&tree));
 
     let line = rust_i18n::t!(
-        "Could not delete “%{name}”: %{error}",
-        name = "open",
+        "%{name}: %{error}",
+        name = "tree/open",
         error = crate::i18n::tr(
             "A file in it is still open in another program. Close it and try again."
         )
@@ -418,7 +418,8 @@ fn an_error_that_stops_a_delete_is_reported_over_an_earlier_open_folder()
         1,
         &Deadline::default(),
     )
-    .expect_err("the failed unlink");
+    .expect_err("the failed unlink")
+    .to_string();
 
     assert!(error.contains("broken"), "{error}");
     assert!(!error.contains("open"), "{error}");

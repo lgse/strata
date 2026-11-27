@@ -742,6 +742,7 @@
   "Selection changed": "A kijelölés megváltozott",
   "Show Hidden Files": "Rejtett fájlok megjelenítése",
   "Show item properties": "Elem tulajdonságainak megjelenítése",
+  "Show “%{name}” in Folder": "„%{name}” megjelenítése a mappában",
   "Show or hide hidden files": "Rejtett fájlok megjelenítése vagy elrejtése",
   "Show or hide the sidebar": "Oldalsáv megjelenítése vagy elrejtése",
   "Show or hide this reference": "Ezen hivatkozás megjelenítése vagy elrejtése",

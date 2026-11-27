@@ -15,11 +15,13 @@ use gtk::prelude::*;
 use std::rc::Rc;
 
 mod delete_dialog;
+mod delete_error;
 mod empty;
 mod restore;
 #[cfg(test)]
 use delete_dialog::DELETE_CONFIRMATION_MAX_ROWS;
 use delete_dialog::DeleteDialog;
+pub(super) use delete_error::DeleteErrorRetry;
 
 /// A presented trash dialog's layer and the overlay it was added to.
 #[derive(Clone)]

@@ -267,61 +267,94 @@ pub(in crate::ui) fn show_error_dialog_with_action(
     focus_button(&layout.confirm);
 }
 
-/// For a delete that completed with errors, some of them Trash-unsupported: offers
-/// Delete Permanently for those entries via `on_retry` (#179).
+pub(in crate::ui) struct DeleteErrorAction {
+    pub label: String,
+    pub run: Rc<dyn Fn()>,
+}
+
 pub(in crate::ui) fn show_delete_error_dialog(
     parent: &impl IsA<gtk::Widget>,
     detail: &str,
-    retry_label: &str,
-    on_retry: Rc<dyn Fn()>,
+    retry: Option<DeleteErrorAction>,
+    reveal: Option<DeleteErrorAction>,
 ) {
     let Some(ModalHost {
-        overlay: window_overlay,
+        overlay,
         blurred_root,
-    }) = ModalHost::blurred_for(parent)
+    }) = message_host(parent)
     else {
         return;
     };
-
+    let confirm_label = retry
+        .as_ref()
+        .map_or_else(|| crate::i18n::tr("Close"), |action| action.label.clone());
     let layout = message_dialog_layout(
         crate::assets::icons::X,
         &crate::i18n::tr("Completed with errors"),
         &crate::i18n::tr("Some items could not be processed"),
-        retry_label,
+        &confirm_label,
         ModalTone::Danger,
     );
+    layout.cancel.set_visible(retry.is_some());
     layout.cancel.set_label(&crate::i18n::tr("Done"));
+    stack_actions_when_constrained(&layout);
     append_detail(&layout, detail);
-    let content = layout.content;
-    let close_icon = layout.close;
-    let cancel = layout.cancel;
-    let confirm = layout.confirm;
 
-    let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
-    remember_modal_focus(&layer, &window_overlay);
-    window_overlay.add_overlay(&layer);
-    let dismissed = Rc::new(Cell::new(false));
-
-    let dismiss_layer = layer.clone();
-    let dismiss_overlay = window_overlay.clone();
-    let dismiss_root = blurred_root.clone();
-    let dismissed_for_dismiss = dismissed.clone();
-    let dismiss = Rc::new(move || {
-        if dismissed_for_dismiss.replace(true) {
-            return;
+    let layer = modal_layer(&layout.content, &overlay, blurred_root.clone(), None);
+    remember_modal_focus(&layer, &overlay);
+    overlay.add_overlay(&layer);
+    let dismiss = Rc::new({
+        let layer = layer.clone();
+        let dismissed = Cell::new(false);
+        move || {
+            if dismissed.replace(true) {
+                return false;
+            }
+            dismiss_modal_layer(&layer, &overlay, blurred_root.as_ref());
+            true
         }
-        dismiss_modal_layer(&dismiss_layer, &dismiss_overlay, dismiss_root.as_ref());
     });
 
-    let clicked_dismiss = dismiss.clone();
-    cancel.connect_clicked(move |_| clicked_dismiss());
-    let icon_dismiss = dismiss.clone();
-    close_icon.connect_clicked(move |_| icon_dismiss());
-    let confirm_dismiss = dismiss.clone();
-    confirm.connect_clicked(move |_| {
-        confirm_dismiss();
-        on_retry();
+    connect_delete_error_action(&layout.cancel, dismiss.clone(), None);
+    connect_delete_error_action(&layout.close, dismiss.clone(), None);
+    connect_delete_error_action(
+        &layout.confirm,
+        dismiss.clone(),
+        retry.map(|action| action.run),
+    );
+    if let Some(reveal) = reveal {
+        let button = reveal_button(&reveal.label);
+        layout
+            .actions
+            .insert_child_after(&button, layout.actions.first_child().as_ref());
+        connect_delete_error_action(&button, dismiss.clone(), Some(reveal.run));
+    }
+    close_on_escape(&layer, move || {
+        dismiss();
     });
-    close_on_escape(&layer, move || dismiss());
-    focus_button(&confirm);
+    focus_button(&layout.confirm);
+}
+
+fn reveal_button(label: &str) -> gtk::Button {
+    let button = gtk::Button::with_label(label);
+    button.add_css_class("action-dialog-cancel");
+    if let Some(label) = button.child().and_downcast::<gtk::Label>() {
+        label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        label.set_max_width_chars(36);
+    }
+    button
+}
+
+fn connect_delete_error_action(
+    button: &gtk::Button,
+    dismiss: Rc<dyn Fn() -> bool>,
+    action: Option<Rc<dyn Fn()>>,
+) {
+    button.connect_clicked(move |_| {
+        if dismiss()
+            && let Some(action) = &action
+        {
+            action();
+        }
+    });
 }

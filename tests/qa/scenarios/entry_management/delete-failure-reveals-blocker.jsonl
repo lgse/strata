@@ -1,0 +1,22 @@
+{"scenario":"delete-failure-reveals-blocker","modes":["list"],"layout":"us","session_bus":true,"cost":{"list-permanent":6.7,"list-trash":5.6},"tree":{"to-delete":{"nested":{"blocked.txt":"keep\n"}},"other.txt":"remove\n"},"teardown":[{"fs":{"path":"to-delete/nested","chmod":"755"}}],"variants":[{"id":"trash","vars":{"path":"to-delete/nested","folder":"to-delete","item":"nested"}},{"id":"permanent","vars":{"path":"to-delete/nested/blocked.txt","folder":"nested","item":"blocked.txt"}}]}
+{"fs":{"path":"to-delete/nested","chmod":"000"},"variants":["trash"]}
+{"fs":{"path":"to-delete/nested","chmod":"555"},"variants":["permanent"]}
+{"wait":{"entries":{"contains":["other.txt","to-delete"]}},"message":"the fixture folder and its sibling to be listed"}
+{"select":{"entry":"to-delete"}}
+{"wait":{"focused":"to-delete"},"message":"focus on the folder that cannot be deleted"}
+{"key":"Delete","variants":["trash"]}
+{"key":"ctrl+a","variants":["permanent"]}
+{"wait":{"selected":{"contains":["other.txt","to-delete"],"count":2}},"message":"both targets to be selected for permanent deletion","variants":["permanent"]}
+{"key":"shift+Delete","variants":["permanent"]}
+{"wait":{"dialog":"Permanently delete 2 items?"},"message":"the explicit permanent-deletion confirmation","variants":["permanent"]}
+{"click":{"dialog_button":"Permanently delete 2 items"},"variants":["permanent"]}
+{"wait":{"dialog":"Completed with errors"},"message":"the failed deletion to report its outcome"}
+{"expect":{"mentions":{"target":{"dialog":true},"text":"$path"}},"message":"the error to name the blocking path, not just a basename"}
+{"expect":{"mentions":{"target":{"dialog":true},"text":"Permission denied"}},"message":"the underlying permission reason to be visible"}
+{"expect":{"mentions":{"target":{"dialog":true},"text":"Some entries were already deleted."}},"message":"the error to make clear that other entries are gone","variants":["permanent"]}
+{"expect":{"absent":{"dialog_button":"Delete Permanently"}},"message":"a permission refusal must not offer permanent deletion as a substitute for Trash","variants":["trash"]}
+{"click":{"dialog_button":"Show in Folder"}}
+{"wait":{"all":[{"dialog":null},{"directory":"$folder"},{"selected":["$item"],"dir":"$folder"}]},"message":"Show in Folder to navigate and select just the blocker"}
+{"fs":{"path":"to-delete/nested","chmod":"755"}}
+{"fs":{"path":"to-delete/nested/blocked.txt","text":"keep\n"},"timeout_ms":0,"message":"revealing the blocker must not delete or change it"}
+{"fs":{"path":"other.txt","exists":false},"timeout_ms":0,"message":"the independent permanent deletion to remain applied","variants":["permanent"]}

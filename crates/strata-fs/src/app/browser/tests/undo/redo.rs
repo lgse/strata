@@ -33,6 +33,7 @@ fn replay_copy_undo_removing(
         retryable_locations: Vec::new(),
         has_non_retryable_failures: true,
         message: message.into(),
+        blocker: None,
     });
     browser
 }

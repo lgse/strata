@@ -21,14 +21,12 @@ use super::{
         native_fs::{Recorded, open_local_parent_directory, os_error_detail},
         run_cancellable, translated_io_error, work_queue,
     },
-    gio_delete::permanently_delete,
+    error::LocalDeleteError,
+    gio_delete::{permanently_delete, permanently_delete_counted},
     queue::{LocalDeleteJob, LocalDeleteQueue, PinnedEntry},
     workers::local_delete_worker_count,
 };
-
-pub(super) fn cancelled_local_delete() -> glib::Error {
-    glib::Error::new(gio::IOErrorEnum::Cancelled, "Delete cancelled")
-}
+use crate::adapters::trash_support::TrashError;
 
 pub(in crate::adapters::local_operations) async fn run_local_delete_step<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, String> + Send + 'static,
@@ -51,7 +49,7 @@ pub(in crate::adapters::local_operations) fn parallel_delete_local_blocking_with
     cancelled: Arc<AtomicBool>,
     worker_count: usize,
     deadline: &Deadline,
-) -> Result<(), String> {
+) -> Result<(), LocalDeleteError> {
     let worker_count = worker_count.max(1);
     let queue = Arc::new(LocalDeleteQueue::new(cancelled.clone()));
     for root in roots {
@@ -93,31 +91,69 @@ pub(in crate::adapters::local_operations) fn parallel_delete_local_with_worker_c
     worker_count: Option<usize>,
     deadline: Deadline,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
-    parallel_delete_local_with(roots, cancellable, move |roots, cancelled| {
-        let worker_count = worker_count.unwrap_or_else(|| local_delete_worker_count(&roots));
-        parallel_delete_local_blocking_with_workers(roots, cancelled, worker_count, &deadline)
+    Box::pin(async move {
+        delete_roots(
+            roots,
+            cancellable,
+            DeleteWorkers {
+                count: worker_count,
+                deadline,
+            },
+        )
+        .await
+        .map_err(LocalDeleteError::into_gio)
     })
+}
+
+async fn delete_roots(
+    roots: Vec<PinnedEntry>,
+    cancellable: gio::Cancellable,
+    workers: DeleteWorkers,
+) -> Result<(), LocalDeleteError> {
+    run_parallel_delete(roots, cancellable, move |roots, cancelled| {
+        let worker_count = workers
+            .count
+            .unwrap_or_else(|| local_delete_worker_count(&roots));
+        parallel_delete_local_blocking_with_workers(
+            roots,
+            cancelled,
+            worker_count,
+            &workers.deadline,
+        )
+    })
+    .await
 }
 
 pub(in crate::adapters::local_operations) fn parallel_delete_local_with(
     roots: Vec<PinnedEntry>,
     cancellable: gio::Cancellable,
-    delete: impl FnOnce(Vec<PinnedEntry>, Arc<AtomicBool>) -> Result<(), String> + Send + 'static,
+    delete: impl FnOnce(Vec<PinnedEntry>, Arc<AtomicBool>) -> Result<(), LocalDeleteError>
+    + Send
+    + 'static,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
-        if roots.is_empty() {
-            return Ok(());
-        }
-        if cancellable.is_cancelled() {
-            return Err(cancelled_local_delete());
-        }
-        let result = run_cancellable(&cancellable, move |cancelled| delete(roots, cancelled)).await;
-        match result.map_err(|_| translated_io_error("The deletion stopped unexpectedly"))? {
-            Ok(()) => Ok(()),
-            Err(error) if error == "Delete cancelled" => Err(cancelled_local_delete()),
-            Err(error) => Err(io_error(error)),
-        }
+        run_parallel_delete(roots, cancellable, delete)
+            .await
+            .map_err(LocalDeleteError::into_gio)
     })
+}
+
+async fn run_parallel_delete(
+    roots: Vec<PinnedEntry>,
+    cancellable: gio::Cancellable,
+    delete: impl FnOnce(Vec<PinnedEntry>, Arc<AtomicBool>) -> Result<(), LocalDeleteError>
+    + Send
+    + 'static,
+) -> Result<(), LocalDeleteError> {
+    if roots.is_empty() {
+        return Ok(());
+    }
+    if cancellable.is_cancelled() {
+        return Err(LocalDeleteError::Cancelled);
+    }
+    run_cancellable(&cancellable, move |cancelled| delete(roots, cancelled))
+        .await
+        .map_err(|_| crate::i18n::tr("The deletion stopped unexpectedly"))?
 }
 
 /// Traverse pinned directories so a renamed component cannot redirect deletion.
@@ -143,45 +179,38 @@ pub(in crate::adapters::local_operations) fn permanently_delete_local_path_if_un
     expected: Option<Recorded>,
     cancellable: gio::Cancellable,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
-    permanently_delete_local_path_if_unchanged_with_workers(
-        path,
-        expected,
-        cancellable,
-        DeleteWorkers {
-            count: None,
-            deadline: Deadline::default(),
-        },
-    )
-}
-
-pub(super) fn permanently_delete_local_path_if_unchanged_with_workers(
-    path: PathBuf,
-    expected: Option<Recorded>,
-    cancellable: gio::Cancellable,
-    workers: DeleteWorkers,
-) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
-        let Some(parent_path) = path.parent().map(Path::to_path_buf) else {
-            return Err(translated_io_error(
-                "Cannot permanently delete the filesystem root",
-            ));
-        };
-        let Some(name) = path.file_name().map(OsStr::to_os_string) else {
-            return Err(translated_io_error("Invalid delete target"));
-        };
-        let parent =
-            run_local_delete_step(move || open_local_parent_directory(&parent_path)).await?;
-        parallel_delete_local_with_worker_count(
-            vec![PinnedEntry {
-                parent: Arc::new(parent),
-                name,
-                identity: expected,
-            }],
+        let root = pinned_root(path, expected).await?;
+        delete_roots(
+            vec![root],
             cancellable,
-            workers.count,
-            workers.deadline,
+            DeleteWorkers {
+                count: None,
+                deadline: Deadline::default(),
+            },
         )
         .await
+        .map_err(LocalDeleteError::into_gio)
+    })
+}
+
+async fn pinned_root(
+    path: PathBuf,
+    expected: Option<Recorded>,
+) -> Result<PinnedEntry, glib::Error> {
+    let Some(parent_path) = path.parent().map(Path::to_path_buf) else {
+        return Err(translated_io_error(
+            "Cannot permanently delete the filesystem root",
+        ));
+    };
+    let Some(name) = path.file_name().map(OsStr::to_os_string) else {
+        return Err(translated_io_error("Invalid delete target"));
+    };
+    let parent = run_local_delete_step(move || open_local_parent_directory(&parent_path)).await?;
+    Ok(PinnedEntry {
+        parent: Arc::new(parent),
+        name,
+        identity: expected,
     })
 }
 
@@ -226,23 +255,21 @@ pub(in crate::adapters::local_operations) fn permanently_delete_maybe_local(
     permanently_delete_maybe_local_if_unchanged(file, directory, None, cancellable)
 }
 
-pub(super) fn permanently_delete_maybe_local_with_workers(
+pub(super) async fn permanently_delete_maybe_local_with_workers(
     file: gio::File,
     directory: bool,
     cancellable: gio::Cancellable,
     workers: DeleteWorkers,
-) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
-    if file.is_native()
-        && let Some(path) = file.path()
-    {
-        return permanently_delete_local_path_if_unchanged_with_workers(
-            path,
-            None,
-            cancellable,
-            workers,
-        );
+) -> Result<(), TrashError> {
+    if let Some(path) = file.path().filter(|_| file.is_native()) {
+        let root = pinned_root(path, None)
+            .await
+            .map_err(TrashError::permanent)?;
+        return delete_roots(vec![root], cancellable, workers)
+            .await
+            .map_err(LocalDeleteError::into_trash_error);
     }
-    permanently_delete(file, directory, cancellable)
+    permanently_delete_counted(file, directory, cancellable, workers.deadline).await
 }
 
 pub(in crate::adapters::local_operations) fn permanently_delete_maybe_local_if_unchanged(

@@ -87,6 +87,7 @@ pub(super) fn trash_verified(
         return Err(TrashError {
             failure: TrashFailure::Other,
             error: translated_io_error("The target changed while the operation was in progress"),
+            child: None,
         });
     }
     let mut trashed = None;

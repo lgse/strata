@@ -11,7 +11,7 @@ use crate::{
     app::BrowserEvent,
     services::OperationRequestId,
     ui::{
-        browser::{ViewState, transfer::PendingSendToCompletion},
+        browser::{ViewState, transfer::PendingSendToCompletion, trash::DeleteErrorRetry},
         modal::show_error_dialog,
     },
 };
@@ -334,6 +334,7 @@ impl ViewState {
                 message,
                 retryable_locations,
                 has_non_retryable_failures,
+                blocker,
                 report,
             } => {
                 let message =
@@ -345,23 +346,16 @@ impl ViewState {
                 if self.delete_dissolve_request.get() == Some(request_id) {
                     self.settle_pending_delete_dissolve();
                 }
-                if entries.is_empty() {
-                    crate::ui::modal::show_partial_failure_dialog(&self.overlay, message);
-                } else if *has_non_retryable_failures || self.browser.has_foreground_operation() {
-                    let weak = Rc::downgrade(self);
-                    crate::ui::modal::show_delete_error_dialog(
-                        &self.overlay,
-                        message,
-                        &super::super::trash::delete_retry_label(&entries),
-                        Rc::new(move || {
-                            if let Some(state) = weak.upgrade() {
-                                state.retry_background_deletion(entries.clone());
-                            }
-                        }),
-                    );
-                } else {
-                    self.retry_background_deletion(entries);
-                }
+                self.show_partial_operation_failure(
+                    message,
+                    blocker.clone(),
+                    DeleteErrorRetry {
+                        entries,
+                        require_choice: *has_non_retryable_failures
+                            || self.browser.has_foreground_operation(),
+                        run: Self::retry_background_deletion,
+                    },
+                );
                 true
             }
             BrowserEvent::TransferFinished { .. } => false,

@@ -458,6 +458,7 @@ impl MergeUndo {
             retryable_locations: Vec::new(),
             has_non_retryable_failures: true,
             message: deletion_error_summary(&outcome.errors, true),
+            blocker: None,
         });
     }
 }

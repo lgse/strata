@@ -727,6 +727,7 @@ fn an_outcome_shows_one_dialog_with_the_report_of_its_operation() {
                     retryable_locations: Vec::new(),
                     has_non_retryable_failures: true,
                     message: errors.into(),
+                    blocker: None,
                 });
             // A move, a restore, a merge undo and an extraction run in the
             // foreground and a copy in the background.

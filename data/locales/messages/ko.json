@@ -742,6 +742,7 @@
   "Selection changed": "선택 항목이 변경되었습니다",
   "Show Hidden Files": "숨김 파일 표시",
   "Show item properties": "항목 속성 표시",
+  "Show “%{name}” in Folder": "폴더에서 “%{name}” 보기",
   "Show or hide hidden files": "숨김 파일 표시 / 숨기기",
   "Show or hide the sidebar": "사이드바 표시 / 숨기기",
   "Show or hide this reference": "이 참조 표시 / 숨기기",
