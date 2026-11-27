@@ -20,13 +20,14 @@ pub(super) fn password_key(generation: u64) -> String {
 pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let archive = &app.archive;
     let form = archive.form.as_ref()?;
-    let mut dialog = StrataDialog::new(dialog_key(form.generation), tr("Extract"), super::cancel)
+    let mut dialog = StrataDialog::new(dialog_key(form.generation), tr("Extract"), |_| {})
+        .on_dismiss_tx(super::cancel)
         .open(archive.open)
         .subtitle(form.entry.display_name.clone())
         .icon(IconName::Archive)
         .blocking(!form.password.text.is_empty())
         .child(password_section(&app.look, form))
-        .secondary(tr("Cancel"), super::cancel)
+        .secondary_tx(tr("Cancel"), super::cancel)
         .primary_tx(tr("Extract"), super::submit)
         .initial_focus(Focus::First)
         .close_label(tr("Close dialog"));

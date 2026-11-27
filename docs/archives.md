@@ -145,6 +145,29 @@ no Extract actions. FIFOs, sockets, devices, and broken links named like
 archives are not extracted either; activation opens them externally and the
 chords report "Not an archive".
 
+### Several archives at once
+
+**Extract here**, from the context menu or `; e`, also takes a selection of
+several archives. The action is offered only when every selected item meets the
+rule above: a selection that includes a folder, a plain file, a remote item, or
+an unsupported archive shows no Extract action and extracts nothing, rather than
+part of the selection. **Extract to…** and `; E` take one archive.
+
+The archives are extracted one after another, in listing order, each beside
+itself and each as its own operation: the output and renaming rules above, the
+password prompt, and Undo apply per archive. One progress dialog stays up for
+the whole selection, titled with the archive it is on, such as "Extracting
+archive 2 of 5".
+
+- An archive that fails does not stop the ones after it. What was extracted
+  stays, the results are selected, and one dialog at the end names each failed
+  archive with its reason, together with any names that had to change.
+- Cancel stops the archive being extracted as it would on its own, and no later
+  archive starts. The cancellation summary adds any archive that had already
+  failed.
+- A password-protected archive prompts when its turn comes. Closing the prompt
+  leaves that archive, and the archives after it, unextracted.
+
 If the item changes between opening the menu and running the action, the
 operation layer checks the path again. A path that exists but is not a regular
 file fails with ``Not an archive: `<name>` `` before any destination folder is

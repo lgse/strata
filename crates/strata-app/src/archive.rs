@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod batch;
 #[cfg(test)]
 mod tests;
 mod view;
@@ -9,7 +10,10 @@ use strata_core::{
     i18n::tr,
     model::{ArchiveFormat, FileEntry, Location},
 };
-use strata_fs::{app::BrowserEvent, services::PasswordFailure};
+use strata_fs::{
+    app::BrowserEvent,
+    services::{PasswordFailure, TransferReport},
+};
 
 use crate::{
     App,
@@ -67,6 +71,14 @@ pub(crate) struct Archive {
     extract_destination: Option<Location>,
     pending_extract_retry: Option<(FileEntry, Location)>,
     pending_navigate: Option<Location>,
+    batch: Option<batch::Batch>,
+}
+
+/// Why a selection is not extracted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Refused {
+    Nothing,
+    NotArchives,
 }
 
 impl Part for Archive {
@@ -83,6 +95,7 @@ impl Part for Archive {
             extract_destination: None,
             pending_extract_retry: None,
             pending_navigate: None,
+            batch: None,
         }
     }
 
@@ -121,23 +134,41 @@ fn record_password_retry(archive: &mut Archive, entry: &FileEntry, destination: 
 }
 
 fn extract_here(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
-    let entry = match call.on {
-        On::Row((depth, id)) => menus::context_entries(app, depth, id).map(|(entry, _)| entry),
-        On::Focus => focused_archive(app),
+    let entries = match call.on {
+        On::Row((depth, id)) => menus::context_entries(app, depth, id).map(|(_, entries)| entries),
+        On::Focus => {
+            shell::publish(app);
+            Some(app.browser.selected_entries())
+        }
         On::Column(_) | On::Place(_) => None,
     };
-    if let Some(entry) = entry.filter(|entry| ArchiveFormat::for_entry(entry).is_some()) {
-        extract_entry(app, entry, tx);
+    if let Some(entries) = entries.filter(|entries| extractable(entries).is_ok()) {
+        extract_entries(app, entries, tx);
     }
     Outcome::Ran
 }
 
-fn focused_archive(app: &mut App) -> Option<FileEntry> {
-    shell::publish(app);
-    let entries = app.browser.selected_entries();
-    match entries.as_slice() {
-        [only] => Some(only.clone()),
-        _ => None,
+/// Whether "Extract here" takes `entries`: every one a regular local archive, or none run.
+pub(crate) fn extractable(entries: &[FileEntry]) -> Result<(), Refused> {
+    if entries.is_empty() {
+        return Err(Refused::Nothing);
+    }
+    if entries
+        .iter()
+        .all(|entry| ArchiveFormat::for_entry(entry).is_some())
+    {
+        Ok(())
+    } else {
+        Err(Refused::NotArchives)
+    }
+}
+
+/// Extracts each archive beside itself, one after another.
+pub(crate) fn extract_entries(app: &mut App, mut entries: Vec<FileEntry>, tx: &mut Tx) {
+    if entries.len() > 1 {
+        batch::start(app, entries, tx);
+    } else if let Some(entry) = entries.pop() {
+        extract_entry(app, entry, tx);
     }
 }
 
@@ -164,6 +195,11 @@ pub(crate) fn extract_entry_to(
     destination: Location,
     tx: &mut Tx,
 ) {
+    app.archive.batch = None;
+    begin_extract(app, entry, destination, tx);
+}
+
+fn begin_extract(app: &mut App, entry: FileEntry, destination: Location, tx: &mut Tx) {
     app.archive.extract_destination = Some(destination.clone());
     record_password_retry(&mut app.archive, &entry, &destination);
     shell::publish(app);
@@ -196,18 +232,46 @@ pub(crate) fn take_pending_destination(app: &mut App) -> Option<Location> {
     app.archive.pending_destination.take()
 }
 
-pub(crate) fn abandon_follow_ups(app: &mut App) {
+/// Drops what a cancelled operation left pending, returning what its batch had still to report.
+pub(crate) fn abandon_follow_ups(app: &mut App) -> Option<String> {
     let archive = &mut app.archive;
     archive.pending_destination = None;
     archive.pending_select.clear();
     archive.extract_destination = None;
     archive.pending_extract_retry = None;
     archive.pending_navigate = None;
+    archive.batch.take().and_then(|batch| batch.detail())
 }
 
+/// The archive being extracted and how many "Extract here" took together.
+pub(crate) fn batch_position(app: &App) -> Option<(usize, usize)> {
+    app.archive.batch.as_ref().map(batch::Batch::position)
+}
+
+/// Whether a batch has an archive extracting, so its progress stays up between archives.
+pub(crate) fn batch_extracting(app: &App) -> bool {
+    app.archive
+        .batch
+        .as_ref()
+        .is_some_and(batch::Batch::extracting)
+}
+
+/// Keeps a batch archive's report for the batch's end; `false` outside a batch.
+pub(crate) fn defer_report(app: &mut App, report: &TransferReport) -> bool {
+    match &mut app.archive.batch {
+        Some(batch) => {
+            batch.absorb(report.clone());
+            true
+        }
+        None => false,
+    }
+}
+
+/// What a failed foreground operation still needs: `detail` is shown when this returns `false`.
 pub(crate) fn on_operation_failed(
     app: &mut App,
     password_failure: Option<PasswordFailure>,
+    detail: &str,
     tx: &mut Tx,
 ) -> bool {
     let archive = &mut app.archive;
@@ -216,12 +280,13 @@ pub(crate) fn on_operation_failed(
     archive.extract_destination = None;
     let retry = archive.pending_extract_retry.take();
     let navigate_after_extract = archive.pending_navigate.take();
-    let Some((entry, destination)) = retry else {
-        return false;
+    let prompt = retry.zip(extract_password_retry(password_failure));
+    let Some(((entry, destination), invalid_password)) = prompt else {
+        return batch::on_archive_failed(app, detail, tx);
     };
-    let Some(invalid_password) = extract_password_retry(password_failure) else {
-        return false;
-    };
+    if let Some(batch) = &mut app.archive.batch {
+        batch.pause();
+    }
     open_password_dialog(
         app,
         PasswordTarget {
@@ -252,11 +317,13 @@ fn open_password_dialog(
     tx.focus_when_shown(view::password_key(generation), false);
 }
 
-fn cancel(app: &mut App) {
+/// Closing the prompt gives up on its archive, and on the batch's archives not yet started.
+fn cancel(app: &mut App, tx: &mut Tx) {
     app.archive.open = false;
     if let Some(form) = &mut app.archive.form {
         form.wipe_secret();
     }
+    batch::finish(app, tx);
 }
 
 fn clear_error(app: &mut App) {
@@ -293,6 +360,9 @@ fn submit(app: &mut App, tx: &mut Tx) {
     app.archive.open = false;
     app.archive.extract_destination = Some(destination.clone());
     app.archive.pending_navigate = navigate;
+    if let Some(batch) = &mut app.archive.batch {
+        batch.resume();
+    }
     record_password_retry(&mut app.archive, &entry, &destination);
     shell::publish(app);
     app.browser
@@ -338,9 +408,20 @@ fn queue_event(event: &BrowserEvent, heard: &mut Heard<'_, App>) {
     }
 }
 
-pub(crate) fn on_completed(app: &mut App, select_name: String, tx: &mut Tx) -> bool {
+pub(crate) fn on_completed(
+    app: &mut App,
+    select_name: String,
+    cancelled: bool,
+    tx: &mut Tx,
+) -> bool {
     app.archive.pending_extract_retry = None;
     let extract_destination = app.archive.extract_destination.take();
+    if app.archive.batch.is_some() {
+        app.archive.pending_destination = None;
+        app.archive.pending_select.clear();
+        let extracted = extract_destination.filter(|_| !select_name.is_empty());
+        return batch::on_archive_done(app, extracted.zip(Some(select_name)), cancelled, tx);
+    }
     if select_name.is_empty() {
         app.archive.pending_destination = None;
         app.archive.pending_select.clear();
@@ -354,7 +435,7 @@ pub(crate) fn on_completed(app: &mut App, select_name: String, tx: &mut Tx) -> b
     match pending_destination {
         Some(destination) => reveal_compressed(app, destination, select_name, tx),
         None if !select_name.is_empty() => {
-            show_archive_result(app, extract_destination, select_name, tx)
+            show_archive_result(app, extract_destination, vec![select_name], tx)
         }
         None => false,
     }
@@ -452,7 +533,7 @@ fn reload_destination(app: &mut App, destination: Location, tx: &mut Tx) -> bool
 fn show_archive_result(
     app: &mut App,
     destination: Option<Location>,
-    name: String,
+    names: Vec<String>,
     tx: &mut Tx,
 ) -> bool {
     let active = app.browser.active_location();
@@ -464,7 +545,7 @@ fn show_archive_result(
     };
     if active.as_ref() == Some(&folder) {
         app.archive.pending_destination = Some(folder);
-        app.archive.pending_select = vec![name];
+        app.archive.pending_select = names;
     }
     if app.browser.column_has_monitor(depth) {
         reveal_pending_at(app, depth, tx)
@@ -475,6 +556,19 @@ fn show_archive_result(
     }
 }
 
+/// A batch's results arrive one listing change at a time; selecting waits for the last.
+fn pending_listed_at(app: &App, depth: usize) -> bool {
+    let pending = &app.archive.pending_select;
+    let all_listed = |entries: &[FileEntry]| {
+        pending
+            .iter()
+            .all(|name| entries.iter().any(|entry| entry.display_name == *name))
+    };
+    app.browser
+        .with_column_entries(depth, all_listed)
+        .unwrap_or(false)
+}
+
 fn reveal_pending_at(app: &mut App, depth: usize, tx: &mut Tx) -> bool {
     let Some(destination) = app.archive.pending_destination.as_ref() else {
         return false;
@@ -482,7 +576,7 @@ fn reveal_pending_at(app: &mut App, depth: usize, tx: &mut Tx) -> bool {
     if app.browser.location_at(depth).as_ref() != Some(destination) {
         return false;
     }
-    if app.archive.pending_select.is_empty() {
+    if app.archive.pending_select.is_empty() || !pending_listed_at(app, depth) {
         return false;
     }
     if !app

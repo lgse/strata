@@ -840,6 +840,9 @@ fn several(target: &EntryTarget<'_>) -> MenuModel {
     if target.entries.iter().any(FileEntry::is_directory) {
         open.items.push(open_in(typing));
     }
+    let archives = crate::archive::extractable(target.entries).is_ok();
+    open.items
+        .extend(section(&[(EXTRACT, archives)], typing).items);
     MenuModel::new()
         .header_line(heading)
         .header_line(summary(target.entries))

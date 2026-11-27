@@ -201,7 +201,10 @@ impl Browser {
             }
             _ => return,
         };
-        self.emit(BrowserEvent::ArchiveCompleted { select_name });
+        self.emit(BrowserEvent::ArchiveCompleted {
+            select_name,
+            cancelled: false,
+        });
     }
 
     fn publish_entry_outcome(self: &Rc<Self>, outcome: &Outcome<'_>, event: OperationEvent) {
@@ -312,6 +315,7 @@ impl Browser {
         if outcome.completion.archiving {
             self.emit(BrowserEvent::ArchiveCompleted {
                 select_name: String::new(),
+                cancelled: true,
             });
         }
         self.emit(BrowserEvent::OperationCancelled {

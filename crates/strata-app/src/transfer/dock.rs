@@ -384,16 +384,33 @@ pub(super) fn on_transfer_completed(
         .complete(tracked.op_id, tr("Copy complete"), tx)
 }
 
+/// "Extracting archive 2 of 5" while "Extract here" works through several archives.
+fn extraction_title(batch: Option<(usize, usize)>) -> String {
+    match batch {
+        Some((current, total)) => rust_i18n::t!(
+            "Extracting archive %{current} of %{total}",
+            current = integer(current as u64),
+            total = integer(total as u64)
+        )
+        .into_owned(),
+        None => tr("Processing archive…"),
+    }
+}
+
 pub(super) fn on_archive_started(app: &mut App, start: StartedArchive, tx: &mut Tx) {
-    if let Some(previous) = app.transfer.ops.foreground.take() {
-        app.transfer.ops.dock.remove(previous.op_id);
+    let batch = archive::batch_position(app).filter(|_| !start.compressing);
+    let previous = app.transfer.ops.foreground.take().map(|op| op.op_id);
+    // A batch's next archive takes over the progress its last one left up.
+    let kept = previous.filter(|_| batch.is_some());
+    if let Some(replaced) = previous.filter(|_| kept.is_none()) {
+        app.transfer.ops.dock.remove(replaced);
     }
     let docked = start
         .backgroundable
         .filter(|req_id| app.browser.background_file_operation(*req_id));
     app.transfer.ops.just_docked = docked;
     let archive_destination = docked.and_then(|_| archive::take_pending_destination(app));
-    let op_id = app.transfer.ops.allocate_id();
+    let op_id = kept.unwrap_or_else(|| app.transfer.ops.allocate_id());
     let (title, cancel_label, placement) = if start.compressing {
         (
             tr("Compressing items"),
@@ -402,7 +419,7 @@ pub(super) fn on_archive_started(app: &mut App, start: StartedArchive, tx: &mut 
         )
     } else {
         (
-            tr("Processing archive…"),
+            extraction_title(batch),
             tr("Cancel archive processing"),
             Placement::Dialog,
         )
@@ -480,12 +497,52 @@ fn archive_sample(completed: usize, total: usize, compressing: bool) -> Sample {
     .status(status)
 }
 
+/// How an archive operation ended: `cancelled` when `OperationCancelled` follows.
+#[derive(Default)]
+pub(super) struct ArchiveEnd {
+    select_name: String,
+    cancelled: bool,
+}
+
+impl ArchiveEnd {
+    /// What an `ArchiveCompleted` says; no other event ends an archive operation.
+    pub(super) fn of(event: &BrowserEvent) -> Self {
+        let BrowserEvent::ArchiveCompleted {
+            select_name,
+            cancelled,
+        } = event
+        else {
+            return Self::default();
+        };
+        Self {
+            select_name: select_name.clone(),
+            cancelled: *cancelled,
+        }
+    }
+}
+
+/// Takes down a foreground operation's progress, unless a batch's next archive continues it.
+fn release_foreground(app: &mut App, tracked: Option<TrackedOp>) {
+    let Some(tracked) = tracked else {
+        return;
+    };
+    if archive::batch_extracting(app) {
+        app.transfer.ops.foreground = Some(tracked);
+    } else {
+        app.transfer.ops.dock.remove(tracked.op_id);
+    }
+}
+
 pub(super) fn on_archive_completed(
     app: &mut App,
     bg: Option<OperationRequestId>,
-    select_name: String,
+    end: ArchiveEnd,
     tx: &mut Tx,
 ) -> bool {
+    let ArchiveEnd {
+        select_name,
+        cancelled,
+    } = end;
     let tracked = app.transfer.ops.take_tracked(bg);
     let from_background = bg.is_some() || tracked.as_ref().is_some_and(|op| op.docked);
     if from_background {
@@ -501,14 +558,20 @@ pub(super) fn on_archive_completed(
             archive::on_background_completed(app, tracked.archive_destination, select_name, tx);
         return completed || revealed;
     }
-    if let Some(tracked) = tracked {
-        app.transfer.ops.dock.remove(tracked.op_id);
-    }
-    archive::on_completed(app, select_name, tx);
+    archive::on_completed(app, select_name, cancelled, tx);
+    release_foreground(app, tracked);
     true
 }
 
-pub(super) fn on_items_reported(app: &mut App, report: &TransferReport, tx: &mut Tx) -> bool {
+pub(super) fn on_items_reported(
+    app: &mut App,
+    bg: Option<OperationRequestId>,
+    report: &TransferReport,
+    tx: &mut Tx,
+) -> bool {
+    if bg.is_none() && archive::defer_report(app, report) {
+        return false;
+    }
     present_report(app, report, tx)
 }
 
@@ -520,17 +583,20 @@ pub(super) fn on_operation_failed(
 ) -> bool {
     let tracked = app.transfer.ops.take_tracked(bg);
     let from_background = bg.is_some() || tracked.as_ref().is_some_and(|op| op.docked);
-    if let Some(tracked) = tracked {
-        app.transfer.ops.dock.remove(tracked.op_id);
-    }
-    if !from_background {
+    let detail = outcome_detail(outcome.message, &outcome.report);
+    if from_background {
+        if let Some(tracked) = tracked {
+            app.transfer.ops.dock.remove(tracked.op_id);
+        }
+    } else {
         app.transfer.pending_reveal = None;
         super::chosen::forget_navigation(app);
-        if archive::on_operation_failed(app, outcome.password_failure, tx) {
+        let handled = archive::on_operation_failed(app, outcome.password_failure, &detail, tx);
+        release_foreground(app, tracked);
+        if handled {
             return true;
         }
     }
-    let detail = outcome_detail(outcome.message, &outcome.report);
     error_dialog::show(app, Error::new(tr("Unable to complete operation"), detail));
     true
 }
@@ -542,10 +608,11 @@ pub(super) fn on_operation_cancelled(
 ) -> bool {
     let tracked = app.transfer.ops.take_tracked(bg);
     let from_background = bg.is_some() || tracked.as_ref().is_some_and(|op| op.docked);
+    let mut earlier = None;
     if !from_background {
         app.transfer.pending_reveal = None;
         super::chosen::forget_navigation(app);
-        archive::abandon_follow_ups(app);
+        earlier = archive::abandon_follow_ups(app);
     }
     if let Some(tracked) = tracked {
         app.transfer.ops.dock.remove(tracked.op_id);
@@ -553,7 +620,10 @@ pub(super) fn on_operation_cancelled(
     app.browser
         .refresh_after_cancellation(&outcome.affected_locations);
     let summary = cancelled_summary(outcome.completed, outcome.failed, outcome.not_attempted);
-    let detail = outcome_detail(summary, &outcome.report);
+    let mut detail = outcome_detail(summary, &outcome.report);
+    if let Some(earlier) = earlier {
+        detail = format!("{detail}\n\n{earlier}");
+    }
     error_dialog::show(app, Error::new(tr("Operation cancelled"), detail));
     true
 }
@@ -605,15 +675,17 @@ pub(super) fn on_background_event(
         BrowserEvent::ArchiveProgress { completed, total } => {
             on_archive_progress(app, Some(request_id), (completed, total), tx)
         }
-        BrowserEvent::ArchiveCompleted { select_name } => {
-            on_archive_completed(app, Some(request_id), select_name, tx)
+        BrowserEvent::ArchiveCompleted { .. } => {
+            on_archive_completed(app, Some(request_id), ArchiveEnd::of(&event), tx)
         }
         BrowserEvent::TransferFinished { moved_locations } => {
             on_transfer_finished(app, Some(request_id), &moved_locations);
             true
         }
         BrowserEvent::TransferCompleted => on_transfer_completed(app, Some(request_id), tx),
-        BrowserEvent::ItemsReported { report } => on_items_reported(app, &report, tx),
+        BrowserEvent::ItemsReported { report } => {
+            on_items_reported(app, Some(request_id), &report, tx)
+        }
         other => on_background_outcome(app, request_id, other, tx),
     }
 }
@@ -953,16 +1025,21 @@ fn left_sections(report: &TransferReport) -> Vec<(String, Lines)> {
     left
 }
 
-fn outcome_detail(outcome: String, report: &TransferReport) -> String {
+/// What a report has to tell, under its headings.
+pub(crate) fn reported(report: &TransferReport) -> Option<String> {
     let mut reported = renamed_sections(&report.renamed);
     reported.extend(left_sections(report));
-    if reported.is_empty() {
-        return outcome;
-    }
-    format!("{outcome}\n\n{}", sections(reported))
+    (!reported.is_empty()).then(|| sections(reported))
 }
 
-pub(super) fn present_report(app: &mut App, report: &TransferReport, tx: &mut Tx) -> bool {
+fn outcome_detail(outcome: String, report: &TransferReport) -> String {
+    match reported(report) {
+        Some(reported) => format!("{outcome}\n\n{reported}"),
+        None => outcome,
+    }
+}
+
+pub(crate) fn present_report(app: &mut App, report: &TransferReport, tx: &mut Tx) -> bool {
     let mut renamed = renamed_sections(&report.renamed);
     let left = left_sections(report);
     if !left.is_empty() {

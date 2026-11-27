@@ -1,0 +1,32 @@
+{"scenario":"several-archives-extract-in-turn","modes":["columns"],"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"Extract here on several selected archives from the context menu: mixed selection offers none, a damaged archive is reported while the rest extract and get selected; batch logic is unit-tested, the pointer multi-select and menu wiring is not"}}
+{"fs":{"path":"first.zip","zip":[["first.txt","one"]]}}
+{"fs":{"path":"second.zip","zip":[["second.txt","two"]]}}
+{"fs":{"path":"damaged.zip","write":"This is harmless text, not an archive.\n"}}
+{"key":"ctrl+r"}
+{"wait":{"entry":"second.zip","dir":"$root"},"message":"the archives to be listed"}
+{"select":{"entry":"first.zip","dir":"$root"}}
+{"click":{"entry":"readme.md","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["first.zip","readme.md"],"dir":"$root"},"message":"an archive and a plain file to be selected together"}
+{"click":{"entry":"first.zip","dir":"$root"},"button":3}
+{"wait":{"present":{"menu_item":"Compress…"}},"message":"the selection's menu to open"}
+{"expect":{"absent":{"menu_item":"Extract here"}},"message":"a mixed selection to offer no Extract here"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"select":{"entry":"damaged.zip","dir":"$root"}}
+{"click":{"entry":"first.zip","dir":"$root"},"mods":["ctrl"]}
+{"click":{"entry":"second.zip","dir":"$root"},"mods":["ctrl"]}
+{"wait":{"selected":["damaged.zip","first.zip","second.zip"],"dir":"$root"},"message":"the three archives to be selected together"}
+{"click":{"entry":"first.zip","dir":"$root"},"button":3}
+{"wait":{"present":{"menu_item":"Extract here"}},"message":"the menu item 'Extract here' for several archives"}
+{"expect":{"absent":{"menu_item":"Extract to…"}},"message":"Extract to to stay a one-archive action"}
+{"settle":{"menu_item":"Extract here"}}
+{"click":{"menu_item":"Extract here"}}
+{"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"dialog":"Completed with errors"},"message":"one report once every archive has had its turn"}
+{"expect":{"present":{"role":"label","within":{"dialog":true},"name_matches":"damaged\\.zip"}},"message":"the report to name the archive that failed"}
+{"fs":{"path":"first.txt","text":"one"},"message":"the first valid archive to be extracted past the damaged one"}
+{"fs":{"path":"second.txt","text":"two"},"message":"the last archive to be extracted after the failure"}
+{"fs":{"path":".","glob_none":".strata-extraction-*"},"timeout_ms":0}
+{"click":{"dialog_button":"Close"}}
+{"wait":{"dialog":null},"message":"the report to close"}
+{"wait":{"selected":["first.txt","second.txt"],"dir":"$root"},"message":"both extracted files to be selected"}

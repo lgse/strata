@@ -331,11 +331,14 @@ single selected folder.
 
 **; c** opens the Compress dialog for the fill, or the cursor item when nothing
 is filled; items without a local path flash `Can’t compress these items`.
-**; e** extracts one archive into its own folder, as the context menu's
-**Extract here** does, and selects the result. **; E** opens `extract to ›` for
-that archive. Both take the one-item fill or the cursor item: a larger fill
-flashes `Extract one archive at a time`, and anything that is not a local
-archive flashes `Not an archive`. Empty folders flash `Nothing to compress` /
+**; e** extracts the fill, or the cursor item when nothing is filled, as the
+context menu's **Extract here** does: each archive beside itself, one after
+another, with the results selected (see [Several archives at
+once](archives.md#several-archives-at-once)). A fill holding anything that is
+not a local archive extracts nothing and flashes `Can’t extract these items`.
+**; E** opens `extract to ›` for one archive: a larger fill flashes
+`Extract one archive at a time`. One item that is not a local archive flashes
+`Not an archive` for either chord. Empty folders flash `Nothing to compress` /
 `Nothing to extract`.
 
 **M** (`move to ›`) and **C** (`copy to ›`) fix the fill, or the cursor item

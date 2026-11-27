@@ -36,6 +36,7 @@ mod tests;
 mod words;
 
 pub(crate) use chosen::transfer_to_chosen;
+pub(crate) use dock::{present_report, reported};
 pub(crate) use tenxer::{paste_preferring, start_in_place_transfer};
 
 #[derive(Clone, PartialEq, Eq)]
@@ -203,9 +204,9 @@ fn queue_archive_event(
             heard.then(move |app, tx| dock::on_archive_progress(app, None, (completed, total), tx));
             true
         }
-        BrowserEvent::ArchiveCompleted { select_name } => {
-            let select_name = select_name.clone();
-            heard.then(move |app, tx| dock::on_archive_completed(app, None, select_name, tx));
+        BrowserEvent::ArchiveCompleted { .. } => {
+            let end = dock::ArchiveEnd::of(event);
+            heard.then(move |app, tx| dock::on_archive_completed(app, None, end, tx));
             true
         }
         _ => false,
@@ -228,7 +229,7 @@ fn queue_outcome_event(event: &BrowserEvent, heard: &mut Heard<'_, App>) -> bool
         }
         BrowserEvent::ItemsReported { report } => {
             let report = report.clone();
-            heard.then(move |app, tx| dock::on_items_reported(app, &report, tx));
+            heard.then(move |app, tx| dock::on_items_reported(app, None, &report, tx));
             true
         }
         BrowserEvent::OperationFailed {
