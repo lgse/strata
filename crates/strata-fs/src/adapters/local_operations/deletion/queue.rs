@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::Cell, ffi::OsString, io, os::fd::OwnedFd, sync::Arc};
+use std::{
+    cell::Cell,
+    ffi::OsString,
+    io,
+    os::fd::OwnedFd,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use super::{
     super::{
@@ -9,6 +16,7 @@ use super::{
         native_fs::{Recorded, os_error_detail},
         work_queue::{Group, Job, WorkQueue},
     },
+    error::LocalDeleteError,
     pinned::{LocalDeleteStep, ensure_local_delete_target_unchanged, open_local_delete_target},
 };
 
@@ -23,6 +31,7 @@ pub(in crate::adapters::local_operations) struct LocalDeleteGuard {
     parent: Arc<OwnedFd>,
     name: OsString,
     handle: Arc<OwnedFd>,
+    relative: Arc<Path>,
 }
 
 impl LocalDeleteGuard {
@@ -46,22 +55,22 @@ pub(in crate::adapters::local_operations) enum LocalDeleteJob {
 }
 
 impl Job for LocalDeleteJob {
-    type Error = String;
+    type Error = LocalDeleteError;
 
     fn run(self, queue: &LocalDeleteQueue) {
         process_local_delete_job(queue, self);
     }
 
-    fn cancelled() -> String {
-        "Delete cancelled".to_owned()
+    fn cancelled() -> Self::Error {
+        LocalDeleteError::Cancelled
     }
 
-    fn panicked() -> String {
-        "Delete worker panicked".to_owned()
+    fn panicked() -> Self::Error {
+        "Delete worker panicked".to_owned().into()
     }
 
-    fn not_started(error: io::Error) -> String {
-        format!("Could not start delete worker: {error}")
+    fn not_started(error: io::Error) -> Self::Error {
+        format!("Could not start delete worker: {error}").into()
     }
 }
 
@@ -123,7 +132,7 @@ impl EntryDeletion {
         }
     }
 
-    fn open_target(&self) -> Result<LocalDeleteStep, String> {
+    fn open_target(&self) -> Result<LocalDeleteStep, LocalDeleteError> {
         let in_deleted_folder = self.guard.is_some();
         if let Some(guard) = &self.guard {
             guard.ensure_unchanged()?;
@@ -134,13 +143,20 @@ impl EntryDeletion {
             self.expected,
             in_deleted_folder,
         )
+        .map_err(|error| error.at(self.child_path()))
+    }
+
+    fn child_path(&self) -> Option<PathBuf> {
+        Some(self.guard.as_ref()?.relative.join(&self.name))
     }
 
     fn descend(self, queue: &LocalDeleteQueue, handle: Arc<OwnedFd>, children: Vec<OsString>) {
+        let relative = self.child_path().unwrap_or_default();
         let removal = DirectoryRemoval {
             parent: self.parent,
             name: self.name,
             handle,
+            relative: Arc::from(relative),
             completion: self.completion,
             deadline: self.deadline,
         };
@@ -152,6 +168,7 @@ impl EntryDeletion {
             parent: removal.parent.clone(),
             name: removal.name.clone(),
             handle: removal.handle.clone(),
+            relative: removal.relative.clone(),
         });
         let parent = removal.handle.clone();
         let deadline = removal.deadline.clone();
@@ -173,6 +190,7 @@ pub(in crate::adapters::local_operations) struct DirectoryRemoval {
     parent: Arc<OwnedFd>,
     name: OsString,
     handle: Arc<OwnedFd>,
+    relative: Arc<Path>,
     completion: Option<Arc<Group<LocalDeleteJob>>>,
     deadline: Deadline,
 }
@@ -188,7 +206,7 @@ fn remove_local_delete_directory(queue: &LocalDeleteQueue, removal: DirectoryRem
         return;
     }
     if let Err(error) = removal.ensure_unchanged() {
-        queue.fail(error);
+        queue.fail(error.into());
         return;
     }
     let changed = Cell::new(None);
@@ -206,28 +224,26 @@ fn remove_local_delete_directory(queue: &LocalDeleteQueue, removal: DirectoryRem
             queue.complete(removal.completion);
         }
         Err(Refused::Stopped(_)) => {}
-        Err(Refused::Changed(_)) => queue.fail(changed.take().unwrap_or_default()),
-        Err(refused) => refuse_directory(queue, folder, &removal.name, refused),
+        Err(Refused::Changed(_)) => queue.fail(changed.take().unwrap_or_default().into()),
+        Err(refused) => refuse_directory(queue, folder, &removal, refused),
     }
 }
 
 fn refuse_directory(
     queue: &LocalDeleteQueue,
     folder: Entry<'_>,
-    name: &OsString,
+    removal: &DirectoryRemoval,
     refused: Refused,
 ) {
     let open = matches!(refused, Refused::StillOpen(_));
     let still_open = open.then(|| leftovers::still_open(fs(), folder)).flatten();
-    let error = rust_i18n::t!(
-        "Could not delete “%{name}”: %{error}",
-        name = name.to_string_lossy(),
-        error = still_open.map_or_else(
-            || os_error_detail(refused.errno()),
-            crate::services::error_detail
-        )
-    )
-    .into_owned();
+    let reason = still_open.map_or_else(
+        || os_error_detail(refused.errno()),
+        crate::services::error_detail,
+    );
+    let relative =
+        (!removal.relative.as_os_str().is_empty()).then(|| removal.relative.to_path_buf());
+    let error = LocalDeleteError::refused(&removal.name, reason).at(relative);
     // A folder kept only by open files leaves its parent in place but nothing else, so
     // what the delete removes does not depend on which worker reached it first.
     if open {

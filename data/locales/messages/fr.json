@@ -744,6 +744,7 @@
   "Selection changed": "La sélection a changé",
   "Show Hidden Files": "Afficher les fichiers cachés",
   "Show item properties": "Afficher les propriétés de l’élément",
+  "Show “%{name}” in Folder": "Afficher « %{name} » dans le dossier",
   "Show or hide hidden files": "Afficher ou masquer les fichiers cachés",
   "Show or hide the sidebar": "Afficher ou masquer la barre latérale",
   "Show or hide this reference": "Afficher ou masquer cette référence",

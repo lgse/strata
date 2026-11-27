@@ -61,13 +61,13 @@ pub(crate) use native_fs::{
 pub use navigation_history::NavigationHistory;
 pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
-    DeleteRequest, ExtractRequest, Holder, KeptCause, KeptItem, LeftoverInside, MoveRecord,
-    NameMode, OperationEvent, OperationProvider, OperationRequestId, PasswordFailure, PasteItem,
-    PasteRequest, PlaceEntryRequest, PlacedSnapshot, RecoverRequest, RenameCause, RenameRecord,
-    RenameRequest, RenamedItem, ReplacedOriginal, RestoreRequest, RestoreSource, RestoreTrashItem,
-    ReviewedLeftover, ShownName, SkippedItem, SpecialKind, TransferConflict, TransferReport,
-    TypedPath, UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
-    validate_basename,
+    DeleteBlocker, DeleteRequest, ExtractRequest, Holder, KeptCause, KeptItem, LeftoverInside,
+    MoveRecord, NameMode, OperationEvent, OperationProvider, OperationRequestId, PasswordFailure,
+    PasteItem, PasteRequest, PlaceEntryRequest, PlacedSnapshot, RecoverRequest, RenameCause,
+    RenameRecord, RenameRequest, RenamedItem, ReplacedOriginal, RestoreRequest, RestoreSource,
+    RestoreTrashItem, ReviewedLeftover, ShownName, SkippedItem, SpecialKind, TransferConflict,
+    TransferReport, TypedPath, UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest,
+    UndoRenameRequest, validate_basename,
 };
 pub use path_match::{PathMatcher, PathQuery};
 pub use remote_download::{

@@ -601,6 +601,16 @@ pub(super) fn on_operation_failed(
     true
 }
 
+pub(super) fn on_operation_completed_with_errors(app: &mut App) -> bool {
+    app.transfer.pending_reveal = None;
+    super::chosen::forget_navigation(app);
+    if let Some(tracked) = app.transfer.ops.take_tracked(None) {
+        app.transfer.ops.dock.remove(tracked.op_id);
+        return true;
+    }
+    false
+}
+
 pub(super) fn on_operation_cancelled(
     app: &mut App,
     bg: Option<OperationRequestId>,
@@ -711,6 +721,26 @@ fn on_background_outcome(
             },
             tx,
         ),
+        BrowserEvent::OperationCompletedWithErrors {
+            message,
+            retryable_locations,
+            has_non_retryable_failures,
+            blocker,
+            report,
+        } => {
+            if let Some(tracked) = app.transfer.ops.take_tracked(Some(request_id)) {
+                app.transfer.ops.dock.remove(tracked.op_id);
+            }
+            crate::trash::delete_error::background_completed_with_errors(
+                app,
+                crate::trash::delete_error::Failed {
+                    message: outcome_detail(message, &report),
+                    retryable: retryable_locations,
+                    others_failed: has_non_retryable_failures,
+                    blocker,
+                },
+            )
+        }
         BrowserEvent::OperationCancelled {
             completed,
             failed,
@@ -1032,7 +1062,7 @@ pub(crate) fn reported(report: &TransferReport) -> Option<String> {
     (!reported.is_empty()).then(|| sections(reported))
 }
 
-fn outcome_detail(outcome: String, report: &TransferReport) -> String {
+pub(crate) fn outcome_detail(outcome: String, report: &TransferReport) -> String {
     match reported(report) {
         Some(reported) => format!("{outcome}\n\n{reported}"),
         None => outcome,

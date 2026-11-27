@@ -7,7 +7,7 @@ use serde_json::Value;
 use strata_components::dialog::Tone;
 use strata_kit::icons::IconName;
 
-use super::{Error, Offer, show, shown_details};
+use super::{Error, ErrorAction, Offer, show, shown_details};
 use crate::{
     App,
     host::offscreen::Offscreen,
@@ -157,6 +157,59 @@ fn information_and_partial_failure_variants_expose_expected_subtitles_and_tones(
                 dialog_description(&host.tree()).as_deref(),
                 Some("Some items could not be processed")
             );
+        },
+    );
+}
+
+#[test]
+fn delete_failure_actions_run_once_and_escape_or_done_runs_nothing() {
+    hosted(
+        MODULE,
+        "delete_failure_actions_run_once_and_escape_or_done_runs_nothing",
+        |mut host| {
+            thread_local! {
+                static RETRY_RAN: Cell<u32> = const { Cell::new(0) };
+                static REVEAL_RAN: Cell<u32> = const { Cell::new(0) };
+            }
+            let open_delete = |host: &mut Offscreen, with_retry: bool| {
+                host.runtime().update(move |app: &mut App, _| {
+                    let retry = with_retry.then(|| {
+                        ErrorAction::new("Delete Permanently", |_, _| {
+                            RETRY_RAN.set(RETRY_RAN.get() + 1);
+                        })
+                    });
+                    let reveal = Some(ErrorAction::new("Show in Folder", |_, _| {
+                        REVEAL_RAN.set(REVEAL_RAN.get() + 1);
+                    }));
+                    show(
+                        app,
+                        Error::delete_failure("nested: Permission denied", retry, reveal),
+                    );
+                });
+                assert!(host.run_until(PATIENCE, |h| is_open(&h.tree())));
+            };
+
+            while host.turn() {}
+
+            open_delete(&mut host, false);
+            press(&mut host, Key::Escape);
+            closed(&mut host, "Escape without retry");
+            assert_eq!((RETRY_RAN.get(), REVEAL_RAN.get()), (0, 0));
+
+            open_delete(&mut host, false);
+            click(&mut host, "error-secondary");
+            closed(&mut host, "Show in Folder");
+            assert_eq!((RETRY_RAN.get(), REVEAL_RAN.get()), (0, 1));
+
+            open_delete(&mut host, true);
+            click(&mut host, "error-done");
+            closed(&mut host, "Done");
+            assert_eq!((RETRY_RAN.get(), REVEAL_RAN.get()), (0, 1));
+
+            open_delete(&mut host, true);
+            press(&mut host, Key::Enter);
+            closed(&mut host, "Return on retry");
+            assert_eq!((RETRY_RAN.get(), REVEAL_RAN.get()), (1, 1));
         },
     );
 }

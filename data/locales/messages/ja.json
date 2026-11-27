@@ -744,6 +744,7 @@
   "Selection changed": "選択が変更されました",
   "Show Hidden Files": "隠しファイルを表示",
   "Show item properties": "項目のプロパティを表示",
+  "Show “%{name}” in Folder": "フォルダーに「%{name}」を表示",
   "Show or hide hidden files": "隠しファイルの表示 / 非表示",
   "Show or hide the sidebar": "サイドバーの表示 / 非表示",
   "Show or hide this reference": "このリファレンスの表示 / 非表示",

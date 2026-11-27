@@ -56,7 +56,7 @@ fn permanent_delete_stops_if_an_open_directory_is_moved() -> Result<(), Box<dyn 
     let error = queue
         .result()
         .expect_err("moved directory must stop deletion");
-    assert!(error.contains("changed"));
+    assert!(error.to_string().contains("changed"));
     assert_eq!(fs::read(moved.join("child"))?, b"keep");
     assert_eq!(fs::read(target.join("replacement"))?, b"keep replacement");
     assert_eq!(fs::read(sibling)?, b"keep sibling");
@@ -153,6 +153,7 @@ fn a_worker_start_failure_stops_and_joins_started_workers() -> Result<(), Box<dy
         queue
             .result()
             .expect_err("worker start must fail")
+            .to_string()
             .contains("injected spawn failure")
     );
     assert!(finished.load(Ordering::Acquire));

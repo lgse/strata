@@ -210,6 +210,7 @@ fn unsupported_mounts_are_remembered_per_mount_instance() {
 /// Treats a tempdir as a mount whose backend refuses the trash rename.
 pub(in crate::adapters) struct RefusingMount {
     pub(in crate::adapters) mounts: MountTable,
+    refused_child: Option<PathBuf>,
     attempts: Cell<usize>,
 }
 
@@ -217,8 +218,16 @@ impl RefusingMount {
     pub(in crate::adapters) fn at(root: &Path, mount_id: u64, fs_type: &str) -> Self {
         Self {
             mounts: mounted_at(root, mount_id, fs_type),
+            refused_child: None,
             attempts: Cell::new(0),
         }
+    }
+
+    fn error(&self) -> glib::Error {
+        self.refused_child.as_ref().map_or_else(
+            || io(gio::IOErrorEnum::Failed),
+            |child| super::super::delete_blocker::tests::refusal(child),
+        )
     }
 }
 
@@ -246,7 +255,7 @@ impl TrashEnvironment for RefusingMount {
         let trash = root.join(format!(".Trash-{}", rustix::process::getuid().as_raw()));
         fs::create_dir_all(trash.join("info")).expect("info");
         fs::create_dir_all(trash.join("files")).expect("files");
-        Box::pin(std::future::ready(Err(io(gio::IOErrorEnum::Failed))))
+        Box::pin(std::future::ready(Err(self.error())))
     }
 }
 
@@ -302,6 +311,56 @@ fn a_refused_trash_on_fuse_is_recorded_and_its_leftovers_removed() {
         );
         assert_eq!(leftover_trash(root.path()).exists(), !unsupported, "{case}");
         assert_eq!(item.exists(), item_present, "{case}");
+    }
+}
+
+#[test]
+fn a_refused_child_on_fuse_neither_offers_deletion_nor_marks_the_mount() {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("main context lock");
+    let root = tempfile::tempdir().expect("tempdir");
+    let item = root.path().join("doomed");
+    fs::create_dir_all(item.join("nested")).expect("folder");
+    fs::write(item.join("nested/mine.txt"), b"mine").expect("fixture");
+    let environment = RefusingMount {
+        refused_child: Some(item.join("nested/mine.txt")),
+        ..RefusingMount::at(root.path(), 7202, "fuse.sshfs")
+    };
+    let on_main = glib::MainContext::default()
+        .block_on(trash_with_cleanup_in(
+            &environment,
+            &gio::File::for_path(&item),
+            &gio::Cancellable::new(),
+        ))
+        .map(|_| ());
+    let on_worker =
+        verified_with_cleanup_in(&environment.mounts, &environment.home(), &item, || {
+            Err(environment.error())
+        });
+    for result in [on_main, on_worker] {
+        let error = result.expect_err("trash fails");
+        assert_eq!(error.failure, TrashFailure::Other);
+        assert_eq!(error.child, Some(PathBuf::from("nested")));
+        assert_eq!(unsupported_reason_in(&environment.mounts, &item), None);
+    }
+    assert!(leftover_trash(root.path()).exists());
+}
+
+#[test]
+fn a_sticky_folder_lets_only_an_owner_or_root_remove_an_entry() {
+    for (uid, mode, owners, expected) in [
+        (1000, 0o1777, [0, 0], false),
+        (1000, 0o1777, [0, 1000], true),
+        (1000, 0o1777, [1000, 0], true),
+        (0, 0o1777, [5, 6], true),
+        (1000, 0o777, [0, 0], true),
+    ] {
+        assert_eq!(
+            sticky_lets(uid, mode, owners),
+            expected,
+            "{uid} {mode:o} {owners:?}"
+        );
     }
 }
 

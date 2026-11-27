@@ -744,6 +744,7 @@
   "Selection changed": "Выделение изменилось",
   "Show Hidden Files": "Показать скрытые файлы",
   "Show item properties": "Показать свойства элемента",
+  "Show “%{name}” in Folder": "Показать «%{name}» в папке",
   "Show or hide hidden files": "Показать или скрыть скрытые файлы",
   "Show or hide the sidebar": "Показать или скрыть боковую панель",
   "Show or hide this reference": "Показать или скрыть эту справку",
