@@ -15,6 +15,7 @@ use crate::{
     slots::{At, Later, Listener, Part, Place, Setup},
 };
 
+pub(crate) mod delete_error;
 mod dialog;
 pub(crate) mod empty;
 mod sizes;
@@ -58,12 +59,6 @@ pub(crate) struct Trash {
     empty: empty::Empty,
 }
 
-/// A trash that some items failed (`OperationCompletedWithErrors`).
-struct Failed {
-    retryable: Vec<Location>,
-    others_failed: bool,
-}
-
 impl Part for Trash {
     const PLACE: Place<App> = Place::Dialogs(dialog::build);
 
@@ -84,16 +79,22 @@ impl Part for Trash {
     fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
         Some(Box::new(|event, _, heard| {
             if let BrowserEvent::OperationCompletedWithErrors {
+                message,
                 retryable_locations,
                 has_non_retryable_failures,
-                ..
+                blocker,
+                report,
             } = event
             {
-                let failed = Failed {
+                let failed = delete_error::Failed {
+                    message: crate::transfer::outcome_detail(message.clone(), report),
                     retryable: retryable_locations.clone(),
                     others_failed: *has_non_retryable_failures,
+                    blocker: blocker.clone(),
                 };
-                heard.then(move |app: &mut App, _: &mut Tx| completed_with_errors(app, failed));
+                heard.then(move |app: &mut App, _: &mut Tx| {
+                    delete_error::completed_with_errors(app, failed)
+                });
             }
         }))
     }
@@ -533,21 +534,6 @@ fn return_cursor(app: &mut App, cursor: Option<(usize, Location)>, entries: &[Fi
         app.browser
             .select_shown_entries_by_location_at(depth, &locations);
     }
-}
-
-fn completed_with_errors(app: &mut App, failed: Failed) -> bool {
-    let trashing = std::mem::take(&mut app.trash.trashing);
-    // `retryable_delete_entries`.
-    let retryable: Vec<FileEntry> = trashing
-        .into_iter()
-        .filter(|entry| failed.retryable.contains(&entry.location))
-        .collect();
-    if retryable.is_empty() || failed.others_failed {
-        tracing::warn!("an operation completed with errors, and this interface has no report yet");
-        return false;
-    }
-    show(app, retryable, Kind::TrashUnavailable);
-    true
 }
 
 #[cfg(test)]

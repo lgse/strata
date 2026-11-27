@@ -238,11 +238,13 @@ fn a_trash_the_location_refused_asks_to_delete_for_good() {
                     .pop()
                     .expect("the entry");
                 app.trash.trashing = vec![entry];
-                super::completed_with_errors(
+                super::delete_error::completed_with_errors(
                     app,
-                    super::Failed {
+                    super::delete_error::Failed {
+                        message: "todo.txt: This location doesn't support Trash.".into(),
                         retryable: vec![todo.clone()],
                         others_failed: false,
+                        blocker: None,
                     },
                 );
             });
@@ -320,11 +322,13 @@ fn a_confirmation_asked_while_one_is_open_waits_for_it() {
             let refused = move |app: &mut App| {
                 let names = std::collections::HashSet::from(["readme.md".to_owned()]);
                 app.trash.trashing = app.browser.entries_named(&names);
-                super::completed_with_errors(
+                super::delete_error::completed_with_errors(
                     app,
-                    super::Failed {
+                    super::delete_error::Failed {
+                        message: "readme.md: This location doesn't support Trash.".into(),
                         retryable: vec![retry.clone()],
                         others_failed: false,
+                        blocker: None,
                     },
                 );
             };
@@ -467,11 +471,13 @@ fn a_waiting_retry_for_what_was_just_deleted_does_not_open() {
             host.runtime().update(move |app: &mut App, _| {
                 let names = std::collections::HashSet::from(["todo.txt".to_owned()]);
                 app.trash.trashing = app.browser.entries_named(&names);
-                super::completed_with_errors(
+                super::delete_error::completed_with_errors(
                     app,
-                    super::Failed {
+                    super::delete_error::Failed {
+                        message: "todo.txt: This location doesn't support Trash.".into(),
                         retryable: vec![location],
                         others_failed: false,
+                        blocker: None,
                     },
                 );
                 super::confirmed(app);

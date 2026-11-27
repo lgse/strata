@@ -455,6 +455,7 @@ fn a_transfer_reports_its_items_once_after_it_ends() {
                 retryable_locations: Vec::new(),
                 has_non_retryable_failures: true,
                 message: "Failed".into(),
+                blocker: None,
             },
             |_| true,
         ),

@@ -14,8 +14,11 @@ use crate::{
     slots::{Frame, Part, Place, Setup},
 };
 
-/// What an action does once the dialog has closed.
+/// What an offered action does once the dialog has closed.
 type Run = Rc<dyn Fn(&mut App)>;
+
+/// What a button action does once the dialog has closed, with the press's `Tx`.
+type RunTx = Rc<dyn Fn(&mut App, &mut Tx)>;
 
 /// An action offered beside Close: its label, its icon, and what it does.
 #[derive(Clone)]
@@ -39,6 +42,32 @@ impl Offer {
     }
 }
 
+/// A footer action on a failed-deletion dialog: its label and what it does after closing.
+#[derive(Clone)]
+pub(crate) struct ErrorAction {
+    label: String,
+    run: RunTx,
+}
+
+impl ErrorAction {
+    pub(crate) fn new(label: impl Into<String>, run: impl Fn(&mut App, &mut Tx) + 'static) -> Self {
+        Self {
+            label: label.into(),
+            run: Rc::new(run),
+        }
+    }
+}
+
+#[derive(Clone)]
+enum Buttons {
+    Close,
+    Offer(Offer),
+    DeleteFailure {
+        retry: Option<ErrorAction>,
+        reveal: Option<ErrorAction>,
+    },
+}
+
 /// One message dialog to show.
 #[derive(Clone)]
 pub(crate) struct Error {
@@ -47,7 +76,7 @@ pub(crate) struct Error {
     message: String,
     icon: IconName,
     tone: Tone,
-    offer: Option<Offer>,
+    buttons: Buttons,
     /// Where the keyboard goes when the dialog closes, when not where it was as it opened.
     returns_to: Option<&'static str>,
 }
@@ -60,7 +89,7 @@ impl Error {
             message: message.into(),
             icon: IconName::Close,
             tone: Tone::Danger,
-            offer: None,
+            buttons: Buttons::Close,
             returns_to: None,
         }
     }
@@ -72,9 +101,22 @@ impl Error {
             message: message.into(),
             icon: IconName::Close,
             tone: Tone::Danger,
-            offer: None,
+            buttons: Buttons::Close,
             returns_to: None,
         }
+    }
+
+    /// A failed-deletion outcome with optional permanent-delete retry and blocker reveal actions.
+    pub(crate) fn delete_failure(
+        detail: impl Into<String>,
+        retry: Option<ErrorAction>,
+        reveal: Option<ErrorAction>,
+    ) -> Self {
+        let mut error = Self::partial_failure(detail);
+        if retry.is_some() || reveal.is_some() {
+            error.buttons = Buttons::DeleteFailure { retry, reveal };
+        }
+        error
     }
 
     pub(crate) fn information(
@@ -88,14 +130,14 @@ impl Error {
             message: message.into(),
             icon: IconName::Info,
             tone: Tone::Accent,
-            offer: None,
+            buttons: Buttons::Close,
             returns_to: None,
         }
     }
 
     /// The same error, offering `offer` beside Close.
     pub(crate) fn offering(mut self, offer: Offer) -> Self {
-        self.offer = Some(offer);
+        self.buttons = Buttons::Offer(offer);
         self
     }
 
@@ -109,6 +151,7 @@ impl Error {
 struct Labels {
     summary: String,
     close: String,
+    done: String,
     close_dialog: String,
 }
 
@@ -126,25 +169,95 @@ pub(crate) fn show(app: &mut App, error: Error) {
     dialog.open = true;
 }
 
+fn dismiss(app: &mut App) -> bool {
+    std::mem::replace(&mut app.error_dialog.open, false)
+}
+
 fn close(app: &mut App) {
-    app.error_dialog.open = false;
+    dismiss(app);
 }
 
 /// The offered action: the dialog closes, then the action runs between `publish` and `settle`.
 fn act(app: &mut App, tx: &mut Tx) {
-    close(app);
+    if !dismiss(app) {
+        return;
+    }
     let Some(run) = app
         .error_dialog
         .shown
         .as_ref()
-        .and_then(|error| error.offer.as_ref())
-        .map(|offer| offer.run.clone())
+        .and_then(|error| match &error.buttons {
+            Buttons::Offer(offer) => Some(offer.run.clone()),
+            Buttons::Close | Buttons::DeleteFailure { .. } => None,
+        })
     else {
         return;
     };
     shell::publish(app);
     run(app);
     shell::settle(app, tx);
+}
+
+fn act_delete_retry(app: &mut App, tx: &mut Tx) {
+    run_delete_action(app, tx, |retry, _| retry.as_ref());
+}
+
+fn act_delete_reveal(app: &mut App, tx: &mut Tx) {
+    run_delete_action(app, tx, |_, reveal| reveal.as_ref());
+}
+
+fn run_delete_action(
+    app: &mut App,
+    tx: &mut Tx,
+    pick: for<'a> fn(&'a Option<ErrorAction>, &'a Option<ErrorAction>) -> Option<&'a ErrorAction>,
+) {
+    if !dismiss(app) {
+        return;
+    }
+    let Some(run) = app
+        .error_dialog
+        .shown
+        .as_ref()
+        .and_then(|error| match &error.buttons {
+            Buttons::DeleteFailure { retry, reveal } => pick(retry, reveal).map(|a| a.run.clone()),
+            Buttons::Close | Buttons::Offer(_) => None,
+        })
+    else {
+        return;
+    };
+    shell::publish(app);
+    run(app, tx);
+    shell::settle(app, tx);
+}
+
+fn apply_buttons(built: StrataDialog<App>, error: &Error, labels: &Labels) -> StrataDialog<App> {
+    match &error.buttons {
+        Buttons::Close => built
+            .icon(error.icon)
+            .tone(error.tone)
+            .primary(labels.close.clone(), close),
+        Buttons::Offer(offer) => built
+            .icon(offer.icon)
+            .tone(Tone::Accent)
+            .secondary(labels.close.clone(), close)
+            .primary_tx(offer.label.clone(), act),
+        Buttons::DeleteFailure { retry, reveal } => {
+            let built = built.icon(error.icon).tone(error.tone);
+            match (retry, reveal) {
+                (Some(retry), Some(reveal)) => built
+                    .action("done", labels.done.clone(), close)
+                    .secondary_tx(reveal.label.clone(), act_delete_reveal)
+                    .primary_tx(retry.label.clone(), act_delete_retry),
+                (Some(retry), None) => built
+                    .secondary(labels.done.clone(), close)
+                    .primary_tx(retry.label.clone(), act_delete_retry),
+                (None, Some(reveal)) => built
+                    .secondary_tx(reveal.label.clone(), act_delete_reveal)
+                    .primary(labels.close.clone(), close),
+                (None, None) => built.primary(labels.close.clone(), close),
+            }
+        }
+    }
 }
 
 fn dialog(app: &App, frame: &mut Frame<'_, App>) -> Option<rune::El> {
@@ -167,18 +280,7 @@ fn dialog(app: &App, frame: &mut Frame<'_, App>) -> Option<rune::El> {
         Some(key) => built.return_focus(key),
         None => built,
     };
-    let built = match &error.offer {
-        Some(offer) => built
-            .icon(offer.icon)
-            .tone(Tone::Accent)
-            .secondary(labels.close.clone(), close)
-            .primary_tx(offer.label.clone(), act),
-        None => built
-            .icon(error.icon)
-            .tone(error.tone)
-            .primary(labels.close.clone(), close),
-    };
-    built.build(&app.look, frame.layer);
+    apply_buttons(built, error, labels).build(&app.look, frame.layer);
     None
 }
 
@@ -206,6 +308,7 @@ impl Part for ErrorDialog {
             labels: Labels {
                 summary: tr("The operation could not be completed"),
                 close: tr("Close"),
+                done: tr("Done"),
                 close_dialog: tr("Close dialog"),
             },
             shown: None,

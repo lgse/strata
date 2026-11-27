@@ -36,7 +36,7 @@ mod tests;
 mod words;
 
 pub(crate) use chosen::transfer_to_chosen;
-pub(crate) use dock::{present_report, reported};
+pub(crate) use dock::{outcome_detail, present_report, reported};
 pub(crate) use tenxer::{paste_preferring, start_in_place_transfer};
 
 #[derive(Clone, PartialEq, Eq)]
@@ -243,6 +243,10 @@ fn queue_outcome_event(event: &BrowserEvent, heard: &mut Heard<'_, App>) -> bool
                 report: report.clone(),
             };
             heard.then(move |app, tx| dock::on_operation_failed(app, None, outcome, tx));
+            true
+        }
+        BrowserEvent::OperationCompletedWithErrors { .. } => {
+            heard.then(|app, _| dock::on_operation_completed_with_errors(app));
             true
         }
         BrowserEvent::OperationCancelled {

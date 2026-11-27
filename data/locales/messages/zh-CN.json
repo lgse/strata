@@ -744,6 +744,7 @@
   "Selection changed": "所选项目已更改",
   "Show Hidden Files": "显示隐藏文件",
   "Show item properties": "显示项目属性",
+  "Show “%{name}” in Folder": "在文件夹中显示“%{name}”",
   "Show or hide hidden files": "切换是否显示隐藏文件",
   "Show or hide the sidebar": "显示或隐藏侧边栏",
   "Show or hide this reference": "显示或隐藏快捷键参考",

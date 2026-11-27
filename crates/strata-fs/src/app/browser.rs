@@ -337,6 +337,7 @@ pub enum BrowserEvent {
         message: String,
         retryable_locations: Vec<Location>,
         has_non_retryable_failures: bool,
+        blocker: Option<crate::services::DeleteBlocker>,
         report: TransferReport,
     },
     OperationCancelled {
