@@ -1,4 +1,4 @@
-{"scenario":"executable-menu-confirmed-run","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"run-me","write":"#!/bin/sh\nprintf executed > $fixture/run-me.executed\n"}},{"fs":{"path":"run-me","chmod":"755"}}],"cost":{"columns":1.5},"quality":{"impact":5,"coverage":4,"criticality":4,"diagnostic":4,"score":63,"note":"Context-menu Run route and Cancel-must-not-launch check; the dialog itself is covered by executable-requires-confirmation (double-click, Close)"}}
+{"scenario":"executable-menu-confirmed-run","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"run-me","write":"#!/bin/sh\nprintf executed > $fixture/run-me.executed\n"}},{"fs":{"path":"run-me","chmod":"755"}}],"cost":{"columns":1.5},"quality":{"impact":5,"coverage":3,"criticality":3,"diagnostic":4,"score":38,"note":"Context-menu Run and dialog Cancel gate the launch; run::tests pins the Run row and Escape, not menu or Cancel"}}
 {"click":{"entry":"run-me"},"button":3}
 {"wait":{"menu_items":{}},"message":"the context menu for 'run-me'"}
 {"expect":{"menu_items":{"contains":["Open","Open With…","Run"]}}}

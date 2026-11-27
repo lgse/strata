@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The header's `input_method`: a private fcitx5 on the run's display and session bus,
-//! its group holding the US keyboard and the named input method. Ctrl+Space switches to
-//! the input method, as on a fresh install.
-
 use std::{
     fs::{self, File},
     path::{Path, PathBuf},

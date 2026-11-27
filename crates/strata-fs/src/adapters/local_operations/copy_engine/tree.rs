@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Copies a folder's tree on the shared work queue. Entries are made
-//! exclusively, so in a folder this copy made a taken name is a case alias,
-//! someone else's entry, or the copy's own entry whose reply was lost.
-
 use std::{
     collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
@@ -149,8 +145,6 @@ impl Tree {
         self.source.get().map(|(mount, _)| mount.family) == Some(Family::Smb)
     }
 
-    /// The tree's source is read through one mount and site, which in practice hold every source
-    /// folder on its device.
     fn crosses(&self, source: &EntryStat, target: &EntryStat, site: &Site) -> bool {
         self.source.get().is_none_or(|(_, source_site)| {
             crosses(

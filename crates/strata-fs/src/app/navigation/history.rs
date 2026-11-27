@@ -88,8 +88,6 @@ impl NavigationState {
         Some(target)
     }
 
-    /// The path from `depth` on, recorded as a navigation so Back returns to
-    /// the whole strip. None for the first column or past the last.
     pub fn go_to_column(&mut self, depth: usize) -> Option<NavigationPath> {
         if depth == 0 {
             return None;
@@ -129,6 +127,7 @@ impl NavigationState {
                 leftovers: OnceCell::new(),
                 surfaced_leftovers: Cell::new(0),
                 each_location_once: OnceCell::new(),
+                location_index: OnceCell::new(),
                 metadata_positions: None,
                 selected: None,
                 selected_locations: SelectedLocations::default(),
@@ -212,6 +211,7 @@ impl NavigationState {
             leftovers: OnceCell::new(),
             surfaced_leftovers: Cell::new(0),
             each_location_once: OnceCell::new(),
+            location_index: OnceCell::new(),
             metadata_positions: None,
             selected: None,
             selected_locations: SelectedLocations::default(),

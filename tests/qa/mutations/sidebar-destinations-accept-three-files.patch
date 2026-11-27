@@ -1,0 +1,14 @@
+diff --git a/crates/strata-app/src/sidebar/drops.rs b/crates/strata-app/src/sidebar/drops.rs
+index e6e3f1aa9..7b6d9c54f 100644
+--- a/crates/strata-app/src/sidebar/drops.rs
++++ b/crates/strata-app/src/sidebar/drops.rs
+@@ -47,4 +47,9 @@ pub(super) fn drop_action(
+ pub(super) fn drop_into(app: &mut App, item: &ItemId, dropped: Dropped, tx: &mut Tx) {
++    let mut dropped = dropped;
++    if let Some(payload) = dropped.data.local.as_mut() {
++        payload.entries.truncate(1);
++        payload.uris.truncate(1);
++    }
+     if matches!(item, ItemId::Place(id) if id == "trash") {
+         dnd::commit_trash_drop(app, &dropped, tx);
+         return;

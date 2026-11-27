@@ -37,10 +37,6 @@ fn reported_renames(events: &[OperationEvent]) -> Vec<RenamedItem> {
 fn two_names_are_never_taken_for_one_where_the_listing_changes_their_case()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
-    // ciopfs lists `Makefile` as `makefile` once it is made, as Samba with
-    // `preserve case = no` does; a racer renames it so. Where inode numbers
-    // are not kept, the entry then reports another number. FAT and SMB plan
-    // such names apart before.
     let rows = [
         ("copy", false, false),
         ("move", true, false),
@@ -147,8 +143,6 @@ fn taken_rows() -> [TakenRow; 5] {
     ]
 }
 
-/// Puts `theirs` in the destination now, or has a racer move the saved `Makefile` out to
-/// `moved_out` and take its name once the paste looks up the later spelling.
 fn place_theirs(
     row: &TakenRow,
     destination: &Path,

@@ -34,37 +34,45 @@ CI runs Clippy with warnings treated as errors, so violations block merges.
 
 ## Current inventory
 
-### Bundled font registration
+### GLib context embedded in Rune's loop
 
-Location: `src/assets.rs::register_application_fonts`
+Location: `crates/strata-platform/src/glib_loop/mod.rs::query` and
+`crates/strata-platform/src/glib_loop/waiter.rs::poll`
 
-Reason: Fontconfig exposes application-private font registration through its C API, and the available safe wrapper does not expose that capability. Strata uses three small FFI calls during single-threaded startup and presents the rest of the application with a safe function.
+Reason: the Rune interface keeps Strata's `Browser` on its UI thread, and `Browser`
+schedules on the default GLib context, which Rune's loop never iterates. Embedding a
+context in a foreign loop means asking it what it waits for and waiting for that
+elsewhere. `glib` 0.22 binds `g_main_context_prepare`, but not `g_main_context_query`,
+and nothing safe polls the `GPollFD` records `query` returns. The alternative is a
+timer that polls the context, which Rune delays to four a second while a Wayland
+window is covered.
 
-The operations are individually scoped and document:
+`query` runs on the thread that owns the context, which `GlibLoop::start` checks and
+the type, neither `Send` nor `Sync`, keeps. It passes an array of initialized records
+with its length and grows it when GLib asks for more; GLib retains nothing. `g_poll`
+runs on the helper thread over a copy of those records and its own interruption
+socket. It reads descriptor numbers and writes `revents`, nothing else. A descriptor
+the UI thread closes meanwhile makes `poll(2)` report it, or wake for an unrelated
+file that took the number; either only causes one more pump, which asks the context
+again. Dispatch itself stays GLib's: the UI thread calls `MainContext::iteration`.
 
-- How the Fontconfig configuration pointer is obtained and null-checked
-- The lifetime and ownership of the C path string
-- Fontconfig's path-copy behavior
-- Why rebuilding the font set occurs before GTK/Pango creates the application font map
+If glib-rs binds `query` with a safe poll, this exception should be removed.
 
-If a maintained safe API gains this capability, this exception should be removed.
+### Platform transfer, drag-and-drop, and PCM audio shims
 
-### Command-line errors for the invoking process
+Locations:
 
-Location: `src/main.rs::print_command_line_error`
+- `crates/strata-platform/src/transfer/wayland/display.rs` (`Backend::from_foreign_display` and `ObjectId::from_ptr` on winit's Wayland handles)
+- `crates/strata-platform/src/transfer/pipe.rs` (`pipe2`, `fcntl`, `poll` via `libc`)
+- `crates/strata-platform/src/dnd/wayland.rs` (`memfd_create` for drag-icon shared memory)
+- `crates/strata-platform/src/media/pulse.rs` and `crates/strata-platform/src/media/alsa.rs` (`dlopen`/`dlsym` of `libpulse-simple` and `libasound` for zero-GStreamer Linux PCM audio output)
 
-Reason: when Strata is already running, the primary instance handles the
-command line, so `eprintln!` would write a usage error to the primary's log
-while the invoking command exits silently. GIO forwards
-`g_application_command_line_printerr` to the caller's stderr, but gio-rs binds
-only `printerr_literal`, which needs GLib 2.80, above the 2.72 Strata supports.
-
-The call passes a fixed `"%s"` format and exactly one NUL-terminated argument,
-so message text is never read as a format. The command line, the format literal
-and the message `CString` all outlive the call, and GLib copies the text before
-it returns. A message containing an interior NUL cannot become a `CString` and
-is dropped rather than truncated. Remove this exception when Strata requires
-GLib 2.80.
+Reason: these Linux platform shims bridge raw Wayland display handles, non-blocking
+transfer pipes, drag-icon shared-memory buffers, and runtime-loaded PulseAudio/PipeWire
+and ALSA PCM sinks without pulling C audio/media runtimes into the hard link set. Every
+symbol lookup checks for null, validates handles and buffer lengths, and falls back
+cleanly (for example, to the silent clock sink when neither PulseAudio nor ALSA is
+available).
 
 ### Verified Trash result
 
@@ -158,7 +166,7 @@ Neither libc fork nor descriptor-sensitive namespace unshare has a suitable safe
 API for this use. The two calls are individually scoped behind private interfaces.
 
 Only the separate bubblewrap supervisor and its trusted setup child call them,
-never the GTK application or an initialized decoder. Both reject anything other
+never the main application or an initialized decoder. Both reject anything other
 than one task in `/proc/self/task`; no caller starts threads, owns shared mappings
 or external locks, or initializes codec/RNG state before this boundary. libc fork
 runs atfork handlers and resets libc's threading state. Namespace unshare uses
@@ -183,3 +191,21 @@ policy, and real process reuse/replacement across browser views. Runtime checks
 use private headless displays/buses where needed. Changes to supervisor
 initialization must preserve these pre-fork invariants, not merely keep the
 task-count check.
+
+### Pango grapheme-cluster breaks for filename fixes
+
+Location: `crates/strata-fs/src/adapters/local_operations/names/fix.rs::cursor_positions`
+
+Reason: `pango`'s safe Rust bindings omit the `PangoLogAttr` cluster-break attributes needed when truncating filenames without splitting grapheme clusters. Strata calls `pango::ffi::pango_get_log_attrs` on valid UTF-8 with an initialized `Vec<u32>` sized to `text.chars().count() + 1`, a null language pointer, and extracts the endianness-aware `is_cursor_position` bit-field from each filled attribute.
+
+### Sandboxed RAR streaming extraction
+
+Location: `crates/strata-preview/src/sandbox_helper/archive_rar.rs`
+
+Reason: `unrar`'s safe wrapper cannot stream member bytes without writing to disk, so the sandboxed extraction helper calls `unrar_sys` directly. FFI is confined to the sandboxed helper child process, a compile-time `offset_of!` assertion guards `HeaderDataEx`'s field layout against `unrar_sys` struct packing changes, and `Archive::drop` closes handles only after all synchronous callbacks have returned.
+
+### PDF text-layer glyph bounding boxes
+
+Location: `crates/strata-preview/src/sandbox_helper/pdf.rs::pdf_text_layer`
+
+Reason: `poppler-rs` does not bind `poppler_page_get_text_layout`. Inside the sandboxed preview helper, Strata calls `poppler::ffi::poppler_page_get_text_layout` on a valid `poppler::Page`, reads the returned `g_malloc`'d rectangle array through `std::slice::from_raw_parts`, maps coordinates into scaled glyph boxes, and frees the buffer exactly once with `glib::ffi::g_free`.

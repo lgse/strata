@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Drives one `strata --qa` session by hand inside the pinned image, one JSON
-# command at a time, with a private Xvfb, bus, HOME, and fixture.
+# command at a time, with a private HOME, fixture, and optional session bus.
 #   ./scripts/qa-drive.sh start [--tree JSON|@FILE] [--pref KEY=VALUE]... [--env NAME=VALUE]... [--bus]
 #   ./scripts/qa-drive.sh send JSON...           one reply line per command, in order
-#   ./scripts/qa-drive.sh screenshot NAME.png    the Xvfb root, saved as target/qa-drive/NAME.png
 #   ./scripts/qa-drive.sh restart [--pref KEY=VALUE]... [--env NAME=VALUE]...
-#   ./scripts/qa-drive.sh exec SHELL-COMMAND     run in the fixture ($FIXTURE), with the session's HOME, XDG, DISPLAY, bus
+#   ./scripts/qa-drive.sh exec SHELL-COMMAND     run in the fixture ($FIXTURE), with the session's HOME, XDG, bus
 #   ./scripts/qa-drive.sh log                    the application's log
 #   ./scripts/qa-drive.sh stop
 # A --pref value is JSON, or else a string. Every exchange is appended to
@@ -18,11 +17,9 @@ unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 session=/tmp/qa-drive
 shared=/workspace/target/qa-drive
-display=:90
 
 # Must match how tests/qa.rs launches each run; scripts/test_qa_drive.py checks them.
-xvfb_arguments=(-screen 0 1440x900x24 -dpi 96 -nolisten tcp -noreset -ac)
-qa_environment=(GTK_A11Y=none NO_AT_BRIDGE=1)
+qa_environment=(NO_AT_BRIDGE=1)
 xdg_directories=(HOME=home XDG_CONFIG_HOME=config XDG_DATA_HOME=data XDG_CACHE_HOME=cache XDG_STATE_HOME=state)
 fixture_prefix=strata-qa-fixture-
 no_session_bus=no-session-bus
@@ -65,7 +62,7 @@ session_variables() {
   for pair in "${xdg_directories[@]}"; do
     printf '%s\n' "${pair%%=*}=$session/home/${pair#*=}"
   done
-  printf '%s\n' "DISPLAY=$display" "XDG_RUNTIME_DIR=$session/runtime" \
+  printf '%s\n' "XDG_RUNTIME_DIR=$session/runtime" \
     "DBUS_SESSION_BUS_ADDRESS=$(cat "$session/bus")"
 }
 
@@ -134,6 +131,8 @@ case "${1:-}" in
   _build)
     inside "$1"
     mkdir -p "$HOME" "$CARGO_HOME" "$shared"
+    # An empty cache takes the crates the image holds; a used one is left alone.
+    (cd /workspace && python3 scripts/dependency_seed.py) >&2
     if ! cargo test --locked --features qa,invariant-checks --test qa --no-run > "$shared/build.log" 2>&1; then
       tail -n 40 "$shared/build.log" >&2
       exit 1
@@ -147,22 +146,10 @@ case "${1:-}" in
     for pair in "${xdg_directories[@]}"; do
       mkdir -p "$session/home/${pair#*=}"
     done
-    # The tmpfs hides the image's /tmp, so its X socket directory is made again.
-    mkdir -p -m 1777 /tmp/.X11-unix
     fixture="$(mktemp -d "/tmp/${fixture_prefix}XXXXXX")"
     echo "$fixture" > "$session/fixture"
     prepare seed "$session" "$fixture"
     printf '%s\n' "${QA_DRIVE_ENV:-}" | sed '/^$/d' >> "$session/app.env"
-    setsid Xvfb "$display" "${xvfb_arguments[@]}" < /dev/null > "$session/xvfb.log" 2>&1 &
-    for _ in $(seq 300); do
-      [[ -S "/tmp/.X11-unix/X${display#:}" ]] && break
-      sleep 0.05
-    done
-    [[ -S "/tmp/.X11-unix/X${display#:}" ]] || {
-      echo "Xvfb did not start:" >&2
-      cat "$session/xvfb.log" >&2
-      exit 1
-    }
     if [[ "${QA_DRIVE_BUS:-0}" == 1 ]]; then
       socket="$session/runtime/bus"
       printf '%s' "${session_bus_config//\{socket\}/$socket}" > "$session/session-bus.conf"
@@ -210,12 +197,6 @@ PYTHON
       printf '{"command":%s,"reply":%s}\n' "$line" "$reply" >> "$shared/transcript.jsonl"
       printf '%s\n' "$reply"
     done
-    exit
-    ;;
-  _screenshot)
-    inside "$1"
-    import -display "$display" -window root "$shared/$2"
-    echo "target/qa-drive/$2"
     exit
     ;;
   _restart)
@@ -333,13 +314,8 @@ case "${1:-}" in
     run_inside "$name" bash /workspace/scripts/qa-drive.sh _send "$@"
     ;;
   screenshot)
-    file="${2:?screenshot needs a file name such as menu.png}"
-    if [[ "$file" == */* || "$file" != *.png ]]; then
-      echo "screenshot takes a plain file name ending in .png" >&2
-      exit 2
-    fi
-    need_session
-    run_inside "$name" bash /workspace/scripts/qa-drive.sh _screenshot "$file"
+    echo "qa-drive.sh runs offscreen with no display server; inspect state with: send '{\"query\":\"tree\"}'" >&2
+    exit 1
     ;;
   restart)
     shift

@@ -1,4 +1,4 @@
-{"scenario":"tenxer-footer-rename-refuses-conflicts","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.6,"icons":1.6,"list":1.6},"quality":{"impact":5,"coverage":4,"criticality":4,"diagnostic":3,"score":59,"note":"Footer r rename onto existing name keeps prompt and both files; only scenario on the tenxer footer r route (rename-onto-existing-rejected is columns F2 dialog)"}}
+{"scenario":"tenxer-footer-rename-refuses-conflicts","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.6,"icons":1.6,"list":1.6},"quality":{"impact":5,"coverage":4,"criticality":3,"diagnostic":3,"score":52,"note":"Footer r rename onto taken name keeps prompt and both files; only footer-r route, F2 Enter variant in rename-onto-existing-rejected; K-1 rename_failed unit"}}
 {"select_with_keyboard":"todo.txt"}
 {"key":"r"}
 {"wait":{"field":{}},"message":"an editable field to take focus"}
@@ -14,7 +14,7 @@
 {"key":"ctrl+a"}
 {"type":"readme.md"}
 {"key":"Return"}
-{"wait":{"present":{"role":"label","name":"“readme.md” already exists"}},"message":"the conflict to keep the prompt open with its reason"}
+{"wait":{"description":{"target":{"field":"field"},"text":"“readme.md” already exists"}},"message":"the conflict to keep the prompt open with its reason"}
 {"expect":{"field":{"of":"field","focused":true}}}
 {"fs":{"path":"readme.md","text":"# Fixture\n"},"timeout_ms":0}
 {"key":"ctrl+a"}

@@ -18,9 +18,6 @@ pub(in crate::adapters::local_operations) enum RenameFailure {
     },
 }
 
-/// Renames `from` to `to` without replacing another item. A name that only
-/// differs in case on a case-insensitive mount resolves to the item itself,
-/// so it is renamed in two steps through a hidden temporary name.
 pub(in crate::adapters::local_operations) fn rename_in_place(
     fs: &dyn FsOps,
     from: Entry<'_>,
@@ -63,8 +60,6 @@ fn same_directory(fs: &dyn FsOps, left: BorrowedFd<'_>, right: BorrowedFd<'_>) -
     }
 }
 
-/// The item's identity when `to` names `from` itself rather than another
-/// item: a case alias, never a separate hard link.
 pub(in crate::adapters::local_operations) fn alias_of(
     fs: &dyn FsOps,
     from: Entry<'_>,

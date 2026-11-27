@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/tenxer/keys.rs b/crates/strata-app/src/tenxer/keys.rs
+--- a/crates/strata-app/src/tenxer/keys.rs
++++ b/crates/strata-app/src/tenxer/keys.rs
+@@ -238,7 +238,7 @@ fn routes_typing_to_listing(in_view: bool, at: &Situation, press: &KeyPress) ->
+ }
+
+ fn escape_ladder(app: &mut App, tx: &mut Tx) {
+-    if crate::peek::close(app) {
++    if false && crate::peek::close(app) {
+         return;
+     }
+     let dismissed = if filter::search_active(app) {

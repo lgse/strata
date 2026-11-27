@@ -12,6 +12,9 @@ use tracing_subscriber::{
     util::SubscriberInitExt,
 };
 
+#[cfg(feature = "qa")]
+pub mod criticals;
+
 // Closed launcher pipes must not turn logging failures into panics at a GLib boundary.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PipeSafeWriter<W>(pub W);
@@ -35,15 +38,14 @@ impl<W: Write> Write for PipeSafeWriter<W> {
 }
 
 /// The crates split out of the application. Their modules logged under `strata::…` before.
-const EXTRACTED_CRATES: [&str; 4] = [
+const EXTRACTED_CRATES: [&str; 5] = [
+    "strata_app",
     "strata_core",
     "strata_desktop",
     "strata_fs",
     "strata_preview",
 ];
 
-/// Repeats each `strata::module` directive for the crates that module may live in now, so a
-/// filter written against the application's module path keeps selecting the same code.
 fn with_extracted_crates(directives: &str) -> String {
     let mut expanded = Vec::new();
     for directive in directives.split(',') {

@@ -1,0 +1,340 @@
+// SPDX-License-Identifier: MIT
+
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashSet,
+    path::PathBuf,
+    rc::Rc,
+    sync::mpsc::{Receiver, TryRecvError},
+    time::Duration,
+};
+
+use gio::prelude::CancellableExt;
+use strata_core::model::Location;
+use strata_fs::{
+    adapters::probes::{self, Presence},
+    services::{
+        NavigationHistory, RefusedFolders, SearchCoverage, SearchEvent, SearchHandle, SearchItem,
+        SearchLimits, index_filter, index_folder_paths, index_paths, index_trees_with_exclusions,
+    },
+};
+
+const POLL: Duration = Duration::from_millis(16);
+const PER_POLL: usize = 8;
+
+/// What a search runs over, and whether hidden entries show.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Input {
+    pub(crate) scope: Scope,
+    pub(crate) show_hidden: bool,
+}
+
+/// What an index reads.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Scope {
+    /// A filter's folder, and whether it goes into subfolders (`index_filter`).
+    Folder { root: PathBuf, recursive: bool },
+    /// 10xer's fuzzy term/path index (`index_paths`): non-recursive for `f`, recursive for `s`.
+    Paths { root: PathBuf, recursive: bool },
+    /// 10xer's folder-picker index (`index_folder_paths`), which also lists empty queries.
+    Folders {
+        root: PathBuf,
+        refused: RefusedFolders,
+    },
+    Trees {
+        roots: Vec<PathBuf>,
+        exclusions: Vec<String>,
+    },
+}
+
+impl Scope {
+    pub(crate) fn lists_without_query(&self) -> bool {
+        matches!(self, Self::Folders { .. })
+    }
+}
+
+impl Input {
+    fn start(&self, limits: SearchLimits) -> (SearchHandle, Receiver<SearchEvent>) {
+        match &self.scope {
+            Scope::Folder { root, recursive } => {
+                index_filter(root.clone(), self.show_hidden, *recursive, limits)
+            }
+            Scope::Paths { root, recursive } => index_paths(
+                root.clone(),
+                self.show_hidden,
+                *recursive,
+                NavigationHistory::shared().frecency_within(root),
+                limits,
+            ),
+            Scope::Folders { root, refused } => index_folder_paths(
+                root.clone(),
+                self.show_hidden,
+                NavigationHistory::shared().frecency_within(root),
+                refused.clone(),
+                limits,
+            ),
+            Scope::Trees { roots, exclusions } => index_trees_with_exclusions(
+                roots.clone(),
+                self.show_hidden,
+                exclusions.clone(),
+                limits,
+            ),
+        }
+    }
+}
+
+/// One batch of results for a query: everything found so far, ranked.
+pub(crate) struct Batch {
+    pub(crate) generation: u64,
+    pub(crate) query: String,
+    pub(crate) items: Vec<SearchItem>,
+    /// The index is still being read, or the worker holds more candidates than it sent.
+    pub(crate) incomplete: bool,
+    pub(crate) has_more: bool,
+    pub(crate) candidates: usize,
+    /// The index is still being read.
+    pub(crate) indexing: bool,
+    /// What the index left out, by its limits.
+    pub(crate) coverage: SearchCoverage,
+}
+
+struct Worker {
+    input: Input,
+    limits: SearchLimits,
+    handle: SearchHandle,
+}
+
+#[derive(Default)]
+struct State {
+    worker: RefCell<Option<Worker>>,
+    /// The trimmed query whose results are wanted.
+    query: RefCell<String>,
+    generation: Cell<u64>,
+    source: RefCell<Option<glib::SourceId>>,
+    pruning: RefCell<Option<gio::Cancellable>>,
+    /// A query was asked and no batch for it has come.
+    awaiting: Cell<bool>,
+}
+
+impl Drop for State {
+    fn drop(&mut self) {
+        if let Some(source) = self.source.get_mut().take() {
+            source.remove();
+        }
+        if let Some(pruning) = self.pruning.get_mut().take() {
+            pruning.cancel();
+        }
+    }
+}
+
+/// A filter's search, held by its part. Batches go to `deliver`, on the interface thread.
+#[derive(Clone, Default)]
+pub(crate) struct Session(Rc<State>);
+
+impl Session {
+    /// Whether an index runs.
+    pub(crate) fn is_active(&self) -> bool {
+        self.0.worker.borrow().is_some()
+    }
+
+    /// Whether a query was asked and its first batch has not come.
+    pub(crate) fn awaiting(&self) -> bool {
+        self.0.awaiting.get()
+    }
+
+    /// The generation a batch must carry to be current.
+    pub(crate) fn generation(&self) -> u64 {
+        self.0.generation.get()
+    }
+
+    /// Stops the search: no batch of it is current any more.
+    pub(crate) fn cancel(&self) {
+        let state = &self.0;
+        state.generation.set(state.generation.get().wrapping_add(1));
+        if let Some(source) = state.source.take() {
+            source.remove();
+        }
+        if let Some(pruning) = state.pruning.take() {
+            pruning.cancel();
+        }
+        state.worker.take();
+        state.awaiting.set(false);
+        state.query.borrow_mut().clear();
+    }
+
+    pub(crate) fn prune_missing(
+        &self,
+        paths: Vec<PathBuf>,
+        apply: impl FnOnce(HashSet<PathBuf>) + 'static,
+    ) {
+        if paths.is_empty() {
+            return;
+        }
+        let cancellable = gio::Cancellable::new();
+        if let Some(previous) = self.0.pruning.replace(Some(cancellable.clone())) {
+            previous.cancel();
+        }
+        let generation = self.0.generation.get();
+        let weak = Rc::downgrade(&self.0);
+        glib::MainContext::default().spawn_local(async move {
+            let locations: Vec<_> = paths.iter().map(Location::local).collect();
+            let found = probes::presence(&locations, &cancellable).await;
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            if cancellable.is_cancelled() || state.generation.get() != generation {
+                return;
+            }
+            state.pruning.take();
+            let gone: HashSet<PathBuf> = paths
+                .into_iter()
+                .zip(found)
+                .filter(|(_, presence)| matches!(presence, Presence::Absent))
+                .map(|(path, _)| path)
+                .collect();
+            if !gone.is_empty() {
+                apply(gone);
+            }
+        });
+    }
+
+    pub(crate) fn update(
+        &self,
+        input: Input,
+        query: &str,
+        limits: SearchLimits,
+        deliver: impl Fn(Batch) + 'static,
+    ) {
+        let query = query.trim();
+        if query.is_empty() && !input.scope.lists_without_query() {
+            self.cancel();
+            return;
+        }
+        self.prepare(input, limits, deliver);
+        self.ask(query);
+    }
+
+    pub(crate) fn prepare(
+        &self,
+        input: Input,
+        limits: SearchLimits,
+        deliver: impl Fn(Batch) + 'static,
+    ) {
+        let same = self
+            .0
+            .worker
+            .borrow()
+            .as_ref()
+            .is_some_and(|worker| worker.input == input && worker.limits == limits);
+        if same {
+            return;
+        }
+        self.cancel();
+        let (handle, receiver) = input.start(limits);
+        self.0.worker.replace(Some(Worker {
+            input,
+            limits,
+            handle,
+        }));
+        self.listen(receiver, deliver);
+    }
+
+    pub(crate) fn expect(&self, query: &str) {
+        self.0.query.replace(query.trim().to_owned());
+    }
+
+    pub(crate) fn more(&self, query: &str, count: usize) -> bool {
+        if *self.0.query.borrow() != query {
+            return false;
+        }
+        if let Some(worker) = self.0.worker.borrow().as_ref() {
+            worker.handle.query_candidates(query, count);
+            return true;
+        }
+        false
+    }
+
+    fn ask(&self, query: &str) {
+        self.0.query.replace(query.to_owned());
+        if let Some(worker) = self.0.worker.borrow().as_ref() {
+            self.0.awaiting.set(true);
+            worker.handle.query(query);
+        }
+    }
+
+    fn listen(&self, receiver: Receiver<SearchEvent>, deliver: impl Fn(Batch) + 'static) {
+        let generation = self.0.generation.get();
+        let weak = Rc::downgrade(&self.0);
+        let source = glib::timeout_add_local(POLL, move || {
+            let Some(state) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if state.generation.get() != generation {
+                return glib::ControlFlow::Break;
+            }
+            let lists_without_query = state
+                .worker
+                .borrow()
+                .as_ref()
+                .is_some_and(|w| w.input.scope.lists_without_query());
+            let (latest, disconnected) =
+                drain(&receiver, &state.query.borrow(), lists_without_query);
+            if let Some(mut batch) = latest {
+                state.awaiting.set(false);
+                batch.generation = generation;
+                deliver(batch);
+            }
+            if disconnected {
+                state.source.take();
+                return glib::ControlFlow::Break;
+            }
+            glib::ControlFlow::Continue
+        });
+        self.0.source.replace(Some(source));
+    }
+}
+
+fn drain(
+    receiver: &Receiver<SearchEvent>,
+    current: &str,
+    lists_without_query: bool,
+) -> (Option<Batch>, bool) {
+    let mut latest = None;
+    for _ in 0..PER_POLL {
+        match receiver.try_recv() {
+            Ok(event) => {
+                if let Some(batch) = batch_for(event, current, lists_without_query) {
+                    latest = Some(batch);
+                }
+            }
+            Err(TryRecvError::Empty) => return (latest, false),
+            Err(TryRecvError::Disconnected) => return (latest, true),
+        }
+    }
+    (latest, false)
+}
+
+/// `event` as a batch, when it answers `current`.
+fn batch_for(event: SearchEvent, current: &str, lists_without_query: bool) -> Option<Batch> {
+    let SearchEvent::Results {
+        query,
+        items,
+        indexing,
+        coverage,
+        has_more,
+        candidates,
+    } = event;
+    ((!query.is_empty() || lists_without_query) && query == current).then_some(Batch {
+        generation: 0,
+        query,
+        items,
+        incomplete: indexing || has_more,
+        has_more,
+        candidates,
+        indexing,
+        coverage,
+    })
+}
+
+#[cfg(test)]
+mod tests;

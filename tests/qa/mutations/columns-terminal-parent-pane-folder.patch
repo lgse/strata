@@ -1,0 +1,34 @@
+diff --git a/crates/strata-app/src/terminal.rs b/crates/strata-app/src/terminal.rs
+--- a/crates/strata-app/src/terminal.rs
++++ b/crates/strata-app/src/terminal.rs
+@@ -146,28 +146,5 @@ fn focus_terminal_location(app: &App) -> Option<Location> {
+             let depth = app.browser.active_depth()?;
+             return app.browser.location_at(depth);
+         }
+-        let depth = app
+-            .menu
+-            .state
+-            .is_open()
+-            .then(|| app.menu.depth())
+-            .filter(|depth| app.browser.location_at(*depth).is_some())
+-            .unwrap_or_else(|| app.columns.targeted());
+-        let directory = app.browser.location_at(depth);
+-        let opened = app.browser.location_at(depth + 1);
+-        let selected_in_destination: Vec<_> = app
+-            .browser
+-            .selected_positions(depth)
+-            .into_iter()
+-            .filter_map(|position| app.browser.entry_at(depth, position))
+-            .collect();
+-        match selected_terminal_location(&selected_in_destination) {
+-            Some(selected)
+-                if app.browser.active_depth() == Some(depth + 1)
+-                    && opened.as_ref() == Some(&selected) =>
+-            {
+-                Some(selected)
+-            }
+-            _ => directory,
+-        }
++        app.browser.location_at(0)
+     })
+ }

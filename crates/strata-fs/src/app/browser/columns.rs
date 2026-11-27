@@ -219,9 +219,6 @@ impl Browser {
         self.truncate_columns(depth, true);
     }
 
-    /// Columns shown again after another view: the active column's child column
-    /// follows its selection. Closes a child the selection no longer holds and
-    /// returns the lone selected folder that should open in its place.
     pub fn follow_selection_on_return(self: &Rc<Self>) -> Option<(usize, Location)> {
         // Closing or opening a column would drop a navigation still validating.
         if self.pending_navigation_generation().is_some() {
@@ -308,8 +305,6 @@ impl Browser {
         self.external_change_focus.get()
     }
 
-    /// Whether the `FocusChanged` being observed only moves a finished load's cursor,
-    /// so it must not pull focus from elsewhere in the window.
     pub fn focus_follows_background_load(&self) -> bool {
         self.background_load_focus.get()
     }
@@ -370,9 +365,6 @@ impl Browser {
         }
     }
 
-    /// Drops the columns before `depth`, keeping the ones after it, and leaves
-    /// focus, the cursor and a multi-selection in what becomes the first column.
-    /// False when nothing was re-rooted.
     pub fn make_first_column(self: &Rc<Self>, depth: usize) -> bool {
         if (depth..)
             .map_while(|depth| self.location_at(depth))
@@ -418,8 +410,6 @@ impl Browser {
         self.restore_path_focused(path, depth, selection);
     }
 
-    /// Restores `path` with focus in the column at `focus`, which selects
-    /// `selection` once it loads.
     fn restore_path_focused(
         self: &Rc<Self>,
         path: NavigationPath,
@@ -506,8 +496,6 @@ impl Descent {
     }
 }
 
-/// A descent waiting for its folder to validate, dropped when the
-/// navigation moved on or the parent column changed.
 struct PendingDescent {
     generation: u64,
     parent_location: Option<Location>,

@@ -74,8 +74,6 @@ fn collect(input: &Path) -> Result<Vec<Candidate>, String> {
     text_candidates(&mut file)
 }
 
-/// Parameters sit in front of the sized payload and are not included in
-/// `uncompressed_size` or `compressed_size`. Thumbnail blocks are uncompressed.
 fn binary_candidates(file: &mut File) -> Result<Option<Vec<Candidate>>, String> {
     let mut magic = [0; 4];
     if read_exact(file, &mut magic)?.is_none() || &magic != BGCODE_MAGIC {

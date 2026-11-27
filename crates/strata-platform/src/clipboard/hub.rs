@@ -1,0 +1,510 @@
+// SPDX-License-Identifier: MIT
+
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::rc::{Rc, Weak};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
+
+use rune::WindowHandle;
+
+use crate::transfer::{self, SelectionOffer, SourceId, SourceSpec, Subscription, Transfer, Wants};
+
+use super::api::{
+    Change, Closed, CopyId, CopyState, Data, Error, HandOff, Limits, Offered, ReadError, Route,
+    Selection, Status,
+};
+use super::book::Book;
+use super::files::Files;
+use super::handle::TestRoute;
+
+/// Work for one [`super::Clipboard`], posted from any thread and run on the UI thread.
+pub(super) enum Job {
+    /// Take in what the platform reported, then deliver this handle's changes.
+    Pump,
+    /// Read `id` finished.
+    Read {
+        id: u64,
+        result: Result<Out, ReadError>,
+    },
+}
+
+pub(super) enum Out {
+    Data(Data),
+    Files(Files),
+}
+
+pub(super) type Poster = Arc<dyn Fn(Job) + Send + Sync>;
+
+type Diag = Rc<dyn Fn(&str)>;
+type AnswerData = Box<dyn FnOnce(Result<Data, ReadError>) + Send>;
+type AnswerFiles = Box<dyn FnOnce(Result<Files, ReadError>) + Send>;
+
+/// A handle, to the hub.
+pub(super) trait Sink {
+    fn queue(&self, change: Change);
+}
+
+#[derive(Clone, Default)]
+struct Posters(Arc<Mutex<Vec<(u64, Poster)>>>);
+
+impl Posters {
+    fn set(&self, id: u64, poster: Poster) {
+        let mut all = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        all.retain(|(i, _)| *i != id);
+        all.push((id, poster));
+    }
+
+    fn wake_all(&self) {
+        let all: Vec<Poster> = self
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .map(|(_, p)| p.clone())
+            .collect();
+        for p in all {
+            p(Job::Pump);
+        }
+    }
+}
+
+struct Hub {
+    transfer: Transfer,
+    sub: Subscription,
+    route: Route,
+    status: Status,
+    book: Book,
+    /// Each selection's current offer on the route, to read from.
+    offers: HashMap<Selection, SelectionOffer>,
+    specs: HashMap<CopyId, (SourceSpec, Option<Duration>)>,
+    sinks: Vec<(u64, Weak<dyn Sink>)>,
+    posters: Posters,
+    /// The platform connection failed: nothing more is written.
+    failed: bool,
+}
+
+thread_local! {
+    static HUB: RefCell<Option<Hub>> = const { RefCell::new(None) };
+    static LAST_HAND_OFF: Cell<Option<HandOff>> = const { Cell::new(None) };
+    static DIAG: RefCell<Option<Diag>> = const { RefCell::new(None) };
+}
+
+fn with<R>(f: impl FnOnce(&mut Hub) -> R) -> Option<R> {
+    HUB.with(|h| h.borrow_mut().as_mut().map(f))
+}
+
+/// Reports what went wrong outside any call that could return it.
+pub(super) fn diagnostic(message: &str) {
+    let f = DIAG.with(|d| d.borrow().clone());
+    match f {
+        Some(f) => f(message),
+        None => eprintln!("strata-platform clipboard: {message}"),
+    }
+}
+
+pub(super) fn set_diagnostics(f: Diag) {
+    DIAG.with(|d| *d.borrow_mut() = Some(f));
+}
+
+/// The route the clipboard takes, best first, and what it can do.
+fn route_of(t: &Transfer) -> Result<(Route, Status), Error> {
+    let s = t.status();
+    let route = if s.data_control.is_some() {
+        Route::DataControl
+    } else if s.shared {
+        Route::DataDevice
+    } else if s.backend == "x11" || s.x11 {
+        Route::X11
+    } else {
+        return Err(Error::Unsupported(s.unsupported.as_ref().map_or_else(
+            || "no clipboard route".to_owned(),
+            ToString::to_string,
+        )));
+    };
+    let status = Status {
+        backend: s.backend,
+        route,
+        hears_unfocused: route != Route::DataDevice,
+        primary: route != Route::DataDevice,
+        keeps_after_exit: route == Route::X11,
+        xwayland: s.x11,
+        unsupported: s.unsupported.as_ref().map(ToString::to_string),
+    };
+    Ok((route, status))
+}
+
+pub(super) fn attach(
+    window: &WindowHandle,
+    id: u64,
+    sink: Weak<dyn Sink>,
+    poster: Poster,
+    test: TestRoute,
+) -> Result<Status, Error> {
+    let fresh = HUB.with(|h| h.borrow().is_none());
+    if fresh {
+        let wants = Wants {
+            as_if_no_shared_display: test.as_if_no_shared_display,
+            as_if_no_data_control: test.as_if_no_data_control,
+            // Where Wayland has no route, X11 selections through Xwayland.
+            x11_fallback: true,
+            ..Wants::default()
+        };
+        let (t, _) = Transfer::attach(window, wants)?;
+        let (route, status) = route_of(&t)?;
+        let posters = Posters::default();
+        let wake = posters.clone();
+        let sub = t.subscribe(move || wake.wake_all());
+        t.before_shutdown(Box::new(teardown));
+        let mut hub = Hub {
+            transfer: t.clone(),
+            sub,
+            route,
+            status,
+            book: Book::default(),
+            offers: HashMap::new(),
+            specs: HashMap::new(),
+            sinks: Vec::new(),
+            posters,
+            failed: false,
+        };
+        // What the substrate heard before the subscription: the offers as they are now.
+        for selection in [Selection::Clipboard, Selection::Primary] {
+            if let Some(offer) = t.selection(selection.into(), route.transfer()) {
+                let mimes = offer.mimes().to_vec();
+                hub.offers.insert(selection, offer);
+                hub.book.selection(selection, Some(mimes), &|_| false);
+            }
+        }
+        HUB.with(|h| *h.borrow_mut() = Some(hub));
+        // Events read while binding wait for a dispatch (winit's display).
+        let _ = t.dispatch();
+    } else {
+        let _ = Transfer::attach(window, Wants::default());
+    }
+    let (status, now) = with(|hub| {
+        hub.sinks.retain(|(i, s)| *i != id && s.strong_count() > 0);
+        hub.sinks.push((id, sink.clone()));
+        hub.posters.set(id, poster.clone());
+        let now: Vec<Change> = [Selection::Clipboard, Selection::Primary]
+            .into_iter()
+            .filter_map(|selection| {
+                let o = hub.book.offered(selection)?;
+                Some(match o.ours {
+                    Some(copy) => Change::Holding { selection, copy },
+                    None => Change::Offered {
+                        selection,
+                        mimes: o.mimes.clone(),
+                    },
+                })
+            })
+            .collect();
+        (hub.status.clone(), now)
+    })
+    .ok_or(Error::NotAttached)?;
+    // A handle attached now hears what each selection offers.
+    if let Some(sink) = sink.upgrade() {
+        for c in now {
+            sink.queue(c);
+        }
+    }
+    poster(Job::Pump);
+    Ok(status)
+}
+
+pub(super) fn status() -> Option<Status> {
+    with(|hub| hub.status.clone())
+}
+
+pub(super) fn pump() {
+    let Some((changes, sinks, diagnostics)) = with(|hub| {
+        let mut changes = Vec::new();
+        let mut diagnostics = Vec::new();
+        for event in hub.sub.drain() {
+            match event {
+                transfer::Event::SelectionChanged {
+                    selection,
+                    route,
+                    offer,
+                } if route == hub.route.transfer() => {
+                    let selection = Selection::from(selection);
+                    let mimes = offer.as_ref().map(|o| o.mimes().to_vec());
+                    match offer {
+                        Some(o) => hub.offers.insert(selection, o),
+                        None => hub.offers.remove(&selection),
+                    };
+                    let t = &hub.transfer;
+                    changes.extend(
+                        hub.book
+                            .selection(selection, mimes, &|c| t.owns(SourceId::from_raw(c.0))),
+                    );
+                }
+                transfer::Event::SourceCancelled { source } => {
+                    let copy = CopyId(source.get());
+                    hub.specs.remove(&copy);
+                    let refused = hub.transfer.write_was_dropped(source);
+                    changes.extend(hub.book.cancelled(copy, refused));
+                }
+                transfer::Event::Failed { message } => {
+                    diagnostics.push(format!("the platform connection failed: {message}"));
+                    hub.failed = true;
+                    hub.specs.clear();
+                    hub.offers.clear();
+                    changes.extend(hub.book.failed());
+                }
+                _ => {}
+            }
+        }
+        hub.sinks.retain(|(_, s)| s.strong_count() > 0);
+        let sinks: Vec<Rc<dyn Sink>> = hub.sinks.iter().filter_map(|(_, s)| s.upgrade()).collect();
+        (changes, sinks, diagnostics)
+    }) else {
+        return;
+    };
+    for message in diagnostics {
+        diagnostic(&message);
+    }
+    for sink in sinks {
+        for c in &changes {
+            sink.queue(c.clone());
+        }
+    }
+}
+
+pub(super) fn copy(
+    selection: Selection,
+    spec: SourceSpec,
+    keep: Option<Duration>,
+) -> Result<CopyId, Error> {
+    if spec.is_empty() {
+        return Err(Error::Empty);
+    }
+    let (t, route) = with(|hub| {
+        if hub.failed {
+            return Err(Error::Platform("the platform connection failed".into()));
+        }
+        Ok((hub.transfer.clone(), hub.route))
+    })
+    .ok_or(Error::NotAttached)??;
+    if route == Route::DataDevice {
+        // The key or click that asked for the copy must be in before its serial is read.
+        let _ = t.dispatch();
+    }
+    let source = t.set_selection(selection.into(), route.transfer(), spec.clone())?;
+    let copy = CopyId(source.get());
+    with(|hub| {
+        hub.book
+            .copied(selection, copy, spec.mimes().map(str::to_owned).collect());
+        hub.specs.insert(copy, (spec, keep));
+    });
+    Ok(copy)
+}
+
+pub(super) fn clear(copy: CopyId) -> Result<bool, Error> {
+    let t = with(|hub| hub.book.clearing(copy, true).then(|| hub.transfer.clone()))
+        .ok_or(Error::NotAttached)?;
+    let Some(t) = t else {
+        return Ok(false);
+    };
+    match t.clear_selection(SourceId::from_raw(copy.0)) {
+        Ok(true) => Ok(true),
+        other => {
+            with(|hub| hub.book.clearing(copy, false));
+            other.map_err(Into::into)
+        }
+    }
+}
+
+pub(super) fn state(copy: CopyId) -> Option<CopyState> {
+    with(|hub| hub.book.state(copy)).flatten()
+}
+
+pub(super) fn offered(selection: Selection) -> Option<Offered> {
+    with(|hub| hub.book.offered(selection).cloned()).flatten()
+}
+
+/// Where a read's bytes come from.
+enum Src {
+    /// Our own copy: its writers, in process.
+    Ours(SourceSpec),
+    Theirs(SelectionOffer),
+}
+
+impl Src {
+    fn mimes(&self) -> Vec<String> {
+        match self {
+            Src::Ours(spec) => spec.mimes().map(str::to_owned).collect(),
+            Src::Theirs(o) => o.mimes().to_vec(),
+        }
+    }
+}
+
+type Done = Box<dyn FnOnce(Result<Vec<u8>, ReadError>) + Send>;
+
+fn source_of(selection: Selection) -> Result<Option<Src>, ReadError> {
+    with(|hub| {
+        if let Some(spec) = hub
+            .book
+            .serving(selection)
+            .and_then(|copy| hub.specs.get(&copy).map(|(spec, _)| spec.clone()))
+        {
+            return Some(Src::Ours(spec));
+        }
+        hub.offers.get(&selection).cloned().map(Src::Theirs)
+    })
+    .ok_or(ReadError::NotAttached)
+}
+
+fn read_one(src: &Src, mime: &str, limits: Limits, done: Done) {
+    match src {
+        Src::Ours(spec) => {
+            let Some(writer) = spec.writer(mime).cloned() else {
+                return done(Err(ReadError::NothingOffered));
+            };
+            let done = Arc::new(Mutex::new(Some(done)));
+            let worker = done.clone();
+            let take = |d: &Mutex<Option<Done>>| d.lock().ok().and_then(|mut d| d.take());
+            let spawned = std::thread::Builder::new()
+                .name("clipboard-read".into())
+                .spawn(move || {
+                    // A lazy writer may run here; it blocks this worker only.
+                    let result = match writer.get() {
+                        Some(b) if b.len() <= limits.max_bytes => Ok(b.to_vec()),
+                        Some(_) => Err(ReadError::TooLarge),
+                        None => Err(ReadError::Platform("the copy's writer panicked".into())),
+                    };
+                    if let Some(done) = take(&worker) {
+                        done(result);
+                    }
+                });
+            if let Err(e) = spawned
+                && let Some(done) = take(&done)
+            {
+                done(Err(ReadError::Platform(format!(
+                    "no thread for the read: {e}"
+                ))));
+            }
+        }
+        Src::Theirs(offer) => offer.read(mime, limits.into(), move |r| done(r.map_err(Into::into))),
+    }
+}
+
+/// Reads the first of `wanted` that `selection` offers.
+pub(super) fn read(selection: Selection, wanted: Vec<String>, limits: Limits, answer: AnswerData) {
+    let src = match source_of(selection) {
+        Ok(Some(src)) => src,
+        Ok(None) => return answer(Err(ReadError::NothingOffered)),
+        Err(e) => return answer(Err(e)),
+    };
+    let offered = src.mimes();
+    let Some(mime) = wanted.into_iter().find(|w| offered.contains(w)) else {
+        return answer(Err(ReadError::NothingOffered));
+    };
+    let m = mime.clone();
+    read_one(
+        &src,
+        &mime,
+        limits,
+        Box::new(move |r| answer(r.map(|bytes| Data { mime: m, bytes }))),
+    );
+}
+
+/// Reads the file-manager formats `selection` offers, all at once, and decodes them.
+pub(super) fn read_files(selection: Selection, limits: Limits, answer: AnswerFiles) {
+    let src = match source_of(selection) {
+        Ok(Some(src)) => src,
+        Ok(None) => return answer(Err(ReadError::NothingOffered)),
+        Err(e) => return answer(Err(e)),
+    };
+    let offered = src.mimes();
+    if !Files::offered(&offered) {
+        return answer(Err(ReadError::NothingOffered));
+    }
+    let types: Vec<usize> = (0..Files::TYPES.len())
+        .filter(|&i| offered.iter().any(|m| m == Files::TYPES[i]))
+        .collect();
+    struct Join {
+        left: usize,
+        got: [Option<Result<Vec<u8>, ReadError>>; 3],
+        answer: Option<AnswerFiles>,
+    }
+    let join = Arc::new(Mutex::new(Join {
+        left: types.len(),
+        got: [None, None, None],
+        answer: Some(answer),
+    }));
+    for i in types {
+        let join = join.clone();
+        read_one(
+            &src,
+            Files::TYPES[i],
+            limits,
+            Box::new(move |r| {
+                let finished = {
+                    let mut j = join.lock().unwrap_or_else(PoisonError::into_inner);
+                    j.got[i] = Some(r);
+                    j.left -= 1;
+                    if j.left > 0 {
+                        return;
+                    }
+                    let ok = |k: usize| {
+                        j.got[k]
+                            .as_ref()
+                            .and_then(|r| r.as_ref().ok())
+                            .map(Vec::as_slice)
+                    };
+                    let files = Files::decode(ok(0), ok(1), ok(2));
+                    let first_error = j
+                        .got
+                        .iter()
+                        .flatten()
+                        .find_map(|r| r.as_ref().err().cloned());
+                    let result = files.ok_or(first_error.unwrap_or(ReadError::NothingOffered));
+                    j.answer.take().map(|a| (a, result))
+                };
+                // Outside the lock: the answer posts a job.
+                if let Some((answer, result)) = finished {
+                    answer(result);
+                }
+            }),
+        );
+    }
+}
+
+fn teardown(t: &Transfer) {
+    let Some(hub) = HUB.with(|h| h.borrow_mut().take()) else {
+        return;
+    };
+    if hub.route != Route::X11 {
+        return;
+    }
+    let held = hub
+        .book
+        .live(Selection::Clipboard)
+        .into_iter()
+        .find(|c| t.owns(SourceId::from_raw(c.0)));
+    let Some(copy) = held else {
+        return;
+    };
+    let result = match hub.specs.get(&copy).and_then(|(_, keep)| *keep) {
+        Some(wait) => HandOff::from(t.hand_off_clipboard(wait)),
+        None => HandOff::NotHeld,
+    };
+    if matches!(result, HandOff::TimedOut | HandOff::Refused | HandOff::Gone) {
+        diagnostic(&format!(
+            "the clipboard manager didn't take the clipboard ({result:?}): it goes with the app"
+        ));
+    }
+    LAST_HAND_OFF.with(|l| l.set(Some(result)));
+}
+
+pub(super) fn shutdown() -> Result<Closed, Error> {
+    LAST_HAND_OFF.with(|l| l.set(None));
+    let bound = Transfer::shutdown()?;
+    // Without our hook (never attached), the hub may still be here.
+    HUB.with(|h| h.borrow_mut().take());
+    Ok(Closed {
+        bound,
+        hand_off: LAST_HAND_OFF.with(Cell::take),
+    })
+}

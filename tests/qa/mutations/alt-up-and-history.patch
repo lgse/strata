@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/single/mod.rs b/crates/strata-app/src/single/mod.rs
+--- a/crates/strata-app/src/single/mod.rs
++++ b/crates/strata-app/src/single/mod.rs
+@@ -226,7 +226,7 @@
+         .is_some_and(|(at, focused, _)| (at, focused) == (depth, position));
+     match how {
+         Activation::Key if focused => app.browser.activate_focused_in_place(),
+-        _ => app.browser.activate_in_place(depth, position),
++        _ => {}
+     }
+ }
+ 

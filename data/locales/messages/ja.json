@@ -204,6 +204,7 @@
   "Cannot permanently delete the filesystem root": "ファイルシステムのルートは完全に削除できません",
   "Cannot restore the filesystem root": "ファイルシステムのルートは復元できません",
   "Can’t compress these items": "これらの項目は圧縮できません",
+  "Can’t extract these items": "これらの項目は展開できません",
   "Can’t create items here": "ここでは項目を作成できません",
   "Can’t cut these items": "これらの項目は切り取れません",
   "Can’t move these items": "これらの項目は移動できません",
@@ -421,6 +422,7 @@
   "Extract the archive here / to a typed folder": "アーカイブをここ / 入力したフォルダーに展開",
   "Extract the archive to a folder": "アーカイブをフォルダーに展開",
   "Extracted entries remain in “%{folder}”.": "展開した項目は「%{folder}」に残っています。",
+  "Extracting archive %{current} of %{total}": "アーカイブを展開中 (%{current} / %{total})",
   "Extraction destination must use an absolute path": "展開先には絶対パスを使用する必要があります",
   "Extraction stopped unexpectedly": "展開が予期せず停止しました",
   "Failed after %{elapsed}": "%{elapsed}後に失敗",
@@ -1151,5 +1153,6 @@
   "Press the new key for “%{action}”": "「%{action}」の新しいキーを押してください",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} でキャンセル、%{backspace} でこの操作のキーをすべて削除します。",
   "“%{group}” has no key, so this action cannot run.": "「%{group}」にキーがないため、この操作は実行できません。",
-  "Custom action %{number}": "カスタムアクション %{number}"
+  "Custom action %{number}": "カスタムアクション %{number}",
+  "Volume": "音量"
 }

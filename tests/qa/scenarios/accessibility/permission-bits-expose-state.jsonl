@@ -1,4 +1,4 @@
-{"scenario":"permission-bits-expose-state","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":4,"score":42,"note":"Properties permission toggles match disk bits and Owner execute click writes mode; only QA check, no unit test pins the editor"}}
+{"scenario":"permission-bits-expose-state","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":3,"criticality":2,"diagnostic":4,"score":23,"note":"Properties permission toggles expose names and pressed state matching disk bits; unit test pins only owner-x disk write"}}
 {"select":{"entry":"todo.txt"}}
 {"key":"alt+Return"}
 {"wait":{"dialog":true},"message":"a dialog to appear"}

@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: MIT
-//! Opt-in integrations bundled with Strata: the catalog under `integrations/`,
-//! their installation as external file providers and update detection.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -32,8 +30,6 @@ mod tests;
 pub const CATALOG_FILE: &str = "catalog.toml";
 /// Written beside an installed copy; its absence marks a manual installation.
 pub const RECORD_FILE: &str = "catalog-install.json";
-/// An `integrations/`-layout directory that replaces the bundled catalog while
-/// developing an integration.
 pub const CATALOG_OVERRIDE: &str = "STRATA_INTEGRATION_CATALOG";
 const MANIFEST_FILE: &str = "provider.json";
 const FILE_LIMIT: usize = 32;
@@ -80,8 +76,6 @@ pub struct Requirement {
     /// Executable expected in a trusted system directory.
     #[serde(default)]
     pub command: Option<String>,
-    /// Other executable names that satisfy a command requirement, for packages
-    /// that install the same program under different names.
     #[serde(default)]
     pub alternatives: Vec<String>,
     /// Module importable with the provider's interpreter.
@@ -417,8 +411,6 @@ pub fn catalog() -> Vec<Entry> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Status {
     NotInstalled,
-    /// Installed from the catalog. `update` when the catalog copy changed since
-    /// installation, `modified` when the installed files were edited.
     Installed {
         update: bool,
         modified: bool,
@@ -592,9 +584,6 @@ fn private_directory(path: &Path) -> Result<(), String> {
     }
 }
 
-/// Copies the entry into `root/<id>`, registers it with the interpreter and
-/// script paths resolved now, and records what was written. Re-installing
-/// replaces the files and removes ones the previous installation recorded.
 pub fn install(entry: &Entry, root: &Path) -> Result<PathBuf, String> {
     let interpreter = crate::trusted_command::resolve(&entry.runtime)
         .map_err(|_| format!("{} is not installed in a system directory", entry.runtime))?;
@@ -668,8 +657,6 @@ pub struct RequirementResult {
     pub satisfied: bool,
 }
 
-/// Looks up each requirement without running provider code. Module checks
-/// ask the interpreter whether the module can be found, not to import it.
 pub fn check_requirements(entry: &Entry) -> Vec<RequirementResult> {
     let interpreter = crate::trusted_command::resolve(&entry.runtime).ok();
     entry

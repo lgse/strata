@@ -2,8 +2,6 @@
 
 use super::*;
 
-/// Looks the mount key up only when a fallback needs it, so the first rung
-/// costs a single syscall.
 pub(super) struct Mount<'a> {
     fs: &'a dyn FsOps,
     dir: BorrowedFd<'a>,
@@ -34,8 +32,6 @@ impl<'a> Mount<'a> {
         mount_capabilities(self.key())
     }
 
-    /// Whether an inode number still found at a name proves the entry is
-    /// the one it was read from, as the mount's type tells.
     pub(super) fn numbers_kept(&self) -> bool {
         mount_profile::identity_at(self.fs, self.dir).numbers == InodeNumbers::Kept
     }
@@ -70,11 +66,6 @@ impl<'a> Mount<'a> {
         Ok(probed)
     }
 
-    /// Whether the reserved-name rung may run once the others gave up: only
-    /// after a probe on Strata's own names, or a definitive errno, shows that
-    /// NOREPLACE is missing and settles whether links work. Files take it where
-    /// links are missing or unusable on the mount, or refused for that one file
-    /// (`protected_hardlinks`); folders only where links are missing too.
     pub(super) fn allows_reserved_name(&self, directory: bool) -> bool {
         let settled = |capabilities: MountCapabilities| {
             capabilities.no_replace.is_some() && capabilities.hard_links.is_some()
@@ -121,9 +112,6 @@ pub(in crate::adapters::local_operations) struct Probed {
     pub links_keep_numbers: bool,
 }
 
-/// Tries each primitive on new names of Strata's own in `dir`, where no
-/// errno can be blamed on the user's item. Fields stay `None` when the probe
-/// cannot tell.
 pub(in crate::adapters::local_operations) fn probe(
     fs: &dyn FsOps,
     dir: BorrowedFd<'_>,
@@ -287,9 +275,6 @@ pub(in crate::adapters::local_operations) fn links_hold(
     mount.capabilities().hard_links == Some(true)
 }
 
-/// Whether a new folder in `dir` is built in a stage and placed once complete. It is made
-/// under its own name where the mount is known to place no folder, and where its daemon may
-/// leave a filled stage split between both names when it is renamed.
 pub(in crate::adapters::local_operations) fn stages_folders(
     fs: &dyn FsOps,
     dir: BorrowedFd<'_>,
@@ -298,8 +283,6 @@ pub(in crate::adapters::local_operations) fn stages_folders(
     !known.renames_folders_in_steps && placeable(known, true) != Some(false)
 }
 
-/// Whether an existing entry in `dir` can be moved aside without risking a
-/// clobber, probing the mount when nothing is known yet.
 pub(in crate::adapters::local_operations) fn can_set_aside(
     fs: &dyn FsOps,
     dir: BorrowedFd<'_>,

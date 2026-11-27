@@ -1,4 +1,4 @@
-{"scenario":"keyboard-only-copy-paste","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.5},"quality":{"impact":4,"coverage":2,"criticality":3,"diagnostic":4,"score":16,"note":"keyboard-only focus to archive then Ctrl+C/Ctrl+V keeps source; copy-leaves-source covers the same copy across modes and layouts"}}
+{"scenario":"keyboard-only-copy-paste","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.5},"quality":{"impact":4,"coverage":2,"criticality":3,"diagnostic":4,"score":16,"note":"Keyboard-only Ctrl+C/Ctrl+V copy keeps source; copy-leaves-source (superset, mouse and keyboard, 3 modes) covers the copy, this adds only keyboard focus route"},"host":"session"}
 {"key":"Down"}
 {"wait":{"focused":true},"message":"initial keyboard focus"}
 {"key":"End"}

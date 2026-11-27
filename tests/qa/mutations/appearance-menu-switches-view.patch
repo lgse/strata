@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/appearance/popover.rs b/crates/strata-app/src/appearance/popover.rs
+--- a/crates/strata-app/src/appearance/popover.rs
++++ b/crates/strata-app/src/appearance/popover.rs
+@@ -364,7 +364,7 @@ fn view_rows(app: &App) -> Vec<El> {
+ }
+
+ fn chosen_view(app: &mut App, mode: &'static str, tx: &mut Tx) {
+-    super::views::switch(app, mode, tx);
++    let _ = mode;
+     close(app);
+     if let Some(view) = shell::view_focus(app) {
+         tx.focus(view, true);

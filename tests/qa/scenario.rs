@@ -12,7 +12,7 @@ use serde_json::{Map, Value};
 use crate::{
     DEFAULT_LAYOUT, QA_ENVIRONMENT, REPOSITORY, RUNNER_COMMANDS, RUNNER_OWNED_ENVIRONMENT, STEP_IF,
     STEP_MODES, STEP_UNLESS, STEP_VARIANTS, STEP_WHEN, XDG_DIRECTORIES,
-    fixture::{expand_tree, fixed_fixture_name, gtk_settings, manifest},
+    fixture::{expand_tree, fixed_fixture_name, manifest},
     fs_check::FsStep,
     harness, protocol,
     run::run_scenario,
@@ -37,11 +37,21 @@ const MODES: [(&str, &str); 3] = [("columns", "Columns"), ("icons", "Icons"), ("
 /// Set by `./scripts/qa.sh` when scenarios are named, so a `skip` scenario still runs.
 const NAMED: &str = "STRATA_QA_NAMED";
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Host {
+    #[default]
+    Offscreen,
+    Session,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Header {
     pub(crate) scenario: String,
     pub(crate) modes: Vec<String>,
+    #[serde(default)]
+    pub(crate) host: Host,
     #[serde(default)]
     pub(crate) prefs: Map<String, Value>,
     #[serde(default = "default_layout")]
@@ -55,8 +65,6 @@ pub(crate) struct Header {
     #[serde(default)]
     pub(crate) images: BTreeMap<String, Image>,
     #[serde(default)]
-    pub(crate) gtk_settings: BTreeMap<String, String>,
-    #[serde(default)]
     pub(crate) setup: Vec<Value>,
     #[serde(default)]
     pub(crate) teardown: Vec<Value>,
@@ -67,10 +75,19 @@ pub(crate) struct Header {
     #[serde(default)]
     pub(crate) portal: bool,
     pub(crate) input_method: Option<String>,
+    #[serde(default)]
+    pub(crate) volume_monitor: bool,
     pub(crate) fixture_root: Option<String>,
     pub(crate) skip: Option<String>,
     pub(crate) cost: Option<BTreeMap<String, f64>>,
     pub(crate) quality: Option<Value>,
+}
+
+impl Header {
+    /// Which host `variant` runs on: the variant's override if set, else the scenario's own.
+    pub(crate) fn host(&self, variant: &Variant) -> Host {
+        variant.host.unwrap_or(self.host)
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -111,6 +128,8 @@ pub(crate) struct Variant {
     pub(crate) id: String,
     #[serde(default)]
     pub(crate) modes: Option<Vec<String>>,
+    #[serde(default)]
+    pub(crate) host: Option<Host>,
     #[serde(default)]
     pub(crate) prefs: Map<String, Value>,
     pub(crate) layout: Option<String>,
@@ -165,19 +184,30 @@ pub(crate) fn scenario_name(path: &Path) -> String {
         .to_owned()
 }
 
-fn read_header(path: &Path) -> Result<Header, String> {
+/// A scenario file's first line with anything on it: its header.
+pub(crate) fn header_line(path: &Path) -> Result<String, String> {
     let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let first = text
         .lines()
         .find(|line| !line.trim().is_empty())
         .ok_or("the scenario is empty")?;
-    serde_json::from_str(first).map_err(|error| format!("line 1, the header: {error}"))
+    Ok(first.to_owned())
+}
+
+fn read_header(path: &Path) -> Result<Header, String> {
+    serde_json::from_str(&header_line(path)?)
+        .map_err(|error| format!("line 1, the header: {error}"))
 }
 
 const SCENARIO_IGNORED: &str = "QA scenarios run in the pinned container through ./scripts/qa.sh";
 
 pub(crate) fn planned_tests() -> Vec<harness::Test> {
-    let mut tests: Vec<harness::Test> = UNIT_TESTS
+    let named = std::env::var_os(NAMED).is_some_and(|named| named == "1");
+    plan(&scenario_files(), named)
+}
+
+fn unit_tests() -> Vec<harness::Test> {
+    UNIT_TESTS
         .iter()
         .map(|&(name, test)| harness::Test {
             name: name.to_owned(),
@@ -192,11 +222,14 @@ pub(crate) fn planned_tests() -> Vec<harness::Test> {
                 harness::Outcome::Passed(None)
             }),
         })
-        .collect();
-    let named = std::env::var_os(NAMED).is_some_and(|named| named == "1");
-    for path in scenario_files() {
-        let scenario = scenario_name(&path);
-        let header = match read_header(&path) {
+        .collect()
+}
+
+pub(crate) fn plan(files: &[PathBuf], named: bool) -> Vec<harness::Test> {
+    let mut tests = unit_tests();
+    for path in files {
+        let scenario = scenario_name(path);
+        let header = match read_header(path) {
             Ok(header) => header,
             Err(error) => {
                 let error = format!("{}: {error}", path.display());
@@ -268,9 +301,7 @@ pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
             header.scenario
         ));
     }
-    if let Some(quality) = &header.quality {
-        check_quality(quality)?;
-    }
+    check_labels(&header)?;
     for mode in header.modes.iter().chain(
         header
             .variants
@@ -295,7 +326,11 @@ pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
     {
         let parsed: FsStep = serde_json::from_value(step.clone())
             .map_err(|error| format!("setup {}: invalid fs step: {error}", index + 1))?;
-        if !parsed.fs.acts() || parsed.timeout_ms.is_some() || parsed.message.is_some() {
+        if !parsed.fs.acts()
+            || parsed.timeout_ms.is_some()
+            || parsed.hold_ms.is_some()
+            || parsed.message.is_some()
+        {
             return Err(format!(
                 "setup {}: setup takes fs actions only, such as write or chmod",
                 index + 1
@@ -310,14 +345,17 @@ pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
     {
         let parsed: FsStep = serde_json::from_value(step.clone())
             .map_err(|error| format!("teardown {}: invalid fs step: {error}", index + 1))?;
-        if !parsed.fs.acts() || parsed.timeout_ms.is_some() || parsed.message.is_some() {
+        if !parsed.fs.acts()
+            || parsed.timeout_ms.is_some()
+            || parsed.hold_ms.is_some()
+            || parsed.message.is_some()
+        {
             return Err(format!(
                 "teardown {}: teardown takes fs actions only, such as chmod",
                 index + 1
             ));
         }
     }
-    gtk_settings(&manifest().gtk_settings, &header.gtk_settings)?;
     check_cost(&header)?;
     if let Some(reason) = &header.skip
         && (reason.trim().is_empty() || header.mutation.is_some() || header.known_bug.is_some())
@@ -331,6 +369,9 @@ pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
     }
     if header.input_method.is_some() && !header.session_bus {
         return Err("an input_method run needs the header's session_bus".to_owned());
+    }
+    if header.volume_monitor && !header.session_bus {
+        return Err("a volume_monitor run needs the header's session_bus".to_owned());
     }
     if let Some(root) = &header.fixture_root
         && fixed_fixture_name(root).is_none()
@@ -439,6 +480,14 @@ pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
     Ok(Scenario { header, steps })
 }
 
+/// The header's `quality` ratings and rubric score.
+fn check_labels(header: &Header) -> Result<(), String> {
+    if let Some(quality) = &header.quality {
+        check_quality(quality)?;
+    }
+    Ok(())
+}
+
 fn check_cost(header: &Header) -> Result<(), String> {
     let mut labels: Vec<String> = runs(header).into_iter().map(|run| run.label).collect();
     labels.sort();
@@ -508,19 +557,22 @@ pub(crate) fn check_quality(quality: &Value) -> Result<Quality, String> {
             quality.score
         ));
     }
-    // Every break Python's `str.splitlines` splits on, as the scripts read headers.
-    let breaks = [
-        '\n', '\r', '\u{b}', '\u{c}', '\u{1c}', '\u{1d}', '\u{1e}', '\u{85}', '\u{2028}',
-        '\u{2029}',
-    ];
-    if quality.note.trim().is_empty() || quality.note.contains(breaks) {
+    if !one_line(&quality.note) {
         return Err("quality note is one non-empty line".to_owned());
     }
     Ok(quality)
 }
 
-/// The `qa-quality` rubric's score, 0 to 100: `100 * (coverage - 1) / 4 * P / 32`
-/// rounded half up, where `P = 3(impact - 1) + 3(criticality - 1) + 2(diagnostic - 1)`.
+/// Every break Python's `str.splitlines` splits on, as the scripts read headers.
+const LINE_BREAKS: [char; 10] = [
+    '\n', '\r', '\u{b}', '\u{c}', '\u{1c}', '\u{1d}', '\u{1e}', '\u{85}', '\u{2028}', '\u{2029}',
+];
+
+/// Whether a header's text is one line with something on it.
+pub(crate) fn one_line(text: &str) -> bool {
+    !text.trim().is_empty() && !text.contains(LINE_BREAKS)
+}
+
 fn quality_score(quality: &Quality) -> u8 {
     let rating = |value: u8| u32::from(value) - 1;
     let points = 3 * rating(quality.impact)

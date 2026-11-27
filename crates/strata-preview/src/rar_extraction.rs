@@ -5,8 +5,6 @@
 use std::io::{self, Read, Write};
 
 const MAGIC: &[u8; 8] = b"STRRAR03";
-/// Generous enough for any real archive member name or error message, small
-/// enough that a malformed/compromised child cannot force a huge allocation.
 const MAX_TEXT_BYTES: u32 = 8192;
 const HEADER_BYTES: usize = 32;
 const NO_MODE: u32 = u32::MAX;
@@ -15,8 +13,6 @@ const NO_MODE: u32 = u32::MAX;
 pub enum WireTime {
     /// Windows FILETIME (UTC), as RAR 5 headers store it.
     FileTime(u64),
-    /// MS-DOS date (high 16 bits) and time in the archiver's local zone, as
-    /// RAR 1.5–4 headers store it. Only the parent knows the user's zone.
     DosLocal(u32),
 }
 
@@ -182,8 +178,6 @@ fn write_header(
     writer.write_all(bytes)
 }
 
-/// Each body chunk is length-prefixed so a decoder failure before the declared
-/// size cannot be mistaken for file contents.
 pub fn write_chunk(writer: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
     let length = u32::try_from(bytes.len()).map_err(|_| invalid("RAR chunk is too large"))?;
     writer.write_all(&length.to_le_bytes())?;
@@ -204,9 +198,6 @@ pub fn write_file_failed(writer: &mut impl Write, failure: &Failure) -> io::Resu
     )
 }
 
-/// The framed member reader validates the trailer before reporting EOF to the
-/// destination, so failed or truncated members are removed by ExtractionSession.
-/// A failed trailer's [`Failure`] is the reported error's inner error.
 pub struct FileBody<'a, R> {
     reader: &'a mut R,
     remaining: u64,

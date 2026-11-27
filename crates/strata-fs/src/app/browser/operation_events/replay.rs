@@ -34,10 +34,6 @@ pub(super) fn finish_claimed_replay(
     }
 }
 
-/// A restore replay marks each landed item from progress events; a delete
-/// or move replay marks from the locations the finish event reports. A
-/// merge undo does both: originals mark through progress while its trashed
-/// `created` items arrive in the finish event.
 fn replay_completed_locations(
     redo: bool,
     entry: &UndoEntry,

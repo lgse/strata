@@ -126,13 +126,6 @@ fn ends_fill(event: &DirectoryEvent) -> bool {
     matches!(event, DirectoryEvent::MetadataFinished { .. })
 }
 
-/// `enumerate()` spawns its work on `glib::MainContext::default()` internally (not whatever
-/// context happens to be thread-default), so it can only be driven via that same shared context
-/// -- a private context pushed as thread-default would never see the spawned task at all. Bridge
-/// the callback-based API into a future with `poll_fn` and drive it with `block_on`. The shared
-/// lock is still required: concurrent `block_on(default())` calls from different test-harness
-/// threads panic with a GLib thread-affinity error, same as concurrent `spawn_local`/`iteration()`
-/// would.
 fn run_until(
     _serial: &MainContextGuard<'_>,
     ends: fn(&DirectoryEvent) -> bool,

@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Hard links within one copied item, or one merge stage. Only the first
-//! name of a source file with several names is copied. Once every file of
-//! its scope is written, each later name is linked to that copy, or copied
-//! from it where the destination refuses.
-
 use std::{
     collections::{HashMap, HashSet, hash_map},
     ffi::OsString,
@@ -89,8 +84,6 @@ struct State {
 }
 
 impl Links {
-    /// `dir` is a destination folder the copy does not make, so nothing a probe
-    /// leaves ends up in the copy.
     pub(super) fn probe_in(&self, mount: MountKey, dir: Arc<OwnedFd>) {
         lock(&self.probes).entry(mount).or_insert(Probe::In(dir));
     }
@@ -259,8 +252,6 @@ fn beneath<'a>(base: &Path, path: &'a Path) -> Result<&'a Path, Failure> {
     path.strip_prefix(base).map_err(|_| Failure::Changed)
 }
 
-/// Where the destination refuses a link, copies the first copy on the same
-/// device instead, and stops linking.
 fn make(
     copy: &Copy,
     (root, base): (BorrowedFd<'_>, &Path),
@@ -351,9 +342,6 @@ fn parent(fs: &dyn FsOps, root: BorrowedFd<'_>, path: &Path) -> Result<OwnedFd, 
     })
 }
 
-/// A new link that reports another item linked whatever replaced the copy
-/// at `from`, so that second name of it is removed again. Anything else at
-/// `to` was put there after the link, and is left alone.
 fn linked(
     fs: &dyn FsOps,
     from: Entry<'_>,

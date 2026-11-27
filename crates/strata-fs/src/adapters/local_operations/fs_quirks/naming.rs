@@ -33,10 +33,6 @@ impl Scope {
         }
     }
 
-    /// The other existing name a lookup of `entry` would find: one that
-    /// differs in case on a case-insensitive mount, or the name a create of
-    /// `entry` stores. Lookups revalidate, so an already case-insensitive
-    /// FUSE mount cannot answer from its cache for a name that has moved.
     pub fn alias(&self, entry: Entry<'_>) -> Option<OsString> {
         let (case_insensitive, stored_as) =
             self.quirk(|quirks| (quirks.case_insensitive, quirks.stored_as.is_some()));
@@ -169,9 +165,6 @@ impl Scope {
         }
     }
 
-    /// The alias of `at` once a call naming it exactly found nothing. A real
-    /// case-insensitive lookup finds the entry whichever case it was renamed
-    /// to meanwhile, so the exact name is tried first.
     pub fn alias_if_missing<T>(&self, at: Entry<'_>, exact: &Result<T, Errno>) -> Option<OsString> {
         matches!(exact, Err(Errno::NOENT))
             .then(|| self.alias(at))

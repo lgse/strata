@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/listing/groups.rs b/crates/strata-app/src/listing/groups.rs
+index 000000000..111111111 100644
+--- a/crates/strata-app/src/listing/groups.rs
++++ b/crates/strata-app/src/listing/groups.rs
+@@ -82,7 +82,7 @@ impl GroupedBuckets {
+         shown.clear();
+         let total_shown: usize = self.buckets.iter().map(|(_, rows)| rows.len()).sum();
+         shown.reserve(total_shown);
+-        for (_, rows) in &self.buckets {
++        for (_, rows) in self.buckets.iter().take(1) {
+             shown.extend_from_slice(rows);
+         }
+         back.clear();

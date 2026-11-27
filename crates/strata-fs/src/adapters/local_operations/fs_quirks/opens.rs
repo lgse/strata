@@ -9,8 +9,6 @@ impl Scope {
             .is_some_and(|(pattern, until)| matches(pattern, &[name]) && clock_for_test() < until)
     }
 
-    /// Records `path` as a name `opened` was opened by, refusing it while
-    /// another name of the same file is in the way.
     pub fn open_name(
         &self,
         name_opens: NameOpens,
@@ -46,8 +44,6 @@ impl Scope {
         }
     }
 
-    /// Whether giving the folder `fd` back `mode` does nothing, as write
-    /// access given back before a revalidating stat does.
     pub fn keeps_read_only(&self, fd: BorrowedFd<'_>, mode: u32) -> bool {
         let Some(path) = path_of(fd) else {
             return false;

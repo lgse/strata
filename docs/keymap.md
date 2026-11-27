@@ -21,8 +21,8 @@ These keys stay fixed:
 - the letters **a–z** after the two bookmark chords, which name the bookmark
   rather than bind an action and follow their chord's trigger;
 - **Backspace**, which goes to the parent folder and deletes text;
-- the keys GTK handles in file lists: **Ctrl+Space** toggles the selection, and
-  Shift with an arrow, Home, End, Page Up or Page Down extends it;
+- the selection-extension keys in file lists: **Ctrl+Space** toggles the
+  selection, and Shift with an arrow, Home, End, Page Up or Page Down extends it;
 - **Space** where it selects in the 10xer file list or plays media, and Home,
   End and the page keys where they move a text caret, seek media or scroll
   something other than the file list.
@@ -93,8 +93,8 @@ the focused folder** do nothing.
 
 `escape`, `activate` (Enter), `focus_next` (Tab), `focus_previous` (Shift+Tab)
 and `up`, `down`, `left` and `right` are structural. Another key on one of them
-acts as the key itself wherever Strata or GTK handles that key: in the file
-list, the sidebar, dialogs, menus, the file chooser and Settings. **h j k l**
+acts as the key itself wherever Strata handles that key: in the file list, the
+sidebar, dialogs, menus, the file chooser and Settings. **h j k l**
 are the shipped arrows of this kind. **Escape** always cancels, even when the
 `escape` entry leaves it out.
 
@@ -139,9 +139,10 @@ Settings checks each key against the rest of its table when you press it:
 
 - **Refused**: the key never fires where the action runs, or it would stop
   another key from working there. Examples are a key another action on the same
-  surface holds, such as **Ctrl+C** on Rename, a 10xer chord trigger, a key GTK
-  uses to select, a tab digit, Shift on a Sort step, a key an input method needs
-  while you type. An action the mode cannot run has no row in its table.
+  surface holds, such as **Ctrl+C** on Rename, a 10xer chord trigger, a
+  selection-extension key, a tab digit, Shift on a Sort step, or a key an input
+  method needs while you type. An action the mode cannot run has no row in its
+  table.
 - **Saved with a note**: the key works, but not everywhere. Examples are a plain
   key while type-to-search is on, a plain key for an action that also runs in
   text fields, a key another action takes first in some states, and
@@ -170,10 +171,10 @@ toggle_sidebar = ["<Control>n", "F9"]
 - An entry replaces the action's whole entry in that table, primary key first.
   An empty list removes every key. Settings removes an entry that returns to the
   shipped keys.
-- The ids are the stable names in `src/ui/keys/bindings/`. Rebinding an action
+- The ids are the stable names in `crates/strata-desktop/src/keys/bindings/`. Rebinding an action
   in Settings writes its id to the file. Quote ids that contain a dot:
   unquoted, TOML reads `go.home = [..]` as a table.
-- Keys use GTK's accelerator syntax: `<Control>`, `<Alt>`, `<Shift>` and
+- Keys use canonical accelerator syntax: `<Control>`, `<Alt>`, `<Shift>` and
   `<Super>`, then a key name such as `e`, `F2`, `Return`, `Escape`, `space` or
   `bracketleft`. Write Shift out (`<Shift>g`); `G` alone means plain **g**,
   which is logged as a warning. Digits are digit-row positions, and a plain

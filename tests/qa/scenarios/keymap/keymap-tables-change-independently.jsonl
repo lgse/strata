@@ -1,4 +1,4 @@
-{"scenario":"keymap-tables-change-independently","modes":["columns"],"prefs":{"type_to_search":false},"cost":{"columns":4.0},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"default and 10xer Rename edited apart in Settings, each saved and dispatched only in its mode; only GUI check across a Ctrl+Shift+M switch"}}
+{"scenario":"keymap-tables-change-independently","modes":["columns"],"prefs":{"type_to_search":false},"cost":{"columns":4.0},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Default and 10xer Rename edited apart and dispatched per mode under real keys; table edits pinned by keymap_edits unit tests"}}
 {"click":{"role":"button","name":"Settings"}}
 {"wait":{"present":{"role":"button","name":"Keyboard settings"}},"message":"Settings to open"}
 {"click":{"role":"button","name":"Keyboard settings"}}

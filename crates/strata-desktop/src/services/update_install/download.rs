@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! ureq's phase budgets do not restart on reads. Bound each input wait instead,
-//! and enforce its deadline below TLS so partial records cannot postpone cancellation.
-
 use std::{
     io,
     sync::{Arc, Mutex},

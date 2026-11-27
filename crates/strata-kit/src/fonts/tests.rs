@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: MIT
+
+use rune::text::TextSystem;
+use rune::{Family, TextStyle};
+
+use super::*;
+use crate::look::Look;
+
+/// The big-endian integer of `N` bytes at `at`.
+fn be<const N: usize>(data: &[u8], at: usize) -> u32 {
+    data[at..at + N]
+        .iter()
+        .fold(0, |n, &b| (n << 8) | u32::from(b))
+}
+
+/// The bytes of the sfnt table tagged `tag`.
+fn table<'a>(face: &'a [u8], tag: &[u8; 4]) -> &'a [u8] {
+    let count = be::<2>(face, 4) as usize;
+    (0..count)
+        .map(|i| 12 + 16 * i)
+        .find(|&rec| &face[rec..rec + 4] == tag)
+        .map(|rec| {
+            let (offset, len) = (
+                be::<4>(face, rec + 8) as usize,
+                be::<4>(face, rec + 12) as usize,
+            );
+            &face[offset..offset + len]
+        })
+        .unwrap_or_else(|| panic!("no {} table", String::from_utf8_lossy(tag)))
+}
+
+/// Every Windows-platform (UTF-16BE) string with name ID `id` in the `name` table.
+fn names(face: &[u8], id: u32) -> Vec<String> {
+    let name = table(face, b"name");
+    let (count, strings) = (be::<2>(name, 2) as usize, be::<2>(name, 4) as usize);
+    (0..count)
+        .map(|i| 6 + 12 * i)
+        .filter(|&rec| be::<2>(name, rec) == 3 && be::<2>(name, rec + 6) == id)
+        .map(|rec| {
+            let (len, at) = (
+                be::<2>(name, rec + 8) as usize,
+                be::<2>(name, rec + 10) as usize,
+            );
+            let raw = &name[strings + at..strings + at + len];
+            let units: Vec<u16> = raw
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|&c| u16::from_be_bytes(c))
+                .collect();
+            String::from_utf16(&units).expect("UTF-16 name")
+        })
+        .collect()
+}
+
+/// The `wght` axis's (min, max) in the `fvar` table.
+fn wght_axis(face: &[u8]) -> (f32, f32) {
+    let fvar = table(face, b"fvar");
+    let (axes, count, size) = (
+        be::<2>(fvar, 4) as usize,
+        be::<2>(fvar, 8) as usize,
+        be::<2>(fvar, 10) as usize,
+    );
+    let fixed = |at| be::<4>(fvar, at) as i32 as f32 / 65536.0;
+    (0..count)
+        .map(|i| axes + size * i)
+        .find(|&rec| &fvar[rec..rec + 4] == b"wght")
+        .map(|rec| (fixed(rec + 4), fixed(rec + 12)))
+        .expect("a wght axis")
+}
+
+/// Every weight the look's type ramps use.
+fn ramp_weights() -> Vec<f32> {
+    let look = Look::fallback(false);
+    let t = look.kit.ty;
+    [
+        t.ui,
+        t.ui_medium,
+        t.ui_compact,
+        t.small,
+        t.small_medium,
+        t.body,
+        t.body_medium,
+        t.text_small,
+        t.text_small_medium,
+        t.text_xsmall,
+        t.text_xsmall_medium,
+        t.mono,
+        look.ty.title,
+        look.ty.heading,
+    ]
+    .map(|s| s.weight)
+    .to_vec()
+}
+
+#[test]
+fn the_bundled_face_is_named_as_rune_matches_it_and_spans_the_ramps_weights() {
+    let family = names(JETBRAINS_MONO, 1);
+    assert!(!family.is_empty(), "no family name");
+    for name in family.iter().chain(&names(JETBRAINS_MONO, 16)) {
+        assert_eq!(name, FAMILY);
+    }
+    let (min, max) = wght_axis(JETBRAINS_MONO);
+    for weight in ramp_weights() {
+        assert!(
+            (min..=max).contains(&weight),
+            "{weight} outside {min}–{max}"
+        );
+    }
+}
+
+#[test]
+fn text_shapes_in_jetbrains_mono_not_a_fallback() {
+    let mut text = TextSystem::new(FONTS, FAMILIES);
+    let style = TextStyle::new(100.0, 400.0);
+    for (slot, style) in [
+        ("sans", style),
+        ("mono", style.mono()),
+        ("named", style.family(Family::Named(FAMILY))),
+    ] {
+        for run in ["iiiiiiiiii", "MMMMMMMMMM"] {
+            let (w, _) = text.measure(run, style, 4.0);
+            assert_eq!(w, 600.0, "{slot} {run}");
+        }
+    }
+}
+
+#[test]
+fn the_wght_axis_follows_the_weight() {
+    let _fonts = rune::text::with_fonts(FONTS, FAMILIES);
+    // JetBrains Mono's 600-unit advance: this path measures the bundled face.
+    let advance = rune::text::advance("iiiiiiiiii", TextStyle::new(100.0, 400.0));
+    assert!(
+        (advance - 600.0).abs() < 0.01,
+        "{advance} pt, not JetBrains Mono's"
+    );
+    let ink = |weight| {
+        rune::text::ink("l", TextStyle::new(100.0, weight))
+            .expect("ink")
+            .bounds[2]
+    };
+    let (regular, medium, semibold) = (ink(400.0), ink(500.0), ink(600.0));
+    assert!(
+        regular < medium && medium < semibold,
+        "{regular} {medium} {semibold}"
+    );
+}

@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Emulates filesystems that lack a primitive. A scope rooted at a temporary
-//! directory applies its quirks to every seam call whose directory lies
-//! inside it; other calls reach the system unchanged. Separate scopes act as
-//! separate mounts.
-
 use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
@@ -112,8 +107,6 @@ struct Scope {
     host: Option<MountType>,
     own_device: bool,
     state: Mutex<State>,
-    /// Makes looking a name up and creating it one step, as a filesystem that
-    /// compares names itself does.
     naming: Mutex<()>,
 }
 
@@ -124,8 +117,6 @@ struct State {
     births: HashMap<PathBuf, i64>,
     /// The birth time of each folder a rename reset, by device and inode.
     reset_births: HashMap<(u64, u64), (i64, u32)>,
-    /// Real and reported inode number per name a hard link added, or a lost
-    /// rename reply left reporting its old number.
     link_names: HashMap<PathBuf, (u64, u64)>,
     links_made: u64,
     stale: HashMap<PathBuf, EntryStat>,
@@ -135,8 +126,6 @@ struct State {
     /// Writebacks lost so far, and how many each open folder has reported.
     writebacks_lost: u64,
     reported_losses: HashMap<RawFd, u64>,
-    /// Each name a file was opened by, by device and inode, with the
-    /// descriptor that opened it.
     opened_names: Vec<((u64, u64), PathBuf, RawFd)>,
     /// Folders made read-only that no revalidating stat has seen since.
     read_only_unseen: HashSet<PathBuf>,

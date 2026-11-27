@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The name a destination stores for a name it would refuse, alter or find
-//! too long, by the rules of its mount's profile.
-
 use std::{
     borrow::Cow,
     collections::HashSet,
@@ -50,8 +47,6 @@ pub(in crate::adapters::local_operations) fn fix_name<'a>(
     }
 }
 
-/// The extension keeps its dot: the last one, or `.tar` with the one after it. Folders and
-/// names such as `.bashrc` have none.
 pub(in crate::adapters::local_operations) fn split_extension(
     name: &OsStr,
     is_directory: bool,
@@ -223,8 +218,6 @@ fn part(name: Cow<'_, OsStr>, range: Range<usize>) -> Cow<'_, OsStr> {
     }
 }
 
-/// Puts `_` after a device name Windows would open instead of the file:
-/// `CON` becomes `CON_`, and `nul.txt` becomes `nul_.txt`.
 fn unreserved(name: Cow<'_, OsStr>, reserved: Reserved) -> Cow<'_, OsStr> {
     let bytes = name.as_bytes();
     let Some(word_end) = reserved_word(bytes, reserved) else {
@@ -297,8 +290,6 @@ impl Limit {
         self.holds(name.len(), || units(name))
     }
 
-    /// Counts units only past as many bytes, since a name never takes more
-    /// units than bytes.
     fn holds(self, bytes: usize, count_units: impl FnOnce() -> usize) -> bool {
         self.bytes.is_none_or(|limit| bytes <= limit)
             && self
@@ -347,9 +338,6 @@ pub(in crate::adapters::local_operations) fn units(name: &[u8]) -> usize {
     pieces(name).map(|(_, units)| units).sum()
 }
 
-/// Only the stem [`split_extension`] finds in `stem` and `extension` together is cut, so
-/// `.tar` stays before ` (1).gz`; where that extension takes more than half the limit, the
-/// whole name is cut and `tail` goes last.
 pub(in crate::adapters::local_operations) fn fit(
     stem: &OsStr,
     tail: &str,
@@ -386,8 +374,6 @@ fn cut(name: &[u8], at: usize, tail: &[u8], limit: Limit, is_directory: bool) ->
     [&stem[..end], &kept].concat()
 }
 
-/// The furthest a cut moves back to keep a grapheme cluster whole: longer
-/// clusters, such as a letter under hundreds of marks, are cut inside.
 const CLUSTER_WALK_BACK: usize = 8;
 
 fn cluster_start(stem: &[u8], end: usize) -> usize {

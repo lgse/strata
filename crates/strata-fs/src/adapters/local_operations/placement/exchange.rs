@@ -2,8 +2,6 @@
 
 use super::*;
 
-/// `Ok(false)`: the filesystem rejected the flag, which is remembered for
-/// the mount.
 pub(in crate::adapters::local_operations) fn exchange(
     fs: &dyn FsOps,
     from: Entry<'_>,
@@ -60,9 +58,6 @@ pub(in crate::adapters::local_operations) fn exchange_through(
     }
 }
 
-/// Filesystems known to implement `RENAME_EXCHANGE` faithfully. FUSE,
-/// network, overlay and the other FAT-family drivers are left out because
-/// some silently overwrite instead.
 const EXCHANGE_FILESYSTEMS: [u32; 8] = [
     0xEF53,      // ext2/3/4
     0x5846_5342, // XFS

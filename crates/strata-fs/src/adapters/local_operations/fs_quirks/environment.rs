@@ -235,9 +235,6 @@ pub fn made_up_handle(at: Entry<'_>, base: &MountType) -> Result<u64, Errno> {
     Ok(digest.finish())
 }
 
-/// Links as on Linux 6.10 and later, where `AT_EMPTY_PATH` needs no privilege, whatever the
-/// host kernel runs: `ProcOnly` and `Unavailable` quirks stand for the older kernels. Tests
-/// otherwise count a failed plain link and a `/proc` retry on some hosts and one call on others.
 pub fn link_fd_as_since_linux_6_10(
     fd: BorrowedFd<'_>,
     to: Entry<'_>,

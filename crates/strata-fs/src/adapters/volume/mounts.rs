@@ -50,10 +50,6 @@ pub struct MountType {
 }
 
 impl MountType {
-    /// FAT and exFAT, libfuse without `use_ino` and cifs without server inode numbers number an
-    /// entry afresh once the kernel has evicted it, and vboxsf keeps a name's number for whatever
-    /// a rename puts there. The kernel's exFAT driver stamps a folder's birth time at each rename
-    /// into or within it.
     pub(crate) fn identity(&self) -> IdentityTraits {
         let smb = family(&self.fs_type) == Family::Smb;
         let numbers = match (family(&self.fs_type), self.fs_type.as_str()) {
@@ -87,8 +83,6 @@ impl MountType {
                 .any(|option| option == "serverino")
     }
 
-    /// How long the SMB client keeps a closed file's handle open
-    /// (`closetimeo`, one second by default).
     pub(crate) fn deferred_close(&self) -> Option<Duration> {
         if family(&self.fs_type) != Family::Smb {
             return None;
@@ -117,9 +111,6 @@ impl MountType {
         has("posix") || has("unix") && has("posixpaths")
     }
 
-    /// How long the SMB client answers stats from the attributes it cached
-    /// for a file (`acregmax`, shown as `actimeo` when folders share it, one
-    /// second by default); `None` where nothing is cached.
     pub(crate) fn attribute_cache(&self) -> Option<Duration> {
         if family(&self.fs_type) != Family::Smb {
             return None;
@@ -136,9 +127,6 @@ impl MountType {
         (seconds > 0).then(|| Duration::from_secs(seconds))
     }
 
-    /// Whether a rename over an existing entry stores a name longer than
-    /// [`LONGEST_NAME_NTFS_3G_RENAMES_OVER`] cut. A `fuseblk` mount whose device udev cannot
-    /// tell may be ntfs-3g.
     pub(crate) fn cuts_long_names_renamed_over(&self, device_format: Option<&str>) -> bool {
         self.fs_type == "fuseblk" && matches!(device_format, Some("ntfs") | None)
     }
@@ -163,9 +151,6 @@ impl MountType {
         }
     }
 
-    /// `name_max` is the mount's `f_namelen`, which only byte-counting filesystems mean. A
-    /// `fuseblk` mount whose device udev cannot tell is taken for a Windows format, as for
-    /// `coarse_times`.
     pub(crate) fn name_profile(&self, device_format: Option<&str>, name_max: u32) -> NameProfile {
         let has = |name| self.super_options.split(',').any(|option| option == name);
         let bytes = byte_limit(name_max);
@@ -221,9 +206,6 @@ impl MountType {
         }
     }
 
-    /// Without `utf8`, vfat converts names through its I/O charset, and so
-    /// does exFAT unless that is UTF-8. Code pages other than ASCII store
-    /// other bytes on vfat and refuse them on exFAT, and are not supported.
     fn fat_encoding(&self) -> NameEncoding {
         let has = |name| self.super_options.split(',').any(|option| option == name);
         let iocharset = self
@@ -245,9 +227,6 @@ impl MountType {
         self.fs_type != "fuseblk" && is_remote_fs_type(&self.fs_type)
     }
 
-    /// Whether the daemon may move a folder entry by entry and stop partway: any FUSE daemon
-    /// over remote storage but sshfs, whose server renames the folder. rclone does once the
-    /// new name is taken, and fails while files it has yet to upload are left behind.
     pub(crate) fn renames_folders_in_steps(&self) -> bool {
         family(&self.fs_type) == Family::Fuse
             && !matches!(self.fs_type.as_str(), "fuseblk" | "fuse.sshfs")
@@ -263,8 +242,6 @@ pub(crate) const SSHFS_DAEMON_CACHE: Duration = Duration::from_secs(21);
 
 pub(crate) const FAT32_MAX_FILE_SIZE: u64 = u32::MAX as u64;
 
-/// In UTF-16 units: ntfs-3g renames over an existing entry through
-/// `<name>.ntfs-3g-<ten digits>`, which it stores cut past 255 units.
 pub const LONGEST_NAME_NTFS_3G_RENAMES_OVER: usize = 236;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -281,8 +258,6 @@ fn fat_format(fs_type: &str, device_format: Option<&str>) -> Option<FatFormat> {
     }
 }
 
-/// Drivers without symbolic links: the kernel's FAT and exFAT have no
-/// `symlink`, and exfat-fuse implements none.
 pub fn holds_symlinks(fs_type: &str, device_format: Option<&str>) -> Option<bool> {
     fat_format(fs_type, device_format).map(|_| false)
 }
@@ -300,14 +275,10 @@ pub enum SillyNames {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CoarseTimes {
     pub window: Duration,
-    /// Whether this machine's clock stamps them, as on a local disk,
-    /// rather than a server's.
     pub stamped_here: bool,
 }
 
 impl CoarseTimes {
-    /// A time with no fraction of a second may come from a filesystem as coarse as FAT's that the
-    /// mount does not show, such as one a server shares.
     pub(crate) fn whole_second(nanoseconds: u32) -> Option<Self> {
         (nanoseconds == 0).then_some(Self {
             window: Duration::from_secs(2),
@@ -332,8 +303,6 @@ impl FuseFormat {
     }
 }
 
-/// Filesystems by their mountinfo type, which tells NFS versions and FUSE
-/// apart where the `statfs` magic cannot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Family {
     Ext,
@@ -355,10 +324,6 @@ pub enum Family {
 }
 
 impl Family {
-    /// Where a stat cannot tell a rewrite within one tick of the clock that
-    /// stamps times: the kernel's coarse clock, except for the multigrain
-    /// timestamps ext4, XFS, btrfs and tmpfs get from Linux 6.13, or a
-    /// server's or a daemon's.
     pub(crate) fn coarse_clock(self, kernel: (u32, u32, u32)) -> Option<CoarseTimes> {
         let multigrain = matches!(self, Self::Ext | Self::Xfs | Self::Btrfs | Self::Tmpfs);
         if multigrain && kernel >= (6, 13, 0) {
@@ -395,8 +360,6 @@ pub fn family(fs_type: &str) -> Family {
     }
 }
 
-/// One mount instance. A remount gets a new kernel mount ID; the device and
-/// mount point guard against a reused ID matching a stale key.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct MountKey {
     pub(crate) mount_id: u64,
@@ -408,12 +371,10 @@ pub struct MountKey {
 #[cfg(any(test, feature = "test-support"))]
 static MOUNTINFO_FOR_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
-/// Replaces `/proc/self/mountinfo` for the whole process, so only a test that
-/// runs in its own process may use it.
 #[cfg(any(test, feature = "test-support"))]
 pub fn set_mountinfo_for_isolated_test(mountinfo: Option<String>) {
     assert!(
-        std::env::var_os("STRATA_ISOLATED_GTK_TEST").is_some(),
+        std::env::var_os("STRATA_ISOLATED_TEST").is_some(),
         "the mount table override needs an isolated test process"
     );
     *MOUNTINFO_FOR_TEST
@@ -518,8 +479,6 @@ impl MountTable {
         })
     }
 
-    /// Remote filesystems other than FUSE drivers for local storage: block
-    /// devices (ntfs-3g, exfat-fuse) and overlays such as mergerfs.
     pub fn is_remote_share(&self, path: &Path) -> bool {
         self.innermost(path).is_some_and(|entry| {
             entry.mount_type.outside_writers() && !is_local_fuse_overlay(&entry.mount_type.fs_type)
@@ -576,8 +535,6 @@ pub fn is_fuse_fs_type(fs_type: &str) -> bool {
     fs_type.starts_with("fuse")
 }
 
-/// FUSE filesystems that layer or encrypt local storage rather than reach a
-/// remote provider.
 fn is_local_fuse_overlay(fs_type: &str) -> bool {
     matches!(
         fs_type.strip_prefix("fuse."),

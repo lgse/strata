@@ -201,6 +201,7 @@
   "Cannot permanently delete the filesystem root": "無法永久刪除檔案系統根目錄",
   "Cannot restore the filesystem root": "無法還原檔案系統根目錄",
   "Can’t compress these items": "無法壓縮這些項目",
+  "Can’t extract these items": "無法解壓縮這些項目",
   "Can’t create items here": "無法在此建立項目",
   "Can’t cut these items": "無法剪下這些項目",
   "Can’t move these items": "無法移動這些項目",
@@ -410,6 +411,7 @@
   "Extract the archive here / to a typed folder": "將封存檔解壓至此處／至指定資料夾",
   "Extract the archive to a folder": "將封存檔解壓至資料夾",
   "Extracted entries remain in “%{folder}”.": "解壓出的項目保留在“%{folder}”。",
+  "Extracting archive %{current} of %{total}": "正在解壓縮第 %{current} 個壓縮檔，共 %{total} 個",
   "Extraction destination must use an absolute path": "解壓目的地必須使用絕對路徑",
   "Extraction stopped unexpectedly": "解壓意外停止",
   "Failed after %{elapsed}": "%{elapsed} 後失敗",
@@ -1151,5 +1153,6 @@
   "Press the new key for “%{action}”": "按下“%{action}”的新按鍵",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "按 %{escape} 取消，按 %{backspace} 移除此動作的所有按鍵。",
   "“%{group}” has no key, so this action cannot run.": "“%{group}”沒有按鍵，因此無法執行此操作。",
-  "Custom action %{number}": "自訂動作 %{number}"
+  "Custom action %{number}": "自訂動作 %{number}",
+  "Volume": "音量"
 }

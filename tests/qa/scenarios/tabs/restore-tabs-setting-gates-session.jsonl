@@ -1,0 +1,26 @@
+{"scenario":"restore-tabs-setting-gates-session","modes":["columns"],"layout":"us","mutation":null,"prefs":{"restore_tabs":false},"setup":[{"fs":{"path":"$home/home-note.txt","write":"home\n"}},{"fs":{"path":"$config/strata/tabs.toml","write":"version = 1\nactive = 1\n\n[[tabs]]\nkind = \"path\"\nvalue = \"$fixture/archive\"\n\n[[tabs]]\nkind = \"path\"\nvalue = \"$fixture/pictures\"\n"}}],"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Restore open tabs toggle via Settings gates saved session; only GUI route, unit test pins live-off file removal"}}
+{"wait":{"panes":["$root"]},"message":"the launch on the fixture folder to show it"}
+{"restart":{"plain":true}}
+{"wait":{"directory":"home"},"message":"a plain launch with Restore open tabs off to open the default folder"}
+{"expect":[{"compare":{"left":{"count":{"role":"page tab"}},"op":"==","right":0}},{"absent":{"role":"page tab","name":"archive"}},{"absent":{"role":"page tab","name":"pictures"}}],"timeout_ms":1000,"hold_ms":300,"message":"a single tab, with no tab strip, while Restore open tabs is off"}
+{"fs":{"path":"$config/strata/tabs.toml","exists":false},"message":"a plain-launch window with Restore open tabs off to clear the saved session instead of saving its tabs"}
+{"activate":{"role":"button","name":"Settings"}}
+{"wait":{"state":{"target":{"role":["check box","toggle button","switch"],"name":"Restore open tabs","rendered":false},"checked":false}},"message":"Settings to show Restore open tabs off"}
+{"activate":{"role":["check box","toggle button","switch"],"name":"Restore open tabs","rendered":false}}
+{"wait":{"state":{"target":{"role":["check box","toggle button","switch"],"name":"Restore open tabs","rendered":false},"checked":true}},"message":"Restore open tabs to turn on"}
+{"wait":{"pref":{"key":"restore_tabs","value":true}},"message":"restore_tabs to be saved as true"}
+{"key":"Escape"}
+{"wait":{"absent":{"role":["check box","toggle button","switch"],"name":"Restore open tabs","rendered":false}},"message":"Escape to close Settings"}
+{"key":"ctrl+t"}
+{"wait":{"compare":{"left":{"count":{"role":"page tab"}},"op":"==","right":2}},"message":"Ctrl+T to open a second tab"}
+{"fs":{"path":"$config/strata/tabs.toml","toml":{"active":1}},"message":"the window to save its tabs once Restore open tabs is on"}
+{"fs":{"path":"$config/strata/tabs.toml","has":{"lacks":["$fixture/archive","$fixture/pictures"]}},"timeout_ms":0,"message":"the new save to replace the session that was not restored"}
+{"activate":{"role":"button","name":"Settings"}}
+{"wait":{"state":{"target":{"role":["check box","toggle button","switch"],"name":"Restore open tabs","rendered":false},"checked":true}},"message":"Settings to show Restore open tabs on"}
+{"activate":{"role":["check box","toggle button","switch"],"name":"Restore open tabs","rendered":false}}
+{"wait":{"state":{"target":{"role":["check box","toggle button","switch"],"name":"Restore open tabs","rendered":false},"checked":false}},"message":"Restore open tabs to turn off"}
+{"wait":{"pref":{"key":"restore_tabs","value":false}},"message":"restore_tabs to be saved as false"}
+{"fs":{"path":"$config/strata/tabs.toml","exists":false},"message":"turning Restore open tabs off to delete the saved session at once"}
+{"restart":{"plain":true}}
+{"wait":{"directory":"home"},"message":"the next plain launch to open the default folder"}
+{"expect":{"compare":{"left":{"count":{"role":"page tab"}},"op":"==","right":0}},"timeout_ms":1000,"hold_ms":300,"message":"a single tab, with no tab strip, after the session was cleared"}

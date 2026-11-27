@@ -1,0 +1,378 @@
+// SPDX-License-Identifier: MIT
+
+use std::rc::Rc;
+
+use rune::{Cursor, Drag, El, Phase, PointerPress, Tx, el, icon, row, text};
+use strata_kit::icons::IconName;
+use strata_kit::slots::list as tokens;
+
+use super::Shared;
+use super::column::Column;
+use super::layout::{LayoutChange, LayoutWhy};
+use super::resolve::{Placed, Resolved};
+use super::sort::{SortDir, SortIntent, next_direction};
+use super::state::{HeadingDrag, MenuAt, Resize};
+use crate::collection::element::RowCx;
+use crate::collection::element::RowState;
+use crate::contract::{Point, Rect};
+
+/// How far (points) a heading press travels sideways before it becomes a reorder drag, as Strata's `REORDER_THRESHOLD`.
+pub const REORDER_THRESHOLD: f32 = 10.0;
+
+/// How close (points) to a heading's right edge a press resizes rather than reorders, as Strata's `RESIZE_EDGE`.
+pub const RESIZE_EDGE: f32 = 8.0;
+
+const CLICK_SLOP: f32 = 4.0;
+
+/// The key of column `id`'s heading, under the strip.
+pub fn heading_key(id: &str) -> String {
+    format!("head-{id}")
+}
+
+/// The heading strip's key, under the table's key.
+pub(super) fn strip_key(key: &str) -> String {
+    format!("{key}-headings")
+}
+
+/// The strip, before the columns menu wraps it.
+pub(super) fn strip<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S) -> El {
+    let parts = (shared.parts)(s);
+    let look = parts.look;
+    let layout_shared = shared.clone();
+    let menu_shared = shared.clone();
+    let mut strip = row()
+        .key(strip_key(&shared.key))
+        .w_full()
+        .h(tokens::heading_height(look))
+        .pl(resolved.lead)
+        .on_layout_tx(move |s: &mut S, r, tx: &mut Tx| {
+            (layout_shared.table_mut)(s).strip = Rect::from(r);
+            tx.live_only();
+        })
+        .on_secondary_press(move |s: &mut S, at: PointerPress, _tx: &mut Tx| {
+            (menu_shared.table_mut)(s).menu = Some(MenuAt::Headings(Some((at.x, at.y))));
+        });
+    for p in &resolved.cols {
+        strip = strip.child(heading(shared, resolved, s, p));
+    }
+    strip
+}
+
+fn heading_font(kit: &rune_kit::Kit) -> rune::TextStyle {
+    rune::TextStyle {
+        weight: 700.0,
+        ..kit.ty.small_medium
+    }
+}
+
+fn heading_content<S>(
+    column: &Column<S>,
+    look: &strata_kit::look::Look,
+    sorted: Option<SortDir>,
+) -> El {
+    let kit = &look.kit;
+    let mut label = text(column.title.clone())
+        .a11y_hidden()
+        .font(heading_font(kit))
+        .color(kit.c.text_muted)
+        .align(column.align)
+        .truncate()
+        .grow(1.0)
+        .shrink()
+        .min_w(0.0);
+    if column.sortable {
+        label = label.group_color(kit.c.text_base);
+    }
+    let mut title_row = row()
+        .gap(look.space.xs)
+        .w_full()
+        .grow(1.0)
+        .center_y()
+        .min_w(0.0)
+        .child(label);
+    if let Some(dir) = sorted {
+        let glyph = match dir {
+            SortDir::Ascending => look.icon(IconName::Up),
+            SortDir::Descending => look.icon(IconName::Down),
+        };
+        title_row = title_row.child(
+            icon(glyph, look.icon_size.sm)
+                .key("sort")
+                .color(kit.c.icon_accent)
+                .a11y_hidden(),
+        );
+    }
+    title_row
+}
+
+fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p: &Placed) -> El {
+    let parts = (shared.parts)(s);
+    let look = parts.look;
+    let kit = &look.kit;
+    let column = &shared.columns[p.def];
+    let id = column.id.clone();
+    let sorted = parts
+        .sort
+        .as_ref()
+        .filter(|sort| sort.column == id)
+        .map(|sort| sort.dir);
+    let drag = parts.table.drag.as_ref().filter(|d| d.active);
+    let mut h = row()
+        .key(heading_key(id.as_str()))
+        .role("button")
+        .label(column.title.clone())
+        .sorted(sorted.map(|d| d == SortDir::Ascending))
+        .w_full()
+        .h_full()
+        .px(tokens::heading_pad(look))
+        .center_y()
+        .border_sides([0.0, 1.0, 0.0, 0.0], kit.c.border_muted)
+        .child(heading_content(column, look, sorted))
+        .on_drag(reorder(shared, resolved, id.clone()));
+    h = h.cursor(match drag {
+        Some(_) => Cursor::Grabbing,
+        None if column.sortable => Cursor::Pointer,
+        None => Cursor::Default,
+    });
+    if column.sortable {
+        let sort_shared = shared.clone();
+        let sort_id = id.clone();
+        h = h
+            .hover_group()
+            .hover(kit.c.hover)
+            .press(kit.c.pressed)
+            .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                let dir = next_direction((sort_shared.parts)(s).sort.as_ref(), &sort_id);
+                if let Some(f) = &sort_shared.on_sort {
+                    f(
+                        s,
+                        SortIntent {
+                            column: sort_id.clone(),
+                            dir,
+                        },
+                        tx,
+                    );
+                }
+            });
+    }
+    if let Some(site) = drag
+        .and_then(|d| d.site.as_ref())
+        .filter(|site| site.target == id)
+    {
+        let (left, right) = if site.after {
+            (None, Some(0.0))
+        } else {
+            (Some(0.0), None)
+        };
+        h = h.child(
+            el().key("reorder-line")
+                .pin(left, Some(0.0), right, Some(0.0))
+                .w(tokens::reorder_width(look))
+                .fill(kit.c.text_accent)
+                .a11y_hidden(),
+        );
+    }
+    let h = h.child(resize_handle(shared, resolved, column, p));
+    row()
+        .key(heading_cell_key(id.as_str()))
+        .w(p.w)
+        .min_w(p.w)
+        .h_full()
+        .child(h)
+}
+
+/// The key of the cell around the heading of column `id`.
+pub(super) fn heading_cell_key(id: &str) -> String {
+    format!("{}-cell", heading_key(id))
+}
+
+fn reorder<S: 'static>(
+    shared: &Rc<Shared<S>>,
+    resolved: &Rc<Resolved>,
+    id: super::ColumnId,
+) -> impl Fn(&mut S, &mut Drag, &mut Tx) + 'static {
+    let shared = shared.clone();
+    let resolved = resolved.clone();
+    move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
+        let [x, y] = d.window_point();
+        let site_at = |s: &S| {
+            let parts = (shared.parts)(s);
+            let strip = parts.table.strip;
+            strip
+                .contains(Point::new(x, y))
+                .then(|| resolved.drop_site(&id, x - strip.x - resolved.lead))
+                .flatten()
+        };
+        match d.phase {
+            Phase::Down => {
+                let st = (shared.table_mut)(s);
+                st.drag = Some(HeadingDrag {
+                    column: id.clone(),
+                    active: false,
+                    site: None,
+                });
+                tx.live_only();
+            }
+            Phase::Move => {
+                let Some(drag) = (shared.parts)(s).table.drag.clone() else {
+                    tx.live_only();
+                    return;
+                };
+                if !drag.active && d.dx.abs() < REORDER_THRESHOLD {
+                    tx.live_only();
+                    return;
+                }
+                let site = site_at(s);
+                let changed = !drag.active || site != drag.site;
+                (shared.table_mut)(s).drag = Some(HeadingDrag {
+                    column: id.clone(),
+                    active: true,
+                    site,
+                });
+                if !changed {
+                    tx.live_only();
+                }
+            }
+            Phase::Up => {
+                let site = site_at(s);
+                let st = (shared.table_mut)(s);
+                if st.drag.take().filter(|d| d.active).is_none() {
+                    tx.live_only();
+                    return;
+                }
+                if d.cancelled() {
+                    return;
+                }
+                let moved = site.and_then(|site| (shared.parts)(s).layout.moved(&id, &site));
+                if let (Some(layout), Some(f)) = (moved, &shared.on_layout) {
+                    f(
+                        s,
+                        LayoutChange {
+                            layout,
+                            why: LayoutWhy::Reorder,
+                        },
+                        tx,
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn resize_handle<S: 'static>(
+    shared: &Rc<Shared<S>>,
+    resolved: &Rc<Resolved>,
+    column: &Column<S>,
+    p: &Placed,
+) -> El {
+    let drag_shared = shared.clone();
+    let fit_resolved = resolved.clone();
+    let id = column.id.clone();
+    let scale = resolved.scale;
+    let drawn = p.w;
+    let def = p.def;
+    row()
+        .key("resize")
+        .a11y_hidden()
+        .pin(None, Some(0.0), Some(0.0), Some(0.0))
+        .w(RESIZE_EDGE)
+        .cursor(Cursor::ResizeColumn)
+        .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
+            let column = &drag_shared.columns[def];
+            match d.phase {
+                Phase::Down => {
+                    // From the width drawn now, so the column follows the pointer with no jump.
+                    let start = drawn / scale;
+                    (drag_shared.table_mut)(s).resize = Some(Resize {
+                        column: id.clone(),
+                        start,
+                        live: start,
+                    });
+                    tx.live_only();
+                }
+                Phase::Move => {
+                    let st = (drag_shared.table_mut)(s);
+                    let Some(r) = st.resize.as_mut() else {
+                        tx.live_only();
+                        return;
+                    };
+                    let live = column.bounded(r.start + d.dx / scale);
+                    if live == r.live {
+                        tx.live_only();
+                        return;
+                    }
+                    r.live = live;
+                }
+                Phase::Up => {
+                    let Some(r) = (drag_shared.table_mut)(s).resize.take() else {
+                        tx.live_only();
+                        return;
+                    };
+                    let still = d.dx.abs() <= CLICK_SLOP && d.dy.abs() <= CLICK_SLOP;
+                    if d.clicks == 2 && still && !d.cancelled() {
+                        let w = fit(&drag_shared, &fit_resolved, s, def);
+                        let widths = (drag_shared.parts)(s).widths.with(&id, w);
+                        if let Some(f) = &drag_shared.on_widths {
+                            f(s, widths, tx);
+                        }
+                        return;
+                    }
+                    let live = column.bounded(r.start + d.dx / scale);
+                    if d.cancelled() || live == r.start {
+                        return;
+                    }
+                    let widths = (drag_shared.parts)(s).widths.with(&id, live);
+                    if let Some(f) = &drag_shared.on_widths {
+                        f(s, widths, tx);
+                    }
+                }
+            }
+        })
+        .child(el().w(1.0).h_full().a11y_hidden())
+}
+
+pub(super) fn fit<S: 'static>(shared: &Shared<S>, resolved: &Resolved, s: &S, def: usize) -> f32 {
+    let parts = (shared.parts)(s);
+    let look = parts.look;
+    let kit = &look.kit;
+    let column = &shared.columns[def];
+    let measure = |t: &str, font| rune::text::measure(t, &[], font, None).0;
+    let mut widest = measure(&column.title, heading_font(kit))
+        + 2.0 * tokens::heading_pad(look)
+        + look.icon_size.sm
+        + look.space.xs;
+    let pad = tokens::cell_pad(look);
+    let mono = rune_kit::TableStyle::from_kit(kit).mono;
+    let drawn = resolved.cols.iter().find(|p| p.def == def).map(|p| p.w);
+    let src = parts.source;
+    for index in parts.collection.visible_range() {
+        if index >= src.len() {
+            break;
+        }
+        let entry = src.entry(index);
+        let w = match &column.cell {
+            None => {
+                look.icon_size.md + look.space.sm + measure(entry.name, kit.ty.ui_compact) + pad
+            }
+            Some(f) => {
+                let rcx = RowCx {
+                    index,
+                    entry,
+                    state: RowState::default(),
+                    look,
+                    scope: &shared.key,
+                    hover_live: false,
+                };
+                let cell = f(s, &rcx);
+                match cell.as_text() {
+                    Some(t) => {
+                        measure(t, if cell.mono { mono } else { kit.ty.ui_compact }) + 2.0 * pad
+                    }
+                    None => drawn.unwrap_or(0.0),
+                }
+            }
+        };
+        widest = widest.max(w);
+    }
+    column.bounded((widest / resolved.scale).ceil())
+}

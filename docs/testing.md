@@ -1,19 +1,27 @@
 # Testing
 
-The Rust suite covers state transitions, filesystem edge cases, and individual
-widgets. The QA scenarios in `tests/qa/scenarios` drive the real GTK
-application on a headless X display, send real keyboard and pointer input from
-inside the process, and check both what the window shows and what happened on
-disk. Both run in one pinned container image.
+The Rust suite covers state transitions, filesystem edge cases, UI components, and
+application behavior headless on Rune's virtual clock. The compositor suite (`mise run
+test-platform`) tests `strata-platform`'s Linux shims and `strata`'s real window inside
+private headless `sway` sessions. The end-to-end QA scenarios in `tests/qa/scenarios/`
+drive `strata --qa` inside the pinned container image (offscreen by default, or on a
+private headless `sway` compositor for `"host": "session"` runs) and verify both
+interface state and filesystem outcomes.
 
 ## Running the suites
 
 ```bash
-./scripts/quality.sh                          # formatting, Clippy, and every Rust test
-./scripts/quality.sh test --jobs 4            # every Rust test, on four private displays at once
-./scripts/test-headless.py relevant::module   # a native Rust selection on a private display
+mise run test                                 # headless workspace Rust tests (gallery unit tests only)
+mise run test services::operations::tests     # filtered headless Rust test selection
+mise run test-platform                        # compositor, D-Bus, and window tests in headless sway
+mise run test-platform window::               # windowed binary tests (host, shell, key routing, QA session)
+./scripts/quality.sh                          # formatting, Clippy, and all Rust tests in pinned container
+./scripts/quality.sh test --jobs 4            # all Rust tests across 4 local lanes in pinned container
+./scripts/test-headless.py relevant::module   # native Rust selection in isolated headless environment
 ./scripts/qa.sh                               # every QA scenario, every mode
+./scripts/qa.sh --smoke                       # critical-path QA smoke list (tests/qa/smoke.txt)
 ./scripts/qa.sh copy-leaves-source            # one scenario, all of its runs
+./scripts/qa.sh arrow-keys-move-focus/columns-arrows  # one run
 ```
 
 ### Targeted local validation
@@ -29,10 +37,11 @@ tests rather than unrelated suites.
 
 Run local lint and formatting checks only before pushing, not during the
 edit/test loop. For Rust changes, run `./scripts/quality.sh fmt` and
-`./scripts/quality.sh clippy` on the final code at that checkpoint; rerun affected
-checks if fixes change the code before the push. Even when full Rust tests are
-needed during iteration, use `./scripts/quality.sh test` and defer lint/format
-phases until pre-push. CI's lint and formatting checks remain unchanged.
+`./scripts/quality.sh clippy` (or `mise run fmt` and `mise run clippy`) on the
+final code at that checkpoint; rerun affected checks if fixes change the code
+before the push. Even when full Rust tests are needed during iteration, use
+`./scripts/quality.sh test` and defer lint/format phases until pre-push. CI's
+lint and formatting checks remain unchanged.
 
 The repository owner may explicitly authorize pushing a PR without the normally
 required local tests for the current change/push. A general push request,
@@ -42,83 +51,62 @@ in the handoff and PR description; never report skipped tests as passing. This
 exception does not waive lint/format checks, GUI isolation, or required CI/merge
 checks. Renew consent if the authorized scope changes, or run the required tests.
 
-For native Rust selection, `scripts/test-headless.py` starts the private display
-and session buses, then appends its arguments to the fixed
-`cargo test --workspace --all-targets --all-features` command. Use module/name filters:
+For native targeted Rust tests, both `mise run test [filter]` and
+`./scripts/test-headless.py [filter]` run headless across the unified workspace
+(`--workspace --all-targets --all-features`; `mise run test-rune` is a
+compatibility alias). Use module/name filters:
 
 ```bash
+mise run test services::operations::tests
 ./scripts/test-headless.py services::operations::tests
 ./scripts/test-headless.py basenames_reject_empty_reserved_nested_absolute_and_nul_names
 ```
 
 These select test execution across targets, not compilation to one target.
 Targeted runs can still incur a full test build; Cargo's cache helps subsequent
-iterations. There is no automatic changed-code dependency-to-test mapping.
+iterations.
 
 The unit tests need the `test-support` feature, which `--all-features` turns on. It
 compiles the test hooks and test-only helpers of the workspace crates under `crates/`,
-because a crate's `#[cfg(test)]` code is invisible to another crate's tests. A plain
-`cargo test` stops with an error that says so. The QA runner builds without the
-feature, so the application the scenarios drive carries no test hooks.
+because a crate's `#[cfg(test)]` code is invisible to another crate's tests. The QA
+runner builds `strata` with `--features qa,invariant-checks` and without `test-support`,
+so the application the scenarios drive carries no test hooks.
 
-Controller regressions live under `crates/strata-fs/src/app/browser/tests/`, grouped by navigation,
-location input, selection, monitor updates, preferences, operations, undo, metadata,
-staging, event dispatch, and archive activation. Add cases to the matching owner
-rather than to `crates/strata-fs/src/app/browser/tests.rs`, which holds shared source/provider
-fixtures. Existing adjacent feature test modules retain their ownership. For
-example, `./scripts/test-headless.py app::browser::tests::undo::` selects undo
-history/claim regressions; `app::browser::tests::metadata::` selects metadata-fill
-and sort-terminal regressions. Keep distinct input routes and lifecycle cases
-separate even when they share fixtures.
+Controller regressions live under `crates/strata-fs/src/app/browser/tests/`, grouped by
+navigation, location input, selection, monitor updates, preferences, operations, undo,
+metadata, staging, event dispatch, and archive activation. Add cases to the matching
+owner rather than to `crates/strata-fs/src/app/browser/tests.rs`, which holds shared
+fixtures. For example, `mise run test app::browser::tests::undo::` selects undo
+regressions. Local-operation regressions live under
+`crates/strata-fs/src/adapters/local_operations/tests/` (keep benchmark names in the
+parent `tests.rs` stable for `scripts/benchmark-delete.sh`). UI shell, slot, preference,
+and view regressions live in adjacent `tests.rs` modules under `crates/strata-app/src/`
+and `crates/strata-components/src/`.
 
-Local-operation regressions have owners under `crates/strata-fs/src/adapters/local_operations/tests/`
-for path resolution, copying, moving, replacement, conflicts, progress, naming,
-paste results, undo, deletion, and restore safety. Shared fixtures and the manual
-deletion benchmarks remain in the parent `tests.rs`; keep the benchmark names
-stable for `scripts/benchmark-delete.sh`. For example,
-`./scripts/test-headless.py adapters::local_operations::tests::replacement::`
-selects replacement safety cases. Preserve independently named filesystem races,
-symlink, non-UTF8, cancellation, and conflict scenarios when sharing setup.
-
-Window regressions have policy owners under `src/ui/window/tests/` for keyboard
-classification, sidebar places, bookmarks, devices, and trash. Startup and live
-preference cases stay in `preferences`; real key-routing scenarios stay in
-`keyboard_dispatch` and `type_to_search`. The `ui::window::` filter covers these
-owners and the adjacent window modules. When moving a GTK case, update its
-`gtk_test` subprocess name to match its compiled test path and verify that the
-child actually executes the case; an unchanged outer test count is not enough.
-
-A filter must collect at least one test; use Cargo's output or a collection
-check to verify that it did. `scripts/quality.sh` only accepts `all`, `fmt`,
-`clippy`, or `test`, plus the test phase's `--jobs N` and `--refresh-timings`
-(see "Local lanes"), and does **not** forward test filters, so it cannot be used
-for a targeted test selection.
+A filter must collect at least one test; confirm with Cargo's output that it did.
+`scripts/quality.sh` only accepts `all`, `fmt`, `clippy`, or `test`, plus the test
+phase's `--jobs N` and `--refresh-timings` (see "Local lanes"), and does **not**
+forward test filters.
 
 `./scripts/qa.sh` takes scenario names, or `<scenario>/<run>` for one run, and
-refuses a name no scenario file has, listing the names it knows; see
-"Scheduling and run costs" for `--skip` and the other options. A selection
-that runs no scenario fails. Preserve the verified image provenance and the
-`target/qa-container` and `target/quality-container` caches. CI still runs its
-complete gate.
+refuses unknown names, listing the names it knows; see "Scheduling and run costs"
+for `--skip` and the other options. A selection that runs no scenario fails.
+Preserve the verified image provenance and the `target/qa-container` and
+`target/quality-container` caches.
 
 Every GUI or delegated check must clear inherited display variables and use a
-private Xvfb and private D-Bus session. `scripts/test-headless.py` and
-`scripts/qa.sh` enforce this isolation. Rust tests set `GTK_A11Y=none`,
-`NO_AT_BRIDGE=1`, and `STRATA_REQUIRE_GTK_TESTS=1`; QA runs set `GTK_A11Y=none`
-and `NO_AT_BRIDGE=1` too, since the process reads its own widget tree. Other
-commands must arrange equivalent isolation. A missing isolated display or bus is
-a hard failure. Never run against the desktop or an inherited session bus,
-silently skip GTK tests, or fall back to the desktop.
+private display/compositor and private D-Bus session. Never run against the user's
+desktop or an inherited session bus.
 
 ### The pinned test image
 
-The runners prefer Podman when available; select an engine explicitly with
+The container runners prefer Podman when available; select an engine explicitly with
 `STRATA_CONTAINER_ENGINE=podman` or `docker`. CI explicitly selects Docker; an
 image in one engine's store is not visible to the other. Normal runs verify and
-reuse the local base image. If missing, they pull the published environment
-once, verify its input label and platform, and record it locally. They **never
-automatically build images or fetch distribution packages**. A missing
-publication fails with an actionable message rather than silently bootstrapping.
+reuse the local base image. If missing, they pull the published environment once,
+verify its input label and platform, and record it locally. They **never
+automatically build images or fetch distribution packages**. A missing publication
+fails with an actionable message rather than silently bootstrapping.
 
 When intentionally updating the environment, or before its first publication,
 explicitly build the local base once:
@@ -128,20 +116,20 @@ STRATA_CONTAINER_ENGINE=podman python3 scripts/image_base.py build
 ./scripts/qa.sh
 ```
 
-The recipe is `tests/container/Dockerfile`: a digest-pinned Arch Linux base, the
-dated 2026-09-11 Arch package snapshot, GTK 4.22.5, GLib 2.88.3, GStreamer
-1.28.7, and Rust 1.99.1. Pacman verifies the snapshot's signed packages. The
-image replaces only GTK's versioned shared library with a matching-source build
-carrying the accessibility-coordinate patch documented in
-[`tests/container/gtk/README.md`](../tests/container/gtk/README.md); an
-image-build probe checks the loaded library and rendered/accessibility
-coordinates on a private display. `scripts/image_inputs.py image-key` hashes
-those inputs, so changing them selects a new base; application edits do not.
-The runners still compile the checked-out application and retain Cargo's
-worktree cache. No host GTK libraries, fonts, desktop sockets, or Rust binaries
-are mounted. Python in the image is the system `python3` with PyGObject, for the
-coordinate probe and the helpers some scenarios start; there is no Python test
-environment.
+The build makes the recipe's `dependencies` stage, the one the publisher pushes
+as the base: the environment, and the Cargo dependencies described under
+[The image's dependencies](#the-images-dependencies). It needs the network for
+Arch's archive, crates.io, and Rune's repository.
+
+The recipe is `tests/container/Dockerfile`: a digest-pinned Arch Linux base, a
+dated Arch package snapshot, GLib, Poppler, GDK Pixbuf, Fontconfig, Bubblewrap,
+FFmpeg/ffprobe, ImageMagick + `libheif`, GVfs (for fake devices in QA), `sway`,
+`Xwayland`, `lavapipe` (software Vulkan for headless GPU rendering in session runs),
+`strace` (for the opt-in main-thread I/O audit), and Rust `1.99.1`.
+`scripts/image_inputs.py image-key` hashes those inputs, so changing them selects
+a new base; application edits do not. The runners compile the checked-out
+application and retain Cargo's worktree cache. No host desktop libraries, fonts,
+desktop sockets, or Rust binaries are mounted.
 
 The checkout is mounted at `/workspace`. QA build and Cargo caches live in
 `target/qa-container` (quality's in `target/quality-container`), separately
@@ -149,123 +137,91 @@ from native builds, and artifacts are owned by the invoking user. Minimal
 generated passwd/group files provide the invoking UID/GID to D-Bus, so one
 published environment works across local user IDs without rebuilding it or
 mounting the host's account database.
-The image includes bubblewrap for sandboxed thumbnail decoding, FFmpeg/ffprobe,
-GTK's GStreamer media backend with the base/good/libav plugins, and strace for the
-opt-in [main-thread I/O audit](#main-thread-io-audit). It also includes libheif, so
-ImageMagick writes real AVIF and HEIC files and glycin's `glycin-heif` loader can
-decode them.
-A QA `magick` fixture step fails when an `.avif`, `.heic`, or `.heif` output lacks
-the matching ISO BMFF major or compatible brand, because ImageMagick silently
-writes the input format when an encoder is missing. Rust media
-regressions exercise actual normalization, playback, and long-source duration
-limits rather than skipping when optional host tools are missing. These packages
-come from the dated Arch snapshot. The accessibility patch is test-only and does
-not apply or retire the version-specific GTK/GstPlay work in
-`packaging/media-runtime/`; that opt-in kit remains unchanged and is not shipped
-by this image.
 
-Rootless Podman
-runs unmask `/proc/*` inside the test container so bubblewrap can mount its own
-private `/proc`; the decoder's sandbox and the container's seccomp policy remain
-enabled. Docker's outer seccomp/AppArmor profiles and system-path masks must be
-disabled for the nested namespace and mount operations. This applies only to the
-disposable test container; Strata still launches its normal bubblewrap decoder
-sandbox. Neither engine uses privileged mode or mounts desktop sockets.
-Updating the image inputs is an intentional rendering
-environment change and requires reviewing the visual baselines.
+Rootless Podman runs unmask `/proc/*` inside the test container so bubblewrap
+can mount its own private `/proc`; the decoder's sandbox and the container's
+seccomp policy remain enabled. Docker's outer seccomp/AppArmor profiles and
+system-path masks are disabled for the nested namespace and mount operations.
+This applies only to the disposable test container; Strata still launches its
+normal bubblewrap decoder sandbox. Neither engine uses privileged mode or mounts
+desktop sockets.
+
+#### The image's dependencies
+
+The base holds the third-party crates a run needs, so a first run in a new
+checkout fetches nothing. The recipe's last stage loads the workspace's
+manifests alone, with an empty file for each target
+(`tests/container/stub-workspace.py`), and leaves under
+`/opt/strata-dependencies`:
+
+- `cargo/`: a Cargo home with every crate `Cargo.lock` names, fetched;
+- `build/`: a target directory with the third-party crates precompiled for the
+  QA runner build (`cargo test --features qa,invariant-checks --test qa`);
+- `lock.sha256` and `cache-path`: the `Cargo.lock` they were fetched for, and
+  the cache they were built for.
+
+Nothing of Strata's own is in it. The stage removes what the stubs built with
+`cargo clean -p` for each workspace package, and fails if anything named for
+one is left.
+
+`scripts/qa.sh`, `scripts/qa-drive.sh`, and `scripts/quality.sh` run
+`scripts/dependency_seed.py` in the container before Cargo. It prints one
+`Dependencies:` line saying what it did:
+
+| The run's cache | What happens |
+| --- | --- |
+| Cargo has fetched into it before: `cargo/registry` or `cargo/git` exists | Nothing is copied. A warm cache is never reseeded or replaced |
+| Empty, and it is `target/qa-container` | The fetched and the compiled crates are copied in. The run then compiles Strata's own crates only |
+| Empty, and it is another cache, such as `target/quality-container` | The fetched crates are copied in. The cache compiles its own because Cargo fingerprints include source paths |
+| Empty, and the base holds no dependencies | Nothing is copied, and Cargo fetches what it needs |
+
+- **`Cargo.lock` ahead of the image:** when the lockfile moved past the image's
+  snapshot, seeding prints a warning with both digests, copies what the image
+  has, and Cargo fetches and builds only the difference.
+- **Interrupted copies** are retried atomically (`cargo/registry` is moved in last).
+- **No Cargo auto-clean:** seeded Cargo homes carry `cache.auto-clean-frequency = "never"`
+  so Cargo does not prune crates inherited from an older base image.
+- **`./scripts/quality.sh fmt` and a CI shard copy nothing** because neither compiles.
 
 ### Shared environment for formatting, lint, and Rust tests
 
-`./scripts/quality.sh` runs all three quality phases in the same verified build
-base. Use `./scripts/quality.sh fmt`, `clippy`, or `test` for an individual phase.
-No separate quality image is necessary: the published environment already has
-Rust 1.99.1, rustfmt, Clippy, native development libraries, and Xvfb. Quality now
-uses that pinned compiler rather than moving `stable`.
+`./scripts/quality.sh` runs formatting (`cargo fmt --all --check`), Clippy
+(`cargo clippy --locked --workspace --all-targets --all-features -- -D warnings`),
+and the full Rust test suite in the same verified build base. Use
+`./scripts/quality.sh fmt`, `clippy`, or `test` for an individual phase. Quality
+runs set `GIO_USE_VFS=local`, so the image's `gvfs` (which only the QA runner's
+fake devices use) does not change which GIO backend a Rust test gets.
 
-CI resolves the public environment to a manifest digest, checks its input labels
-and platform, and pulls that exact digest without registry credentials. Each
-phase verifies the loaded image again and runs its immutable image ID. An
-unavailable unchanged environment fails explicitly instead of installing packages.
-For a deliberate recipe-input change relative to the PR base (or previous main
-commit), CI may explicitly build that unpublished candidate from the pinned
-recipe, without publishing it. This lets environment-update PRs pass before the
-trusted-main publisher runs; it does not turn registry outages into repeated
-distribution bootstraps. Locally, environment builds still require the explicit
-command in "The pinned test image".
-
-Quality's Cargo home and build directory are under `target/quality-container`,
-separate from the QA cache and native builds. Its Actions cache is keyed by environment,
-Cargo manifests, and source revision, with same-environment/manifest restoration.
-Only successful quality builds on main pushes save caches; PR consumers cannot
-populate main's cache. These are compilation caches, not evidence of passing tests;
-the aggregate gate separately requires all test shards to pass. Cold quality
-compilation includes test-only and all-feature dependencies, so the published
-dependency layers are not a full quality hit.
-
-The Rust suite runs with `--workspace --all-targets --all-features --locked` inside private
-Xvfb, with `GTK_A11Y=none`, `NO_AT_BRIDGE=1`, and `STRATA_REQUIRE_GTK_TESTS=1`.
-Each Xvfb server uses `-noreset` so consecutive test processes do not
-race a server reset when the last display client exits. GTK initialization
-failures cannot silently skip tests. The container's `/tmp`, which holds `HOME` and
-the tests' temporary folders, is an executable tmpfs: the file-operation tests
-need `O_TMPFILE` and file handles there, which an overlay `/tmp` refuses
-(overlayfs has `O_TMPFILE` only since Linux 6.10 and gives file handles only
-when exported over NFS). Outside CI those tests skip on such a base;
-`STRATA_REQUIRE_DEVICE_TESTS=1`, which CI and `scripts/test-headless.py` set,
-fails them instead. Formatting, compiler,
-lint, and test failures remain blocking. Lightweight policy/helper jobs retain
-their existing runners rather than downloading a large GUI image unnecessarily.
+Quality's Cargo home and build directory live under `target/quality-container`,
+separate from the QA cache and native builds. The container's `/tmp` is an
+executable tmpfs: file-operation tests need `O_TMPFILE` and file handles there,
+which an overlay `/tmp` may refuse. `STRATA_REQUIRE_DEVICE_TESTS=1` (set in CI
+and `scripts/test-headless.py`) fails those tests instead of skipping when the
+filesystem lacks support.
 
 ### Rust quality shards
 
 CI's **Quality build and lint** job runs formatting and Clippy, then compiles
-`cargo test --locked --workspace --all-targets --all-features --no-run` once. It exports only
-test executables and a plan, not Cargo caches. `scripts/quality_ci.py` collects
-each libtest inventory, including the explicitly ignored tests, and assigns every
-entry to one of four shards. Tests are balanced longest-first across the shards
-using the weights in `scripts/quality-durations.json` (see "Balancing weights");
-unknown tests receive a one-second weight and always participate. The weights are
-not an allowlist.
-`ui::search::tests::deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset`
-runs in its own libtest process before the other tests assigned to its lane,
-not on a dedicated runner. Each process must pass its complete selection before
-an aggregate shard receipt is written. Validation rejects a missing, duplicated,
-or ignored isolated test; renaming or removing it requires updating `ISOLATED_TEST`.
-Sharding does not shorten an individual test.
+the workspace test binaries once (`--workspace --all-targets --all-features
+--no-run`). It exports only test executables and a plan, not Cargo caches.
+`scripts/quality_ci.py` collects each libtest inventory (including explicitly
+ignored tests) and assigns every entry longest-first across four shards using
+the weights in `scripts/quality-durations.json`. Unknown tests receive a
+one-second weight and always participate.
 
-Each **Rust tests shard N** verifies the checkout revision, application/Rust-test source
-fingerprint, image inputs, executable checksums, and the entire libtest inventory
-before selecting exact names. GTK tests run one at a time per display, since every
-GTK child of a test process waits on one lock: children on one display share its
-clipboard and pointer grabs. A display therefore keeps about one core busy, so
-each shard splits its tests across three **lanes** (`--jobs 3` in the workflow),
-balanced by the same weights. Each lane runs its own libtest processes under its
-own Xvfb server and private D-Bus session, and lanes share neither with each other
-nor with another shard. On four CPUs, one shard took about 240 seconds on one
-display and about 90 on three; at one lane per CPU or more, load-sensitive tests
-start to fail. The shard's
-receipt still covers all of its tests, and any failed lane fails the shard after
-the others finish. Lane logs are written while tests run and uploaded even when a
-shard times out.
-The runner checks libtest's actual selection and final passed/ignored counts
-before writing a success receipt; nonzero exits, empty runnable shards, or changed
-inventories fail. Existing `#[ignore]` entries stay explicitly accounted for;
-sharding neither enables them nor silently ignores additional tests. Unsupported
-non-libtest harness inventories fail closed rather than disappearing from coverage.
-The QA runner, `tests/qa.rs`, has its own harness (`harness = false`, see
-"Scheduling and run costs") that keeps libtest's `--list`, `--ignored`,
-`--exact`, and `test result:` formats, so its scenario runs are inventoried as
-explicitly ignored tests and its unit tests run in the shards like any other.
+Each **Rust tests shard N** verifies the checkout revision, source fingerprint,
+image inputs, executable checksums, and libtest inventory before running its
+assigned tests across parallel headless lanes with no display and an unreachable
+session bus. The runner checks libtest's actual selection and
+final passed/ignored counts before writing a success receipt; nonzero exits,
+empty runnable shards, or changed inventories fail.
 
-Published environments are pulled by the build job's exact manifest digest and
-verified again by `quality.sh`. Deliberate unpublished recipe updates transfer
-the same locally built environment as an attempt-scoped artifact instead; shards
-never rebuild it. **Format, lint, and test** retains the required-check name,
-requires successful build/lint and every shard, and verifies no missing, extra,
-duplicate, or stale receipts. Failed shards are not retried, and `fail-fast: false`
-preserves the other shards' results. Reports and logs are attempt-scoped artifacts.
+`tests/qa.rs` uses a custom harness (`harness = false`) that preserves libtest's
+`--list`, `--ignored`, `--exact`, and `test result:` formats, so its scenario
+runs are inventoried as explicitly ignored tests and its unit tests run in the
+shards like any other.
 
-To reproduce the handoff locally using the same pinned container:
+To reproduce the CI shard handoff locally in the pinned container:
 
 ```bash
 STRATA_QUALITY_TASK=build ./scripts/quality.sh test
@@ -275,47 +231,30 @@ done
 python3 scripts/quality_ci.py verify
 ```
 
-The example runs shards sequentially for convenient local diagnosis; CI runs them
-in parallel on separate runners. These environment variables are CI handoff modes,
-not test filters. Rebuild the bundle after changing source or checkout revision.
-The four-shard matrix and `SHARDS` constant must be updated together if tuning
-fan-out. Each shard has a ten-minute hang bound; timing is otherwise informational.
-
 ### Local lanes
 
-Ordinary `./scripts/quality.sh test` runs `scripts/quality_ci.py local`. It builds
-the bundle once into `target/quality-local` as a single shard and runs it in lanes
-on this machine, with the same plan validation, isolated-test handling, receipts,
-and exactly-once verification as CI. The default is one lane per two available
-CPUs. Pass `--jobs N` to choose another count, for example `--jobs 1` for a single
-display. With one lane per CPU, some load-sensitive tests can fail. A lane's full
-output is in `target/quality-local/reports/shard-0-lane-N.log`; a failing run
-prints the failed tests' panics and the end of the lane's log.
+Ordinary `./scripts/quality.sh test` runs `scripts/quality_ci.py local`. It
+builds the bundle once into `target/quality-local` as a single shard and runs it
+in lanes on the local machine, with the same plan validation, receipts, and
+exactly-once verification as CI. The default is one lane per two available CPUs;
+pass `--jobs N` to choose another count. A lane's full output goes to
+`target/quality-local/reports/shard-0-lane-N.log`.
 
 ### Balancing weights
 
-`scripts/quality-durations.json` maps each test to the seconds it occupies a lane.
-Refresh it after adding or substantially changing slow tests:
+`scripts/quality-durations.json` maps each test to its expected duration for
+shard/lane balancing. Refresh it after adding or substantially changing slow tests:
 
 ```bash
 ./scripts/quality.sh test --refresh-timings
 ```
 
-This runs the local lanes with libtest's per-test times, which stable Rust reports
-only with `RUSTC_BOOTSTRAP=1 -Z unstable-options --report-time`, so it is opt-in
-and never part of ordinary or CI runs. Each libtest process uses one thread so a
-GTK test's time excludes waiting for the display. A test that runs in an isolated
-GTK child keeps its full time; any other test shares libtest's threads, four on
-CI runners, so it is weighted at a quarter of its time, with a floor of 0.01
-seconds. The run fails unless it measured exactly the runnable tests, and then
-rewrites the file. Review the diff like any generated file; the weights balance
-lanes and shards but never select tests.
+### Keep Rust tests off the local desktop
 
-### Keep Rust test windows off the local desktop
-
-Some Rust tests also create GTK windows when a display is available. Run the
-complete suite, or a justified targeted selection, on the same private
-Xvfb/private D-Bus infrastructure with:
+`mise run test` and `./scripts/test-headless.py` clear `DISPLAY`, `WAYLAND_SOCKET`,
+and `DBUS_SESSION_BUS_ADDRESS` and point `WAYLAND_DISPLAY` and the bus at nonexistent
+names so tests run purely headless on Rune's virtual clock with temporary `HOME`/XDG
+directories:
 
 ```bash
 ./scripts/test-headless.py
@@ -323,624 +262,394 @@ Xvfb/private D-Bus infrastructure with:
 ./scripts/test-headless.py relevant_module_or_test_name
 ```
 
-This requires Xvfb, D-Bus, and AT-SPI on the host. It isolates application
-preferences while retaining access to the installed Cargo/Rust toolchains, and
-disables accessibility bridging for Rust tests. A startup failure aborts; it
-never falls back to the real display or an inherited session bus. Its private
-display, buses, and throwaway HOME come from `scripts/headless/`, which
-`scripts/benchmark-scroll.py` uses as well.
+`test-headless.py` also sets `STRATA_REQUIRE_DEVICE_TESTS=1` and supports
+`STRATA_TEST_TMPDIR`.
 
 ### Private main contexts in Rust tests
 
 A Rust test that drives async code on its own GLib main context creates it with
 `test_support::PrivateContext`, never `glib::MainContext::new()` or
-`glib::MainContext::with_flags()` (Clippy rejects both).
-`<glib::MainContext as Default>::default()` also calls `new()`, but Clippy
-cannot catch it by path, so don't use it for a test's context either. A GIO call
-started on the context keeps it alive from its `GTask`, so a GIO pool thread can
-drop the last reference after the test has finished. Finalizing the context
-there would drop any local task or callback still attached to it on the wrong
-thread and abort the whole test process. `PrivateContext` destroys every source
-left on the context when it is dropped, on the thread that created them,
-repeating until no source is left. A source attached after that, such as the
-completion of a GIO call still in flight, is leaked on purpose: it keeps its
-task and the context alive, so nothing on the context is ever finalized on
-another thread. Tests that drive the process-wide default context instead hold
-`test_support::ASYNC_MAIN_CONTEXT_DEFAULT`.
+`glib::MainContext::with_flags()` (`clippy.toml` rejects both), and never
+`<glib::MainContext as Default>::default()`. A GIO call started on the context
+keeps it alive from its `GTask`, so a GIO pool thread can drop the last reference
+after the test finishes and abort the process if local callbacks are finalized on
+the wrong thread. `PrivateContext` destroys remaining sources on the creating
+thread at drop and safely parks any late in-flight completion. Tests driving the
+process-wide default context hold `test_support::ASYNC_MAIN_CONTEXT_DEFAULT`.
 
 ### Native debugging dependencies
 
-These are installed inside the canonical image; only `scripts/test-headless.py`
-and other native debugging need them on the host.
+These are installed inside the pinned image; only host runs of
+`mise run test-platform` need them locally:
 
 | Purpose | Arch | Debian / Ubuntu |
 | --- | --- | --- |
-| Headless X server | `xorg-server-xvfb` | `xvfb` |
-| Accessibility bus and registry | `at-spi2-core` | `at-spi2-core` |
-| Private session bus | `dbus` | `dbus-daemon`, `dbus-bin` |
-| Keyboard layouts | `xorg-setxkbmap` | `x11-xkb-utils` |
-| Screen capture | `imagemagick` | `imagemagick` |
-| Font | `cantarell-fonts` | `fonts-cantarell` |
+| Headless Wayland compositor (`test-platform`) | `sway`, `xorg-xwayland` | `sway`, `xwayland` |
+| Software Vulkan ICD (optional, for lavapipe) | `vulkan-swrast` | `mesa-vulkan-drivers` |
+| Private session bus (`test-platform`) | `dbus` | `dbus-daemon`, `dbus-bin` |
+| Screen capture (`test-platform` / `qa` session runs) | `imagemagick`, `grim` | `imagemagick`, `grim` |
 
 ## QA scenarios (`--qa` mode)
 
-A build with the `qa` Cargo feature (never in releases) accepts
-`strata --qa <directory>`: the normal window opens on the directory, then the
-process reads one JSON command per line on stdin, runs it on the GTK main loop,
-and writes one JSON reply per line on stdout after the main context drains.
-Input is real XTEST sent from inside the process, and state is read from the
-widget tree by the names `src/ui/accessibility.rs` sets, so no AT-SPI client is
-involved.
+A build with the `qa` Cargo feature (never enabled in releases) accepts
+`strata --qa <directory>`: it opens on the directory, reads one JSON command per
+line on stdin, runs it through `strata-qa`'s engine and `strata-app`'s QA backend,
+and writes one JSON reply per line on stdout.
 
 ```bash
-./scripts/qa.sh                              # every scenario, every mode
-./scripts/qa.sh arrow-keys-move-focus        # one scenario, all of its runs
-./scripts/qa.sh arrow-keys-move-focus/columns-arrows   # one run of it
-STRATA_QA_KEEP_ARTIFACTS=1 ./scripts/qa.sh   # artifacts for passing runs too
+./scripts/qa.sh                                       # every scenario, every mode
+./scripts/qa.sh --smoke                               # critical-path smoke set (tests/qa/smoke.txt; runs on PRs in CI)
+./scripts/qa.sh arrow-keys-move-focus                 # one scenario, all of its runs
+./scripts/qa.sh arrow-keys-move-focus/columns-arrows  # one run of it
+STRATA_QA_KEEP_ARTIFACTS=1 ./scripts/qa.sh            # keep artifacts for passing runs too
 ```
 
-`scripts/qa.sh` runs `cargo test --features qa,invariant-checks --test qa` in
-the pinned image,
-with the mounts, account files, and `target/qa-container` cache it shares with
-`scripts/qa-drive.sh` and `scripts/qa-mutation.sh` (through
-`scripts/lib/qa-container.sh`). Because the cache is shared, run them one after
-the other, never concurrently. `tests/qa.rs` refuses to start without the
-`STRATA_QA_CONTAINER=1` that script sets. A host run needs the owner's explicit
-consent for the task and `STRATA_QA_HOST=1`; it is labelled unsupported, is
-never validation evidence, and must be recorded in the handoff with the
-container run it replaced. The QA runner is not wired into
-`scripts/test-headless.py`.
+`scripts/qa.sh` runs `cargo test --locked --features qa,invariant-checks --test qa`
+inside the pinned image, sharing `target/qa-container` with `scripts/qa-drive.sh`
+and `scripts/qa-mutation.sh` (through `scripts/lib/qa-container.sh`). Because the
+build cache is shared, run them one after another, never concurrently.
 
-### Wayland and input methods (host runs)
-
-Two optional parts of a host run reproduce bugs the pinned image cannot reach,
-such as input-method composition (issue #1715). Neither is validation evidence,
-and the pinned image has neither sway nor fcitx5.
-
-- `STRATA_QA_DISPLAY=wayland` gives every run a private headless sway
-  (`WLR_BACKENDS=headless`, no input devices, no XWayland, software rendering)
-  in the run's runtime directory instead of Xvfb, and launches the application
-  with `GDK_BACKEND=wayland`. The process then sends its input through a
-  Wayland virtual keyboard (with a US keymap it compiles) and virtual pointer
-  instead of XTEST. sway floats every window in the output's top-left corner,
-  where the window-manager-less X display leaves it, and `screenshot` uses
-  `grim`. `layout` steps other than `us` and pixel sampling (pixel
-  predicates and drop samples) are X11-only and fail with a message. It needs
-  `sway`, `swaymsg`, and `grim`.
-- A header's `"input_method": "<name>"` (with `session_bus`) starts a private
-  fcitx5 on the run's display and bus, with a profile holding the US keyboard
-  and that input method; Ctrl+Space switches to it. Choose the toolkit path
-  with the header's `env`, for example `"GTK_IM_MODULE":"fcitx"` for
-  fcitx5-gtk's module or `"GTK_IM_MODULE":"wayland"` for text-input-v3. The
-  input method's addon must be installed (`fcitx5/inputmethod/<name>.conf`),
-  and its log is kept as `fcitx5.log`.
-
-```bash
-STRATA_QA_HOST=1 STRATA_QA_NAMED=1 STRATA_QA_DISPLAY=wayland \
-  cargo test --features qa,invariant-checks --test qa -- \
-  --include-ignored --exact input-method-composes-over-selection
-```
-
-Scenarios that need an input method carry a `skip` reason, so the default
-container run leaves them out.
+`tests/qa.rs` refuses to start without `STRATA_QA_CONTAINER=1`. A host run
+(`STRATA_QA_HOST=1`) requires explicit owner consent for the task, is labelled
+unsupported, is never validation evidence, and must be recorded in the handoff.
+Do not wire the QA runner into `scripts/test-headless.py`.
 
 `invariant-checks` turns on exact but slow consistency assertions (for example,
-the selection position cache against a full listing scan). `scripts/qa.sh` and
-`scripts/qa-drive.sh` build with it, and `cargo test --all-features` enables it
-too; plain `cargo build` leaves it off so development builds keep their normal
-speed.
+checking the selection position cache against a full listing scan). `scripts/qa.sh`
+and `scripts/qa-drive.sh` build with it, and `cargo test --all-features` enables
+it too; plain `cargo build` leaves it off so development builds keep normal speed.
+
+### Offscreen and session hosts
+
+Each scenario (or variant) declares its execution host via the optional header
+field `"host"`:
+
+- **`"offscreen"` (the default):** drives `strata --qa` through Rune's offscreen
+  QA host (`crates/strata-app/src/qa/`). Input goes directly through Rune's input
+  layer on a virtual clock, state is read from Rune's accessibility tree (roles
+  mapped to standard AT-SPI role names), and keyboard layouts are sent via `keymap`
+  requests. No display server is required, making runs fast and deterministic.
+- **`"session"` (see [The session host](#the-session-host)):** runs the scenario
+  against a real `strata --qa` window (`STRATA_QA_WINDOW=1`) on a private headless
+  `sway` Wayland compositor inside the pinned container, for scenarios that need
+  real window focus, the system clipboard, compositor drag-and-drop, or portal
+  file-chooser windows.
+
+#### The session host
+
+A run whose header (or variant) sets `"host": "session"` needs what the offscreen
+host cannot supply: window focus, the system clipboard, or drag-and-drop through
+a compositor. The QA runner automatically starts a private headless `sway`
+(`WLR_BACKENDS=headless`, software `lavapipe` Vulkan rendering) in the run's
+runtime directory and launches `strata --qa` with `STRATA_QA_WINDOW=1`
+(`crates/strata-app/src/qa/session.rs`). Input crosses the compositor through
+Wayland's virtual keyboard and virtual pointer (US layout). Portal scenarios
+(`"portal": true`) run on the session host as well: `strata --qa --portal` opens
+each request's file chooser in a real window, steps act on the adopted window,
+and virtual input devices connect at the first `adopt`
+(`crates/strata-app/src/qa/session/portal.rs`).
+
+Outside the container, `mise run test-platform window::qa` exercises the same
+session host inside `strata-platform`'s private `sway` harness.
 
 ### How a run is set up
 
 Each run of a scenario gets:
 
-- its own Xvfb, at 1440x900x24 and 96 DPI;
 - a fresh fixture tree in its own temporary directory under `/tmp`, with fixed
-  modification times, materialised from the shared manifest
-  `tests/fixtures/harness.json`, which also defines the seeded preferences,
-  GTK settings, static environment, and keyboard layouts;
-- a throwaway `HOME` and XDG directories, seeded with a complete
-  `settings.toml` so no preference is inherited from a default change, and with
-  the first-run file-chooser portal offer already answered;
-- with `"session_bus":true`, a private D-Bus session with no service
-  directories, so nothing is D-Bus-activated behind the run's back; without
-  it, a bus address that cannot connect.
+  modification times, materialized from `tests/fixtures/harness.json`, which also
+  defines seeded preferences, static environment, and keyboard layouts;
+- a throwaway `HOME` and XDG directories, seeded with a complete `settings.toml`
+  so no preference is inherited from a default change, and with the first-run
+  file-chooser portal offer already answered;
+- with `"session_bus": true`, a private D-Bus session with no service directories,
+  so nothing is D-Bus-activated behind the run's back; without it, a bus address
+  that cannot connect;
+- with `"volume_monitor": true` (and `"session_bus": true`), a fake GVfs volume
+  monitor on that bus (see [Fake devices](#fake-devices));
+- for `"host": "session"` runs, a private headless `sway` compositor.
 
-Rendering is pinned by the manifest: `GSK_RENDERER=cairo`, software GL,
-`GDK_SCALE=1`, the Adwaita icon theme, Cantarell 11, `C.UTF-8`, `UTC`,
-animations off, and `reduce_motion` on. Application preferences and file
-operations use only the run's temporary HOME/XDG directories and fixture.
-Both are under `/tmp` so trash capabilities do not vary with the caller's
-`TMPDIR`. System libraries, fonts, and icon assets are provided by the
-container; desktop endpoints and user configuration overrides are not
-inherited.
+`scripts/qa.sh` mounts a tmpfs on the container's `/tmp`, which holds every run's
+fixture, `HOME`, and runtime directory. Fixtures and `HOME` share one device so
+Trash and restore work within it, while `/dev/shm` is a separate volume for
+cross-volume tests. Nothing in `/tmp` outlives the container.
 
-The application's `MESA_SHADER_CACHE_DIR` names one directory the runner makes
-under `/tmp` and removes when it exits, so the software GL shaders GTK compiles
-at start-up are built once per `./scripts/qa.sh` rather than in every run's
-fresh `XDG_CACHE_HOME`; helper and `foreign` processes a step starts run
-without it. `scripts/qa.sh` mounts a tmpfs on the container's `/tmp`, which
-holds every run's fixture, HOME, and runtime directory. `/tmp` is then a mount
-point of its own, the one Strata resolves for a path there instead of `/`;
-fixtures and HOME share one device, so Trash and its restore work within it,
-and `/dev/shm` is another volume. Nothing in `/tmp` outlives the container,
-since artifacts and the Cargo cache are under `/workspace/target`. The tmpfs
-takes the kernel's default limit, half of RAM; a full run at 24 threads peaked
-near 150 MB.
+### Fake devices
+
+The container has no `udisks2` daemon and no real removable media, and GIO's
+built-in unix volume monitor hides mounts a rootless container can make. A run
+whose header has `"volume_monitor": true` (with `"session_bus": true`) starts
+`tests/qa/volume_monitor.py` on the run's bus before the application. It serves
+`org.gtk.Private.RemoteVolumeMonitor` under the name configured by
+`tests/qa/volume_monitors/strata-qa.monitor`, pointed to via `GVFS_MONITOR_DIR`.
+
+That client stays unloaded under `GIO_USE_VFS=local` for every other run. In a
+`volume_monitor` run, scenarios plug and unplug devices with `dbus_send` to
+`org.strata.QaVolumeMonitor.Add` and `Remove`, and read recorded calls from
+`$environment/volume-monitor.calls`. Mounts are real folders under `$environment`,
+and the monitor's log is kept as `volume-monitor.log`.
 
 ### Scenario files
 
 A scenario is a `.jsonl` file under `tests/qa/scenarios/<feature area>/`, a
-folder named in snake_case without a `test_` prefix, such as
-`tests/qa/scenarios/clipboard/copy-leaves-source.jsonl`. The runner finds every
-file there itself. Scenario names are lowercase words joined by hyphens, since
-`./scripts/qa.sh` reads `_` in a name as `-`, and are unique across folders.
-The first line is a header and every later line one step:
+folder named in `snake_case` without a `test_` prefix, such as
+`tests/qa/scenarios/clipboard/copy-leaves-source.jsonl`. Scenario names are
+lowercase kebab-case (`./scripts/qa.sh` maps `_` to `-`) and unique across
+folders. The first line is a JSON header and every subsequent line is one step:
 
 ```json
-{"scenario":"arrow-keys-move-focus","modes":["columns"],"prefs":{"type_to_search":false},"layout":"us","mutation":"keyboard-navigation","known_bug":null,"variants":[...]}
+{"scenario":"arrow-keys-move-focus","modes":["columns"],"prefs":{"type_to_search":false},"layout":"us","mutation":null,"known_bug":null,"variants":[...]}
 ```
 
 `modes` runs the file once per view, and optional `variants` run it again with
-their own preferences, layout, tree, or variables; a run is named
-`<scenario>/<label>`, as in `PASS copy-leaves-source/columns-ru`. `mutation`
-names the patch that must make the scenario fail (see "Proving a scenario
-catches a regression"), `known_bug` an issue that makes a failure the expected
-result, `skip` keeps a scenario out of the default run (see "Skipped
-scenarios"), `cost` orders the runs (see "Scheduling and run costs"), and
-`quality` rates the scenario as the `qa-quality` skill defines. Steps run
-either in the process on the GTK main loop (input, waits, and checks on the
-window) or in the runner (filesystem setup and checks, restarts, layouts, and
-peers such as a portal request or a foreign drag source).
+their own preferences, layout, host, tree, or variables; a run is named
+`<scenario>/<label>`, as in `PASS copy-leaves-source/columns-ru`. `host` selects
+`"offscreen"` (default) or `"session"`, `mutation` names a mutation patch under
+`tests/qa/mutations/`, `known_bug` records an issue that makes a failure the
+expected result, `skip` keeps a scenario out of the default run, `cost` orders
+runs longest-first, and `quality` scores the scenario per the `qa-quality` skill.
 
-The runner validates every file before any run starts: the header rejects a key
-it does not know, each step goes through the process's own parser, and the
-`every_scenario_file_is_planned_and_well_formed` test checks that each file
-sits in a well-named folder, loads, names an existing mutation patch, and has
-every run planned as a test. A typo fails as a harness error, never as a step a
-`known_bug` could excuse.
+The runner validates every file before any run starts: unknown header keys are
+rejected, every step passes through `strata-qa`'s parser, and
+`every_scenario_file_is_planned_and_well_formed` checks folder naming, parsing,
+mutation patch existence, and run planning.
 
-The full catalogue of header keys, variables, steps, `fs` kinds, targets,
-predicates, replies, the state snapshot, the input log, and artifacts is
-[`.agents/skills/qa-scenarios/reference.md`](../.agents/skills/qa-scenarios/reference.md);
-the parsers it names are the source of truth. The `qa-scenarios` skill beside
-it covers writing, running, and debugging a scenario.
+The full reference for headers, variables, steps, `fs` kinds, targets,
+predicates, replies, snapshots, and artifacts is
+[`.agents/skills/qa-scenarios/reference.md`](../.agents/skills/qa-scenarios/reference.md).
+The `qa-scenarios` skill beside it covers writing, running, and debugging scenarios.
 
 ### Accessible names are product surface
 
-The runner finds an entry because Strata names it. Those names live in
-`src/ui/accessibility.rs` and exist for screen readers first: an entry row is
-labeled with its name and described as `Folder` or `File`, a pane is labeled
-with its directory and described with its presentation, the focusable surface
-of an empty, unreadable or loading pane is labeled with its directory and
-described with its status text, menu items carry the
-menu role with the accelerator in the description, and modal dialogs carry the
-dialog role and a name. When a scenario cannot identify a control, the fix is
-to name it in the application, not to reach around the accessibility layer.
-Locate controls by role and name, never by a literal screen coordinate, and
-synchronize on conditions (`wait`, `fs` with a timeout), never on `sleep`
-where a condition can be read. Check the filesystem as well as the window for
-every file operation.
+The runner locates entries and controls directly through Strata's native Rune
+AccessKit tree (with roles mapped to AT-SPI names and open submenus nested under
+their owning menu item). Those accessible names and roles exist for screen
+readers first: entry rows carry their name and `Folder`/`File` description
+(along with Columns size/count badges, subfolder filter paths, and file-provider
+status descriptions), single-leaf controls (options, tabs, menu items,
+checkboxes, radios, switches) carry their text directly in their own `name` and
+`description`, panes carry their directory and presentation, menu items carry
+menu roles and shortcut descriptions, and modal dialogs and menus occlude
+background surfaces while open. When a scenario cannot identify a control, name
+it properly in the application instead of working around accessibility. Locate
+controls by role and name, synchronize on conditions (`wait`, `fs` with
+timeout), and verify both UI state and filesystem outcomes.
 
 ### Keyboard layouts
 
-A `{"layout":"ru"}` step switches the run's Xvfb to a layout from the
-manifest while the application runs: `setxkbmap -display` loads the layouts,
-and their XKB variants when the layout names them, and an XKB group lock
-selects the active one, as a layout switch shortcut does. The header's
-`layout` is switched to once the process is ready. A `{"layout":"us"}` step,
-and the end of a run under another layout, unlock the group and every
-modifier and restore the US layout without variants; a keyboard not back in
-that state fails the run. Never
-change the desktop's layout, and never run `setxkbmap` without `-display`.
+A `{"layout": "ru"}` step (or the header's `layout`) switches the run's keyboard
+layout from the manifest while the application runs. On the offscreen host, the
+runner sends the manifest's layout as a `keymap` request and `strata-app`
+interprets US key positions under that layout through `strata_desktop::keys::Xkb`.
+Key names denote US physical key positions: under `ru`, `{"key": "ctrl+c"}`
+presses the key in the US `C` position, and `type` produces the characters of
+that layout. On the session host (`sway`), layout steps are currently US-only.
 
-Key names mean US key positions: under `ru`, `{"key":"ctrl+c"}` presses the
-key that types с, and `type` types what those keys produce. The `altgr`
-modifier presses the US right Alt key, which layouts with AltGr turn into it:
-under `cn-altgr-pinyin`, `altgr+1` types the macron dead key. The runner starts
-no input method daemon. GTK's built-in input method composes dead keys in text
-fields, so a pending Pinyin tone mark stands in for an input method's
-unfinished composition when a scenario checks which keys reach it.
+`strata-desktop`'s `keys::xkb` tests (`mise run test keys::xkb::`) verify key
+name resolution, case mapping, accelerator parsing/formatting, and refusal tables
+directly without any display.
 
 ### Scheduling and run costs
 
-`tests/qa.rs` makes every run of every scenario a test of its own, named
-`<scenario>/<run>` as in its `RUN` line (`copy-leaves-source/columns-ru`), so
-the runs of one scenario spread over the threads, each with its own Xvfb and
-process. Its harness, `tests/qa/harness.rs` (`harness = false`), takes
-libtest's command line and output but starts the tests in cost order, not
-alphabetically: costliest first, a run without a `cost` before all of them
-(it may be costly), and equal costs by name. It runs `--test-threads` tests at
-once, one per CPU by default. A run with a `fixture_root` never starts while
-another such run is going; the next run free to start takes the thread
-instead of waiting. A run's cost outside its steps (Xvfb, the launch up to
-the first reply, and shutdown) is about 0.4 s at 24 threads, so it takes no
-display lock and no 50 ms exit poll: concurrent Xvfb starts begin at
-different display numbers, skip one with a lock file or socket, and try the
-next when another server takes theirs first, as `-displayfd` shows; an
-exiting application, Xvfb, or bus is awaited on its pidfd; and `strata --qa`
-checks that its window is ready after each frame it paints. With `--exact`,
-which `./scripts/qa.sh` adds when it names anything, a scenario name selects
-all of its runs and never another scenario it prefixes, and
-`<scenario>/<run>` selects one run; without it a filter is a
-substring, as in libtest. `./scripts/qa.sh --skip <scenario>` (or
-`<scenario>/<run>`, in either spelling) passes the harness's own
-`--skip-exact`, which leaves out that scenario or run and never another
-scenario it prefixes; any other `--skip` is libtest's substring, or a whole
-name once a scenario is named. Nothing is captured: as each test finishes, the
-harness prints its result line with the time it took,
-`test <name> ... ok <12.345s>` (or `FAILED <12.345s>`), and the run's `PASS`
-or `KNOWN BUG` line, each line whole, and at the end the failure details and
-libtest's `test result:` summary. `--list` prints the selected tests in cost
-order, which is the order they are offered in; a run with a `fixture_root`
-may start later while another such run is going. `--help` lists the options;
-libtest's `--report-time`, `--shuffle`, and `--shuffle-seed` are accepted and
-change nothing, as cost order wins.
+`tests/qa.rs` turns every run of every scenario into its own test named
+`<scenario>/<run>`, scheduled longest-first using the header's `cost` map (runs
+without a `cost` start first, then costliest-first, then by name). Runs with a
+shared `fixture_root` serialize against each other automatically.
 
 The runner's own unit tests live in `tests/qa/scenario_tests.rs` and
-`tests/qa/step_tests.rs`, and each must be listed in the `unit_tests!` macro in
-`tests/qa/unit_tests.rs`: with the harness replaced, `#[test]` and
-`#[cfg(test)]` there are stripped without a warning and never run, so the
-`no_test_attribute_hides_a_runner_test` test rejects them in `tests/qa.rs` and
-`tests/qa/*.rs`.
+`tests/qa/step_tests.rs`, registered via `unit_tests!` in `tests/qa/unit_tests.rs`
+(`no_test_attribute_hides_a_runner_test` ensures no stray `#[test]` is silently
+stripped by `harness = false`).
 
-A header's optional `cost` maps every run label of the scenario, and nothing
-else, to a positive number: the run's median wall-clock time over several full
-runs divided by the median of all runs' medians, so 1.0 is a typical run,
-rounded to one decimal place and at least 0.1. The runner rejects a `cost`
-that misses a run or names another. Refresh the costs after adding scenarios
-or runs, or when the order no longer fits:
+Refresh scenario `cost` weights after adding or substantially changing scenarios:
 
 ```bash
-python3 scripts/qa_cost.py run                               # three full runs, then every header's cost
+python3 scripts/qa_cost.py run
 python3 scripts/qa_cost.py run --repeat 5
-python3 scripts/qa_cost.py write target/qa-cost/run-*.log    # again from saved qa.sh logs
+python3 scripts/qa_cost.py write target/qa-cost/run-*.log
 ```
-
-`run` times full `./scripts/qa.sh` runs at the default thread count, naming
-every scenario so a skipped one is timed too, and keeps their logs in
-`target/qa-cost/`. A failed run's time counts like a passing one's, and
-nothing is written unless every planned run has a time. Only the `cost` value
-of each header line changes, added last where there is none; every other byte
-of the files stays. The order matters more than the numbers: a new run without
-a cost starts early until the next refresh.
 
 ### Replies and failure artifacts
 
-Every process command gets one JSON reply carrying the `app` state snapshot,
-and a GLib warning or critical in any reply fails the run. A failed run, or
-every run under `STRATA_QA_KEEP_ARTIFACTS=1`, writes
-`target/qa-artifacts/<scenario>/<run label>/`: a screenshot, the widget tree,
-the command and reply transcript, the application, Xvfb, and input logs, the
-fixture listing, the final snapshot, and the result. The reference's
-"Protocol, replies, and the snapshot" and "Artifacts" sections define each.
+Every process command returns one JSON reply carrying the `app` state snapshot,
+and any GLib warning or critical fails the run. A failed run, or every run with
+`STRATA_QA_KEEP_ARTIFACTS=1`, writes `target/qa-artifacts/<scenario>/<run label>/`
+with screenshots (when available), accessibility tree, transcript, application
+and compositor/bus logs, fixture listing, final snapshot, and result.
 
 ### Driving a session by hand
 
-`scripts/qa-drive.sh` keeps one `strata --qa` session open in the pinned
-image, for checking a change interactively before (or instead of) writing a
-scenario. `start` starts a detached container with the same engine, image,
-mounts, account files, and `target/qa-container` cache as `scripts/qa.sh`
-(both take them from `scripts/lib/qa-container.sh`), makes the
-build `qa.sh` makes (`cargo test --features qa,invariant-checks --test qa --no-run`), seeds a
-fresh HOME, XDG directories, and fixture from `tests/fixtures/harness.json` as
-the runner does, starts Xvfb on `:90`, and launches the application in the
-fixture with the runner's environment; it prints the launch reply. A start
-that fails at any point removes its container. Each later subcommand is a
-short `docker exec` (or `podman exec`) that returns at once:
+`scripts/qa-drive.sh` keeps one `strata --qa` session open inside the pinned
+container for interactive verification before or alongside writing a scenario.
+`start` builds the QA binary, seeds a fresh `HOME`, XDG directories, and fixture
+from `tests/fixtures/harness.json`, and prints the launch reply. Subsequent
+subcommands run as fast container `exec` calls:
 
 ```bash
 ./scripts/qa-drive.sh start --tree '{"notes":{"plan.txt":"plan\n"}}' --pref browser_mode=list
 ./scripts/qa-drive.sh send '{"select":{"entry":"notes"}}' '{"query":"state"}'
-./scripts/qa-drive.sh screenshot menu.png      # target/qa-drive/menu.png
 ./scripts/qa-drive.sh restart --pref text_size=large
 ./scripts/qa-drive.sh exec 'ls -A; cat "$XDG_CONFIG_HOME/strata/settings.toml"'
 ./scripts/qa-drive.sh log
 ./scripts/qa-drive.sh stop                      # removes the container
 ```
 
-`send` writes each process command on the application's stdin and prints its
-one-line reply, waiting 90 s, or the command's `timeout_ms` plus 30 s; it
-reports a process that exited with its log tail. Replies are matched to
-commands by number, so the reply to a command whose wait gave up is skipped
-when it comes, never printed as a later command's. Runner steps (`fs`,
-`layout`, `screenshot`, `restart`, and the others the reference lists as runner
-and `fs` steps) are not process commands: use the subcommands, or a scenario.
-`--tree` takes a tree as the manifest writes one (a name, or JSON, or `@file`), `--pref KEY=VALUE` changes a
-seeded preference (the value is JSON, or else a string), `--env NAME=VALUE`
-adds a variable, and `--bus` starts the runner's private session bus in place
-of the address that cannot connect. `exec` runs a shell command in the
-fixture with the session's HOME, XDG directories, display, runtime directory,
-and bus. `restart` closes the application's stdin, signals its group if it
-has not quit within ten seconds (the runner's `EXIT_TIMEOUT` and
-`TERMINATE_GRACE`), merges the given
-preferences into its saved `settings.toml` (each key replaced whole, tables
-included), and launches it again on the same fixture and HOME. A value
-`settings.toml` cannot hold is refused before the application quits, and a
-saved file that no longer parses is left unchanged and relaunched. Every exchange is appended to
-`target/qa-drive/transcript.jsonl` in the artifacts' transcript format, and the
-input log, build log, screenshots, and (after `stop`) application log land in
-`target/qa-drive/`, which `start` empties. There is one session per checkout,
-and it shares the build cache, so never run it while `scripts/qa.sh` runs.
-The values it copies from `tests/qa.rs` (the QA environment, XDG layout,
-Xvfb arguments, bus configuration, and timeouts) are checked by
-`scripts/test_qa_drive.py`.
-
-### Visual baselines
-
-The scenarios in `tests/qa/scenarios/visual_baselines/` compare a small set of
-stable states with the images in `tests/qa/baselines/gtk-4.22` through a
-`baseline` step: one canonical fixture in each view, the airy Icons spacing, a
-hovered Icons tile, a
-selection with focus, an open context menu, a confirmation dialog, and the
-default Columns overflow. Local and CI runs use this one rendering profile;
-other GTK versions have no baselines, so a run linking one fails rather than
-silently accepting a different renderer. These scenarios claim the fixed
-`fixture_root` `/tmp/strata-e2e-baseline`, because the breadcrumb and context
-menu render the full path; runs that claim it take turns.
-
-A capture matches when no more than 0.5% of pixels differ by more than 24 in
-any channel, which absorbs the subpixel antialiasing that software rendering
-varies between runs. On a mismatch the run's artifacts keep the expected,
-actual, and diff images.
-
-Baselines are never accepted automatically. When a change is intended,
-regenerate them deliberately:
-
-```bash
-STRATA_QA_UPDATE_BASELINES=1 ./scripts/qa.sh columns-view-baseline
-```
-
-`scripts/qa.sh` forwards the variable; with it, each `baseline` step writes
-its capture as the committed image and passes, and without it a run never
-writes one. Name the baseline scenarios you mean to regenerate, then review
-the new images and commit them with the change, so the difference is visible
-in the pull request.
+`send` writes each process command on stdin and prints its reply line. Runner
+steps (`fs`, `layout`, `restart`, etc.) are driven by subcommands
+rather than `send`. Every exchange is appended to `target/qa-drive/transcript.jsonl`,
+and logs land in `target/qa-drive/`. Because it shares the
+`target/qa-container` build cache with `scripts/qa.sh`, never run them concurrently.
 
 ### Proving a scenario catches a regression
 
-`scripts/qa-mutation.sh` applies one deliberate defect at a time from
-`tests/qa/mutations`, rebuilds, and checks that the scenario whose header names
-it as its `mutation` fails:
+`scripts/qa-mutation.sh` applies one deliberate defect patch at a time from
+`tests/qa/mutations/`, rebuilds, and verifies that the scenario whose header
+names it as `mutation` catches the regression:
 
 ```bash
-./scripts/qa-mutation.sh                      # every scenario with a mutation
-./scripts/qa-mutation.sh clipboard            # the scenario a patch belongs to
-./scripts/qa-mutation.sh copy-leaves-source   # a scenario by its name
+./scripts/qa-mutation.sh                                 # every patch under tests/qa/mutations
+./scripts/qa-mutation.sh shift-click-range               # every patch for a scenario
+./scripts/qa-mutation.sh pdf-zoom-keeps-text-size.window-wheel  # one labelled patch
 ```
 
-Each patch breaks a single critical workflow: drop onto a folder, Ctrl+V
-paste, arrow-key selection, single-click activation, the appearance menu,
-filtered Space preview, filter-row updates, popover outside-wheel, the
-long-name editor staying in the viewport, a live click-mode preference, cut
-deferring its move to the paste, Return in the location editor, Keep Both
-selecting the numbered copy, Enter, click-away and Escape in the inline
-editor, a new entry colliding with an existing name, the rename error dialog,
-Delete moving to the trash, focus returning to a Columns filter result after a
-dismissed delete confirmation, and Shift+click ranges. Each patch belongs to
-exactly one scenario.
-
-The chosen scenarios first run once on the unmodified tree, and every run of a
-scenario must pass, or its patch is not tried. Under the patch, the mutation
-counts as caught only when at least one run fails a scenario step, no run
-could not run or lost its result line, and `qa.sh` exits nonzero; a patch
-that no longer builds runs nothing and is reported as missed. Logs land in
-`target/qa-mutation/baseline/` and `target/qa-mutation/mutations/<patch>/`,
-and `target/qa-mutation/summary.md` has one row per patch. The script restores
-only the files the patch touched, refuses a patch whose files have uncommitted
-changes, and refuses to run with `STRATA_QA_UPDATE_BASELINES=1`. It exits 0
-when every mutation is caught. It shares the build cache with `qa.sh`, so
-never run it alongside another QA command. Run it after changing the runner,
-and when adding a scenario for a workflow that does not have a mutation yet.
+The chosen scenarios first run on the unmodified tree and must pass; under the
+patch, a mutation counts as caught only when at least one run fails a scenario
+step and `qa.sh` exits nonzero. Reports go to `target/qa-mutation/summary.md`.
+The script refuses dirty target files and restores only patched files on exit.
+Run it when changing a scenario with a `mutation`, when its patch stops applying,
+or when changing how the runner judges a step.
 
 ### Skipped scenarios
 
-A scenario whose pass or fail the app leaves to chance, so neither
-`known_bug` nor a pass can be relied on, carries a `skip` reason until the app
-is fixed; it stays in the suite and runs when named. No scenario is skipped
-at present.
+A scenario whose outcome cannot yet be relied upon carries a `skip` reason until
+fixed; it stays in the suite and runs when explicitly named.
 
 ### Waits for the app's own timers
 
-QA input arrives faster than a person's, fast enough to land between the app's
-own timers. Where that pace exposes a race the app does not yet guard against,
-the scenario waits for the state a person's slower pace would reach, and is
-listed here:
+QA input arrives faster than human interaction. Where that pace exposes a known
+timer window (for example, Columns mirror delay, rename undo publication, or
+deferred progress error detail), the scenario waits explicitly on the expected
+state rather than racing an arbitrary sleep.
 
-- `same-folder-copy-numbered-duplicate` (folder): waits for the documents
-  column the keyboard cursor mirrors after 75 ms before Ctrl+D.
-- `paste-targets-selected-directory` (Columns): waits for the archive column
-  the cursor mirrors before Ctrl+V.
-- `escape-preserves-name-remaining` (existing-folder) and
-  `rename-and-undo-restores` (folder): wait for the folder's column the
-  cursor mirrors before F2.
+## Compositor, D-Bus, and windowed tests (`mise run test-platform`)
 
-These expose an app race: Ctrl+D, Ctrl+V, or F2 within 75 ms of the arrow key
-that moved the cursor onto a folder leaves a stale mirrored column, and a paste
-then leaves the pasted file neither selected nor focused.
+`strata-platform`'s Linux shims and `strata`'s real windowed binary run against
+a real Wayland compositor and session bus via `crates/strata-platform/tests/support/`:
 
-- `rename-and-undo-restores`, and `undo-created-folder-trashes`
-  (typed-name) for the name a new folder takes: settles the renamed row
-  before Ctrl+Z. The directory monitor can list the new name, and the
-  listing select and focus it, before the rename's own completion publishes
-  its undo and ends the operation; a Ctrl+Z in between is dropped. The app
-  shows nothing a run can read to tell that the undo is ready (Undo has no
-  menu item or action state), so the wait is the settle. Under the same
-  parallel load, 3 of 60 `rename-and-undo-restores` runs without it lost the
-  Ctrl+Z and none of 60 with it did (6 of 116 and 0 of 84 over every probe).
-- `new-folder-with-selection-groups` (Columns): waits for the renamed
-  `grouped` row to count its two items before clicking it. The row first
-  shows the optimistic rename, and a click on it before the listing catches
-  up leaves focus in the parent column (16 of 24 runs without the wait, none
-  of 36 with it).
-- `tenxer-d-without-trash-confirms`: waits for the `no-trash` link to be
-  listed before walking the cursor onto it.
-- `narrow-window-keeps-last-column`: settles the `folder` column before
-  comparing its right edge with the preview's. Once the 900-pixel window first
-  fits the column, the column strip scrolls it clear of the preview a moment
-  later, and an immediate comparison falls in between (the column ended at
-  802 against the preview's 600, then at 600).
-- `empty-directory-focus-and-tab-order` (pointer): once the new `empty` row
-  is listed after F5, waits up to a second for the listing to replace that
-  row once more (it always did within a second over 36 probe runs) before
-  clicking it; a click on the row the listing replaces mid-press is
-  cancelled, and 4 of 12 runs without the wait lost it.
-- `invalid-archive-reports-damage`: waits for the error detail label once the
-  progress dialog has turned into `Unable to complete operation`, before
-  asserting it; the label can show a moment after the dialog takes its new
-  name, and one run in about fifty checked in between.
+- a private `dbus-daemon` whose only service directory is the session's;
+- a nested headless `sway` (`WLR_BACKENDS=headless`) with `Xwayland`;
+- a virtual pointer and virtual keyboard peer (headless seats have neither);
+- a private `XDG_RUNTIME_DIR` and `HOME` cleaned up on teardown (logs stay in
+  `target/tmp/session/<test>/`);
+- a watchdog process that scans `/proc/*/environ` for the session's
+  `XDG_RUNTIME_DIR` and tears down lingering processes, sockets, and mounts if
+  a test is killed abruptly.
+
+Every process starts from a clean environment; `mise run test-platform` saves
+outer `DISPLAY`, `WAYLAND_DISPLAY`, and `XDG_RUNTIME_DIR` as `STRATA_OUTER_*`
+and the harness refuses any session display that matches them.
+
+| Command | Runs |
+| --- | --- |
+| `mise run test-platform` | Every compositor/D-Bus/window session test |
+| `mise run test-platform window::` | `strata`'s windowed tests (`tests/window.rs`), including `window::qa` |
+| `mise run test-platform p2::` | One `strata-platform` shim's session tests |
+| `mise run test-platform -- w3:: --test-threads=1 --nocapture` | Forwarded libtest arguments |
+
+`mise run test-platform` builds `strata-test-peer`, `strata-platform`'s examples,
+and `strata-gallery`'s `dnd_wiring`/`clipboard_wiring` examples, then runs the
+`#[ignore]`d session tests in `strata-platform`, `strata-gallery` (`x2`, `x3`),
+and `strata` (`tests/window.rs`). `mise run test` and `mise run check` never
+start a compositor session.
+
+| Environment variable | Effect |
+| --- | --- |
+| `STRATA_VK_ICD` | Vulkan ICD file for clients (defaults to lavapipe if installed, else default driver) |
+| `STRATA_WLR_RENDERER` | `sway` renderer (defaults to `pixman` with lavapipe, else `gles2`) |
+| `STRATA_TEST_TIMEOUT_SCALE` | Multiplies 10 s waits (`mise run test-platform` defaults to `3`) |
+| `STRATA_SWAY_DEBUG=1` | Enables `sway` debug logging in `sway.log` |
+| `STRATA_TEST_PEER` | Overrides path to `strata-test-peer` |
+| `STRATA_TEST_NAUTILUS=1` | Opts into best-effort Nautilus drag/clipboard interop tests in `x2`/`x3` |
+
+`strata-test-peer` (`crates/strata-platform/tests/support/strata-test-peer/`) acts
+as the second Wayland/X11 client for clipboard, INCR transfer, Wayland/XDND drag
+and drop, foreign window parenting, and virtual input injection.
+
+### `strata-platform` feature isolation
+
+`mise run compile-features` checks `strata-platform` with `--no-default-features`
+and then with each individual feature enabled alone, ensuring no shim depends
+implicitly on another shim's optional crates.
+
+### Component gallery (`strata-gallery`)
+
+`crates/strata-gallery` is an interactive showcase of `strata-components` pages
+and wiring examples (`dnd_wiring`, `clipboard_wiring`, `shell`):
+
+- Open interactively with `mise run gallery` (or `mise run gallery -- --scene <scene>`
+  and `-- --list-scenes`).
+- `mise run test` runs `strata-gallery`'s headless unit and smoke tests
+  (`tests/gallery.rs` plus the unit tests in `src/` and `examples/`).
+- `mise run test-platform` runs `strata-gallery`'s `#[ignore]`d compositor
+  drag-and-drop (`x2`) and clipboard (`x3`) session tests.
+- Primary end-to-end UI and behavioral verification lives in the QA scenarios
+  (`tests/qa/scenarios/`, run via `./scripts/qa.sh`).
+
+Give each Git worktree its own `target/` directory rather than sharing one
+`CARGO_TARGET_DIR`, so dep-info paths never cause stale builds across worktrees.
 
 ## Main-thread I/O audit
 
-Strata must not touch the disk on the GTK main thread (see
-[`docs/architecture.md`](architecture.md)). Runtime asserts catch calls that go
-through Strata's own seams; two opt-in tools catch the rest, including GLib and
-GTK internals and closes triggered by drops. Neither is a CI job: run them before
-pushing a change that moves work on or off the UI thread.
-
-`scripts/trace-main-io.py` runs a QA selection (every scenario by default)
-through `scripts/qa.sh` with `STRATA_QA_MAIN_IO` set, so the runner
-(`tests/qa/main_io.rs`) starts each Strata launch under `strace`: the
-application, its restarts, the portal backend and the second instances `launch`
-steps start. Only the initial thread, which runs GTK's main loop, is traced, so
-workers keep their normal timing. Arguments other than the script's own go to
-`qa.sh`:
+Strata must not perform blocking user-filesystem I/O on the UI thread (see
+[`docs/architecture.md`](architecture.md)). Runtime asserts catch calls through
+Strata's own seams; two opt-in tools catch the rest, including GLib internals
+and drops:
 
 ```bash
 ./scripts/trace-main-io.py                                  # every scenario
 ./scripts/trace-main-io.py delete-to-trash
 ./scripts/trace-main-io.py --stacks rename-commits-on-enter/list
-./scripts/trace-main-io.py --analyze target/main-io/<run>   # classify again
+./scripts/trace-main-io.py --analyze target/main-io/<run>   # reclassify saved traces
 ```
 
-Traces, each launch's log and the report go to
-`target/main-io/<run>/<scenario>__<run label>/launch-<n>/`. Each file
-call is classified by its path, after resolving descriptors and `*at` folders:
+`scripts/trace-main-io.py` runs a QA selection through `scripts/qa.sh` with
+`STRATA_QA_MAIN_IO` set, tracing only the UI thread under `strace`. Calls are
+classified into **user** (always a violation), **settings** (violation unless
+allowlisted in `tests/qa/main-io-allowlist.toml`), **toolkit** (ignored), and
+**unclassified** (reported for deliberate classification).
 
-- **user**: the scenario's fixture tree, `HOME`, the Trash, the user's
-  `gtksourceview-5` and `gstreamer-1.0` folders, `/tmp`, `/run/media`, `/media`,
-  `/mnt` and GVfs mounts. Always a violation.
-- **settings**: Strata's own settings, state, caches and runtime files (`strata`
-  under the XDG folders, the shared thumbnail cache, GTK bookmarks, portal files,
-  Omarchy's theme state and Strata's install folder). A violation unless a
-  documented exception below covers it.
-- **toolkit**: system paths and the toolkit's own files (fonts, icons, Mesa,
-  audio configuration, GTK settings, MIME associations, recently
-  used files, the rest of `XDG_RUNTIME_DIR`, the launch's `XDG_DATA_DIRS`, pipes,
-  sockets and event descriptors), and the runner's own places that `meta.json`
-  lists under `harness` (the shared shader cache, the launch's logs and the
-  `PATH` folders). Ignored. QA mode's own disk reads, for `pref` and file
-  predicates, run on a helper thread, so they never appear.
-- **unclassified**: anything else, reported so new paths get a deliberate
-  category.
-
-A metadata call (`stat`, `access`, `readlink`) on a folder above a settings or
-toolkit place takes that place's category, because path walks and `mkdir -p`
-stat every ancestor; the XDG folders themselves belong to the toolkit. Each call
-is a read, a write or, for `inotify_add_watch`, a watch, so no read exception
-covers a file monitor. The phase is startup until the first QA reply whose
-snapshot shows a pane, once the first window (the chooser for the portal
-backend) is up, then running; a second instance's whole trace is startup. The script exits
-non-zero when it finds a violation. `tests/qa/main-io-allowlist.toml` holds
-only documented exceptions, each with its reason; the script refuses entries for
-user paths. The documented exceptions are:
-
-- Strata's reads of its settings and state at startup, which stay synchronous.
-- The bundled font, which Strata writes at startup and fontconfig reads whenever
-  it lays out text.
-- GIO's checks of an application's program while it lists or launches
-  applications (`GDesktopAppInfo`), a toolkit exception.
-
-`--stacks` adds the Strata frames of every reported call, named from the binary's
-symbol table; it leaves plain `read` and `write` untraced and is slow, so use it
-on a selection.
-
-Limits: page faults on mapped files and waits on another thread, such as a
-synchronous D-Bus call or a mutex held by a worker, make no traced call. The stall
-watchdog covers those. Set `STRATA_UI_STALL_MS` (for example `250`) to start a
-thread that posts to the main context every 100 ms; when the main loop has not run
-it within the limit, Strata logs the call the UI thread is blocked in, read from
-`/proc`:
-
-```text
-UI thread stalled 250 ms in openat("/mnt/nas/folder") wchan=…
-UI thread ran again after 2400 ms
-```
-
-The watchdog is off unless the variable is set. `scripts/qa.sh` forwards it to
-every Strata launch, and `--stall-ms` passes it to an audit run, whose report
-lists the logged stalls per scenario. Debug builds stall at start-up while the
-first window is built, and more so under `strace`.
+For non-syscall stalls (such as blocking locks or synchronous D-Bus calls), set
+`STRATA_UI_STALL_MS` (for example `250`, or `--stall-ms 250` on `trace-main-io.py`)
+to run a watchdog thread that logs the UI thread's `/proc` wait state whenever
+the loop stalls past the threshold.
 
 ## In CI
 
 ### QA in CI
 
-The **QA scenarios** job in `ci.yml` runs every QA scenario only when CI is
-started by hand (**Run workflow** on the CI workflow, or
-`gh workflow run ci.yml --ref <branch>`); pull requests and pushes skip it. A
-failing scenario fails the run, but no required check needs the job. It waits
-for **Quality build and lint**, pulls (or loads) the same pinned build
-environment the Rust shards use, restores main's quality Cargo cache, and runs
-`./scripts/qa.sh` with `STRATA_TEST_CARGO_CACHE=target/quality-container`.
-`--features qa,invariant-checks` equals `--all-features`, so that cache already
-holds every dependency built in the same image at the same paths and only
-`strata` and the runner compile. The job then checks the `qa` build contains
-`usage: strata --qa`, the prefix of `USAGE` in `src/qa.rs` that the release
-workflow rejects in release binaries; `scripts/test_qa_mutation.py` requires
-both checks' pattern to prefix `USAGE`. A failed run uploads
-`target/qa-artifacts` as `qa-artifacts-<attempt>`. CI does not run
-`scripts/qa-mutation.sh`.
-
-`scripts/qa.sh` accepts `STRATA_TEST_CARGO_CACHE`, a directory under `target/`
-holding `cargo/` and `build/` (default `target/qa-container`); leave it unset
-locally. To read a failure, start with the job log (`PASS` and failed lines
-name each run), then the artifacts: `qa-artifacts-<attempt>` has the per-run
-bundle described in "Replies and failure artifacts".
+The **QA scenarios** job in `.github/workflows/ci.yml` runs the QA suite in the
+pinned container, verifies the `qa` build contains the QA usage sentinel (which
+the release workflow rejects in release binaries), and uploads `target/qa-artifacts`
+on failure. CI does not run `scripts/qa-mutation.sh`.
 
 ### Persistent published environments
 
 `Publish the pinned test image` (`test-image.yml`) publishes
-`ghcr.io/lgse/strata-test-image` from trusted main when the image inputs, Cargo
-manifests, or `.dockerignore` change, or on manual dispatch. The image holds the
-pinned GUI/font environment, Rust, and compiled locked Cargo dependencies. A
-stub application warms the dependencies; it and its fingerprints are removed,
-and no tested application binary is published.
+`ghcr.io/lgse/strata-test-image` from trusted `main` when `tests/container/`,
+Cargo manifests, or `.dockerignore` change, or on manual dispatch. The image
+holds the pinned Arch Linux snapshot, Rust toolchain, runtime/compositor
+packages, and locked Cargo dependencies (with stubbed workspace manifests
+cleaned after precompiling dependencies).
 
-Tags include SHA256 input identifiers, architecture, UID, and GID. Environment
-inputs are independent of application source; the build identifier additionally
-includes `Cargo.toml`, `Cargo.lock`, and `.dockerignore`, and the publisher uses
-those build and BuildKit cache tags to skip or speed up its own rebuilds.
-Existing publications are checked before rebuilding. A separate
-`base-<environment-inputs>-linux-amd64-1001-1001` tag is the reusable
-environment that `scripts/image_base.py` pulls and CI's quality and QA jobs
-run. It is published once per environment input set and is not retagged on
-ordinary Cargo changes. GHCR storage is independent of Actions cache eviction;
-retain tags needed by supported revisions rather than treating them as
-disposable per-run artifacts.
-
-`install-packages.sh` configures only the dated HTTPS Arch Linux Archive mirror
-and requires Pacman's package-signature policy. It refreshes the signed `core`
-and `extra` databases once, in the `package-indexes` stage, then performs a
-full snapshot upgrade and requested package installation as one transaction;
-the runtime, patched-GTK, and toolchain stages inherit those exact indexes, and
-none refreshes from a moving mirror.
-
-Only the main-only publisher has `packages: write` and registry login credentials.
-PR CI pulls anonymously and cannot publish shared images. After the first
-publication, **make the package public in GHCR package settings** and rerun
-the publisher. Its anonymous-access check fails descriptively until it is
-readable without credentials. Do not give fork PRs package-write credentials.
-A pull request that changes `tests/container/` builds its unpublished
-candidate environment in **Quality build and lint** and hands it to the shards
-and the QA job as an attempt-scoped artifact; the publisher publishes it once
-the change reaches main.
+Only the trusted `main` publisher holds `packages: write`; PR CI pulls
+anonymously and builds an attempt-scoped candidate environment only when a PR
+deliberately edits `tests/container/`.
 
 ### Maintaining behavioral coverage
 
 Before consolidating tests, identify the retained behavioral owner for every
 assertion. Fewer test functions or scenario runs do not establish a runtime
-improvement. Preserve functional layout, input-routing, filesystem-safety,
-live-preference and lifecycle regressions, even when they share fixtures.
+improvement. Preserve functional input-routing, filesystem-safety,
+live-preference, and lifecycle regressions, even when they share fixtures.
 Record task-specific inventories and consolidation decisions in the issue or PR,
 not in a committed audit report.

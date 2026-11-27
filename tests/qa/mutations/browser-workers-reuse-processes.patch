@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/thumbnails/mod.rs b/crates/strata-app/src/thumbnails/mod.rs
+index a9219c174..df53b05a4 100644
+--- a/crates/strata-app/src/thumbnails/mod.rs
++++ b/crates/strata-app/src/thumbnails/mod.rs
+@@ -275,7 +275,6 @@ async fn render(queued: Queued) {
+         }
+         let rendered = kind::render(&path, kind, &cancellation);
+         if let (Ok(rendered), Some(mtime)) = (&rendered, modified) {
+-            thumbnail_cache::store(&path, mtime, &rendered.png);
+         }
+         made(rendered, edge)
+     })

@@ -1,0 +1,11 @@
+diff --git a/crates/strata-app/src/single/mod.rs b/crates/strata-app/src/single/mod.rs
+--- a/crates/strata-app/src/single/mod.rs
++++ b/crates/strata-app/src/single/mod.rs
+@@ -89,6 +89,7 @@ fn controlled(handle: KeyHandle) -> CollectionState {
+     collection.controllers.pointer = Some(Box::new(PointerIntent::new()));
+     collection.controllers.keyboard = Some(Box::new(Keyboard::new(handle)));
+     collection.controllers.marquee = Some(Box::new(Marquee::new()));
++    collection.controllers.marquee = None;
+     collection
+ }
+ 

@@ -97,6 +97,12 @@ impl RenderPlan {
         }
     }
 
+    /// Multi-page PDF renders are cached in `PdfState::queue` while open; duplicating
+    /// scrolled pages beyond page 0 in the process-wide preview cache balloons memory.
+    fn skips_preview_cache(&self, page: i32) -> bool {
+        matches!(self.operation, ParseOperation::PreviewPdf(_)) && page > 0
+    }
+
     fn is_heavy(&self) -> bool {
         matches!(
             self.operation,
@@ -119,13 +125,6 @@ pub(super) struct PreviewLoad {
     content_type: String,
     content: PreviewContent,
     thumbnail: Option<Thumbnail>,
-}
-
-/// The first answer runs FFmpeg once, so it stays off the main loop.
-async fn decodes_animated_webp() -> bool {
-    gio::spawn_blocking(crate::sandbox::decodes_animated_webp)
-        .await
-        .unwrap_or(false)
 }
 
 fn empty_text() -> PreviewContent {
@@ -321,23 +320,7 @@ impl PreviewLoad {
         if let Some(sample) = &self.sample {
             reconcile_with_sample(&mut self.content_type, &mut self.content, sample);
         }
-        self.route_animated_webp().await;
         Ok(())
-    }
-
-    async fn route_animated_webp(&mut self) {
-        if self.is_local_animated_webp() && decodes_animated_webp().await {
-            self.content = PreviewContent::Media;
-        }
-    }
-
-    fn is_local_animated_webp(&self) -> bool {
-        matches!(self.content, PreviewContent::Image)
-            && self.entry.location.native_path().is_some()
-            && self
-                .sample
-                .as_deref()
-                .is_some_and(crate::services::webp_animation::is_animated_webp)
     }
 
     fn adopt_plain_text_hint(&mut self) {
@@ -514,6 +497,30 @@ impl PreviewLoad {
             .map_err(|message| self.staging_failure(message))
     }
 
+    fn sandboxed_media(&self, path: PathBuf, staged: Option<StagedPreview>) -> SandboxedMedia {
+        let mut media = SandboxedMedia {
+            path,
+            size: self.request.media_size,
+            backend: self.backend,
+            input_owner: None,
+            audio_only: false,
+        };
+        if let Some(staged) = staged {
+            media = media.retain_input(staged);
+        }
+        media
+    }
+
+    async fn is_staged_animated_webp(path: PathBuf) -> bool {
+        gio::spawn_blocking(move || {
+            read_head_sample(&path)
+                .map(|sample| crate::services::is_animated_webp_sample(&sample))
+                .unwrap_or(false)
+        })
+        .await
+        .unwrap_or(false)
+    }
+
     async fn load_media(&mut self) -> Step<()> {
         let staged = if self.entry.location.native_path().is_none() {
             Some(self.stage_video().await?)
@@ -526,16 +533,7 @@ impl PreviewLoad {
             .or_else(|| self.entry.location.native_path())
             .expect("native or staged media")
             .to_path_buf();
-        let mut media = SandboxedMedia {
-            path,
-            size: self.request.media_size,
-            backend: self.backend,
-            input_owner: None,
-            audio_only: false,
-        };
-        if let Some(staged) = staged {
-            media = media.retain_input(staged);
-        }
+        let media = self.sandboxed_media(path, staged);
         self.check_cancelled()?;
         self.content = PreviewContent::SandboxedMedia { media };
         Ok(())
@@ -705,14 +703,26 @@ impl PreviewLoad {
             .or_else(|| self.entry.location.native_path())
             .expect("native or staged preview input")
             .to_path_buf();
+        if staged.is_some()
+            && matches!(plan.operation, ParseOperation::PreviewImage)
+            && Self::is_staged_animated_webp(path.clone()).await
+        {
+            self.check_cancelled()?;
+            self.content_type = "image/webp".to_owned();
+            let media = self.sandboxed_media(path, staged);
+            self.content = PreviewContent::SandboxedMedia { media };
+            return Ok(());
+        }
         let modified = self.cache_modified(staged.is_some());
-        let cache_key = modified.map(|modified| PreviewCacheKey {
-            path: path.clone(),
-            modified,
-            pdf_page: plan.pdf_page(self.request.pdf_page),
-            model: plan.model,
-            route: plan.route,
-        });
+        let cache_key = modified
+            .filter(|_| !plan.skips_preview_cache(self.request.pdf_page))
+            .map(|modified| PreviewCacheKey {
+                path: path.clone(),
+                modified,
+                pdf_page: plan.pdf_page(self.request.pdf_page),
+                model: plan.model,
+                route: plan.route,
+            });
         if let Some(cached) = cache_key
             .as_ref()
             .and_then(|key| PREVIEW_CACHE.with(|cache| cache.borrow_mut().get(key)))

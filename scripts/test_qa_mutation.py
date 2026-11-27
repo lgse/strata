@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 import qa_mutation
-from qa_mutation import Mutation, baseline_verdict, chosen_scenarios, mutated_verdict, parse_qa_log
+from qa_mutation import Mutation, PatchTarget, baseline_verdict, chosen_patches, mutated_verdict, parse_qa_log
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
@@ -56,29 +56,50 @@ class VerdictTests(unittest.TestCase):
         self.assertFalse(mutated_verdict({}, 101).caught, "a build failure runs nothing")
 
 
-class ScenarioChoiceTests(unittest.TestCase):
+class PatchChoiceTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.scenarios = Path(directory.name)
-        (self.scenarios / "clipboard").mkdir()
-        for name, mutation in (("alpha", "break-alpha"), ("beta", None), ("gamma", "break-gamma")):
+        root = Path(directory.name)
+        self.scenarios = root / "scenarios"
+        (self.scenarios / "clipboard").mkdir(parents=True)
+        for name in ("alpha", "beta", "gamma"):
             (self.scenarios / "clipboard" / f"{name}.jsonl").write_text(
-                json.dumps({"scenario": name, "modes": ["columns"], "mutation": mutation}) + "\n")
+                json.dumps({"scenario": name, "modes": ["columns"]}) + "\n"
+            )
+        self.mutations = root / "mutations"
+        self.mutations.mkdir()
+        for patch in ("alpha.patch", "alpha.extra-case.patch", "gamma.patch"):
+            (self.mutations / patch).write_text("--- a/x\n+++ b/x\n")
 
-    def test_a_name_is_a_mutation_patch_or_else_a_scenario(self):
-        chosen = chosen_scenarios(["break-gamma", "alpha"], self.scenarios)
-        self.assertEqual([(s.name, s.mutation) for s in chosen],
-                         [("gamma", "break-gamma"), ("alpha", "break-alpha")])
-        self.assertEqual([s.name for s in chosen_scenarios([], self.scenarios)], ["alpha", "gamma"])
-        for name in ("beta", "delta"):
+    def test_names_select_whole_scenarios_or_individual_labelled_patches(self):
+        self.assertEqual(
+            chosen_patches(["alpha"], self.scenarios, self.mutations),
+            [PatchTarget("alpha", "alpha"), PatchTarget("alpha", "alpha.extra-case")],
+        )
+        self.assertEqual(
+            chosen_patches(["alpha.extra-case", "gamma.patch"], self.scenarios, self.mutations),
+            [PatchTarget("alpha", "alpha.extra-case"), PatchTarget("gamma", "gamma")],
+        )
+        self.assertEqual(
+            chosen_patches([], self.scenarios, self.mutations),
+            [
+                PatchTarget("alpha", "alpha"),
+                PatchTarget("alpha", "alpha.extra-case"),
+                PatchTarget("gamma", "gamma"),
+            ],
+        )
+        for name in ("beta", "delta", "alpha.missing"):
             with self.assertRaises(SystemExit):
-                chosen_scenarios([name], self.scenarios)
+                chosen_patches([name], self.scenarios, self.mutations)
 
-    def test_every_committed_mutation_belongs_to_exactly_one_scenario(self):
-        named = [s.mutation for s in qa_mutation.scenarios() if s.mutation]
-        self.assertEqual(sorted(named), sorted(set(named)))
-        self.assertEqual(sorted(named), sorted(path.stem for path in qa_mutation.MUTATIONS.glob("*.patch")))
+    def test_every_committed_mutation_is_well_named_and_belongs_to_a_scenario(self):
+        chosen = chosen_patches([])
+        self.assertGreater(len(chosen), 0)
+        self.assertEqual(
+            [target.patch for target in chosen],
+            sorted(path.stem for path in qa_mutation.MUTATIONS.glob("*.patch")),
+        )
 
 
 class MutationTests(unittest.TestCase):
@@ -119,14 +140,22 @@ class CiWorkflowTests(unittest.TestCase):
                                workflow.split("\njobs:\n", 1)[1], re.M | re.S))
 
     def test_both_release_marker_checks_grep_a_prefix_of_the_qa_usage_constant(self):
-        source = (REPOSITORY / "src/qa.rs").read_text()
+        source = (REPOSITORY / "crates/strata-app/src/qa.rs").read_text()
         usage = re.search(r'^const USAGE: &str = "([^"]+)";$', source, re.M).group(1)
-        self.assertIn("return Err(USAGE.to_owned());", source)
+        self.assertIn('eprintln!("{USAGE}");', source)
         release = (REPOSITORY / ".github/workflows/release.yml").read_text()
         check = release.split("- name: Check the release binary has no QA mode", 1)[1].split("\n      - name:", 1)[0]
         pattern = re.search(r'if strings "target/\$TARGET/release/strata" \| grep -F "([^"]+)"; then', check).group(1)
         self.assertTrue(usage.startswith(pattern), (usage, pattern))
         self.assertIn(f'| grep -F "{pattern}"', self.jobs()["qa"])
+        self.assertIn(f'| grep -F "{pattern}"', self.jobs()["qa-smoke"])
+
+    def test_qa_smoke_job_runs_the_smoke_selection_on_pull_requests(self):
+        smoke = self.jobs()["qa-smoke"]
+        self.assertIn("needs: quality-build", smoke)
+        self.assertIn("github.event_name != 'push'", smoke)
+        self.assertIn("github.event_name != 'workflow_dispatch'", smoke)
+        self.assertIn("run: ./scripts/qa.sh --smoke", smoke)
 
 
 if __name__ == "__main__":

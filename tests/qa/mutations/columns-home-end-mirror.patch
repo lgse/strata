@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/columns/mirror.rs b/crates/strata-app/src/columns/mirror.rs
+--- a/crates/strata-app/src/columns/mirror.rs
++++ b/crates/strata-app/src/columns/mirror.rs
+@@ -121,6 +121,9 @@ impl Mirror {
+ }
+
+ fn mirror(browser: &Rc<Browser>, depth: usize, position: usize) {
++    if true {
++        return;
++    }
+     if browser.pending_navigation_generation().is_some() {
+         return;
+     }

@@ -68,7 +68,9 @@ def ensure_base(engine, repository=REPOSITORY):
 def build_base(engine, repository=REPOSITORY):
     inputs = image_key(repository)
     local = f"strata-test:base-{inputs}-{os.getuid()}-{os.getgid()}"
-    subprocess.run([engine, "build", "--platform=linux/amd64", "--target", "toolchain",
+    # The stage the publisher pushes: the environment, and the dependencies a run seeds its
+    # Cargo cache from (scripts/dependency_seed.py). It fetches crates, so it needs the network.
+    subprocess.run([engine, "build", "--platform=linux/amd64", "--target", "dependencies",
                     "--tag", local, "--build-arg", f"TEST_UID={os.getuid()}",
                     "--build-arg", f"TEST_GID={os.getgid()}",
                     "--label", f"org.strata.test.inputs={inputs}",

@@ -90,8 +90,6 @@ fn empty_trash_deletes_every_top_level_entry_in_bounded_batches() {
 fn aborting_empty_trash_stops_deletion_mid_flight() {
     let root = unique_fixture_root("abort-empty-trash-mid-flight");
     std::fs::create_dir_all(&root).expect("the trash fixture should be created");
-    // More than one `next_files_future` batch (64 entries), so aborting after the first batch's
-    // progress callback is genuinely mid-flight, not the whole walk finishing in one step.
     let total_files = 200;
     for index in 0..total_files {
         std::fs::write(root.join(format!("file-{index}.txt")), b"content")
@@ -108,9 +106,6 @@ fn aborting_empty_trash_stops_deletion_mid_flight() {
                 empty_trash(&trash_root, move |processed| progress_tick.set(processed)).await
             });
 
-            // Drive the loop only until the first batch has reported progress, then abort
-            // immediately -- with 200 files and a 64-entry batch size, that's genuinely
-            // mid-flight regardless of exactly how many main-loop iterations it took to get there.
             for _ in 0..1_000 {
                 if progress.get() > 0 {
                     break;

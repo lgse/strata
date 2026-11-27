@@ -274,8 +274,6 @@ fn stage_workdir_is_unique_per_call() {
     assert_ne!(first.path(), second.path());
     assert!(first.path().is_dir());
     assert!(second.path().is_dir());
-    // Both live inside `exe_dir`, matching the old process-scoped scheme's
-    // placement, just no longer sharing a single path within it.
     assert_eq!(first.path().parent(), Some(exe_dir.path()));
     assert_eq!(second.path().parent(), Some(exe_dir.path()));
 }
@@ -824,8 +822,6 @@ fn timed_download(
 
 #[test]
 fn download_keeps_waiting_through_gaps_shorter_than_the_idle_limit() {
-    // Each gap outlasts one cancel poll, so a wait spans several polls, and
-    // the whole transfer takes twice the idle limit: there is no total cap.
     let body = chunks(4, 4096);
     let server = serve_trickle(Some(4 * 4096), body.clone(), Duration::from_millis(1500));
     let idle = Duration::from_secs(3);

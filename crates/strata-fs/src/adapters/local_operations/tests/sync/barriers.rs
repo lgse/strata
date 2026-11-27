@@ -2,12 +2,8 @@
 
 use super::*;
 
-/// What udev records the device as holding; an error is a lookup that fails
-/// on an NTFS device.
 type Device = Option<Result<&'static str, Errno>>;
 
-/// A destination family and what its barrier before deleting a moved
-/// source does there.
 struct Family {
     fs_type: &'static str,
     device: Device,
@@ -308,8 +304,6 @@ fn a_replace_on_smb_syncs_its_copy_only_where_the_original_is_deleted() -> Resul
     Ok(())
 }
 
-/// A move of `a.txt` into an unreadable destination on `fs_type`, the
-/// destination being the mount's root or a folder `beneath` it.
 fn check_unreadable_destination(
     id: u64,
     fs_type: &'static str,
@@ -390,9 +384,6 @@ fn assert_flushed_names(calls: &[Call], fs_type: &str, beneath: bool, row: &str)
 #[test]
 fn a_barrier_needs_a_readable_folder_only_where_it_flushes_one() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // The family, whether the unreadable destination is a folder beneath
-    // the mount's root, and whether the move goes ahead: `syncfs` takes an
-    // unnamed file made in an unreadable root, a folder's `fsync` does not.
     let rows = [
         ("ext4", true, true),
         ("ext4", false, true),
@@ -534,9 +525,6 @@ fn check_lost_writeback(
 fn a_writeback_lost_during_a_move_keeps_every_source_it_may_hold() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
     let _limits = LimitsGuard::set(NO_LIMITS);
-    // The first copy's writeback is lost once it is published, with one
-    // item, or with a second whose barrier is opened after the loss. A file
-    // is published by linking its unnamed copy, or by renaming its named stage.
     let stages = [
         (Op::LinkFd, Support::Supported),
         (Op::Rename, Support::Rejected(Errno::OPNOTSUPP)),

@@ -1,0 +1,17 @@
+{"scenario":"menu-key-skips-scrolled-away-cursor","modes":["columns","icons"],"layout":"us","mutation":null,"tree":{"file-{000..199}.txt":"{}\n"},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"Menu/Shift+F10 open no menu for off-screen cursor, scroll kept; commands/tests/menu_key.rs pins it headless, real-window routing only here"}}
+{"select":{"entry":"file-000.txt","dir":"$root"}}
+{"wait":{"all":[{"focused":"file-000.txt"},{"selected":["file-000.txt"],"dir":"$root"}]},"message":"the cursor and selection to rest on 'file-000.txt'"}
+{"wheel":{"container":"$root"},"clicks":3,"direction":"down","until":{"absent":{"entry":"file-000.txt","dir":"$root"}},"tries":30}
+{"wait":{"absent":{"entry":"file-000.txt","dir":"$root"}},"message":"the wheel to scroll the cursor's entry out of view"}
+{"key":"Menu"}
+{"expect":[{"menu_items":null},{"selected":[],"dir":"$root"},{"absent":{"entry":"file-000.txt","dir":"$root"}}],"timeout_ms":1000,"hold_ms":500,"message":"the Menu key with the cursor's entry out of view to open no menu, select no entry in view and leave the scroll alone"}
+{"key":"shift+F10"}
+{"expect":[{"menu_items":null},{"selected":[],"dir":"$root"},{"absent":{"entry":"file-000.txt","dir":"$root"}}],"timeout_ms":1000,"hold_ms":500,"message":"Shift+F10 with the cursor's entry out of view to open no menu, select no entry in view and leave the scroll alone"}
+{"wheel":{"container":"$root"},"clicks":3,"direction":"up","until":{"on_screen":{"entry":"file-000.txt","dir":"$root"}},"tries":30}
+{"wait":{"on_screen":{"entry":"file-000.txt","dir":"$root"}},"message":"the wheel to bring the cursor's entry back into view"}
+{"expect":[{"selected":["file-000.txt"],"dir":"$root"},{"focused":"file-000.txt"}],"message":"the cursor and the selection to have stayed on 'file-000.txt'"}
+{"key":"Menu"}
+{"wait":{"menu_items":{"contains":["Rename","Move to Trash"]}},"message":"the Menu key with the cursor's entry in view to open its context menu"}
+{"key":"Escape"}
+{"wait":{"menu_items":null},"message":"Escape to close the menu"}
+{"expect":{"selected":["file-000.txt"],"dir":"$root"},"message":"the menu to act on 'file-000.txt', the entry under the cursor"}

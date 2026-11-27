@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/properties/media.rs b/crates/strata-app/src/properties/media.rs
+index b360b5a94..21df6a9f2 100644
+--- a/crates/strata-app/src/properties/media.rs
++++ b/crates/strata-app/src/properties/media.rs
+@@ -172,7 +172,7 @@ pub(super) fn media_rows(metadata: &MediaMetadata) -> Vec<(&'static str, String)
+ }
+ 
+ fn append_stream_rows(rows: &mut Vec<(&'static str, String)>, metadata: &MediaMetadata) {
+-    if let Some((width, height)) = metadata.dimensions {
++    if let Some((width, height)) = metadata.dimensions.filter(|_| false) {
+         rows.push((
+             "RESOLUTION",
+             rust_i18n::t!(

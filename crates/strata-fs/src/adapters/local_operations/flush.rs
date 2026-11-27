@@ -253,8 +253,6 @@ pub(crate) fn removable_sync_roots(
     roots
 }
 
-/// Reads the mount table off the main thread; the volume monitor is
-/// in-memory GIO state and is matched here.
 pub(super) async fn removable_roots_for_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
     if paths.is_empty() {
         return Vec::new();

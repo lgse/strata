@@ -336,8 +336,6 @@ impl FixedName<'_> {
         );
     }
 
-    /// A typed name is refused exactly when fixing would change it, and the
-    /// fixed name is never refused.
     fn assert_refusal_agrees(&self) {
         if let Some(typed) = self.name.to_str() {
             assert_eq!(

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the mount behind a folder says about itself: learned once per mount from mountinfo,
-//! udev and `statfs`, and read once per operation.
-
 #[cfg(test)]
 mod tests;
 
@@ -89,8 +86,6 @@ pub(super) fn with_links(
     identity
 }
 
-/// For `fuseblk`, udev's record of the device tells which daemon serves it. What another
-/// thread learned of the mount meanwhile stays.
 fn learn_mount_type(fs: &dyn FsOps, dir: BorrowedFd<'_>, key: MountKey) -> MountCapabilities {
     let mount = fs.mount_type(dir);
     let mount_type = mount.as_ref().map(|(mount_type, _)| mount_type);
@@ -209,8 +204,6 @@ impl MountProfile {
     }
 }
 
-/// Each mount is read once per operation, so its planner and workers agree even when a mount
-/// change drops what was learned.
 #[derive(Clone, Default)]
 pub(super) struct Profiles(Arc<Mutex<HashMap<MountKey, MountCapabilities>>>);
 
@@ -267,8 +260,6 @@ impl Profiles {
         self.taught(site).symlinks != Some(false)
     }
 
-    /// Where names must be UTF-8, a link target that is not stays behind: SMB with POSIX
-    /// extensions stores each malformed byte as `?`, and NTFS refuses it.
     pub(super) fn holds_link_to(&self, site: &Site, target: &OsStr) -> bool {
         let taught = self.taught(site);
         taught.symlinks != Some(false)

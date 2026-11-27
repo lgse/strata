@@ -68,19 +68,20 @@ pub(super) fn unknown_update(location: &Location) -> MetadataUpdate {
     }
 }
 
-/// Sends a worker's first update at once, then batches of eight.
+const COALESCE_BATCH_SIZE: usize = 16;
+const COALESCE_WINDOW: Duration = Duration::from_millis(24);
+
+/// Batches cheap stat updates per worker before sending to the coalescing receiver.
 #[derive(Default)]
 struct UpdateBatch {
     updates: Vec<MetadataUpdate>,
-    sent_first: bool,
 }
 
 impl UpdateBatch {
     fn push(&mut self, update: MetadataUpdate, tx: &UnboundedSender<Vec<MetadataUpdate>>) {
         self.updates.push(update);
-        if !self.sent_first || self.updates.len() >= 8 {
+        if self.updates.len() >= COALESCE_BATCH_SIZE {
             let _ = tx.unbounded_send(std::mem::take(&mut self.updates));
-            self.sent_first = true;
         }
     }
 
@@ -212,6 +213,60 @@ pub(super) fn emit_fill_outcome(
     });
 }
 
+fn dedup_latest(updates: Vec<MetadataUpdate>) -> Vec<MetadataUpdate> {
+    if updates.len() <= 1 {
+        return updates;
+    }
+    let mut slots: HashMap<Location, usize> = HashMap::with_capacity(updates.len());
+    let mut merged: Vec<MetadataUpdate> = Vec::with_capacity(updates.len());
+    for update in updates {
+        if let Some(&slot) = slots.get(&update.location) {
+            merged[slot] = update;
+        } else {
+            slots.insert(update.location.clone(), merged.len());
+            merged.push(update);
+        }
+    }
+    merged
+}
+
+async fn next_coalesced_batch(
+    rx: &mut futures_channel::mpsc::UnboundedReceiver<Vec<MetadataUpdate>>,
+    cancelled: &gio::Cancellable,
+) -> Option<Vec<MetadataUpdate>> {
+    use futures_lite::StreamExt;
+    let mut batch = rx.next().await?;
+    if cancelled.is_cancelled() {
+        return None;
+    }
+    let deadline = Instant::now() + COALESCE_WINDOW;
+    loop {
+        while batch.len() < COALESCE_BATCH_SIZE {
+            match rx.try_recv() {
+                Ok(more) => batch.extend(more),
+                Err(futures_channel::mpsc::TryRecvError::Empty) => break,
+                Err(futures_channel::mpsc::TryRecvError::Closed) => {
+                    return Some(dedup_latest(batch));
+                }
+            }
+        }
+        if cancelled.is_cancelled() {
+            return None;
+        }
+        if batch.len() >= COALESCE_BATCH_SIZE {
+            return Some(dedup_latest(batch));
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Some(dedup_latest(batch));
+        }
+        match glib::future_with_timeout(remaining, rx.next()).await {
+            Ok(Some(more)) => batch.extend(more),
+            Ok(None) | Err(_) => return Some(dedup_latest(batch)),
+        }
+    }
+}
+
 fn run_parallel_fill(
     width: usize,
     request: FillRequest,
@@ -254,13 +309,18 @@ fn run_parallel_fill(
             tally
         });
 
-        use futures_lite::StreamExt;
-        while let Some(chunk) = rx.next().await {
-            if !chunk.is_empty() && !cancelled.is_cancelled() {
+        while let Some(mut chunk) = next_coalesced_batch(&mut rx, &cancelled).await {
+            while !chunk.is_empty() && !cancelled.is_cancelled() {
+                let tail = if chunk.len() > COALESCE_BATCH_SIZE {
+                    chunk.split_off(COALESCE_BATCH_SIZE)
+                } else {
+                    Vec::new()
+                };
                 emit(DirectoryEvent::MetadataFilled {
                     request_id,
                     updates: chunk,
                 });
+                chunk = tail;
             }
         }
 
@@ -436,8 +496,6 @@ fn apply_media_metadata(
         .unwrap_or(MetadataValue::Unavailable);
 }
 
-/// Icon details for one native file that has none cached; `Break` ends the fill with
-/// whether it finished in time.
 struct DetailProbe<'a> {
     path: &'a Path,
     cancellable: &'a gio::Cancellable,
@@ -541,7 +599,8 @@ pub(super) fn fill_icon_details_with_probe(
     if cancellable.is_cancelled() || Instant::now() >= deadline {
         return false;
     }
-    let fingerprint = IconDetailsFingerprint::read(path);
+    let fingerprint =
+        IconDetailsFingerprint::from_info(info).or_else(|| IconDetailsFingerprint::read(path));
     if let Some(details) =
         fingerprint.and_then(|fingerprint| cached_icon_details(path, fingerprint))
     {

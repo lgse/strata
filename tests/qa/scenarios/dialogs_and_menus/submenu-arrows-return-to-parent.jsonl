@@ -1,4 +1,4 @@
-{"scenario":"submenu-arrows-return-to-parent","modes":["columns","icons","list"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$data/applications","mkdir":true}},{"fs":{"path":"$data/applications/strata-context-viewer.desktop","write":"[Desktop Entry]\nType=Application\nName=Context Viewer\nExec=true %U\nMimeType=text/plain;text/markdown;\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\ntext/plain=strata-context-viewer.desktop;\ntext/markdown=strata-context-viewer.desktop;\n[Added Associations]\ntext/plain=strata-context-viewer.desktop;\ntext/markdown=strata-context-viewer.desktop;\n"}},{"fs":{"path":"$config/strata/actions/first-action","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/first-action/action.toml","write":"schema_version = 1\nid = \"first-action\"\nname = \"First action\"\nmenu = \"submenu\"\n[when]\n[run]\nruntime = \"command\"\nprogram = \"true\"\nargs = [\"{paths}\"]\n"}},{"fs":{"path":"$config/strata/actions/second-action","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/second-action/action.toml","write":"schema_version = 1\nid = \"second-action\"\nname = \"Second action\"\nmenu = \"submenu\"\n[when]\n[run]\nruntime = \"command\"\nprogram = \"true\"\nargs = [\"{paths}\"]\n"}}],"cost":{"columns":1.5,"icons":1.6,"list":1.6},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Left closes a keyboard submenu and returns focus to its parent item; only scenario pressing Left in a submenu (no unit test)"}}
+{"scenario":"submenu-arrows-return-to-parent","modes":["columns","icons","list"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"setup":[{"fs":{"path":"$data/applications","mkdir":true}},{"fs":{"path":"$data/applications/strata-context-viewer.desktop","write":"[Desktop Entry]\nType=Application\nName=Context Viewer\nExec=true %U\nMimeType=text/plain;text/markdown;\n"}},{"fs":{"path":"$config/mimeapps.list","write":"[Default Applications]\ntext/plain=strata-context-viewer.desktop;\ntext/markdown=strata-context-viewer.desktop;\n[Added Associations]\ntext/plain=strata-context-viewer.desktop;\ntext/markdown=strata-context-viewer.desktop;\n"}},{"fs":{"path":"$config/strata/actions/first-action","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/first-action/action.toml","write":"schema_version = 1\nid = \"first-action\"\nname = \"First action\"\nmenu = \"submenu\"\n[when]\n[run]\nruntime = \"command\"\nprogram = \"true\"\nargs = [\"{paths}\"]\n"}},{"fs":{"path":"$config/strata/actions/second-action","mkdir":true,"parents":true}},{"fs":{"path":"$config/strata/actions/second-action/action.toml","write":"schema_version = 1\nid = \"second-action\"\nname = \"Second action\"\nmenu = \"submenu\"\n[when]\n[run]\nruntime = \"command\"\nprogram = \"true\"\nargs = [\"{paths}\"]\n"}}],"cost":{"columns":1.5,"icons":1.6,"list":1.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Left closes an action submenu and returns focus to its row in the app; Left-return unit-pinned, GUI custom-action route is not"}}
 {"select":{"entry":"todo.txt","dir":"$root"}}
 {"click":{"entry":"readme.md","dir":"$root"},"mods":["ctrl"]}
 {"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
@@ -19,7 +19,6 @@
 {"wait":{"state":{"target":{"menu_item":"Cut"},"focused":true}},"message":"parent Down navigation"}
 {"key":"Up"}
 {"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"parent Up navigation"}
-{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
 {"key":"space"}
 {"wait":{"state":{"target":{"menu_item":"First action"},"focused":true}},"message":"first submenu action focus"}
 {"key":"Down"}
@@ -31,7 +30,6 @@
 {"wait":{"state":{"target":{"menu_item":"Cut"},"focused":true}},"message":"parent Down navigation"}
 {"key":"Up"}
 {"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"parent Up navigation"}
-{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
 {"key":"Return"}
 {"wait":{"state":{"target":{"menu_item":"First action"},"focused":true}},"message":"first submenu action focus"}
 {"key":"Down"}
@@ -43,12 +41,12 @@
 {"wait":{"state":{"target":{"menu_item":"Cut"},"focused":true}},"message":"parent Down navigation"}
 {"key":"Up"}
 {"wait":{"state":{"target":{"menu_item":"Actions"},"focused":true}},"message":"parent Up navigation"}
-{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to become ['readme.md', 'todo.txt']"}
 {"key":"Down"}
 {"key":"Down"}
 {"wait":{"state":{"target":{"menu_item":"Copy"},"focused":true}},"message":"Copy focus after submenu return"}
 {"key":"Return"}
 {"wait":{"menu_items":null},"message":"the menu to close"}
+{"expect":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the selection to stay ['readme.md', 'todo.txt']"}
 {"select":{"entry":"archive"},"modes":["columns"]}
 {"click":{"entry":"archive"},"count":2,"modes":["icons","list"]}
 {"wait":{"directory":"archive"},"message":"the browser to be working in 'archive'"}

@@ -1,4 +1,4 @@
-{"scenario":"alt-up-and-history","modes":["columns","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9,"list":1.0},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"alt+Up to parent and alt+Left/alt+Right history round trip with selection and focus; alt+Right forward and columns closed-child check unique in QA, alt+Up partly overlaps return-restores-nested-scroll"}}
+{"scenario":"alt-up-and-history","modes":["columns","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9,"list":1.0},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"alt+Up/Left/Right history with selection and focus; columns/tests/history.rs covers Columns, List route is unique"}}
 {"select":{"entry":"documents"},"modes":["columns"]}
 {"click":{"entry":"documents"},"count":2,"modes":["list"]}
 {"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}

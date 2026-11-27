@@ -1,0 +1,806 @@
+// SPDX-License-Identifier: MIT
+
+use std::hash::{Hash, Hasher};
+use std::rc::Rc;
+use std::time::Duration;
+
+use rune::{El, Tx, el, memo, row, text};
+use strata_kit::look::Look;
+use strata_kit::slots::collection as tokens;
+
+use super::Config;
+use super::keys::{ICON, LABEL, header_key, line_key, row_key};
+use super::lines::{Group, GroupStyle, Line, LineMap};
+use super::matches::NameMatches;
+use super::state::DropOver;
+use crate::contract::{DropHover, DropZone, ElementKey, Entry, EntryId, Point, Rect};
+
+/// Marks the host puts on rows, each with its own look.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct RowMarks {
+    /// Cut to the clipboard: drawn faded (`collection.cut.opacity`), with the cut icon.
+    pub cut: bool,
+    /// Copied to the clipboard: its icon is the copy mark at full opacity.
+    pub copied: bool,
+    /// Part of a drag in progress: drawn faded (`collection.drag.opacity`).
+    pub dragging: bool,
+    /// What Enter in the filter field opens: outlined in the accent.
+    pub enter_target: bool,
+    /// On the open path, in Columns: the folder whose child column is open.
+    pub active_path: bool,
+    /// The open path's folder in the column before the active one.
+    pub active_parent: bool,
+    /// The row a folder peek is open from.
+    pub peek_anchor: bool,
+    /// The parts of the name that match what the host looks for, painted over the label in the accent (`NameMatches`).
+    pub name_matches: NameMatches,
+    /// Gone from view while its entry stays listed.
+    pub vanished: bool,
+}
+
+/// What a row draws from: its entry's place in the selection, and the host's marks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct RowState {
+    /// Selected (a provisional pick included).
+    pub selected: bool,
+    /// Selected as a load's automatic pick, not a fill.
+    pub provisional: bool,
+    /// The cursor's entry.
+    pub cursor: bool,
+    /// The cursor's entry, with the cursor outline showing (keyboard mode, active column).
+    pub cursor_shown: bool,
+    /// A drag hovering the collection would drop on this folder.
+    pub drop_target: bool,
+    /// Its rename editor is open.
+    pub renaming: bool,
+    /// The host's marks.
+    pub marks: RowMarks,
+}
+
+/// What a slot builds a row part from.
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub struct RowCx<'a> {
+    /// The entry's index in the source.
+    pub index: usize,
+    /// The entry.
+    pub entry: Entry<'a>,
+    /// What the row draws from.
+    pub state: RowState,
+    /// The look.
+    pub look: &'a Look,
+    /// The collection's key.
+    pub scope: &'a str,
+    /// Whether the item draws hover now: off after keyboard navigation until the pointer moves.
+    pub hover_live: bool,
+}
+
+type BuildFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> El>;
+type ContentFn<S> = Rc<dyn Fn(&S, &RowCx<'_>, El, El) -> El>;
+type VersionFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> u64>;
+type DescribeFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> Option<String>>;
+
+/// A row part the host or the view builds: an icon or thumbnail, a label (matched text), or a rename editor.
+pub struct Slot<S> {
+    pub(super) build: BuildFn<S>,
+    pub(super) version: Option<VersionFn<S>>,
+}
+
+impl<S> Clone for Slot<S> {
+    fn clone(&self) -> Self {
+        Self {
+            build: self.build.clone(),
+            version: self.version.clone(),
+        }
+    }
+}
+
+impl<S: 'static> Slot<S> {
+    /// A slot built by `build`, built again whenever `version` changes.
+    pub fn new(
+        version: impl Fn(&S, &RowCx<'_>) -> u64 + 'static,
+        build: impl Fn(&S, &RowCx<'_>) -> El + 'static,
+    ) -> Self {
+        Self {
+            build: Rc::new(build),
+            version: Some(Rc::new(version)),
+        }
+    }
+
+    /// A slot built by `build` from its [`RowCx`] alone, so the row's own version covers it.
+    pub fn pure(build: impl Fn(&S, &RowCx<'_>) -> El + 'static) -> Self {
+        Self {
+            build: Rc::new(build),
+            version: None,
+        }
+    }
+}
+
+/// The row's content, laid out from its icon and label parts.
+pub struct ContentSlot<S> {
+    pub(super) build: ContentFn<S>,
+    pub(super) version: Option<VersionFn<S>>,
+}
+
+impl<S> Clone for ContentSlot<S> {
+    fn clone(&self) -> Self {
+        Self {
+            build: self.build.clone(),
+            version: self.version.clone(),
+        }
+    }
+}
+
+impl<S: 'static> ContentSlot<S> {
+    /// Content laid out by `build` from the row's icon and label.
+    pub fn new(
+        version: impl Fn(&S, &RowCx<'_>) -> u64 + 'static,
+        build: impl Fn(&S, &RowCx<'_>, El, El) -> El + 'static,
+    ) -> Self {
+        Self {
+            build: Rc::new(build),
+            version: Some(Rc::new(version)),
+        }
+    }
+
+    /// Content laid out from its [`RowCx`], icon and label alone.
+    pub fn pure(build: impl Fn(&S, &RowCx<'_>, El, El) -> El + 'static) -> Self {
+        Self {
+            build: Rc::new(build),
+            version: None,
+        }
+    }
+}
+
+/// A row's accessible description, read after its name (the entry's).
+pub struct Describe<S> {
+    pub(super) build: DescribeFn<S>,
+    pub(super) version: Option<VersionFn<S>>,
+}
+
+impl<S> Clone for Describe<S> {
+    fn clone(&self) -> Self {
+        Self {
+            build: self.build.clone(),
+            version: self.version.clone(),
+        }
+    }
+}
+
+impl<S: 'static> Describe<S> {
+    /// A description from `build`, built again whenever `version` changes (see `Slot` on versions).
+    pub fn new(
+        version: impl Fn(&S, &RowCx<'_>) -> u64 + 'static,
+        build: impl Fn(&S, &RowCx<'_>) -> Option<String> + 'static,
+    ) -> Self {
+        Self {
+            build: Rc::new(build),
+            version: Some(Rc::new(version)),
+        }
+    }
+
+    /// A description from the row's [`RowCx`] alone.
+    pub fn pure(build: impl Fn(&S, &RowCx<'_>) -> Option<String> + 'static) -> Self {
+        Self {
+            build: Rc::new(build),
+            version: None,
+        }
+    }
+}
+
+type DelaysFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> Option<(Duration, Duration)>>;
+type ReportFn<S> = Rc<dyn Fn(&mut S, RestReport, &mut Tx)>;
+type PartFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> Option<El>>;
+type ViewFn<S> = Rc<dyn Fn(&mut S, RestView) -> bool>;
+type ViewActiveFn<S> = Rc<dyn Fn(&S) -> bool>;
+
+/// Rows that report the pointer resting on them, through Rune's `El::hover_delays`: folder peek.
+pub struct Rest<S> {
+    pub(super) delays: DelaysFn<S>,
+    pub(super) report: ReportFn<S>,
+    pub(super) part: Option<(VersionFn<S>, PartFn<S>)>,
+    pub(super) view: Option<ViewFn<S>>,
+    pub(super) view_active: Option<ViewActiveFn<S>>,
+}
+
+impl<S> Clone for Rest<S> {
+    fn clone(&self) -> Self {
+        Self {
+            delays: self.delays.clone(),
+            report: self.report.clone(),
+            part: self.part.clone(),
+            view: self.view.clone(),
+            view_active: self.view_active.clone(),
+        }
+    }
+}
+
+impl<S: 'static> Rest<S> {
+    /// Rows `delays` gives delays for report to `report`.
+    pub fn new(
+        delays: impl Fn(&S, &RowCx<'_>) -> Option<(Duration, Duration)> + 'static,
+        report: impl Fn(&mut S, RestReport, &mut Tx) + 'static,
+    ) -> Self {
+        Self {
+            delays: Rc::new(delays),
+            report: Rc::new(report),
+            part: None,
+            view: None,
+            view_active: None,
+        }
+    }
+
+    /// A part added to the rows `build` returns one for, last, made inert and hidden from assistive technology.
+    pub fn part(
+        mut self,
+        version: impl Fn(&S, &RowCx<'_>) -> u64 + 'static,
+        build: impl Fn(&S, &RowCx<'_>) -> Option<El> + 'static,
+    ) -> Self {
+        self.part = Some((Rc::new(version), Rc::new(build)));
+        self
+    }
+
+    /// Hears which entries the viewport shows whenever that changes (a scroll, a listing change).
+    pub fn on_view(mut self, f: impl Fn(&mut S, RestView) -> bool + 'static) -> Self {
+        self.view = Some(Rc::new(f));
+        self.view_active = None;
+        self
+    }
+
+    /// Like [`Rest::on_view`], but skips building the visible id list whenever `active` is false.
+    pub fn on_view_when(
+        mut self,
+        active: impl Fn(&S) -> bool + 'static,
+        f: impl Fn(&mut S, RestView) -> bool + 'static,
+    ) -> Self {
+        self.view = Some(Rc::new(f));
+        self.view_active = Some(Rc::new(active));
+        self
+    }
+
+    /// The memo version of what this hook adds to a row.
+    fn version(&self, s: &S, rcx: &RowCx<'_>) -> u64 {
+        let mut h = std::hash::DefaultHasher::new();
+        (self.delays)(s, rcx).hash(&mut h);
+        if let Some((version, _)) = &self.part {
+            version(s, rcx).hash(&mut h);
+        }
+        h.finish()
+    }
+}
+
+/// What the viewport shows, for `Rest::on_view`.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct RestView {
+    /// The collection's key.
+    pub collection: Rc<str>,
+    /// The entries the viewport shows, in order.
+    pub visible: Vec<EntryId>,
+}
+
+/// A row's rest report: the pointer came to rest on it, or left it.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct RestReport {
+    /// The collection's key.
+    pub collection: Rc<str>,
+    /// The row's entry.
+    pub id: EntryId,
+    /// The pointer rests on the row (`true`) or left it (`false`).
+    pub inside: bool,
+    /// The row's rect in window points, as the element lays it out now.
+    pub row: Rect,
+    /// The viewport's rect in window points.
+    pub viewport: Rect,
+}
+
+const OUTLINE: f32 = 1.0;
+
+/// What the view decided once for every row it builds.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Frame {
+    pub look_key: u64,
+    /// What the builder's settings make every row: see [`config_key`].
+    pub config_key: u64,
+    pub row_height: f32,
+    pub row_gap_y: f32,
+    pub per_line: usize,
+    /// The space left and right of a line of several entries (`Lines::inset`).
+    pub inset: f32,
+    pub len: usize,
+    /// Drawn in groups under header lines: rows state their own place in the set.
+    pub grouped: bool,
+    pub hover_live: bool,
+    pub cursor_shown: bool,
+    pub drop: Option<DropOver>,
+    pub renaming: Option<EntryId>,
+}
+
+/// A key for everything in the look that rows read, as a memo version.
+pub(super) fn look_key(look: &Look) -> u64 {
+    let mut h = std::hash::DefaultHasher::new();
+    look.kit.c.hash(&mut h);
+    look.kit.ty.hash(&mut h);
+    look.kit.radius.hash(&mut h);
+    look.kit.dark.hash(&mut h);
+    look.space.hash(&mut h);
+    look.icon_size.hash(&mut h);
+    look.row.hash(&mut h);
+    look.content.hash(&mut h);
+    look.icons.name.hash(&mut h);
+    (look.icons.icon as usize).hash(&mut h);
+    (look.icons.named as usize).hash(&mut h);
+    for v in [
+        tokens::row_inset(look),
+        tokens::row_radius(look),
+        tokens::cut_opacity(look),
+        tokens::drag_opacity(look),
+    ] {
+        v.to_bits().hash(&mut h);
+    }
+    h.finish()
+}
+
+pub(super) fn config_key<S>(cfg: &Config<S>) -> u64 {
+    let mut h = std::hash::DefaultHasher::new();
+    cfg.roles.hash(&mut h);
+    cfg.read_only.hash(&mut h);
+    cfg.on_drop.is_some().hash(&mut h);
+    cfg.icon.is_some().hash(&mut h);
+    cfg.label.is_some().hash(&mut h);
+    cfg.content.is_some().hash(&mut h);
+    cfg.describe.is_some().hash(&mut h);
+    // Hashed only when set, so every collection without bare items keeps its rows' versions.
+    if cfg.bare_items {
+        true.hash(&mut h);
+    }
+    if cfg.row_gap_y > 0.0 {
+        cfg.row_gap_y.to_bits().hash(&mut h);
+    }
+    if cfg.rest.is_some() {
+        "rest".hash(&mut h);
+    }
+    h.finish()
+}
+
+/// Virtual line `line`: its one entry's row, a row of its entries, or a group's header.
+pub(super) fn build_line<S: 'static>(
+    cfg: &Rc<Config<S>>,
+    frame: &Frame,
+    map: &LineMap,
+    s: &S,
+    line: usize,
+) -> El {
+    let per = frame.per_line.max(1);
+    let (start, end) = match map.line(line, frame.len) {
+        Line::Header(g) => {
+            let group = &map.groups().expect("a header line is grouped").groups()[g];
+            let look = (cfg.look)(s);
+            return header_line(cfg, &(cfg.group_style)(look), frame.row_height, group);
+        }
+        Line::Entries(r) => (r.start, r.end),
+    };
+    if per == 1 {
+        return build_item(cfg, frame, s, start);
+    }
+    let (src, _) = (cfg.get)(s);
+    let first = src.id_at(start);
+    let mut el = row().key(line_key(first, per)).w_full().h(frame.row_height);
+    if frame.inset > 0.0 {
+        el = el.px(frame.inset);
+    }
+    if let Some(role) = cfg.roles.line {
+        el = el.role(role);
+    }
+    for i in start..end {
+        el = el.child(build_item(cfg, frame, s, i));
+    }
+    for _ in end..start + per {
+        el = el.child(row().w(0.0).grow(1.0));
+    }
+    el
+}
+
+/// The row (or grid cell) of entry `index`, memoized.
+fn build_item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, index: usize) -> El {
+    let (src, st) = (cfg.get)(s);
+    let look = (cfg.look)(s);
+    let entry = src.entry(index);
+    let id = entry.id;
+    let selected = st.selection.is_selected_at(src, index);
+    let cursor = st.selection.cursor() == Some(id);
+    let state = RowState {
+        selected,
+        provisional: selected && st.selection.is_provisional(),
+        cursor,
+        cursor_shown: cursor && frame.cursor_shown,
+        drop_target: frame.drop == Some(DropOver::Row(id)),
+        renaming: cfg.rename.is_some() && !cfg.read_only && frame.renaming == Some(id),
+        marks: cfg
+            .marks
+            .as_ref()
+            .map_or_else(RowMarks::default, |f| f(s, id)),
+    };
+    let rcx = RowCx {
+        index,
+        entry,
+        state,
+        look,
+        scope: &cfg.key,
+        hover_live: frame.hover_live,
+    };
+    if state.renaming {
+        return item(cfg, frame, s, &rcx);
+    }
+    let versions = [
+        cfg.icon
+            .as_ref()
+            .and_then(|v| v.version.as_ref())
+            .map(|f| f(s, &rcx)),
+        cfg.label
+            .as_ref()
+            .and_then(|v| v.version.as_ref())
+            .map(|f| f(s, &rcx)),
+        cfg.content
+            .as_ref()
+            .and_then(|v| v.version.as_ref())
+            .map(|f| f(s, &rcx)),
+        cfg.describe
+            .as_ref()
+            .and_then(|v| v.version.as_ref())
+            .map(|f| f(s, &rcx)),
+    ];
+    let place = (frame.per_line > 1 || frame.grouped).then_some((index, frame.len));
+    // Only rows that draw them read the rest hook and the slot-token mark fill.
+    let rest = cfg.rest.as_ref().map(|r| r.version(s, &rcx));
+    let mark_fill = mark_fill_key(look, state);
+    let version = (
+        (
+            entry.name,
+            entry.kind,
+            entry.icon,
+            entry.thumbnail,
+            entry.glyph,
+            entry.color.map(color_key),
+        ),
+        state,
+        frame.look_key,
+        frame.config_key,
+        frame.row_height.to_bits(),
+        frame.hover_live,
+        versions,
+        place,
+        (rest, mark_fill),
+    );
+    memo(row_key(id), version, || item(cfg, frame, s, &rcx))
+}
+
+fn row_fill(look: &Look, state: RowState) -> Option<rune::Color> {
+    if state.marks.active_path && state.marks.active_parent {
+        Some(tokens::active_parent_fill(look))
+    } else if state.marks.active_path {
+        Some(tokens::active_path_fill(look))
+    } else if state.selected || state.drop_target {
+        Some(rune_kit::TableStyle::from_kit(&look.kit).selected)
+    } else if state.marks.peek_anchor {
+        Some(tokens::peek_fill(look))
+    } else {
+        None
+    }
+}
+
+fn row_hover_enabled(frame: &Frame, state: RowState) -> bool {
+    frame.hover_live && !(state.marks.active_path && !state.marks.active_parent)
+}
+
+fn mark_fill_key(look: &Look, state: RowState) -> Option<[u32; 4]> {
+    if state.marks.active_path && state.marks.active_parent {
+        Some(color_key(tokens::active_parent_fill(look)))
+    } else if state.marks.active_path {
+        Some(color_key(tokens::active_path_fill(look)))
+    } else if state.marks.peek_anchor {
+        Some(color_key(tokens::peek_fill(look)))
+    } else {
+        None
+    }
+}
+
+fn item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, rcx: &RowCx<'_>) -> El {
+    let look = rcx.look;
+    let kit = &look.kit;
+    let state = rcx.state;
+    let entry = rcx.entry;
+    let id = entry.id;
+    if state.marks.vanished {
+        // Keyed, so the slot keeps its place and a motion effect can still find it.
+        let slot = el()
+            .key(row_key(id))
+            .h(frame.row_height)
+            .a11y_hidden()
+            .inert();
+        return if frame.per_line > 1 {
+            slot.w(0.0).grow(1.0)
+        } else {
+            slot.w_full()
+        };
+    }
+
+    let icon_el = match &cfg.icon {
+        Some(slot) => (slot.build)(s, rcx),
+        None => default_icon(rcx),
+    };
+    let label_el = match (&cfg.rename, &cfg.label) {
+        (Some((_, slot)), _) if state.renaming => (slot.build)(s, rcx),
+        (_, Some(slot)) => (slot.build)(s, rcx),
+        _ => default_label(rcx),
+    };
+    let content = match &cfg.content {
+        Some(slot) => (slot.build)(s, rcx, icon_el, label_el),
+        None => row()
+            .w_full()
+            .h_full()
+            .gap(look.space.sm)
+            .center_y()
+            .child(icon_el)
+            .child(label_el),
+    };
+
+    let mut opacity: f32 = 1.0;
+    if state.marks.cut {
+        opacity = opacity.min(tokens::cut_opacity(look));
+    }
+    if state.marks.dragging {
+        opacity = opacity.min(tokens::drag_opacity(look));
+    }
+    if cfg.bare_items {
+        let mut item = content
+            .key(row_key(id))
+            .role(cfg.roles.item)
+            .label(entry.name)
+            .focus_selected(state.selected)
+            .h(frame.row_height);
+        if opacity < 1.0 {
+            item = item.opacity(opacity);
+        }
+        return finish_item(cfg, frame, s, rcx, item);
+    }
+    let mut inner = row()
+        .w_full()
+        .h_full()
+        .radius(tokens::row_radius(look))
+        .px(look.space.xs)
+        .center_y()
+        .clip_soft(0.0);
+    if let Some(fill) = row_fill(look, state) {
+        inner = inner.fill(fill);
+    }
+    // Keep ancestor open-folder fills steady without stacking a hover overlay on top.
+    if row_hover_enabled(frame, state) {
+        inner = inner.hover(kit.c.hover);
+    }
+    if state.cursor_shown {
+        inner = inner.outline(OUTLINE, -OUTLINE, kit.c.border_focus);
+    } else if state.drop_target || state.marks.enter_target {
+        inner = inner.outline(OUTLINE, -OUTLINE, kit.c.text_accent);
+    }
+    if opacity < 1.0 {
+        inner = inner.opacity(opacity);
+    }
+    inner = inner.child(content);
+
+    let outer = row()
+        .key(row_key(id))
+        .role(cfg.roles.item)
+        .label(entry.name)
+        .focus_selected(state.selected)
+        .h(frame.row_height)
+        .px(tokens::row_inset(look))
+        .py(frame.row_gap_y)
+        .child(inner);
+    finish_item(cfg, frame, s, rcx, outer)
+}
+
+/// An item's width in its line, its place in the set, its description and its drop zone.
+fn finish_item<S: 'static>(
+    cfg: &Rc<Config<S>>,
+    frame: &Frame,
+    s: &S,
+    rcx: &RowCx<'_>,
+    mut outer: El,
+) -> El {
+    let entry = rcx.entry;
+    let id = entry.id;
+    outer = if frame.per_line > 1 {
+        outer.w(0.0).grow(1.0)
+    } else {
+        outer.w_full()
+    };
+    if frame.per_line > 1 || frame.grouped {
+        outer = outer.position_in_set(rcx.index + 1, frame.len);
+    }
+    if let Some(description) = cfg.describe.as_ref().and_then(|d| (d.build)(s, rcx)) {
+        outer = outer.description(description);
+    }
+    if let Some(rest) = &cfg.rest {
+        outer = rest_row(cfg, rest, s, rcx, outer);
+    }
+    if cfg.read_only {
+        return outer;
+    }
+    if let Some(on_drop) = &cfg.on_drop
+        && entry.kind.is_folder_like()
+    {
+        // Row keys are unique only inside the collection: its key is their scope.
+        let key = ElementKey::new(row_key(id)).within(cfg.key.to_string());
+        outer = cfg
+            .dnd
+            .drop_zone_keyed(outer, key, row_zone(cfg, on_drop.clone(), id));
+    }
+    outer
+}
+
+/// Row `outer` with the rest hook's delays and report, and its part.
+fn rest_row<S: 'static>(
+    cfg: &Rc<Config<S>>,
+    rest: &Rest<S>,
+    s: &S,
+    rcx: &RowCx<'_>,
+    mut outer: El,
+) -> El {
+    if let Some((enter, leave)) = (rest.delays)(s, rcx) {
+        let report_cfg = cfg.clone();
+        let id = rcx.entry.id;
+        outer = outer
+            .hover_delays(enter, leave)
+            .on_hover_change(move |s: &mut S, inside, tx| {
+                super::route::on_rest(&report_cfg, s, id, inside, tx)
+            });
+    }
+    if let Some(part) = rest.part.as_ref().and_then(|(_, build)| build(s, rcx)) {
+        outer = outer.child(part.inert().a11y_hidden());
+    }
+    outer
+}
+
+/// A colour as a memo key.
+fn color_key(c: rune::Color) -> [u32; 4] {
+    [c.r, c.g, c.b, c.a].map(f32::to_bits)
+}
+
+/// A group's header line: its label over the style's divider, a heading named by the label.
+fn header_line<S: 'static>(cfg: &Config<S>, style: &GroupStyle, h: f32, group: &Group) -> El {
+    header_body(style, h, text(group.label.to_string()).truncate())
+        .key(header_key(group.key))
+        .role(cfg.roles.header)
+        .label(group.label.to_string())
+}
+
+/// What a header draws, around its label part: the stuck header's too, so the two match.
+pub(super) fn header_body(style: &GroupStyle, h: f32, label: El) -> El {
+    let mut el = row()
+        .w_full()
+        .h(h)
+        .px(style.inset)
+        .pb(style.bottom)
+        .items_end()
+        .child(
+            label
+                .key(LABEL)
+                .a11y_hidden()
+                .font(style.font)
+                .color(style.color)
+                .shrink()
+                .min_w(0.0),
+        );
+    if let Some(divider) = style.divider {
+        el = el.border_sides([0.0, 0.0, OUTLINE, 0.0], divider);
+    }
+    el
+}
+
+fn default_icon(rcx: &RowCx<'_>) -> El {
+    let look = rcx.look;
+    match crate::thumbnails::mark_icon(rcx.state.marks) {
+        Some(mark) => rune::icon(look.icon(mark), look.icon_size.md)
+            .key(ICON)
+            .color(look.kit.c.icon_accent)
+            .a11y_hidden(),
+        None => crate::thumbnails::entry_glyph(
+            look,
+            rcx.entry,
+            look.icon_size.md,
+            look.kit.c.icon_accent,
+        )
+        .key(ICON),
+    }
+}
+
+/// The entry's name, cut short with an ellipsis.
+fn default_label(rcx: &RowCx<'_>) -> El {
+    let kit = &rcx.look.kit;
+    let spans = rcx.state.marks.name_matches.spans(rcx.look);
+    text(rcx.entry.name.to_owned())
+        .spans(spans)
+        .key(LABEL)
+        .a11y_hidden()
+        .font(kit.ty.ui_compact)
+        .color(kit.c.text_base)
+        .truncate()
+        .shrink()
+        .min_w(0.0)
+}
+
+pub(super) type DropFn<S> = Rc<dyn Fn(&mut S, Option<EntryId>, crate::contract::Dropped, &mut Tx)>;
+
+fn row_zone<S: 'static>(cfg: &Rc<Config<S>>, on_drop: DropFn<S>, id: EntryId) -> DropZone<S> {
+    let get_mut = cfg.get_mut.clone();
+    let hover_cfg = cfg.clone();
+    let edge = cfg.clone();
+    let drop_cfg = cfg.clone();
+    let zone = DropZone::new(move |s: &mut S, dropped: crate::contract::Dropped, tx| {
+        let under_stuck = dropped
+            .point
+            .map(|p| super::route::under_stuck_header(&drop_cfg, s, p));
+        let st = (get_mut)(s).1;
+        let last = st.drop.take();
+        let target = match (under_stuck, last) {
+            (Some(true), _) | (None, Some(DropOver::Background)) => None,
+            _ => Some(id),
+        };
+        super::route::dropped_on_row(&drop_cfg, s, id);
+        on_drop(s, target, dropped, tx);
+    })
+    .takes_content(cfg.drop_content);
+    let zone = match cfg.drop_action.clone() {
+        Some(f) => {
+            let reject_cfg = cfg.clone();
+            zone.action(move |s: &S, offer, mods| f(s, Some(id), offer, mods))
+                .on_reject(move |s: &mut S, _, tx| {
+                    super::route::dropped_on_row(&reject_cfg, s, id);
+                    super::note_drop_hover(
+                        &reject_cfg,
+                        s,
+                        DropOver::Row(id),
+                        DropHover::Left,
+                        None,
+                    );
+                    super::drag_over_hover(&reject_cfg, s, DropHover::Left, tx);
+                })
+        }
+        None => zone,
+    };
+    zone.on_hover(move |s: &mut S, hover, offer, tx| {
+        super::note_drop_hover(&hover_cfg, s, DropOver::Row(id), hover, Some(offer));
+        super::drag_over_hover(&hover_cfg, s, hover, tx);
+    })
+    .on_move(move |s: &mut S, point, tx| {
+        let under_stuck = super::route::under_stuck_header(&edge, s, point);
+        let st = (edge.get_mut)(s).1;
+        let refused = st.drop_refused == Some(DropOver::Row(id));
+        if refused && !st.drop_refused_files {
+            tx.live_only();
+            return;
+        }
+        let over = if refused {
+            None
+        } else if under_stuck {
+            Some(DropOver::Background)
+        } else {
+            Some(DropOver::Row(id))
+        };
+        let changed = st.drop != over;
+        st.drop = over;
+        match &edge.on_drag_over {
+            Some(f) => {
+                let host = f(s, Some(Point::new(point.window_x, point.window_y)), tx);
+                if !changed && !host {
+                    tx.live_only();
+                }
+            }
+            None => super::route::drop_edge_scroll(&edge, s, point, changed, tx),
+        }
+    })
+}

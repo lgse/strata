@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/preview/model.rs b/crates/strata-app/src/preview/model.rs
+index b5a3b2c34..26bdee0c5 100644
+--- a/crates/strata-app/src/preview/model.rs
++++ b/crates/strata-app/src/preview/model.rs
+@@ -168,7 +168,7 @@ pub(super) fn render_view(app: &mut App, view: CameraView, _: &mut Tx) {
+         pdf_page: 0,
+         media_size: MediaPreviewSize::for_viewport(edge, edge, 1),
+         model_palette: palette,
+-        model_view: camera(view),
++        model_view: camera(CameraView::FrontLeft),
+         archive_password: None,
+     };
+     let emit = Rc::new(move |event: PreviewEvent| {

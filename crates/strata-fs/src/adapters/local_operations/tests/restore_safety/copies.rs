@@ -54,8 +54,6 @@ fn restore_copies_files_links_and_named_pipes_where_nothing_can_place_them()
 #[test]
 fn restore_copy_refuses_a_trash_item_replaced_after_it_was_checked() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
-    // Replaced before the copy starts, and between the copy's check of the
-    // name and its open of the file.
     for (op, pattern) in [(Op::OpenDir, "."), (Op::OpenSource, "source")] {
         let fixture = RestoreFixture::new()?;
         let original = fixture.path().join("original");
@@ -210,10 +208,6 @@ impl CutOffCleanup {
 fn a_cancelled_restore_copy_of_a_folder_is_a_cancel_only_once_the_folder_is_gone()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
-    // Cleanup opens the cut-off folder (its third open, after making and
-    // filling it), checks it, empties it and checks its name before removing
-    // it. Rows fail the open or a check, or renumber the folder as libfuse
-    // without `use_ino` does, where only its type is compared.
     let host: Preset = Quirks::without_placement;
     let ext4 = || Quirks::without_placement().on_ext4();
     let sshfs = || Quirks {
@@ -287,8 +281,6 @@ fn restore_copies_keep_the_metadata_the_destination_takes() -> Result<(), Box<dy
         xattrs_refused: vec![("security.", Errno::PERM)],
         ..Quirks::without_placement()
     };
-    // Read-only items keep the xattrs set before their mode, and an xattr
-    // the destination refuses is left out.
     let rows: [(bool, u32, Preset); 3] = [
         (false, 0o444, Quirks::without_placement),
         (true, 0o555, Quirks::without_placement),
@@ -326,8 +318,6 @@ fn restore_copies_keep_the_metadata_the_destination_takes() -> Result<(), Box<dy
 #[test]
 fn restore_deletes_the_trash_copy_only_once_its_copy_is_flushed() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
-    // The family, how its barrier is reached, whether each restored file is
-    // synced before it is closed, and whether the flush fails.
     let rows = [
         ("ext4", Op::SyncFs, false, false),
         ("ext4", Op::SyncFs, false, true),

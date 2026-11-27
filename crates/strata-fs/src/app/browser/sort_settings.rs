@@ -240,8 +240,6 @@ impl Browser {
         });
     }
 
-    /// A fresh generation per sort, so a stale timer or fill cannot pass for a newer sort.
-    /// An applied sort has already finished, or finishes when its rows publish.
     pub(super) fn begin_sort(&self, depth: usize) -> u64 {
         let interrupted_media = self
             .sort_awaiting_fill

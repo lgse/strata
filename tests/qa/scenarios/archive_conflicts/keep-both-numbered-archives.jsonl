@@ -1,4 +1,4 @@
-{"scenario":"keep-both-numbered-archives","modes":["list"],"layout":"us","setup":[{"fs":{"path":"todo.txt.zip","write":"original archive"}},{"fs":{"path":"todo.txt (1).zip","write":"previous archive"}}],"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":3,"score":52,"note":"Keep Both by keyboard (Shift+Tab, Return) on a compress collision selects and reveals the numbered zip; pointer Keep Both is undo-compression-trashes-archive"}}
+{"scenario":"keep-both-numbered-archives","modes":["list"],"layout":"us","setup":[{"fs":{"path":"todo.txt.zip","write":"original archive"}},{"fs":{"path":"todo.txt (1).zip","write":"previous archive"}}],"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":3,"score":30,"note":"Keyboard Keep Both on compress collision selects and reveals zip; unit test pins file outcome; click route is in undo-compression"}}
 {"click":{"entry":"todo.txt"},"button":3}
 {"wait":{"present":{"menu_item":"Compress…"}},"message":"the context menu item 'Compress…' for 'todo.txt'"}
 {"activate":{"role":"menu item","name":"Compress…"}}

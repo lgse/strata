@@ -113,10 +113,9 @@ isolation, resource limits, or the other narrow optional runtime mounts.
 
 - GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
   images to dimension- and size-bounded PNG images. WebP is decoded first by the
-  built-in decoder, so it needs no system pixbuf loader or ImageMagick. A local
-  WebP whose header declares an animation plays in the media sandbox instead, when
-  the runtime FFmpeg lists the `webp_anim` decoder (FFmpeg 9.0 or newer, asked once
-  per process); with an older FFmpeg it keeps the still first-frame preview.
+  built-in decoder, so it needs no system pixbuf loader or ImageMagick. A WebP
+  whose header declares an animation (the `VP8X` animation flag) plays in the
+  media sandbox instead; static WebP files keep the still-image preview.
 - `ffmpegthumbnailer` (or the software FFmpeg fallback) produces bounded media thumbnails. Browser thumbnails and
   media details share the bounded, reusable sandbox supervisors described below.
   Duplicate requests share work, obsolete targets detach, and thumbnail failures
@@ -291,7 +290,7 @@ candidates, 4 MiB per candidate, 16 MiB total candidate bytes read and 16 megapi
 (16×1024×1024 pixels) total admitted to decoding. Oversized/invalid images are not
 usable; exhausting a total inspection budget fails the operation rather than
 assuming uninspected candidates are invalid. G-code reuses these limits. Only bounded PNG results return to
-GTK. Thumbnail output remains at most 256×256, in the image's original colors.
+the UI. Thumbnail output remains at most 256×256, in the image's original colors.
 
 ## Offline route previews
 
@@ -429,7 +428,7 @@ version, and row request IDs reject obsolete UI completions.
 Cache reads and rendering have separate bounded queues and dedicated thread
 executors; decoder waits never occupy GIO's listing threads. Thumbnail admission
 does not wait for a GIO metadata fill. Lookup resolves local size/mtime off the
-GTK thread, then rechecks the RAM cache before decoding a disk hit.
+UI thread, then rechecks the RAM cache before decoding a disk hit.
 All views reuse the canonical 256-pixel RAM rendition irrespective of icon size;
 the Freedesktop `large` disk cache remains unchanged. Files anywhere under
 `$XDG_CACHE_HOME/thumbnails` are never looked up or stored there, so browsing the
@@ -437,19 +436,14 @@ cache itself renders its entries in memory only instead of thumbnailing them
 recursively. These thumbnail caches do not
 carry source dimensions or duration: cache hits still use the separately prioritized
 metadata path, whereas fresh image decodes publish their source dimensions directly.
-PNG texture decoding runs off the GTK thread. Persistence remains bounded and
+PNG image decoding runs off the UI thread. Persistence remains bounded and
 asynchronous.
 
 Scheduling ranks visible targets before a small overscan region across enclosing
 scrollers (including horizontally hidden Columns panes). Offscreen requests stay
-deferred, and scroll/map changes reprioritize work outside GTK layout callbacks.
-RAM hits remain available while scrolling. Metadata requests batch on the next
-main-loop idle, without a fixed 100 ms delay. List/Icons presentation work and
-camera admission batches coalesce on GTK's frame clock instead of 80/16 ms timers;
-repeated scrolling does not re-arm the pending frame. Work that inspects widgets
-runs from idle after the frame, outside GTK binding/layout callbacks. Identical
-in-flight file requests are reused, and presentation refreshes do not resubmit
-them. This removes fixed scheduling waits, not the time needed for I/O or decoding.
+deferred, and scroll changes reprioritize work outside layout.
+RAM hits remain available while scrolling. Metadata requests batch without a fixed
+100 ms delay, and identical in-flight file requests are reused.
 With more than one render slot, slow
 RAW/PDF/video and embedded-model work leaves capacity for ordinary images. Browser metadata admission
 uses the same viewport policy; cheap filesystem metadata is published before
@@ -487,20 +481,16 @@ reuse: repeated cold files within the idle timeout should produce jobs, not a ne
 
 ## Bundled interface icons
 
-Strata's bundled Lucide SVGs are trusted application resources, not browser files.
-They render directly to bounded in-memory pixels with `resvg`, avoiding synchronous
-GdkPixbuf/Glycin loader startup on the GTK thread during row binding and live theme
-changes. External and embedded image references are disabled; icon inputs and
-output dimensions are bounded. The icon path does not load system fonts or resolve
-raster images. Emoji icons retain Pango/Cairo rendering
-but pass raw pixels to GTK instead of encoding and decoding an intermediate PNG.
+Strata's bundled Lucide and Catppuccin SVGs are trusted application resources
+compiled into `strata-kit` (`crates/strata-kit/icons/README.md`), not browser files.
+They render directly through Rune's vector/SVG icon pipeline without invoking
+GdkPixbuf/Glycin loaders during row binding or live theme changes.
 
 This in-process icon path is not used for user SVGs, phone photos, or thumbnails
 of originals; those keep their sandbox boundary. User SVG previews and
 thumbnails, Markdown SVGs, Mermaid diagrams, and equation output use a separate
 `resvg` path inside the sandbox, with image references disabled and system font
-loading enabled only when the document contains text. No toolkit libraries or
-private media runtime patches are updated by this change.
+loading enabled only when the document contains text.
 
 ## Remote still-image previews
 
@@ -516,7 +506,7 @@ oversized files are rejected before opening; the stream limit also applies when
 size metadata is missing or inaccurate. At most four transfers/staged originals
 can be active per process, including ones waiting for cancellation or decoding.
 A busy request fails with an explanatory message rather than starting another
-unbounded transfer. Downloads run off the GTK thread.
+unbounded transfer. Downloads run off the UI thread.
 
 Changing selection or closing the preview cancels GIO. A backend that is slow to
 acknowledge cancellation retains its slot until its worker exits. Partial files
@@ -552,7 +542,7 @@ configurable browser render admission budget and bounded thumbnail queues, with
 row-binding cancellation.
 The compressed preview is written to a random mode-0600 temporary file, decoded
 by the existing image-thumbnail sandbox, and removed after the decoder exits.
-Only the normalized PNG reaches GTK. Generated camera thumbnails use the bounded
+Only the normalized PNG reaches the UI. Generated camera thumbnails use the bounded
 in-memory cache, never the persistent thumbnail cache. AFC and MTP file-list
 thumbnails are not enabled by this path.
 
@@ -629,17 +619,19 @@ Detailed RAW inspection does not run for browser thumbnails.
 One original local file (read-only)
   -> bubblewrap: ffprobe + FFmpeg video/audio decoding and scaling
   -> bounded, validated RGBA frames and PCM blocks
-  -> Strata GtkMediaStream: GTK MemoryTexture presentation
-                         + GStreamer appsrc raw-audio output
+  -> Strata media player: Rune GPU frame presentation
+                        + Rune PCM audio output (`rune::AudioOutput`:
+                          dlopen PulseAudio/PipeWire or ALSA, silent clock fallback)
 ```
 
 There is no compressed-video encoding, normalized MP4/WebM temporary file,
-`GtkMediaFile`, `GstPlay`, compressed-media pipeline, or original-file URI in the
-player. FFmpeg's `rawvideo` output packs RGBA pixels; `pcm_s16le` packs decoded
-samples. GStreamer receives only application-constructed `audio/x-raw` caps and
-validated samples through `appsrc ! audioconvert ! audioresample ! volume !
-autoaudiosink`. No decoder-provided path, pipeline, caps string, or compressed
-packet crosses into an unsandboxed media parser.
+compressed-media pipeline, or original-file URI in the player. FFmpeg's
+`rawvideo` output packs RGBA pixels; `pcm_s16le` packs decoded samples.
+`rune::AudioOutput` receives only validated fixed-format PCM
+blocks and streams them through runtime-loaded `libpulse-simple` or `libasound`
+(falling back to a silent software clock when neither audio server is available).
+No decoder-provided path, pipeline, caps string, or compressed packet crosses
+into an unsandboxed media parser.
 
 A media worker uses separate FFmpeg video and audio processes when both tracks
 exist. Each decodes only its selected track. This avoids cross-output pipe
@@ -661,13 +653,15 @@ with seeks mapped to their animation phase to avoid restarting a process every
 cycle; this does not truncate the animation. Longer GIFs play their complete
 animation before looping.
 
-Animated WebP follows the same rules, with two differences because FFmpeg's
-`webp_anim` demuxer reports no duration and cannot seek. The period is the sum of
-the container's frame durations, read from the ANMF chunk headers without decoding.
-A short animation loops in the filter graph (`loop`, ahead of the 30-fps conversion,
-holding at most 256 MiB of decoded source frames and 32,767 frames); one beyond that
-budget plays once. Every offset is reached by decoding from the start and trimming
-rather than `-ss`, and decoding stays in software.
+Animated WebP follows the same timing and looping rules, decoded inside the
+sandbox by the built-in WebP decoder rather than FFmpeg so it does not depend on
+FFmpeg's `webp_anim` demuxer. The cycle period is the sum of the `ANMF` frame
+durations (0 ms delays fall back to 100 ms), read from chunk headers without
+decoding pixels, bounded by the 50 MP source pixel budget and a 100,000-frame
+limit. Short animations under 30 seconds loop inside a 30-second generation with
+phase-preserving seeks and a bounded 32 MiB single-cycle decoded frame cache;
+longer animations play their complete animation before looping and seek
+linearly, and storyboards are rejected.
 
 Files without a reported duration play until decoded EOF. Their timeline remains
 unknown and seeking is disabled until the actual end is established; pause/idle
@@ -710,7 +704,7 @@ waveform scrubber. Each part is sandboxed or derived from already-validated data
   whitespace, caps each value at 200 characters, and shows them as plain text.
 - **The spectrum** is computed in the application from the PCM it already plays,
   aligned to the audio sink's clock rather than to the decoder, so no extra
-  parser or GStreamer analysis element sees the stream. It keeps one second
+  parser or media framework sees the stream. It keeps one second
   behind the playhead plus everything decoded ahead of it, so it follows the
   sink however far the device delays playback.
 - **The waveform overview** starts only after a track has stayed selected for
@@ -754,7 +748,7 @@ the same media family, so audio steps to audio and video to video, following
 visible search results like audio does. In every view, a local file joins the
 sequence by its content, not its name: a file whose metadata probe found no media,
 or whose leading bytes are text, is neither counted nor stepped to. Files the
-probe has not reached yet are checked by reading their first 8 KiB off the GTK
+probe has not reached yet are checked by reading their first 8 KiB off the UI
 thread, outward from the shown file in growing chunks, as background work through
 their mount's [request lane](filesystem-compatibility.md#request-lanes): while
 other requests keep the mount busy the reads wait their turn, for up to 10 s
@@ -778,7 +772,7 @@ characteristics, 10-, 12- or 16-bit from the pixel format, rounded frame rate,
 video codec, audio codec with channel layout, and a captions badge counting
 embedded subtitle tracks plus subtitle files named after the video (`clip.srt`,
 `clip.en.vtt`, and the `ass`, `ssa` and `sub` extensions), found by a bounded
-scan of the original's folder off the GTK thread. Chapter starts become ticks on
+scan of the original's folder off the UI thread. Chapter starts become ticks on
 the timeline and chapter titles join the time in the storyboard bubble; nothing
 renders subtitles over the frames. The probe starts after the same 50 ms settle as audio
 details, is cancelled when the selection moves on, and completed results are
@@ -827,8 +821,7 @@ With **Preview autoplay** on, playback starts silent: the player scales its
 output by a fade gain on top of the saved volume, which it never changes. The
 gain rises on a slow-in, slow-out curve (a smoothstep squared, so the ear hears
 an even rise), over 1 s from the first frame for video and over 0.5 s from the
-first sample for audio, set about sixty times a second on the GStreamer
-`volume` element, so no audio is processed in the application. Files shorter
+first sample for audio, applied smoothly on the PCM sink's volume control. Files shorter
 than 10 s would lose most of themselves to the rise, so they play at full volume
 from the start; unknown durations ease in. A muted
 saved state skips the ramp, and any play, pause, seek, volume or mute input, or
@@ -836,14 +829,13 @@ moving to another file, ends it immediately.
 
 Ambient light bleeds the frame's border colours into a 24-pixel band around the
 picture. While the poster stands in, the band takes its colours from the cached
-thumbnail (one download of a 256-pixel texture) and the live frames ease in
-from there. The player samples a 6×4 grid of a few pixels each from a decoded
-frame at most ten times a second, the view eases towards it and uploads it as a tiny
-texture that the GPU scales with linear filtering under the picture, and four
-gradients fade the band into the pane. There is no blur, no per-frame CPU work
-beyond those samples, and nothing updates while playback is paused. The light
-follows the **Element glow** preference, which also releases the band, stays off
-under reduced motion, and never runs on the Cairo software renderer.
+thumbnail and the live frames ease in from there. The player samples a 6×4 grid
+of a few pixels each from a decoded frame at most ten times a second, the view
+eases towards it and uploads it as a tiny texture that the GPU scales with linear
+filtering under the picture, and four gradients fade the band into the pane.
+There is no blur, no per-frame CPU work beyond those samples, and nothing updates
+while playback is paused. The light follows the **Element glow** preference,
+which also releases the band, and stays off under reduced motion.
 
 The frame area never shows a spinner. Until the first decoded frame it shows the
 listing's cached thumbnail dimmed as a poster when that rendition is already in
@@ -883,26 +875,24 @@ Lengths are checked **before allocation**. Helper buffers cannot mutate textures
 pipe reads create owned buffers, and the texture owns its `glib::Bytes` until its
 last reference is released. There is no shared writable memory.
 
-The worker-to-GTK queue holds three records, the presentation queue three frames,
-and a worker may hold one pending frame. Including the displayed CPU texture,
+The worker-to-UI queue holds three records, the presentation queue three frames,
+and a worker may hold one pending frame. Including the displayed CPU frame,
 that is at most eight directly application-held frames (50 MiB at the maximum
 square size), plus small audio buffers and bounded kernel pipes. Audio never
 pins frames to stay ahead of a slow sink: the first record of a generation
 carries a 2-second PCM lead and later records run that far ahead of their frame,
 so a sink that only starts once its own buffer fills, or whose device delay is
 subtracted from its reported position (PipeWire-Pulse, Bluetooth A2DP), is
-primed before playback starts. Audio files additionally read ahead until
-GStreamer's appsrc queue is full rather than until the playhead moves, so no
-device delay can starve them; video keeps its three-frame queue, which bounds the
+primed before playback starts. Audio files additionally read ahead until the
+audio sink buffer is full rather than until the playhead moves, so no device
+delay can starve them; video keeps its three-frame queue, which bounds the
 start-up delay it tolerates at the lead. FFmpeg's input and output packet queues
-are limited to two packets each. GStreamer's appsrc queue is capped at 66 blocks
-(2.2 s, about 420 KiB); no unbounded queue element is inserted.
-GTK/driver rendering caches and codec working memory are additional, not part of
+are limited to two packets each, and the PCM sink buffer is bounded at 66 blocks
+(2.2 s, about 420 KiB).
+GPU/driver rendering caches and codec working memory are additional, not part of
 that application-buffer claim. Total decoded bytes scale with playback duration,
-but queued memory does not: no complete clip is accumulated. Audio timestamp
-conversion uses wide intermediates and rejects values outside GStreamer's clock
-range rather than overflowing for long playback. Seeking/looping begins a new
-memory-bounded generation.
+but queued memory does not: no complete clip is accumulated. Seeking/looping
+begins a new memory-bounded generation.
 
 There is **no whole-clip media cache**. Closing or revisiting a file requires a new
 decode. The existing byte/entry-bounded image/PDF preview cache is unchanged.
@@ -927,10 +917,10 @@ have separate limits, not a machine-global scheduler.
 | --- | --- |
 | Startup or seek | 22 seconds from request to first frame; includes a 4-second probe, hardware attempts of at most 4 seconds each / 8 seconds combined, and up to 8 seconds for software. Isolated seeks restart at once; bursts within 200 ms coalesce to the settled position. |
 | Active decoding | 8 seconds for a complete next record, not a deadline restarted by each byte. A stall mid-playback (frozen audio clock, decoder/worker failure, audio-sink error) restarts at the last position up to 3 times, then fails with the last error. |
-| Backpressure | A full queue stops consumption and propagates pressure through bounded pipes; it does not accumulate a whole clip. Audio files read ahead until the appsrc queue is full, video until the presentation queue is, never until the playhead moves. Waiting for the consumer is not charged as decoder progress time. |
+| Backpressure | A full queue stops consumption and propagates pressure through bounded pipes; it does not accumulate a whole clip. Audio files read ahead until the audio sink queue is full, video until the presentation queue is, never until the playhead moves. Waiting for the consumer is not charged as decoder progress time. |
 | Audio clock | Until the sink first advances after a start, seek or resume, the playhead and video hold their position instead of leading on wall time, so a start-up or resume delay never snaps the playhead back; the 3-second stuck-clock recovery is armed only once the clock has run, leaving the 8-second progress watchdog as the bound for a sink that never starts. After that, a stalled clock lets video lead on wall time by at most 2 seconds. |
 | Paused | Keep position, frame and bounded queues for 30 seconds, then cancel the worker, drop PCM output/queues, and stop the polling timer. The displayed frame and position remain. Resume or a paused seek starts a new bounded decode. |
-| Close / selection change / destruction | Cancel promptly; pipe/queue waits check cancellation at 10–20-ms intervals. Kill/reap the renderer and its sandbox descendants, then wait for the sandbox's namespace (below). No join of a blocked pipe reader on the GTK thread. |
+| Close / selection change / destruction | Cancel promptly; pipe/queue waits check cancellation at 10–20-ms intervals. Kill/reap the renderer and its sandbox descendants, then wait for the sandbox's namespace (below). No join of a blocked pipe reader on the UI thread. |
 | A file operation changes the file | Stop as on close, refuse new work on the file until the operation ends, then follow the selection again (below). |
 | End / malformed output / failure | Release the worker; malformed/truncated output, unavailable decoding and unsuccessful exit fail closed. No unsandboxed fallback. End-of-audio allows only sample-grid rounding (at most 22 µs), not a stalled clock. |
 
@@ -1008,21 +998,13 @@ GPU access still expands the helper's attack surface into driver code.
 
 ## Compatibility scope
 
-GStreamer app/base development libraries are now direct build dependencies;
-installed systems need their runtime libraries and raw-audio/output plugins.
-In particular, the core and app/base libraries are now required to **launch**
-Strata, even when no preview is open. Minimal installations that self-update only
-the executable must install these packages before updating. Installer/AUR metadata
-retains the legacy codec-plugin recommendation for currently published binaries;
-the new player does not use those decoders.
-Toolkit versions and the opt-in patches in
-[`packaging/media-runtime`](../packaging/media-runtime/README.md) are unchanged.
-The new player does not use the two patched `GtkGstSink`/`GstPlay` paths, but this
-change neither applies nor retires that patch kit or claims to fix all RAM growth.
+Strata requires no GStreamer libraries at build time or runtime. Audio output uses
+`strata-platform`'s zero-GStreamer Linux PCM sink (`dlopen` of `libpulse-simple`
+for PulseAudio/PipeWire or `libasound` for ALSA, falling back to a silent software
+clock when neither is present). GDK Pixbuf is used only inside the sandboxed image
+preview/thumbnail helpers.
 
-The Ubuntu runtime-library alias problem tracked in
-[#806](https://github.com/lgse/strata/issues/806) was initially deferred. The sandbox
-now includes optional read-only binds of the BLAS/LAPACK alternatives used by
+The sandbox includes optional read-only binds of the BLAS/LAPACK alternatives used by
 media helpers on x86-64 and ARM64 Debian-family installations, plus the GL
 dispatch alternatives (`glx--*`) every helper needs to start there. This resolves their
 runtime links without exposing the whole `/etc/alternatives` directory or the

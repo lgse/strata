@@ -190,8 +190,6 @@ fn a_merge_undo_removes_merged_items_under_the_names_they_were_saved_as() {
 
 #[test]
 fn a_merge_undo_removes_a_fixed_name_the_destination_took_for_another_under_its_last_name() {
-    // The merge planned `a_b` for `a:b`; the folder then took `a_b` for an
-    // entry it already held, so the copy was saved as `a_b (1)`.
     let fixed = renamed_in_folder("a:b", "a_b", RenameCause::Invalid);
     let alias = renamed_in_folder("a_b", "a_b (1)", RenameCause::Alias);
     for renamed in [
@@ -332,8 +330,6 @@ fn a_replaced_copy_records_the_overwritten_original_for_undo() {
     let target = Location::local("/fixture/archive/report.txt");
     let (request_id, emit) = start_copy_into_archive(&browser);
 
-    // A replace reports its target through transfer progress like a plain
-    // copy, then through Merged once the original is staged in Trash.
     emit(transfer_progress(request_id, &target));
     let placed = placed_at(&[&target]);
     emit(OperationEvent::Merged {

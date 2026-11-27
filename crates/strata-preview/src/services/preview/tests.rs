@@ -3,8 +3,9 @@
 use super::{
     ArchiveDirectory, ArchiveFileEntry, ArchiveNode, MediaPreviewSize, PreviewContent,
     archive_preview_format, archive_preview_tree, bytes_support_named_family, content_family,
-    guess_content_type, has_plain_text_extension, is_extensionless_dotfile, is_image_path,
-    is_media_path, is_non_executable_extensionless_dotfile, is_raw_video_stream, looks_like_text,
+    guess_content_type, has_plain_text_extension, is_animated_webp_sample,
+    is_extensionless_dotfile, is_image_path, is_media_path,
+    is_non_executable_extensionless_dotfile, is_raw_video_stream, looks_like_text,
     normalize_preview_text, read_supports_named_family, reconcile_with_sample,
     refine_reported_content_type,
 };
@@ -866,6 +867,54 @@ fn metadata_probes_skip_text_that_merely_shares_a_media_name() {
             read_supports_named_family(&path).ok(),
             (name != "missing.mp4").then_some(supported),
             "{name}: a failed read is no answer"
+        );
+    }
+}
+
+fn vp8x_header(flags: u8, chunk_size: u32) -> [u8; 30] {
+    let mut bytes = [0u8; 30];
+    bytes[0..4].copy_from_slice(b"RIFF");
+    bytes[4..8].copy_from_slice(&22u32.to_le_bytes());
+    bytes[8..12].copy_from_slice(b"WEBP");
+    bytes[12..16].copy_from_slice(b"VP8X");
+    bytes[16..20].copy_from_slice(&chunk_size.to_le_bytes());
+    bytes[20] = flags;
+    bytes
+}
+
+#[test]
+fn detects_animated_webp_headers_and_keeps_static_webp_as_image() {
+    let animated = vp8x_header(0x02, 10);
+    let animated_alpha = vp8x_header(0x12, 10);
+    let static_vp8x = vp8x_header(0x10, 10);
+    let short_chunk = vp8x_header(0x02, 6);
+    let mut static_vp8l = [0u8; 30];
+    static_vp8l[0..4].copy_from_slice(b"RIFF");
+    static_vp8l[8..12].copy_from_slice(b"WEBP");
+    static_vp8l[12..16].copy_from_slice(b"VP8L");
+
+    assert!(is_animated_webp_sample(&animated));
+    assert!(is_animated_webp_sample(&animated_alpha));
+    assert!(!is_animated_webp_sample(&static_vp8x));
+    assert!(!is_animated_webp_sample(&static_vp8l));
+    assert!(!is_animated_webp_sample(&short_chunk));
+    assert!(!is_animated_webp_sample(&animated[..20]));
+    assert!(!is_animated_webp_sample(b"not a webp"));
+
+    for (name, sample, expected_type, expected_family) in [
+        ("anim.webp", &animated[..], "image/webp", "media"),
+        ("anim.png", &animated_alpha[..], "image/webp", "media"),
+        ("anim.txt", &animated[..], "image/webp", "media"),
+        ("still.webp", &static_vp8x[..], "image/webp", "image"),
+        ("still.webp", &static_vp8l[..], "image/webp", "image"),
+        ("notes.webp", &b"plain text\n"[..], "text/plain", "text"),
+    ] {
+        let (mut content_type, mut content) = named_family(name);
+        reconcile_with_sample(&mut content_type, &mut content, sample);
+        assert_eq!(
+            (content_type.as_str(), family(&content)),
+            (expected_type, expected_family),
+            "{name}"
         );
     }
 }

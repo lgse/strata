@@ -90,7 +90,7 @@ class QualityRunnerTests(unittest.TestCase):
         workflow = (REPOSITORY / ".github/workflows/ci.yml").read_text()
         jobs = dict(re.findall(r"^  ([\w-]+):\n(.*?)(?=^  [\w-]+:\n|\Z)",
                                workflow.split("\njobs:\n", 1)[1], re.M | re.S))
-        for name in ("quality-shard", "quality", "release-scripts"):
+        for name in ("quality-shard", "quality", "qa-smoke", "release-scripts"):
             with self.subTest(job=name):
                 condition = re.search(r"^    if: (.+)$", jobs[name], re.M).group(1)
                 self.assertIn("github.event_name != 'push'", condition)
@@ -188,7 +188,7 @@ class QualityRunnerTests(unittest.TestCase):
                 "cargo": 'echo "$*" >> "$CALL_LOG"\ncase "$1" in "$FAIL_PHASE") exit 42;; esac\n',
                 "xvfb-run": 'echo "xvfb $*" >> "$CALL_LOG"\nwhile [ "$#" -gt 0 ]; do\ncase "$1" in -a) shift;; -s) shift 2;; *) break;; esac\ndone\nexec "$@"\n',
                 "dbus-run-session": 'echo "private-dbus $*" >> "$CALL_LOG"\nshift\nexec "$@"\n',
-                "python3": 'echo "python3 $*" >> "$CALL_LOG"\ncase "$FAIL_PHASE" in test) exit 42;; esac\n',
+                "python3": 'echo "python3 $*" >> "$CALL_LOG"\ncase "$1:$FAIL_PHASE" in scripts/quality_ci.py:test) exit 42;; esac\n',
             }.items():
                 tool = root / name
                 tool.write_text("#!/bin/sh\n" + content)
@@ -203,9 +203,9 @@ class QualityRunnerTests(unittest.TestCase):
                 if failure == "fmt":
                     self.assertNotIn("clippy", text)
                 if failure in ("fmt", "clippy"):
-                    self.assertNotIn("python3", text)
+                    self.assertNotIn("quality_ci.py", text)
                 else:
-                    # Local shards start their own private displays; see test_quality_ci.
+                    # Local shards run headless lanes; see test_quality_ci.
                     self.assertIn("python3 scripts/quality_ci.py local --lanes 5", text)
                     self.assertNotIn("xvfb", text)
                     self.assertNotIn("test --locked", text)

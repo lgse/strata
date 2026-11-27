@@ -43,13 +43,13 @@ By score: #1 84, #4 54, #2 52, #3 42, #6 31, #5 17, #7 14, #9 10, #8 7,
 - **Coverage 5:** four dismissal routes that reach different handlers (key,
   button, window close, move instead of copy). `similar` ranks
   `replace-restores-original-on-undo` and `keep-both-then-undo` closest, and
-  they share only setup. `src/ui/browser/transfer/tests.rs` checks which
-  choices the dialog offers (`conflict_dialog_offers_skip_for_a_multi_item_paste`)
-  but not the outcome of dismissing it. `archive-conflict-keyboard-choices`
-  dismisses a different dialog (an archive name collision).
-- **Criticality 4:** `crates/strata-fs/src/adapters/local_operations` has ~96 commits and ~55
-  `fix` commits, `src/ui/browser/transfer*` ~30 and ~15; the outcome spans
-  dialog, operation and listing. Not 5: no race or external process.
+  they share only setup. Unit tests check which choices the conflict dialog
+  offers (`conflict_dialog_offers_skip_for_a_multi_item_paste`), not the
+  outcome of dismissing it. `archive-conflict-keyboard-choices` dismisses a
+  different dialog (an archive name collision).
+- **Criticality 4:** `crates/strata-fs/src/adapters/local_operations` and the
+  transfer/conflict dialog code have high fix churn; the outcome spans dialog,
+  operation and listing. Not 5: no race or external process.
 - **Diagnostic 4:** each variant takes one route, and the failing file check
   names the file that changed. Not 5: it does not say whether the dialog or
   the operation applied the choice.
@@ -102,12 +102,12 @@ By score: #1 84, #4 54, #2 52, #3 42, #6 31, #5 17, #7 14, #9 10, #8 7,
 - **Impact 3:** a keyboard user loses the dialog's focus, or a preference
   flips silently. No data is at risk: the file survives.
 - **Coverage 4:** no other scenario sends window shortcuts over a modal.
-  `src/ui/modal/tests.rs` covers Escape pass-through and focus restoration, not
-  window accelerators. Not 5: three shortcuts take one route, through the
-  window's accelerators.
+  Modal unit tests cover Escape pass-through and focus restoration, not
+  window shortcuts. Not 5: three shortcuts take one route, through the
+  window's key router.
 - **Criticality 4:** `git log -S` on the assertion's name finds its origin in
-  fix c4d858af (triage batch 5, "shortcuts"); `src/ui/modal.rs` has 18
-  commits, 11 of them fixes. Only real key events through the window show it.
+  fix c4d858af (triage batch 5, "shortcuts"); modal routing had frequent fix
+  commits. Only real key events through the window show it.
 - **Diagnostic 5:** every check names its shortcut and what leaked
   (`ctrl+k opened a palette`).
 
@@ -153,8 +153,7 @@ By score: #1 84, #4 54, #2 52, #3 42, #6 31, #5 17, #7 14, #9 10, #8 7,
   cover the checked state. Only the `icons` value is unique. `similar` misses
   this pair (2 of 7 steps shared), because one value differs: grep for
   `"radio menu item","name":"Icons"` and `browser_mode` instead.
-- **Criticality 3:** `src/ui/browser_modes` is high churn (81 commits, 36
-  fixes), but the menu-to-mode wiring is simple.
+- **Criticality 3:** view-mode switching had high churn, though the menu-to-mode wiring is simple.
 - **Diagnostic 4:** seven steps. A failure says that the view did not switch,
   the location was lost, or the preference was not written.
 
@@ -179,10 +178,10 @@ By score: #1 84, #4 54, #2 52, #3 42, #6 31, #5 17, #7 14, #9 10, #8 7,
 - **Impact 2:** a wrongly coloured or invisible selection highlight in one
   field; selection still works.
 - **Coverage 2:** it is the only `accent_pixels` check in the corpus, but its
-  unique assertion is a colour, so it is capped at 2. Theme unit tests
-  (`src/ui/theme/tests.rs`) check generated palettes, not this widget.
+  unique assertion is a colour, so it is capped at 2. Theme unit tests check
+  generated palettes, not this widget.
 - **Criticality 3:** its origin is fix #778, and theme colours were fixed again
-  in triage batch 5. Low churn in `src/ui/browser/listing_filter.rs`.
+  in triage batch 5. Low churn in listing-filter code.
 - **Diagnostic 3:** one focused check, but a pixel-count heuristic. A failure
   could be the theme, the field's styling or render timing.
 
@@ -196,9 +195,7 @@ By score: #1 84, #4 54, #2 52, #3 42, #6 31, #5 17, #7 14, #9 10, #8 7,
 - **Coverage 1:** every assertion is geometry, which AGENTS.md "Test value"
   rules out ("Never write layout tests"). The `short` variant takes the same
   route as `long` and adds nothing.
-- **Criticality 2:** `src/ui/browser/pane_header.rs` changes moderately (20
-  commits), but layout regressions are verified with screenshots, not at this
-  level.
+- **Criticality 2:** pane-header code changes moderately, but layout regressions are verified with screenshots, not at this level.
 - **Diagnostic 2:** unlabelled geometry comparisons. A failure gives two
   numbers, and the artifacts are needed to see what moved.
 

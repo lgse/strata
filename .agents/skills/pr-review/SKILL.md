@@ -27,9 +27,10 @@ of the two words. Everything else runs without asking: the user is not
 watching. Ask only when a decision is genuinely theirs (see **Stop points**).
 
 All repository rules in `AGENTS.md` apply throughout: Conventional Commits,
-thirteen-language i18n, `ui::keys` bindings, tooltips only on icon-only
-buttons, semantic `@strata_*` colors, the test-value rules, and the risk-based
-validation policy. Read it before starting if it is not already in context.
+thirteen-language i18n, `strata_desktop::keys` bindings, tooltips only on
+icon-only buttons, semantic `strata-kit::Look` / `Kit` tokens, the test-value
+rules, and the risk-based validation policy. Read it before starting if it is
+not already in context.
 
 ## 1. Load the PR
 
@@ -117,17 +118,17 @@ one:
   know what each change intended. Keep both behaviors unless they are
   genuinely exclusive; then keep main's and re-apply the PR's intent on top.
 - `Cargo.lock`: take main's version (`git checkout origin/main -- Cargo.lock`)
-  and run `cargo check --all-targets --all-features` so Cargo re-resolves
-  anything the PR added. Never hand-edit it.
-- `data/locales/*.yml`: a key must end up present in all thirteen catalogs with
-  the same placeholders. After resolving, run `./scripts/test-headless.py i18n::`.
-- Generated files (`src/ui/browser/entry/catppuccin.rs`, and anything whose
-  header says it is generated): take main's and rerun the generator.
+  and run `cargo check --workspace --all-targets --all-features` so Cargo
+  re-resolves anything the PR added. Never hand-edit it.
+- `data/locales/*.json`: a key must end up present in all thirteen catalogs with
+  the same placeholders. After resolving, run `mise run test i18n::`.
+- Generated files (anything whose header says it is generated): take main's and
+  rerun the generator.
 - Tests that conflict: resolve so that the resulting test still fails when
   the behavior it guards is broken. If both sides added a test for the same
   behavior, keep one (step 5 decides which).
 
-After resolving: `cargo check --all-targets --all-features`, then
+After resolving: `cargo check --workspace --all-targets --all-features`, then
 `git add` the files and `git commit --no-edit` to finish the merge. Do not
 squash the merge into other changes.
 
@@ -158,26 +159,26 @@ reviewer may be mistaken, and the user is the owner.
 
 **Correctness.** Read the production code for logic errors, unhandled error
 paths, filesystem safety (operations on the wrong path, missing trash vs.
-delete distinction, races with file monitors), GTK lifecycle (signal handlers
-on destroyed widgets, main-context assumptions, reference cycles), and
-preference handling (`ThemeManager::bind_preference`, shared control
-bindings, settings pages that only edit preferences). If the `code-review`
-skill is available, run it at high effort on the branch as a second reader;
-verify each of its findings before acting on it.
+delete distinction, races with file monitors), Rune/GLib lifecycle (`Browser`
+observers only queuing, `AppHandle::update_if` from background threads,
+main-context assumptions, crate layering in `deny.toml`), and preference
+handling (live application before Settings opens, settings pages that only edit
+preferences). If the `code-review` skill is available, run it at high effort on
+the branch as a second reader; verify each of its findings before acting on it.
 
 **Repository rules.** Check the diff against `AGENTS.md`: every new
 user-facing string in all thirteen `data/locales/` catalogs; shortcuts only
-through `ui::keys::bindings`; tooltips only on icon-only buttons; no static
-colors; no inline test modules; no narrating comments; Conventional Commit PR
-title that `.github/workflows/pr-policy.yml` accepts; PR body keeps the
-template sections. Fix what you can in code; fix the title with
+through `strata_desktop::keys::bindings`; tooltips only on icon-only buttons;
+no static colors; no inline test modules; no narrating comments; Conventional
+Commit PR title that `.github/workflows/pr-policy.yml` accepts; PR body keeps
+the template sections. Fix what you can in code; fix the title with
 `gh pr edit "$PR" --title`. Leave the author's description alone unless the
 metadata policy check fails on it.
 
 ## 5. Remove tautological tests
 
 The repository has test bloat; the PR must not add to it. Review every test
-the PR adds or changes (Rust `#[test]`s in `src/**/tests*.rs` and `tests/`,
+the PR adds or changes (Rust `#[test]`s in `crates/**/tests*.rs` and `tests/`,
 QA scenarios in `tests/qa/scenarios/`, and script tests under
 `scripts/test_*.py`).
 
@@ -187,9 +188,9 @@ Specifically delete tests that:
 
 - repeat a constant, default, or setter assignment (`assert_eq!(x.foo(), 3)`
   right after `x.set_foo(3)`, or asserting a `Default` matches its literal);
-- match CSS text, count widget children, or assert geometry, spacing,
-  alignment, wrapping, or pixel placement in any form, including ones named
-  as clipping or layout regressions;
+- match style text, count incidental widget children, or assert geometry,
+  spacing, alignment, wrapping, or pixel placement in any form, including ones
+  named as clipping or layout regressions;
 - serialize and deserialize a preference without exercising the behavior it
   drives (the fixture and the behavioral startup/two-window/rebuild tests are
   the required coverage, per `docs/preferences.md`);
@@ -231,7 +232,8 @@ change touches, pick the regression tests that cover them, confirm the
 selection is nonzero, and run them.
 
 ```bash
-./scripts/test-headless.py <filter>                 # targeted Rust tests
+mise run test <filter>                              # targeted headless Rust tests
+mise run test-platform <filter>                     # compositor / window tests (when host/shell/platform changed)
 ./scripts/qa.sh <scenario filter>                   # affected QA scenarios
 ./scripts/quality.sh fmt && ./scripts/quality.sh clippy   # once, on the final code
 ```

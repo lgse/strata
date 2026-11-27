@@ -1,4 +1,4 @@
-{"scenario":"properties-pins-and-unpins-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Pin then Unpin via the Properties dialog, sidebar row added and removed; only QA check of folder pin and unpin from Properties (file-properties-describes-and-closes asserts Pin is absent for files); removal and restore rules unit-tested in src/adapters/bookmarks and src/ui/window/bookmarks"}}
+{"scenario":"properties-pins-and-unpins-folder","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.5},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Pin and Unpin buttons in Properties add and remove the folder's sidebar row; only GUI check of this route, logic unit-tested in properties/tests.rs"}}
 {"click":{"entry":"documents"},"button":3}
 {"wait":{"menu_items":{}},"message":"the context menu for 'documents'"}
 {"wait":{"present":{"menu_item":"Properties"}},"message":"the menu item 'Properties'"}

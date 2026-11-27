@@ -41,12 +41,6 @@ impl TestMutex {
     }
 }
 
-/// Serializes tests that drive `glib::MainContext::default()` directly, since it is a
-/// process-wide singleton and concurrent access from the test harness's per-test threads panics
-/// with a GLib thread-affinity error. A single shared lock, not one static per module: two
-/// separate locks each covering only their own module's tests do not prevent a test in one
-/// module from racing a test in another, since neither knows about the other's lock. Poisoning is
-/// cleared because the mutex protects no state and should not turn one failure into a cascade.
 pub static ASYNC_MAIN_CONTEXT_DEFAULT: MainContextLock = MainContextLock(TestMutex::new());
 
 pub struct MainContextLock(TestMutex);
@@ -100,8 +94,6 @@ fn next_source_id() -> u32 {
     next_source_id_in(&glib::MainContext::default())
 }
 
-/// Source ids are numbered per context, so every source still attached to `context` has an id
-/// below the one this returns.
 fn next_source_id_in(context: &glib::MainContext) -> u32 {
     let probe = glib::idle_source_new(None, glib::Priority::LOW, || glib::ControlFlow::Break);
     let id = probe.attach(Some(context)).as_raw();
@@ -167,8 +159,6 @@ static LOG_CAPTURE: TestMutex = TestMutex::new();
 
 static GLOBAL_SINK: Once = Once::new();
 
-// A global sink keeps callsites interesting even when another test logs before a
-// thread-local capture installs its subscriber.
 fn install_global_sink() {
     GLOBAL_SINK.call_once(|| {
         let sink = tracing_subscriber::fmt()
@@ -200,8 +190,6 @@ pub fn captured_event<'a>(output: &'a str, message: &str) -> &'a str {
         .unwrap_or_else(|| panic!("missing {message:?} event in:\n{output}"))
 }
 
-/// Opens the new file read-only: vfat mounted with `flush` sleeps 100 ms at
-/// every close of a file opened for writing.
 pub fn create_empty_file(path: &std::path::Path) -> std::io::Result<()> {
     use rustix::fs::{Mode, OFlags};
     rustix::fs::open(
@@ -299,12 +287,8 @@ pub fn distinct_device_dirs(name: &str) -> Option<(tempfile::TempDir, tempfile::
 }
 
 /// Names the one test an isolated child runs.
-const ISOLATED_CHILD: &str = "STRATA_ISOLATED_GTK_TEST";
+const ISOLATED_CHILD: &str = "STRATA_ISOLATED_TEST";
 
-/// Runs the test `name` in a process of its own, with a home and XDG folders it can discard.
-/// The child is this test executable started again for that one test: `prepare` runs there
-/// first, and `run` follows unless `prepare` returns false. Process-wide state the test
-/// changes, such as the locale or an initialized toolkit, ends with the child.
 pub fn isolated_test(
     name: &str,
     extra_env: impl IntoIterator<Item = (impl AsRef<std::ffi::OsStr>, impl AsRef<std::ffi::OsStr>)>,
@@ -321,9 +305,6 @@ pub fn isolated_test(
         .into_iter()
         .map(|(key, value)| (key.as_ref().to_owned(), value.as_ref().to_owned()))
         .collect();
-    // Child processes still share the display's clipboard and pointer grabs.
-    static DISPLAY: TestMutex = TestMutex::new();
-    let _display = DISPLAY.lock().expect("display lock");
     let sandbox = tempfile::tempdir().expect("isolated preferences");
     let home = sandbox.path().join("home");
     std::fs::create_dir_all(&home).expect("isolated home");
@@ -332,6 +313,7 @@ pub fn isolated_test(
         // The parent already selected this exact case, including explicit --ignored runs.
         .args(["--exact", name, "--nocapture", "--include-ignored"])
         .env(ISOLATED_CHILD, name)
+        .env_remove("XDG_CURRENT_DESKTOP")
         .env("HOME", home)
         .env("XDG_STATE_HOME", sandbox.path().join("state"))
         .env("XDG_CONFIG_HOME", sandbox.path().join("config"))

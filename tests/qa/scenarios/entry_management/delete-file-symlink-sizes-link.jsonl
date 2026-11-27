@@ -1,4 +1,4 @@
-{"scenario":"delete-file-symlink-sizes-link","modes":["list"],"tree":{},"setup":[{"fs":{"path":"payload.bin","truncate":100000}},{"fs":{"path":"link","symlink":"payload.bin"}}],"variants":[{"id":"name-sort","prefs":{"sort_key":"name"}},{"id":"size-sort","prefs":{"sort_key":"size"}}]}
+{"scenario":"delete-file-symlink-sizes-link","modes":["list"],"tree":{},"setup":[{"fs":{"path":"payload.bin","truncate":100000}},{"fs":{"path":"link","symlink":"payload.bin"}}],"variants":[{"id":"name-sort","prefs":{"sort_key":"name"}},{"id":"size-sort","prefs":{"sort_key":"size"}}],"quality":{"impact":5,"coverage":4,"criticality":4,"diagnostic":4,"score":63,"note":"Shift+Delete on file symlink: dialog sizes the link (11 B) not its target, deletes only the link; unique GUI check, origin fix #1880"}}
 {"wait":{"entries":["link","payload.bin"]},"message":"the file and its symlink to be listed"}
 {"select":{"entry":"link"}}
 {"wait":{"selected":["link"]},"message":"the file symlink to be selected"}
@@ -6,7 +6,7 @@
 {"key":"shift+Delete"}
 {"wait":{"dialog":"Permanently delete 1 item?"},"message":"the file symlink delete confirmation to open"}
 {"wait":{"present":{"role":"label","name":"11 B","within":{"dialog":true}}},"message":"the delete row to show the symlink's own size"}
-{"wait":{"present":{"role":"label","name":"1 item · 11 B will be permanently deleted","within":{"dialog":true}}},"message":"the total to count the symlink rather than its target"}
+{"wait":{"description":{"target":{"role":"dialog","name":"Permanently delete 1 item?"},"text":"1 item · 11 B will be permanently deleted"}},"message":"the total to count the symlink rather than its target"}
 {"expect":{"absent":{"role":"label","name":"100 kB","within":{"dialog":true}}},"message":"the confirmation must not reuse the followed target size"}
 {"click":{"dialog_button":"Permanently delete 1 item"}}
 {"wait":{"dialog":null},"message":"the delete confirmation to close"}

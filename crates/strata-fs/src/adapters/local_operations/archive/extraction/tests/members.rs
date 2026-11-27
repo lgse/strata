@@ -59,8 +59,6 @@ pub(super) fn skipped_links(root: &Path, names: &[&str]) -> Vec<SkippedItem> {
         .collect()
 }
 
-/// Extracts `members` from `archive` into `destination`, recording hard-link targets,
-/// and ends the session with `ending` unless a member failed first.
 pub(super) fn extract_members(
     destination: &Path,
     archive: &str,

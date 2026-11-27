@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! `STRATA_QA_DISPLAY=wayland`: a private headless sway in the run's runtime directory,
-//! with no input devices of its own and no XWayland. The application sends its input
-//! through Wayland virtual devices instead of XTEST.
-
 use std::{
     fs::{self, File},
     path::{Path, PathBuf},
@@ -12,16 +8,16 @@ use std::{
 };
 
 use crate::{
-    Display, POLL_INTERVAL, Server,
+    POLL_INTERVAL,
     process::{spawn, tail, terminate},
 };
 
 pub(crate) const SWAY_SOCKET_VARIABLE: &str = "SWAYSOCK";
+pub(crate) const WINDOW_VARIABLE: &str = "STRATA_QA_WINDOW";
 const SWAY_START_TIMEOUT: Duration = Duration::from_secs(15);
-/// Xvfb's screen.
+/// The headless compositor output size.
 const SCREEN: (u32, u32) = (1440, 900);
-/// Xvfb's 660 ms autorepeat delay, and every window floating in the output's corner, where
-/// the window-manager-less X display leaves it.
+const PEER: (&str, u32, u32) = ("io.github.lgse.Strata.TestDragSource", 1200, 760);
 const SWAY_CONFIG: &str = "\
 output HEADLESS-1 resolution {width}x{height} position 0 0 scale 1
 default_border none
@@ -31,37 +27,33 @@ mouse_warping none
 xwayland disable
 input type:keyboard repeat_delay 660
 for_window [app_id=\".*\"] floating enable, move position 0 0
+for_window [app_id=\"{peer}\"] move position {peer_x} {peer_y}
 ";
 
 pub(crate) struct Sway {
+    pub(crate) name: String,
+    server: Child,
+    pub(crate) log: PathBuf,
     pub(crate) ipc: PathBuf,
-    runtime: PathBuf,
 }
 
-impl Sway {
-    pub(crate) fn screenshot(&self, socket: &str, destination: &Path) -> Result<Child, String> {
-        spawn(
-            Command::new("grim")
-                .arg(destination)
-                .env_clear()
-                .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-                .env("XDG_RUNTIME_DIR", &self.runtime)
-                .env("WAYLAND_DISPLAY", socket)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null()),
-        )
-        .map_err(|error| format!("cannot run grim: {error}"))
+impl Drop for Sway {
+    fn drop(&mut self) {
+        terminate(&mut self.server);
     }
 }
 
-pub(crate) fn start(scratch: &Path, runtime: &Path) -> Result<Display, String> {
+pub(crate) fn start(scratch: &Path, runtime: &Path) -> Result<Sway, String> {
     let io = |error: std::io::Error| error.to_string();
     let config = scratch.join("sway.conf");
     fs::write(
         &config,
         SWAY_CONFIG
             .replace("{width}", &SCREEN.0.to_string())
-            .replace("{height}", &SCREEN.1.to_string()),
+            .replace("{height}", &SCREEN.1.to_string())
+            .replace("{peer}", PEER.0)
+            .replace("{peer_x}", &PEER.1.to_string())
+            .replace("{peer_y}", &PEER.2.to_string()),
     )
     .map_err(io)?;
     let log = scratch.join("sway.log");
@@ -92,14 +84,11 @@ pub(crate) fn start(scratch: &Path, runtime: &Path) -> Result<Display, String> {
         if let (Some(socket), Some(ipc)) = (find(runtime, is_wayland_socket), find(runtime, is_ipc))
             && output_active(&runtime.join(&ipc))
         {
-            return Ok(Display {
+            return Ok(Sway {
                 name: socket,
                 server,
                 log,
-                kind: Server::Wayland(Sway {
-                    ipc: runtime.join(ipc),
-                    runtime: runtime.to_owned(),
-                }),
+                ipc: runtime.join(ipc),
             });
         }
         if !matches!(server.try_wait(), Ok(None)) || Instant::now() >= deadline {

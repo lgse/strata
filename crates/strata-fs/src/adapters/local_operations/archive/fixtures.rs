@@ -617,8 +617,6 @@ fn write_7z_members(path: &Path, members: &[FixtureMember<'_>]) -> Result<(), Bo
     Ok(())
 }
 
-/// Overwrites the external attributes of every central-directory record;
-/// `0` makes `ZipFile::unix_mode()` report no mode.
 pub(super) fn patch_zip_external_attributes(path: &Path, value: u32) -> Result<(), Box<dyn Error>> {
     const CENTRAL_DIRECTORY_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x01, 0x02];
     const EXTERNAL_ATTRIBUTES_OFFSET: usize = 38;

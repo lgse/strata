@@ -48,7 +48,7 @@ other desktop entry, including an application launcher, opens as before.
 
 `crates/strata-fs/src/services/dropped_content/tests.rs` covers address and name validation,
 link round trips, image recognition, and no-clobber saving by both renaming and
-writing in place; `src/ui/browser/content_drop/tests.rs` covers how dropped
+writing in place; `crates/strata-app/src/dnd/` covers how dropped
 values are classified, including refused mixed lists.
 The QA scenarios in `tests/qa/scenarios/content_drops/` drag real content from
 a separate process, using the `offers` of the `foreign` step, and count the

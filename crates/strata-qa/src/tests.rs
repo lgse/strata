@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MIT
+
+mod checking;
+mod commands;
+mod fake;
+mod locating;
+mod predicates;
+mod scanning;
+mod serving;
+mod snapshot;
+mod stepping;
+mod targeting;
+
+use super::Predicate;
+
+fn predicate(json: serde_json::Value) -> Predicate {
+    serde_json::from_value(json).expect("the predicate should parse")
+}

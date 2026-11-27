@@ -9,8 +9,6 @@ type FindAnswer = (
     Rc<Cell<bool>>,
 );
 
-/// Watches every column like the local adapter's directory monitor, on a fake
-/// filesystem where folders keep their identity through a rename.
 #[derive(Default)]
 pub(super) struct DepartingSource {
     /// Holds parent lookups until `answer_finds`, like the adapter's worker thread.
@@ -40,8 +38,6 @@ impl DepartingSource {
         self.missing.borrow_mut().insert(from.clone());
     }
 
-    /// Renames `from` with everything in it, which leaves every folder that it held,
-    /// and that the identities know, missing at its old location.
     pub(super) fn rename_tree(&self, from: &Location, to: &Location) {
         let moved = self.identities.rename_tree(from, to);
         let mut missing = self.missing.borrow_mut();

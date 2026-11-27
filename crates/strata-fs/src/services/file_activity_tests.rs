@@ -272,3 +272,31 @@ fn running_operations_answer_for_their_roots_and_folders_until_they_end() {
     assert!(!is_changing(&other));
     assert!(!below_trees.into_iter().any(active));
 }
+
+#[test]
+fn list_fast_path_counts_idle_directory_and_stops_if_fenced_mid_iteration() {
+    let root = tempfile::tempdir().expect("root folder");
+    let sub = root.path().join("sub");
+    std::fs::create_dir(&sub).expect("sub dir");
+    std::fs::write(sub.join("a.txt"), b"a").expect("a");
+    std::fs::write(sub.join("b.txt"), b"b").expect("b");
+
+    // With no active operations, listing succeeds via the fast path without blocking.
+    let mut entries = list(&sub).expect("idle list");
+    assert!(entries.next().is_some());
+    assert!(entries.next().is_some());
+    assert!(entries.next().is_none());
+    assert!(!entries.stopped());
+
+    // If a fence starts while iterating an idle listing, the next step stops with Refused.
+    let mut entries = list(&sub).expect("idle list before fence");
+    assert!(entries.next().is_some());
+    let activity = begin(OperationScope::default());
+    let real = sub.canonicalize().expect("canonical sub");
+    let fence = activity.fence([real]);
+    fence.stop_reads();
+    let second = entries.next().expect("refusal item");
+    assert!(second.is_err_and(|err| is_refusal(&err)));
+    assert!(entries.next().is_none(), "a stopped listing ends");
+    assert!(entries.stopped());
+}

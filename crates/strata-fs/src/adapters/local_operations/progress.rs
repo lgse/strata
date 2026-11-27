@@ -221,8 +221,6 @@ impl TransferProgressTracker {
         }
     }
 
-    /// Credits what the item owes beyond what it `reported`, so concurrent
-    /// items are never counted twice.
     pub(super) fn finish_item(
         &self,
         reported: Reported,
@@ -267,8 +265,6 @@ pub(super) struct ProgressFollower {
 }
 
 impl ProgressFollower {
-    /// Stops following and folds in the last report, so a late tick cannot
-    /// count it twice.
     pub(super) fn stop(mut self) -> Reported {
         if let Some(source) = self.source.take() {
             source.remove();

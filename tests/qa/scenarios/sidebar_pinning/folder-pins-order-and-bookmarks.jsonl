@@ -1,10 +1,10 @@
-{"scenario":"folder-pins-order-and-bookmarks","modes":["columns"],"layout":"us","setup":[{"fs":{"path":"$config/gtk-3.0","mkdir":true,"parents":true}},{"fs":{"path":"$config/gtk-3.0/bookmarks","write":"file://$fixture_quoted/pin-b pin-b\n"}}],"tree":{"pin-a":{},"pin-b":{},"pin-c":{}},"quality":{"impact":4,"coverage":4,"criticality":4,"diagnostic":4,"score":56,"note":"Shift (move-only) drag of three folders pins new ones in order and skips the pinned duplicate; plain single pin is pinned-rows-transfer-and-remote-gaps"}}
+{"scenario":"folder-pins-order-and-bookmarks","modes":["columns"],"layout":"us","setup":[{"fs":{"path":"$config/gtk-3.0","mkdir":true,"parents":true}},{"fs":{"path":"$config/gtk-3.0/bookmarks","write":"file://$fixture_quoted/pin-b pin-b\n"}}],"tree":{"pin-a":{},"pin-b":{},"pin-c":{}},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Shift move-only drag of three selected folders pins them in order, skips duplicate, moves nothing; pin-into-gap and reorder overlap pinned-rows/spring-loaded"}}
 {"wait":{"all":[{"present":{"sidebar":"pin-b"}},{"focused":"pin-a"}]},"message":"the saved pin to load and focus to reach 'pin-a'"}
 {"key":"ctrl+a"}
 {"wait":{"selected":{"set":["pin-a","pin-b","pin-c"]},"dir":"$root"},"message":"Ctrl+A to select the three folders"}
 {"drag":{"from":{"entry":"pin-c","dir":"$root"},"to":{"ancestor":"scroll pane","of":{"sidebar":"Home"}},"to_at":["50%",-80]},"release":false,"mods":["shift"]}
-{"wait":{"present":{"role":"grouping","name":"PINNED"}},"message":"a Shift (move-only) folder drag over the sidebar to reveal the Pinned insertion targets"}
-{"move":{"role":"grouping","name":"PINNED","nth":0}}
+{"wait":{"present":{"role":"button","name":"PINNED"}},"message":"a Shift (move-only) folder drag over the sidebar to reveal the Pinned insertion targets"}
+{"move":{"point":[{"of":{"role":"button","name":"PINNED"}},{"mid":[{"of":{"role":"button","name":"PINNED"},"at":"100%"},{"of":{"sidebar":"pin-b"},"at":0}]}]}}
 {"button_up":1}
 {"fs":{"path":"$config/gtk-3.0/bookmarks","lines_equal":["file://$fixture_quoted/pin-a pin-a","file://$fixture_quoted/pin-c pin-c","file://$fixture_quoted/pin-b pin-b"]},"message":"a Shift drag of three folders to pin the new ones in order before the existing pin, skipping the duplicate"}
 {"wait":{"all":[{"present":{"sidebar":"pin-a"}},{"present":{"sidebar":"pin-c"}}]},"message":"the new pins to show in the sidebar"}

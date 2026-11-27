@@ -78,21 +78,12 @@ use undo::{
     push_regenerated_undo, record_replaced_originals, retain_merge_records,
 };
 
-/// Caps a normal directory load. Memory sets the ceiling, not time: a listed entry costs
-/// about 0.8 KiB of resident memory (its `FileEntry` plus one GTK string object), so a
-/// 250,000-entry List view settles in under a second at roughly 490 MiB RSS in release.
 const MAX_DIRECTORY_ENTRIES: usize = 250_000;
 const DIRECTORY_LOAD_TIME_BUDGET: Duration = Duration::from_secs(10);
 
-/// Larger GIO batches cut per-batch merge, selection scan, and GTK splice
-/// cost on large listings; remote locations keep small batches for fast first paint.
 const NATIVE_DIRECTORY_BATCH_SIZE: usize = 512;
 const REMOTE_DIRECTORY_BATCH_SIZE: usize = 128;
 
-/// A hover peek only ever displays a handful of entries (`PeekBehavior::item_limit`), so it
-/// needs far less headroom than a full directory load -- just enough to survive hidden-file
-/// filtering, not enough to enumerate an entire large directory for a preview that discards
-/// nearly all of it.
 const PEEK_MAX_ENTRIES: usize = 64;
 const PEEK_TIME_BUDGET: Duration = Duration::from_secs(3);
 
@@ -144,14 +135,9 @@ pub enum SelectionUpdate {
 
 #[derive(Clone, Debug)]
 pub enum BrowserEvent {
-    /// The outgoing directory is still available for presentation-state capture.
-    /// `history` marks a return to a recorded path: Back, Forward, Up, or a path an
-    /// external change or undo restores. Other routes navigate explicitly.
     NavigationStarting {
         history: bool,
     },
-    /// The column at `depth` is about to be cleared for a reload; its entries,
-    /// selection and cursor are still readable.
     ColumnReloading {
         depth: usize,
     },
@@ -177,8 +163,6 @@ pub enum BrowserEvent {
         depth: usize,
         count: usize,
     },
-    /// A range already installed in authoritative state; views borrow it during
-    /// synchronous dispatch instead of receiving a deep clone.
     EntriesPublished {
         depth: usize,
         position: usize,
@@ -297,8 +281,6 @@ pub enum BrowserEvent {
     TransferFinished {
         moved_locations: Vec<Location>,
     },
-    /// Only after a clean completion; a stop or errors carry the report in
-    /// their outcome event.
     ItemsReported {
         report: TransferReport,
     },
@@ -309,16 +291,11 @@ pub enum BrowserEvent {
         sort_direction: SortDirection,
         name_comparison: crate::model::NameComparison,
     },
-    /// An item an operation of this browser renamed or moved, published as it
-    /// lands, even when a later operation superseded that one. `merged` means
-    /// `to` is an existing folder the item was merged into.
     ItemRelocated {
         from: Location,
         to: Location,
         merged: bool,
     },
-    /// An item an operation of this browser removed from `location`.
-    /// `trash_identity` identifies an item moved to Trash; others were deleted.
     ItemRemoved {
         location: Location,
         trash_identity: Option<ItemIdentity>,
@@ -358,9 +335,6 @@ pub enum BrowserEvent {
     },
     OperationCompletedWithErrors {
         message: String,
-        /// Entries a retry with `permanent: true` would likely delete
-        /// successfully, e.g. ones that failed only because this location
-        /// doesn't support Trash. Always empty for a restore failure.
         retryable_locations: Vec<Location>,
         has_non_retryable_failures: bool,
         blocker: Option<crate::services::DeleteBlocker>,
@@ -405,6 +379,8 @@ pub enum BrowserEvent {
     },
     ArchiveCompleted {
         select_name: String,
+        /// The archive operation ended by cancellation; `OperationCancelled` follows.
+        cancelled: bool,
     },
     TransferCompleted,
     TransferReveal {
@@ -413,9 +389,6 @@ pub enum BrowserEvent {
     },
 }
 
-/// Events dispatch by reference: payloads move once into authoritative state,
-/// observers borrow, and the observer list is cloned up front so reentrant
-/// emission stays safe.
 type Observer = Rc<dyn Fn(&BrowserEvent)>;
 type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
 type DeferredDirectoryChanges = HashMap<usize, Vec<(Location, DirectoryChange)>>;
@@ -423,18 +396,12 @@ type DeferredDirectoryChanges = HashMap<usize, Vec<(Location, DirectoryChange)>>
 const MAX_INCREMENTAL_OPERATION_UPDATES: usize = 64;
 const OPERATION_PUBLICATION_BATCH: usize = 512;
 
-/// Bounds one metadata fill; partial results still apply, the rest retries on
-/// its next bind.
 const METADATA_FILL_TIME_BUDGET: Duration = Duration::from_secs(5);
 /// Defensive cap per depth: the UI only ever asks for its visible window.
 const MAX_PENDING_FILL_LOCATIONS: usize = 1024;
 const MAX_VIEWPORT_FILL_BATCH: usize = 16;
 
-/// Remote loads only (native loads stage instead): entries accumulate this far
-/// before an early flush bounds first-result latency.
 const COALESCE_ENTRIES: usize = 2048;
-/// Bounds one remote progressive flush: a slow link must not turn one timer
-/// fire into a multi-frame GTK mutation.
 const REMOTE_FLUSH_CAP: usize = 512;
 // Camera folders repeat filenames, creating many interleaved insertions rather
 // than one cheap append. Keep each publication small enough for input/frame work.
@@ -442,24 +409,18 @@ const CAMERA_FLUSH_CAP: usize = 32;
 /// Latency bound so later remote batches flush on the next idle/frame.
 const REMOTE_FLUSH_DELAY: Duration = Duration::from_millis(50);
 
-/// Last selection emitted per depth on the batch path, keyed by request so a
-/// new load re-emits; lets background batches skip redundant refreshes.
 type BatchSelectionState = HashMap<usize, (RequestId, Vec<usize>, usize)>;
 
-/// One bound row's fill request: stable location plus its source position, so
-/// fills apply after validating the row has not moved.
 struct ViewportTarget {
     position: usize,
     location: Location,
     include_icon_details: bool,
 }
 
-/// Routing for one metadata request: own ids, validated against the owning
-/// directory request.
 struct ViewportFill {
     depth: usize,
     directory_request: RequestId,
-    tokens: Vec<(usize, Location)>,
+    tokens: HashMap<Location, usize>,
     include_icon_details: bool,
 }
 
@@ -480,9 +441,6 @@ struct MediaSortFill {
     remaining_before: usize,
 }
 
-/// A native initial load in flight: batches accumulate with no merge walk and
-/// no UI events; monitor deltas queue for one reconcile, and removed locations
-/// filter later batches so stale batches never resurrect deleted entries.
 struct StagingLoad {
     request_id: RequestId,
     entries: Vec<FileEntry>,
@@ -491,8 +449,6 @@ struct StagingLoad {
     metadata_incomplete: bool,
 }
 
-/// A native load sorting off-thread after enumeration finished. Deltas
-/// arriving here queue for the completion's silent reconcile.
 struct SortingLoad {
     request_id: RequestId,
     deltas: Vec<(Location, DirectoryChange)>,
@@ -532,20 +488,19 @@ pub struct Browser {
     /// The current step of the one departure check that runs at a time.
     departure_probe: RefCell<Option<directory_changes::DepartureProbe>>,
     freshness: freshness::Freshness,
-    metadata_pending: RefCell<HashMap<usize, Vec<ViewportTarget>>>,
+    metadata_pending: RefCell<HashMap<usize, metadata_fills::PendingQueue>>,
     folder_counts_after_load: RefCell<HashMap<usize, RequestId>>,
     metadata_idle: RefCell<Option<gio::glib::SourceId>>,
     staging: RefCell<HashMap<usize, StagingLoad>>,
     sorting: RefCell<HashMap<usize, SortingLoad>>,
     staged_publishes: RefCell<HashMap<usize, StagedPublish>>,
+    publication_chunks: Cell<(usize, usize)>,
     preserving_refreshes: RefCell<HashSet<usize>>,
     kept_listings: RefCell<HashMap<usize, KeptListing>>,
     publish_timer: RefCell<Option<gio::glib::SourceId>>,
     remote: RefCell<RemoteState>,
     metadata_loads: RefCell<HashMap<usize, LoadHandle>>,
     fill_tokens: RefCell<HashMap<RequestId, ViewportFill>>,
-    /// Full-column sort fills, kept apart from viewport fills so a viewport
-    /// metadata dispatch can never overwrite or cancel an active full sort.
     sort_loads: RefCell<HashMap<usize, LoadHandle>>,
     sort_awaiting_fill: RefCell<Option<SortFill>>,
     last_batch_selection: RefCell<BatchSelectionState>,
@@ -581,14 +536,9 @@ pub struct Browser {
     recovery_operation: Cell<bool>,
     archive_operation: Cell<bool>,
     transfer_destination: RefCell<Option<Location>>,
-    /// Whether a completed transfer should navigate to/reveal its destination.
-    /// A drop onto a folder row moves or copies the file without leaving the
-    /// source listing; a paste or explicit "move to" still shows where it landed.
     transfer_reveal: Cell<bool>,
     created_locations: RefCell<Vec<Location>>,
     merged_undo: RefCell<MergeUndoState>,
-    /// Where each moved item landed; Keep Both and fixed names can differ
-    /// from the source name.
     moved_items: RefCell<HashMap<Location, Location>>,
     transfer_report: RefCell<TransferReport>,
     undo_claim: RefCell<Option<(u64, UndoEntry)>>,
@@ -596,8 +546,6 @@ pub struct Browser {
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
     requested_sort: RefCell<Option<(metadata_fills::SortPass, Location)>>,
-    /// A debounced sort stays pending after it reorders its column, until a newer
-    /// sort or a cancel replaces it; this tells that apart from one not yet applied.
     pending_sort_applied: Cell<bool>,
     sort_generation: Cell<u64>,
     preferences: Cell<ViewPreferences>,
@@ -633,6 +581,7 @@ impl Browser {
             staging: RefCell::new(HashMap::new()),
             sorting: RefCell::new(HashMap::new()),
             staged_publishes: RefCell::new(HashMap::new()),
+            publication_chunks: Cell::new(publication::DEFAULT_CHUNKS),
             preserving_refreshes: RefCell::new(HashSet::new()),
             kept_listings: RefCell::new(HashMap::new()),
             publish_timer: RefCell::new(None),
@@ -816,6 +765,10 @@ impl Browser {
         self.state
             .borrow_mut()
             .set_selection_anchor(depth, position);
+    }
+
+    pub fn clear_selection_anchor(&self, depth: usize) {
+        self.state.borrow_mut().clear_selection_anchor(depth);
     }
 
     pub fn focus_active(&self) {

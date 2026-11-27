@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Lists metadata without extracting members. TAR.GZ must decompress past file data;
-//! readable 7z headers remain listable even when their file contents are encrypted.
-
 pub use crate::sandbox::archive_listing::{
     ARCHIVE_TOO_LARGE_MESSAGE, ARCHIVE_UNSUPPORTED_MESSAGE, ArchiveListing, ArchiveListingStatus,
     INVALID_ARCHIVE, MAX_ARCHIVE_ENTRIES, decode_archive_listing,

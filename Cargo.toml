@@ -1,10 +1,17 @@
-# One workspace for the GTK app and the crates extracted from it. The root package stays
-# the GTK app; extracted crates join under crates/.
+# One workspace for Strata, its shared crates, and its Rune interface (docs/workspace.md).
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = [
+    "crates/*",
+    # The peer process of strata-platform's compositor tests: test tooling, never published.
+    "crates/strata-platform/tests/support/strata-test-peer",
+]
 
 [workspace.package]
+# The Rune-side crates inherit these two. The shared crates and the application set their own
+# version.
+version = "0.0.1"
+rust-version = "1.99.1"
 edition = "2024"
 authors = ["LGSE Ltd."]
 license = "MIT"
@@ -73,6 +80,41 @@ strata-preview = { version = "0.0.0", path = "crates/strata-preview", default-fe
 strata-qa = { version = "0.0.0", path = "crates/strata-qa" }
 strata-test-support = { version = "0.0.0", path = "crates/strata-test-support" }
 
+# The Rune side.
+# Rune is pre-release and not on crates.io. Every Rune crate pins the same `dev` rev; move
+# them together, on purpose (docs/rune/plan.md §0).
+# Rune's defaults minus `embedded-fonts` (strata-kit supplies JetBrains Mono; tests enable it),
+# `wayland-csd-title` (Strata windows are borderless with custom chrome), the macOS-only
+# `metal-backend`, `hunspell`, and `ogg-audio` (MPL-2.0 decoders).
+rune = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "7a7ed14e93ef00782a6c7c9a672608a9ba778cdb", default-features = false, features = ["accessibility", "dbus", "svg"] }
+rune-kit = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "7a7ed14e93ef00782a6c7c9a672608a9ba778cdb" }
+rune-fx = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "7a7ed14e93ef00782a6c7c9a672608a9ba778cdb" }
+
+strata-app = { version = "0.0.1", path = "crates/strata-app", default-features = false }
+strata-components = { version = "0.0.1", path = "crates/strata-components" }
+strata-kit = { version = "0.0.1", path = "crates/strata-kit" }
+strata-platform = { version = "0.0.1", path = "crates/strata-platform" }
+# Test-only and never published; cargo-deny's `wildcards` ban needs its version.
+strata-test-peer = { version = "0.0.1", path = "crates/strata-platform/tests/support/strata-test-peer" }
+
+# Third-party crates the Rune interface and its platform shims use.
+png = "0.18"
+swash = "0.2.10"
+syntect = { version = "5.3.0", default-features = false }
+tokio = { version = "1", default-features = false }
+two-face = { version = "0.5.2", default-features = false, features = ["syntect-onig"] }
+unicode-segmentation = "1.13"
+unicode-width = "0.2"
+wayland-backend = "0.3"
+wayland-client = "0.31"
+wayland-protocols = "0.32"
+wayland-protocols-misc = "0.3"
+wayland-protocols-wlr = "0.3"
+wgpu = { version = "30.0.1", default-features = false }
+x11rb = "0.13"
+xkbcommon = "0.9"
+zbus = { version = "6", default-features = false }
+
 [package]
 name = "strata"
 version = "1.2.2"
@@ -81,7 +123,7 @@ description = "A fast, keyboard-first file manager for Linux"
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-keywords = ["file-manager", "gtk4", "linux", "wayland"]
+keywords = ["file-manager", "linux", "wayland"]
 categories = ["filesystem", "gui"]
 
 [lints]
@@ -89,78 +131,34 @@ workspace = true
 
 [features]
 default = ["rar"]
-rar = ["strata-core/rar", "strata-fs/rar", "strata-preview/rar"]
-# The scripted `--qa` launch mode and its in-process X or Wayland input. Never in releases.
-qa = [
-    "dep:strata-qa",
-    "dep:x11rb",
-    "dep:regex",
-    "dep:wayland-client",
-    "dep:wayland-protocols-misc",
-    "dep:wayland-protocols-wlr",
-    "dep:xkbcommon",
-]
+rar = ["strata-app/rar"]
+# The scripted `--qa` launch mode. Never in releases.
+qa = ["strata-app/qa"]
 # Exact but slow consistency checks; tests and QA builds turn them on.
-invariant-checks = ["strata-fs/invariant-checks"]
-# Test hooks and test-only items of the workspace crates. The unit tests need it. It is a
-# feature rather than a dev-dependency so that the binary the QA scenarios drive, which
-# `cargo test --test qa` builds without it, carries no test hooks.
-test-support = [
-    "strata-core/test-support",
-    "strata-desktop/test-support",
-    "strata-fs/test-support",
-    "strata-preview/test-support",
-]
+invariant-checks = ["strata-app/invariant-checks"]
+# Test hooks and test-only items of the workspace crates.
+test-support = ["strata-app/test-support"]
 
 [dependencies]
-strata-core.workspace = true
-strata-desktop.workspace = true
-strata-fs.workspace = true
-strata-preview.workspace = true
-strata-qa = { workspace = true, optional = true }
-ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "settings", "async-io", "tracing"] }
-async-io = "2.6.0"
-cairo-rs.workspace = true
+strata-app.workspace = true
+
+[dev-dependencies]
 flate2.workspace = true
-fontconfig-sys = { package = "yeslogic-fontconfig-sys", version = "6.0.1" }
-futures-channel.workspace = true
-futures-lite.workspace = true
-gdk-pixbuf.workspace = true
-gdk4-wayland = { version = "0.11.4", features = ["v4_12"] }
-gdk4-x11 = { version = "0.11.4", features = ["v4_10"] }
 gio.workspace = true
-gio-unix.workspace = true
 glib.workspace = true
-gstreamer = { version = "0.25.3", features = ["v1_20"] }
-gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
-gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
 hex.workspace = true
 image.workspace = true
-libc.workspace = true
-pango.workspace = true
-pangocairo = "0.22.0"
-resvg.workspace = true
-rust-i18n.workspace = true
+png.workspace = true
+regex.workspace = true
 rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
-sourceview5 = { version = "0.11.2", features = ["gtk_v4_12"] }
+strata-qa.workspace = true
+strata-test-peer.workspace = true
 tar.workspace = true
 tempfile.workspace = true
 toml.workspace = true
-tracing.workspace = true
-zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 zip.workspace = true
-x11rb = { version = "0.14.0", default-features = false, features = ["xkb", "xtest"], optional = true }
-regex = { workspace = true, optional = true }
-wayland-client = { version = "0.31.15", optional = true }
-wayland-protocols-misc = { version = "0.3.12", features = ["client"], optional = true }
-wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = true }
-xkbcommon = { version = "0.9.0", default-features = false, optional = true }
-
-[dev-dependencies]
-strata-test-support.workspace = true
 
 [[test]]
 name = "qa"
@@ -168,15 +166,22 @@ path = "tests/qa.rs"
 required-features = ["qa"]
 harness = false
 
-[build-dependencies]
-glib-build-tools.workspace = true
-
 [profile.release]
 # Whole-program optimization for the hot listing/sort/insert paths. Build
 # time only: no runtime behavior change. (Stripping stays in the packaging
 # flow, not here, so crash reports keep symbols.)
 lto = true
 codegen-units = 1
+
+# The Rune side's perf tests (`cargo test --profile perf … -- --ignored`), as Rune's own
+# workspace sets it.
+[profile.perf]
+inherits = "release"
+opt-level = 3
+codegen-units = 16
+lto = false
+debug = false
+incremental = false
 
 [workspace.lints.rust]
 unsafe_code = "deny"
@@ -187,6 +192,8 @@ unused_unsafe = "deny"
 [workspace.lints.clippy]
 allow_attributes = "deny"
 allow_attributes_without_reason = "deny"
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
 dbg_macro = "deny"
 missing_safety_doc = "deny"
 multiple_unsafe_ops_per_block = "deny"
@@ -194,3 +201,15 @@ todo = "warn"
 undocumented_unsafe_blocks = "deny"
 unimplemented = "warn"
 unwrap_used = "warn"
+
+# Patches Rune's root Cargo.toml carries ("Depending on Rune" in crates/rune/README.md).
+# Cargo does not inherit a dependency's [patch] table; move these revs with `rune` above.
+[patch.crates-io]
+winit = { git = "https://github.com/anomalyco/rune", rev = "7a7ed14e93ef00782a6c7c9a672608a9ba778cdb" }
+sctk-adwaita = { git = "https://github.com/anomalyco/rune", rev = "7a7ed14e93ef00782a6c7c9a672608a9ba778cdb" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "7a7ed14e93ef00782a6c7c9a672608a9ba778cdb" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "7a7ed14e93ef00782a6c7c9a672608a9ba778cdb" }
+naga = { git = "https://github.com/anomalyco/rune", rev = "7a7ed14e93ef00782a6c7c9a672608a9ba778cdb" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "7a7ed14e93ef00782a6c7c9a672608a9ba778cdb" }
+accesskit_atspi_common = { git = "https://github.com/anomalyco/rune", rev = "7a7ed14e93ef00782a6c7c9a672608a9ba778cdb" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "7a7ed14e93ef00782a6c7c9a672608a9ba778cdb" }

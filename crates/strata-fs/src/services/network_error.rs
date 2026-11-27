@@ -7,8 +7,6 @@ use serde::{Deserialize, Serialize};
 
 use super::file_source::{io_error_reason, system_error_text};
 
-/// A ureq failure reduced to language-neutral data, so it can be cached and
-/// localized in whichever language is active when it is shown.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum NetworkError {

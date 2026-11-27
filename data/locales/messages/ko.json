@@ -204,6 +204,7 @@
   "Cannot permanently delete the filesystem root": "파일 시스템 루트는 영구 삭제할 수 없습니다",
   "Cannot restore the filesystem root": "파일 시스템 루트는 복원할 수 없습니다",
   "Can’t compress these items": "이 항목을 압축할 수 없습니다",
+  "Can’t extract these items": "이 항목의 압축을 풀 수 없습니다",
   "Can’t create items here": "여기에서는 항목을 만들 수 없습니다",
   "Can’t cut these items": "이 항목을 잘라낼 수 없습니다",
   "Can’t move these items": "이 항목을 이동할 수 없습니다",
@@ -421,6 +422,7 @@
   "Extract the archive here / to a typed folder": "여기에 / 입력한 폴더에 압축 풀기",
   "Extract the archive to a folder": "폴더에 압축 풀기",
   "Extracted entries remain in “%{folder}”.": "압축을 푼 항목은 “%{folder}”에 남아 있습니다.",
+  "Extracting archive %{current} of %{total}": "압축 파일 %{total}개 중 %{current}번째 압축 푸는 중",
   "Extraction destination must use an absolute path": "압축 풀기 대상은 절대 경로를 사용해야 합니다",
   "Extraction stopped unexpectedly": "압축 풀기가 예기치 않게 중지되었습니다",
   "Failed after %{elapsed}": "%{elapsed} 후 실패",
@@ -1151,5 +1153,6 @@
   "Press the new key for “%{action}”": "“%{action}”에 사용할 새 키를 누르세요",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} 키를 누르면 취소되고, %{backspace} 키를 누르면 이 동작의 모든 키가 제거됩니다.",
   "“%{group}” has no key, so this action cannot run.": "“%{group}”에 키가 없으므로 이 작업을 실행할 수 없습니다.",
-  "Custom action %{number}": "사용자 지정 동작 %{number}"
+  "Custom action %{number}": "사용자 지정 동작 %{number}",
+  "Volume": "볼륨"
 }

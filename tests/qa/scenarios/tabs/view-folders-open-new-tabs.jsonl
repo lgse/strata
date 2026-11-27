@@ -1,11 +1,11 @@
-{"scenario":"view-folders-open-new-tabs","modes":["columns","icons","list"],"layout":"us","cost":{"columns":1.2,"icons":1.2,"list":1.0}}
+{"scenario":"view-folders-open-new-tabs","modes":["columns","icons","list"],"layout":"us","cost":{"columns":1.2,"icons":1.2,"list":1.0},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"Folder drag from file view onto New tab or strip opens a tab and moves nothing; headless dnd tests pin the logic, GUI outcome and Escape cancel only here"}}
 {"wait":{"entries":{"contains":["documents","pictures","archive"]},"dir":"$root"},"message":"the original file view lists folders to drag"}
 {"drag":{"from":{"entry":"documents","dir":"$root"},"to":{"role":"button","name":"New tab"}}}
 {"wait":{"all":[{"directory":"documents"},{"state":{"target":{"role":"page tab","name":"documents"},"selected":true}}]},"message":"dropping a folder on plus opens it in a new tab"}
 {"fs":{"path":"documents/notes.txt","text":"notes\n"},"message":"opening the folder leaves its files in place"}
 {"key":"ctrl+shift+1"}
 {"wait":{"state":{"target":{"role":"page tab","name":"$root"},"selected":true}},"message":"the original tab remains available"}
-{"drag":{"from":{"entry":"pictures","dir":"$root"},"to":{"ancestor":"scroll pane","of":{"role":"page tab list","name":"Tabs"}},"to_at":["end-8","50%"]}}
+{"drag":{"from":{"entry":"pictures","dir":"$root"},"to":{"parent":{"ancestor":"scroll pane","of":{"role":"page tab list","name":"Tabs"}}},"to_at":["end-8","50%"]}}
 {"wait":{"all":[{"directory":"pictures"},{"state":{"target":{"role":"page tab","name":"pictures"},"selected":true}}]},"message":"a folder dropped on unused tab-bar space opens a new tab"}
 {"fs":{"path":"pictures","exists":true},"message":"the dragged folder is not moved out of its original directory"}
 {"fs":{"path":"documents/pictures","exists":false},"message":"opening a tab from unused space does not transfer into an existing tab"}

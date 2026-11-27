@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Puts an entry at a new name without ever replacing whatever is there:
-//! `renameat2(NOREPLACE)`, then a hard link for files or a fresh empty
-//! placeholder for folders, then a recreated link for symlinks, and last a
-//! plain rename over a reserved name where the mount offers none of these.
-//! Errors that may mean "unsupported" are only learned from definitive errnos
-//! or from a probe on Strata's own names, and nothing is unlinked without proof.
-
 use std::{
     cell::Cell,
     ffi::{OsStr, OsString},
@@ -62,9 +55,6 @@ pub(super) enum PlaceError {
 }
 
 impl PlaceError {
-    /// Whether the destination refused the name itself. `EINVAL` from a
-    /// rename may mean its flags, so only `EINVAL` from a flagless call or
-    /// mapped by the probe counts.
     pub(super) fn refuses_name(self) -> bool {
         matches!(
             self,
@@ -125,9 +115,6 @@ pub(super) fn place(
     verified(fs, to, expected, ladder(fs, from, to, expected))
 }
 
-/// Places `from`, inside a private stage, at `to`. Nothing else writes the
-/// stage, so an entry another program puts at `to` once a rung placed it
-/// there is theirs, and stays.
 pub(super) fn place_staged(
     fs: &dyn FsOps,
     from: Entry<'_>,
@@ -137,8 +124,6 @@ pub(super) fn place_staged(
     ladder(fs, from, to, Some(expected))
 }
 
-/// Unlike ordinary placement reconciliation, a missing private copy stage after
-/// a failed rename is unconfirmed: callers cannot infer where its bytes went.
 pub(super) fn publish_staged(
     fs: &dyn FsOps,
     from: Entry<'_>,
@@ -188,8 +173,6 @@ fn exists(fs: &dyn FsOps, entry: Entry<'_>) -> Result<bool, PlaceError> {
     }
 }
 
-/// An `EEXIST` can be the lost reply of a link that did happen; a case alias
-/// or an older hard link fails the link-count or exact-name test.
 fn link_reply_was_lost(fs: &dyn FsOps, to: Entry<'_>, source: &EntryStat) -> bool {
     fs.stat(to, true)
         .is_ok_and(|target| target.identity == source.identity && target.nlink == source.nlink + 1)
@@ -198,8 +181,6 @@ fn link_reply_was_lost(fs: &dyn FsOps, to: Entry<'_>, source: &EntryStat) -> boo
             .is_ok_and(|names| names.iter().any(|name| name == to.name))
 }
 
-/// Removes `entry` while it still holds `identity`, and tells whether it is
-/// gone: an NFS unlink retried after its reply was lost reports `ENOENT`.
 pub(super) fn remove_if_unchanged(
     fs: &dyn FsOps,
     entry: Entry<'_>,
@@ -233,8 +214,6 @@ fn remove_placeholder(fs: &dyn FsOps, to: Entry<'_>, placeholder: LocalFileIdent
     placeholder_is_ours(fs, to, placeholder) && fs.unlink(to, AtFlags::REMOVEDIR).is_ok()
 }
 
-/// Whether `dir` is `ancestor` or inside it, walking `..` (which crosses
-/// mount boundaries) up to the root. `None` when the walk fails.
 pub(super) fn contains(
     fs: &dyn FsOps,
     ancestor: LocalFileIdentity,
@@ -259,9 +238,6 @@ pub(super) fn contains(
     None
 }
 
-/// The entry at a fresh hidden name that this process's own create, whose
-/// reply was lost, left there: nobody else knows the name yet, so an entry
-/// as fresh as a create leaves it is that create's.
 pub(super) fn left_by_lost_reply(
     fs: &dyn FsOps,
     entry: Entry<'_>,
@@ -294,8 +270,6 @@ pub(super) fn creation_error(error: Errno) -> PlaceError {
     }
 }
 
-/// For `O_CREAT | O_EXCL` files: SMB with POSIX extensions reports a folder
-/// already at the name as `EISDIR`.
 pub(super) fn file_creation_error(error: Errno) -> PlaceError {
     match error {
         Errno::ISDIR => PlaceError::Exists,

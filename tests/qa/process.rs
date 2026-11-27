@@ -4,7 +4,6 @@ use std::{
     fs::{self, File},
     path::Path,
     process::{Child, Command, ExitStatus, Stdio},
-    sync::Mutex,
     time::{Duration, Instant},
 };
 
@@ -12,19 +11,13 @@ use crate::{EXIT_TIMEOUT, POLL_INTERVAL, SESSION_BUS_CONFIG};
 
 const BUS_START_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Held around every spawn, so only Xvfb ever inherits its `-displayfd` pipe.
-pub(crate) static SPAWN: Mutex<()> = Mutex::new(());
-
 pub(crate) fn spawn(command: &mut Command) -> Result<Child, String> {
-    let _spawning = SPAWN.lock().map_err(|error| error.to_string())?;
     command.spawn().map_err(|error| error.to_string())
 }
 
 pub(crate) fn wait_for_exit(child: &mut Child, timeout: Duration) -> Option<ExitStatus> {
     use rustix::event::{PollFd, PollFlags, Timespec, poll};
     let deadline = Instant::now() + timeout;
-    // Only an unreaped child's pid is still its own, so the pidfd opens after
-    // a first check.
     if let Some(status) = child.try_wait().ok()? {
         return Some(status);
     }
@@ -55,7 +48,7 @@ pub(crate) fn wait_for_exit(child: &mut Child, timeout: Duration) -> Option<Exit
     }
 }
 
-/// SIGTERM first, so Xvfb removes its lock file and socket.
+/// SIGTERM first, so children can clean up their sockets.
 pub(crate) fn terminate(child: &mut Child) {
     if matches!(child.try_wait(), Ok(Some(_))) {
         return;

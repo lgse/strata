@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Trash that only counts a local item as trashed once it has left its name:
-//! GLib 2.86 to 2.88.4 can fail without an error and move nothing (GLib #4060).
-
 use std::{
     ffi::{OsStr, OsString},
     os::unix::ffi::{OsStrExt, OsStringExt},
@@ -69,8 +66,6 @@ pub(super) fn trash_local_blocking(
     verify_trash(at, path, &Held::take(at, stat), cancellable, deadline)
 }
 
-/// An item still there afterwards fails as `NotSupported`, so callers fall
-/// back as they would without Trash.
 pub(super) fn trash_verified(
     at: Entry<'_>,
     path: &Path,

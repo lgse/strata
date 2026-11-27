@@ -1,4 +1,4 @@
-{"scenario":"dismissed-overlays-return-focus","modes":["columns"],"layout":"us","quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Settings, search, jump-to-folder, Compress and delete-confirmation backdrop dismissals return focus to the entry; dialog Escape: modal-dialog-blocks-window-shortcuts"}}
+{"scenario":"dismissed-overlays-return-focus","modes":["columns"],"layout":"us","quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"focus returns to entry after Settings/palette/Compress/delete dismissal; Compress backdrop unit-tested, delete overlaps filter_results"}}
 {"select_with_keyboard":"todo.txt"}
 {"key":"ctrl+comma"}
 {"wait":{"present":{"role":"button","name":"Close settings"}},"message":"Ctrl+, to open Settings"}

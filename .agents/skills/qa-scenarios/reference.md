@@ -30,19 +30,20 @@ Line 1 of the file, one JSON object. Unknown keys are rejected.
 | --- | --- | --- |
 | `scenario` | yes | Equals the file stem. Lowercase words of `a-z0-9` joined by `-`; unique across all folders. |
 | `modes` | yes | Views to run in: any of `columns`, `icons`, `list`. Each mode is one run. The runner writes `browser_mode` for the run's mode last, over every `prefs`. |
+| `host` | no | `"offscreen"` (default) or `"session"` (real window on a private headless `sway` compositor with `STRATA_QA_WINDOW=1`, for clipboard, compositor DnD, window focus, or portal scenarios). |
 | `prefs` | no | Preference overrides written into `settings.toml` over the fixture manifest's defaults (`tests/fixtures/harness.json`, key `preferences`). An object value becomes a TOML table: `{"keymap":{"default":{"rename":["<Control>e"]}}}`. |
 | `layout` | no | Keyboard layout switched to once the app is ready; default `us`. One of the manifest's `layouts`: `us`, `ru`, `ru-only`, `fr`, `de`, `caps-lock`, `cn-altgr-pinyin`. Key names always mean US key positions. |
-| `variants` | no | `[{"id":..., "modes", "prefs", "layout", "vars", "tree", "setup", "teardown"}]`. Each variant reruns the file; its `modes` replace the header's, `prefs` and `layout` apply over the header's, `vars` become `$variables`, `tree` replaces the header's, `setup` runs after the header's and `teardown` after the header's. Run labels become `<mode>-<id>`. |
+| `variants` | no | `[{"id":..., "modes", "host", "prefs", "layout", "vars", "tree", "setup", "teardown"}]`. Each variant reruns the file; its `modes` replace the header's, `host`, `prefs` and `layout` apply over the header's, `vars` become `$variables`, `tree` replaces the header's, `setup` runs after the header's and `teardown` after the header's. Run labels become `<mode>-<id>`. |
 | `tree` | no | A manifest tree name (default `canonical`) or an inline tree: an object of directories (objects) and files (text). `{000..199}.txt` expands to one zero-padded file per number with `{}` in its text replaced by the number; a file's text may be a list of strings and `{"repeat":"r-{},{}\n","from":0,"to":999}`. Directories get mode 755, files 644, and every time is pinned to the manifest's `mtime`. |
 | `images` | no | `{"beta/thumb.png":{"width":64,"height":64,"rgb":[230,40,60]}}`: solid-colour PNGs written into the tree after its times are pinned. |
-| `gtk_settings` | no | `{"gtk-enable-animations":"true"}`: rewrites existing lines of the manifest's GTK `settings.ini`; a key not already there is an error. |
 | `setup` | no | `fs` action steps (no checks, no `timeout_ms` or `message`) run after the tree is written, before launch. |
 | `teardown` | no | `fs` action steps run once setup began, however the run ends; for example `chmod` back to a readable mode. |
 | `env` | no | Variables added to the app's environment, `$variables` replaced. Never one the runner owns (`RUNNER_OWNED_ENVIRONMENT`, `XDG_DIRECTORIES`, and `QA_ENVIRONMENT` in `tests/qa.rs`): the display, buses, runtime, HOME and XDG directories, input log, shader cache, and accessibility switches. |
 | `session_bus` | no | `true` starts a private session bus with no service directories, shared by the app and the `dbus_send`, `launch`, and `foreign` steps (all three require it). Without it the app gets a bus address that cannot connect. |
 | `portal` | no | `true` (requires `session_bus`) starts `strata --qa --portal`, the FileChooser portal backend, instead of the browser. There is no window until `portal_open`; `adopt` then drives the chooser. Until a chooser opens, the snapshot is empty. |
-| `input_method` | no | An fcitx5 input method name such as `chewing` or `pinyin` (requires `session_bus`): starts a private fcitx5 on the run's display and bus whose group holds the US keyboard and that method; Ctrl+Space switches to it. Pick the toolkit path with `env` (`GTK_IM_MODULE`). Host runs only, since the pinned image has no fcitx5; give such a scenario a `skip` reason. See "Wayland and input methods" in `docs/testing.md`. |
-| `fixture_root` | no | `/tmp/<name>`: builds the tree at that fixed path instead of a fresh one, for a screenshot where the path renders. The path must not exist (never reused); runs with a `fixture_root` never overlap one another. |
+| `volume_monitor` | no | `true` (requires `session_bus`) starts a fake GVfs volume monitor on the run's bus before the app, and gives the app GIO's remote volume monitor client; see "Fake devices" in `docs/testing.md`. Steps then plug devices with `{"dbus_send":["--print-reply","--dest=org.strata.QaVolumeMonitor","/org/strata/QaVolumeMonitor","org.strata.QaVolumeMonitor.Add","string:{\"id\":\"stick\",\"name\":\"QA Stick\",\"root\":\"$environment/media/stick\"}"]}` and unplug them with `...Remove` and `string:stick`. A device's JSON takes `id`, `name`, `root` (the folder its mount shows), and optionally `mounted` (false), `drive` (true), `can_eject` (true; false makes Strata offer Unmount) and `mount_error` (a message every mount fails with, as `G_IO_ERROR_FAILED`). Each call the app makes is a `<method> <id>` line of `$environment/volume-monitor.calls`: `VolumeMount`, `MountUnmount` or `DriveEject`. Eject unplugs the device; Unmount keeps its volume. |
+| `input_method` | no | An optional fcitx5 input method name such as `chewing` or `pinyin` (requires `session_bus`, host runs only). |
+| `fixture_root` | no | `/tmp/<name>`: builds the tree at that fixed path instead of a fresh one, for a scenario where the path renders. The path must not exist (never reused); runs with a `fixture_root` never overlap one another. |
 | `mutation` | no | The name of a patch in `tests/qa/mutations/` (without `.patch`) that must make the scenario fail; each patch belongs to one scenario. `./scripts/qa-mutation.sh` checks it. Not combinable with `skip`. |
 | `known_bug` | no | An issue reference. A failure becomes the expected result. Needs `known_bug_step`. |
 | `known_bug_step` | with `known_bug` | The file line (header = 1) of the step expected to fail. It must run in every run, carry no `when`/`if`/`unless`, and not be a `layout`, `flag`, `note`, `slice`, `increment`, `stem`, `parent`, `screenshot`, `restart`, `http`, or `foreign_stop` step. A failure anywhere else, or any error, fails the run; a pass fails with "remove the marker". |
@@ -100,14 +101,15 @@ may only be used after the step that keeps it and may not hide a variable.
 
 ## Process steps
 
-These run inside `strata --qa` on the GTK main loop; each reply comes after
-the main context drains. Input is real XTEST.
+These run inside `strata --qa` (`crates/strata-app/src/qa/`): offscreen on
+Rune's input layer by default, or in a real window (`STRATA_QA_WINDOW=1`) on
+private headless `sway` for `"host": "session"` runs.
 
 ### Input
 
 | Step | Meaning |
 | --- | --- |
-| `{"key":"ctrl+x","repeat":2}` | Taps a chord (`ctrl`, `shift`, `alt`, `altgr` + a GDK key name such as `Return`, `F2`, `period`, `Page_Down`); the key comes up 20 ms after it went down. |
+| `{"key":"ctrl+x","repeat":2}` | Taps a chord (`ctrl`, `shift`, `alt`, `altgr` + a canonical key name such as `Return`, `F2`, `period`, `Page_Down`). |
 | `{"type":"nested-notes"}` | One key tap per character. A character the layout lacks (`é`, `名`) is typed on an empty keycode lent that keysym for the tap and then restored, as xdotool does; X11 only. |
 | `{"key_down":"ctrl"}`, `{"key_up":"Escape"}` | One modifier or key down or up, no tap, no pause. |
 | `{"click":TARGET,"button":1,"count":1,"mods":["shift"],"at":[4,"50%"]}` | Moves to the target and clicks. `button` 3 is a right-click, `count` 2 a double-click. `"release_mods_first":true` lifts the modifiers between press and release. `"left_bound":"browser"` keeps the aim right of a remembered box's left edge. |
@@ -128,17 +130,12 @@ the main context drains. Input is real XTEST.
 | `{"reveal":{"role":"button","name":"Modified date format"}}` | Turns the wheel three clicks at a time at the window's centre, at most twelve times, until the control is on screen. |
 | `{"reveal_control":{"role":"spin button","name":"Text size in pixels"}}` | Scrolls a settings page's own pane until the control is wholly shown, then settles it. |
 | `{"adopt":"PNG conversion test","timeout_ms":20000,"message":"..."}` | Portal runs: waits for a showing window with this title and drives it from then on (snapshot, targets, input log). |
+| `{"activate_window":{"title":"pictures — Strata"},"timeout_ms":15000,"message":"..."}` | Switches active window by title when multiple windows are supported (currently refused by single-window QA hosts). |
 | `{"clipboard_set":"text"}`, `{"clipboard":"999","message":"..."}` | Owns the clipboard with the text from a second display connection; reads the clipboard and fails unless it matches, exactly or as `{"starts_with":...,"contains":...,"longer_than":5}`. |
 | `{"clipboard_set":{"offers":[{"mime":"x-special/gnome-copied-files","text":"cut\nfile://$fixture_quoted/a.txt"}]}}`, `{"clipboard":"1","mime":"application/x-kde-cutselection"}` | Owns the clipboard with raw offers under their MIME types, the way a file manager fills it; reads one MIME type's bytes as text instead of the clipboard text. |
 | `{"sleep":600}` | Waits; the main loop keeps running. Never use it to wait for state. |
 
-A click holds the button 100 ms; a double click's two clicks are 90 ms apart,
-inside GTK's 400 ms double-click time, and a drag after a selecting click
-waits 600 ms so it is no double click. The pointer approaches a point in two
-steps, 6 pixels off and then on it, so GTK sees enter and motion rather than a
-jump. The X server times a tapped key's release (XTEST's delay), never a
-frame wait: the server autorepeats a key held past 660 ms, and a busy app can
-hold a frame that long.
+Pointer moves approach targets cleanly so enter and motion handlers run before clicks and drags.
 
 ### Waits and checks
 
@@ -152,7 +149,7 @@ hold a frame that long.
 | `{"holds":PREDICATE}` | Replies `true` or `false` in `result`; never fails. |
 | `{"query":"state"}`, `"tree"`, `"prefs"` | The snapshot, the widget tree as text, or `settings.toml` as JSON in `result`. |
 
-### Memory, notes, and pixels
+### Memory and notes
 
 | Step | Meaning |
 | --- | --- |
@@ -160,9 +157,6 @@ hold a frame that long.
 | `{"keep":[0,0,240,80],"as":"foreign"}` | Keeps a screen box for `kept` targets. |
 | `{"note":"entries","dir":"$root","as":"names"}` | Keeps an accessor's value. Accessors: `directory`, `pane`, `panes`, `entries`, `selected`, `all_selected`, `matches`, `focused`, `focused_pane`, `visible`, `menu_items`, `editable_fields`, `visible_top`, `middle_visible` (`unless_first`), `bounds` and `scroll_target` (with `"of":TARGET`), `number` (with `"expr":NUMBER`). |
 | note shaping | `from`/`through` slice a list between two names; `"middle":3` keeps three from the middle; `"plus":[...]` unions and sorts; `"sorted":true`; `"pick":-1` keeps one item. `"until_found":true` (with `message`, `timeout_ms`) polls until non-null; `"until_names":NAMES` polls until the list matches; a `number` note takes `"until":[{"op":">","than":300}]`. |
-| `{"capture":TARGET,"inset":3,"as":"before"}` | Keeps the screen pixels in the target's box, inset on every side, for `repainted`; any part off the screen is black. |
-| `{"measure_text":"label","as":"resting"}` | Ink position (the luma-weighted mean row) and contrast in a kept box, for `contrast_below` and `drop_samples`. Fails as `the source label disappeared` when the box holds no ink. |
-| `{"drop_samples":"label","resting":"resting","dragging":"dragging","escape":true,"as":"released"}` | Ends a drag (optional Escape, then button 1 up) and samples the kept box at 60, 120, and 180 ms; each sample must come within 240 ms and sit within 1.5 px of `resting`, and the last must have 1.25 times `dragging`'s contrast. Keeps the release instant for `elapsed`. |
 
 ## Runner steps
 
@@ -174,7 +168,8 @@ These run in the runner (`drive` in `tests/qa/drive.rs`), between process comman
 | --- | --- |
 | `{"restart":true}` | SIGTERM to the app's process group, 5 s, then SIGKILL; starts it again with the same environment, fixture, display, and input log, with a fresh app log. It needs the US layout active (it reads the keymap again) and fails otherwise: after a `layout` step, add `{"layout":"us"}` before it. |
 | `{"restart":{"directory":"$fixture/target","env":{"RUST_LOG":"trace"},"stdout":"closed","stderr":"null"}}` | Restarts on another directory with extra variables, and standard output or error as a closed pipe or `/dev/null`. |
-| `{"layout":"ru"}` | Switches the run's keyboard layout. |
+| `{"restart":{"plain":true}}` | Restarts with no folder argument, as a user launching `strata` does, so the window restores the saved tab session or opens the default folder. Every other launch names a folder, which skips restore. Takes no `directory`. |
+| `{"layout":"ru"}` | Switches the run's keyboard layout and sends the application a `keymap` request (offscreen host; session host uses US layout). |
 | `{"flag":PREDICATE,"as":"enabled"}` | Keeps whether the predicate holds now; never fails. With `timeout_ms`, polls until it holds or time runs out. |
 | `{"each":"names","as":"name","derive":{"caption":{"number_plus":320,"suffix":"×180"}},"step":STEP}` | Runs a process step once per item of a noted list, `$name` the item; each `derive` variable is the last number in the item's stem plus `number_plus`, between optional `prefix` and `suffix`. |
 | `{"slice":"rows","middle":3,"pick":-1,"as":"last"}` | Part of a noted list. |
@@ -185,8 +180,7 @@ These run in the runner (`drive` in `tests/qa/drive.rs`), between process comman
 | `{"proc":{"gone":"$pids"}}`, `{"proc":{"parent_is_app":"$pid"},"timeout_ms":0}`, `{"proc":{"kill":"$pid"}}`, `{"proc":{"app_cwd":"/"}}` | Waits until noted pids exit; checks a pid's parent is the app; SIGKILLs an app child (only); waits until the app's working folder is the path. |
 | `{"launch":["$fixture/requested-missing"],"percent_path":true}` | Runs another `strata` with arguments in the fixture directory (needs `session_bus`, 30 s limit); it hands them to the running app over the bus and exits. `percent_path` turns `%XX` into raw bytes. |
 | `{"dbus_send":["--print-reply","--dest=...","/path","iface.Method","array:string:file://..."]}` | `dbus-send --session` on the private bus (needs `session_bus`); fails on a non-zero exit. |
-| `{"screenshot":"hover.png"}` | Captures the X root into the run's artifacts. |
-| `{"baseline":"columns-view"}` | Captures the X root and compares it with the committed image for the GTK version the runner links (`baseline_directory()` in `tests/qa/baseline.rs`): a pixel differs when a channel moves by more than 24; more than 0.5 % differing pixels, a size change, or a missing baseline fails. Artifacts keep `<name>.actual.png`, plus `.expected.png` and `.diff.png` on a mismatch. Writes the capture as the baseline only under `STRATA_QA_UPDATE_BASELINES=1 ./scripts/qa.sh <scenario>`; takes no `message`. |
+| `{"screenshot":"hover.png"}` | Writes the accessibility tree snapshot at this step as `<name>.txt` (e.g., `hover.txt`) in the run's artifacts. |
 
 ### Peers
 
@@ -196,17 +190,18 @@ These run in the runner (`drive` in `tests/qa/drive.rs`), between process comman
 | `{"portal_response":{"done":false},"message":"..."}` | Asserts the request has not answered yet. |
 | `{"portal_response":{"done":true,"status":0,"names":[...],"paths":[...],"keep":"output","png":{...},"discard":true},"timeout_ms":20000,"message":"..."}` | Waits for the answer and checks its status, chosen names (a set) or paths (in order); `keep` notes the first path, `png` checks it as the `fs` `png` check does, `discard` removes its download directory. |
 | `{"http":"<base64>","as":"url"}`, `{"http_requests":1,"message":"..."}` | Serves the bytes as `image/png` to every GET on 127.0.0.1 until the final state is read, its URL noted; asserts how many requests came. |
-| `{"foreign":{"paths":["$fixture/a"],"move_only":true},"as":"foreign","message":"..."}` | Starts a separate GTK drag source offering the paths (needs `session_bus`) and keeps its button's box as a `kept` target. |
+| `{"foreign":{"paths":["$fixture/a"],"move_only":true},"as":"foreign","message":"..."}` | Starts a separate drag-source peer process (`tests/qa/foreign_drag_source.py`, needs `session_bus` and `"host": "session"`) offering the paths and keeps its button's box as a `kept` target; `sway` tiles it beside Strata. |
 | `{"foreign":{"offers":[{"mime":"text/plain;charset=utf-8","path":"$environment/text"}]},"as":"foreign"}` | The drag source also, or instead, offers each file's bytes as they are under its MIME type, as a browser offers images, text, and addresses. |
 | `{"foreign_label":"Foreign drag finished","message":"..."}`, `{"foreign_stop":true}` | Waits for the drag source to show a label; stops it. |
 | `{"zipcrypto":{"path":"password.zip","password":"zipsecret","member":"some.txt","contents":"...","deflated":true},"as":"collision"}` | Writes a ZipCrypto archive with a random header and notes the first numeric password below 4096 that also passes the header check. `contents` may be `{"repeat":"text","count":64}`. |
 
 ## fs steps
 
-`{"fs":{"path":..., <one kind>...}, "timeout_ms":..., "message":...}`. A
+`{"fs":{"path":..., <one kind>...}, "timeout_ms":..., "hold_ms":..., "message":...}`. A
 relative path is under the fixture; an absolute one (`$data/Trash/files`)
-stands alone. Checks poll until they hold (`timeout_ms` 0 asserts once);
-actions act at once. Actions that remove, rename, or generate refuse a path
+stands alone. Checks poll until they hold (`timeout_ms` 0 asserts once); with
+`hold_ms` a check that held must keep holding that long, so a negative check
+also catches a write that lands late. Actions act at once and take neither. Actions that remove, rename, or generate refuse a path
 whose resolved parent lies outside the fixture, `$environment`, and the
 run's scratch directory.
 
@@ -282,17 +277,17 @@ click lands.
 
 | Target | Finds |
 | --- | --- |
-| `{"entry":"todo.txt","dir":"archive"}` | An entry row; any pane without `dir`. `"part":"label"`, `"icon"`, or `"metadata"` picks its name label, image, or first other label. |
+| `{"entry":"todo.txt","dir":"archive"}` | An entry row; any pane without `dir`. `"part":"label"` or `"icon"` aims pointer actions at its drawn name or icon hit-target geometry (no synthetic child nodes are injected into the accessibility tree); `"part":"metadata"` picks its first metadata label child. |
 | `{"row":"readme.md"}` | The first rendered list item with the name, else the first table cell (chooser rows). |
 | `{"pane":"archive"}` | A pane; aims at an empty point unless `at` is given. |
 | `{"background":true,"dir":...}` | An empty point in a pane (a point; takes no `at`). |
 | `{"container":"archive"}` | The list or grid inside a pane. |
-| `{"viewport":null}` | The scroll viewport around a pane's entry list. |
+| `{"viewport":null}` | The scroll viewport of a pane's entry list: the one inside the list when it holds one (a Rune collection), else the one around it. |
 | `{"role":"button","name":"Settings"}` | By role and accessible name. Options: `"nth":-1`, `"name_ends_with":["/a"]`, `"name_matches":"^\\d+$"` (regex), `"description":...`, `"states":["selected"]` (also `focused`, `checked`, `pressed`, `sensitive`, `selectable`, `editable`, `busy`, `horizontal`, `vertical`), `"within":TARGET`, `"has":{role target}` (a match containing that widget), `"rendered":false` (presented but maybe scrolled away, which `state`, `description`, `activate`, and `remember` read as it is). Without `name` any name matches. `role` may be a list, or `*` for any. |
 | `{"named":"Apply to All","within":{"dialog":true}}` | Any role by name, inside another target. |
 | `{"menu_item":"New File"}` | A menu item, in the open menu if there is one. |
 | `{"sidebar":"Home"}`, `{"header":"Choose sort field"}` | A sidebar place; a column header button. |
-| `{"dialog":true}`, `{"dialog_button":"Close"}` | The modal dialog; a button in it. |
+| `{"dialog":true}`, `{"dialog_button":"Close"}` | The modal dialog, the innermost where a toolkit nests dialogs; a button in it. |
 | `{"field":true}`, `{"field":"filter"}`, `{"field":true,"within":TARGET}` | The focused editable text, the one remembered as `filter`, or the editable text inside another target. |
 | `{"focused_widget":true}`, `{"remembered":"focused"}` | The focused widget; a widget `remember` kept. |
 | `{"preview":true}` | The quick preview drawer. |
@@ -311,31 +306,36 @@ and have no lower bound, so `"1/6"` of a row under 6 pixels tall is 0.
 
 ### Accessible names
 
-Targets resolve through the names `src/ui/accessibility.rs` sets for screen
-readers:
+Targets resolve through Strata's accessibility tree exposed by `strata-components`
+and `strata-app` for screen readers:
 
-- An entry row is labelled with its name and described as `Folder` or `File`.
+- An entry row is labelled with its name and described as `Folder` or `File`
+  (with Columns size/item-count badges, subfolder filter paths, and
+  file-provider status descriptions appended when present).
+- Checkboxes, radios, switches, tabs, menu items, and list-box options are
+  single leaf nodes in Rune's AccessKit tree: their own `name` and `description`
+  carry their text rather than synthetic child `label` nodes.
+- While a modal dialog or menu is open, Rune's AccessKit tree contains only the
+  modal surface; check background panes or selection before opening or after
+  dismissing the modal. To hover or click a background target while a modal is
+  open, save its box beforehand (with `remember`, `settle`, or `keep`) and aim
+  at `{"kept":"..."}` (cached screen rect, works behind modals) rather than
+  `{"remembered":"..."}` (live node recall, absent behind modals).
 - A pane is labelled with its directory and described with its presentation;
   an empty, unreadable, or loading pane's focusable surface is labelled with
   its directory and described with its status text.
 - Menu items carry the menu role with the accelerator in the description.
 - Modal dialogs carry the dialog role and a name.
-- A button with a text label is named by that label, through the
-  `labelled-by` relation GTK gives it, before any label set on the button,
-  unless `accessibility::clear_labelled_by` dropped the relation or
-  `set_labelled_by` replaced it. A menu button's inner toggle takes the menu
-  button's name and description.
-- An entry row's name is its list item's; `set_labelled_by` joins its labels'
-  names. A list view row is `selected` as its selected state flag says.
-- Tooltips never name a target. An icon-only button gets
-  `accessibility::set_label` with its tooltip text.
+- Buttons with text labels are named by their text; icon-only buttons carry an
+  explicit accessible name (tooltips never name a target).
 
-Role names are AT-SPI's: `button` (not `push button`), `panel` for a plain
-box, `grouping`, `slider`, `password text`, `toggle button`, `check box`,
-`list item`, `menu item`, `check menu item`, `scroll pane`, `label`, `text`,
-`image`, `frame`. The `tree` query prints each widget's role, name, and
-description: copy targets from it. When a control has no usable name, name
-it in the app; never reach around the accessibility layer.
+Role names follow standard AT-SPI conventions (`button`, `panel`, `grouping`,
+`slider`, `password text`, `toggle button`, `check box`, `list item`,
+`menu item`, `check menu item`, `scroll pane`, `label`, `text`, `image`,
+`frame`), mapped from Rune's accessibility roles in `crates/strata-app/src/qa/`.
+The `tree` query prints each node's role, name, and description: copy targets
+from it. When a control has no usable name, name it in the component/app; never
+reach around the accessibility layer.
 
 ## Predicates
 
@@ -352,7 +352,7 @@ pane name) where the check reads a pane.
 | `{"entry":"a.txt","dir":...}`, `{"entry_gone":"a.txt"}` | The entry is listed, or no longer. |
 | `{"focused":"a.txt"}` | The focused entry's name; `true` for any, `null` for none; `{"one_of":[...]}`. |
 | `{"focused_pane":true}`, `{"focused_in_matches":true}` | A pane holds focus; the focused name is among the matches. |
-| `{"matches":NAMES,"dir":...}` | The search results, else the pane's entries. |
+| `{"matches":NAMES,"dir":...}` | A filter's search results, else the pane's entries. A list named "Search results" inside a dialog, such as the Rune search palette's, is not one. |
 | `{"visible":NAMES,"dir":...}`, `{"visible_top":NAMES}` | Rows wholly inside the pane's viewport; rows a `visible_top` note listed. |
 | `{"scroll_value":{"at_least":N},"dir":...}` | The pane's first showing scroll bar's value. |
 | `{"view_mode":"Icons"}`, `{"window_width":420}` | The first pane's presentation; the window's width. |
@@ -371,7 +371,7 @@ pane name) where the check reads a pane.
 | `{"present":TARGET}`, `{"absent":TARGET}` | Found on screen, or not found or not on screen. |
 | `{"presented":TARGET}` | Found, even scrolled away. |
 | `{"on_screen":TARGET}` | Within the window's height. |
-| `{"state":{"target":T,"selected":true,"focused":false,"checked":false,"pressed":true,"sensitive":true}}` | Each given state matches; also `selectable`, `editable`, `focusable`, `busy` (what `accessibility::set_busy` recorded), and `marked` (an entry row outlined as the result Enter in its filter field opens). An active switch is `pressed` and `checked`; a tab's `selected` is what `accessibility::set_selected` recorded. |
+| `{"state":{"target":T,"selected":true,"focused":false,"checked":false,"pressed":true,"sensitive":true}}` | Each given state matches; also `selectable`, `editable`, `focusable`, `busy` (from AccessKit's busy state), and `marked` (an entry row outlined as the result Enter in its filter field opens). An active switch is `pressed` and `checked`; a tab's `selected` comes from AccessKit's selected state. |
 | `{"name":{"target":T,"text":"0:05"}}`, `{"text":{"target":T,"text":"..."}}`, `{"description":{"target":T,"text":"Ctrl+C"}}` | Accessible name, text content (a label's or entry's text, a text view's buffer), or description (the recorded one, or a picture's alternative text), exactly or as a pattern (`{"contains":...}`). |
 | `{"mentions":{"target":T,"text":"..."}}` | Some name or description in the subtree contains the text; `"role":"label"` limits it; `"words":"a b"` allows any whitespace; `"equals"` matches a whole collapsed name. |
 | `{"subtree_text":{"target":T,"contains":"...","strip_newlines":true}}` | The subtree's joined text contains the part. |
@@ -383,14 +383,13 @@ pane name) where the check reads a pane.
 | `{"panes_with":{"target":{role target},"names":[...]}}` | The panes, left to right, showing that role target. |
 | `{"alive":"rename"}`, `{"replaced":{"target":T,"since":"listed"}}` | A remembered widget still belongs to a window; the target now resolves to another widget than the one remembered (a reload rebuilt the row). |
 | `{"some_window":{"title":"Strata","holds":PREDICATE}}`, `{"windows":{"title":"Strata","count":6}}` | Some showing window with the title satisfies the predicate in its own tree; how many such windows show. |
-| `{"diagnostics_mention":["could not","permission denied"]}` | Any of the texts appears in the app windows' names and descriptions (lowercased). |
 | `{"children":{"comm_prefix":"xdg-terminal-ex","count":0}}` | How many app child processes have a command name with the prefix. |
-| `{"hit_path":{"mark":"search: txt","hits":{...},"name":"todo.txt"}}`, `{"footer_fill":{"ends":[...],"total":180}}` | Footer search hit and selection-count readouts: `footer_fill` holds when both ends are listed, cleared, and on screen, and a label is described as `<total - cleared> of <total> items selected`. |
+| `{"hit_path":{"mark":"search: txt","hits":{...},"name":"todo.txt"}}` | Footer search hit readout. |
 
-### Geometry and pixels
+### Geometry
 
-Use these only where position or pixels are the behaviour (a scroll target
-reached, a drag landing, a repaint, a visual baseline); never to pin layout.
+Use these only where position is the behaviour (a scroll target reached or a
+drag landing); never to pin layout.
 
 | Predicate | Holds when |
 | --- | --- |
@@ -400,8 +399,6 @@ reached, a drag landing, a repaint, a visual baseline); never to pin layout.
 | `{"compare":{"left":NUMBER,"op":"<=","right":NUMBER}}` | `op` is `<`, `<=`, `==`, `!=`, `>=`, or `>`. `NUMBER` is a literal, `{"of":T,"get":"width"}` (`x`, `y`, `width`, `height`, `right`, `bottom`, `center_x`, `center_y`, `value`), `{"pref":"text_size","default":0}`, `{"count":{role target}}` (also `"rendered":false` and `"states"`), or `sum`, `minus`, `times`, `divide`, `floor_divide`, `ceil`, `abs` over them. A target off screen is a mismatch, so a wait keeps polling. |
 | `{"editor_within_viewport":{"of":"rename"}}`, `{"editor_within_window":{"of":"rename","pane":"$root"}}` | The inline editor stays inside the viewport or window. |
 | `{"blank":{"target":T,"at":[...]}}`, `{"band_selected":{"from":"start","to":"end"}}` | The point lands on nothing but panels; the marquee band's visible rows are all selected. |
-| `{"pixel":{"target":T,"rgb":[...]}}`, `{"accent_pixels":{"target":T,"inset":2,"more_than":100}}` | The centre pixel's colour; more than N pixels in the box, inset on every side, are exactly the accent of the theme `settings.toml` names in `data/themes/catalog.toml`. |
-| `{"repainted":{"since":"before"}}`, `{"contrast_below":{"of":"dragging","to":"resting","share":0.8}}`, `{"elapsed":{"since":"released","ms":600}}` | A fresh grab of a captured box differs from it outside the cursor's square (from 2 px before the pointer to 32 px after it); `of`'s contrast is below `share` times `to`'s; time since a kept instant. |
 | `{"largest_image":{"within":T,"wider_than":40,"size":[160,80]}}` (or `"exceeds"`) | Of the rendered images inside the target wider than `wider_than`, the largest by area (the first of equals) exists, is exactly `size`, or is larger than `exceeds` on either axis. |
 
 ### Combinators and NAMES
@@ -427,27 +424,32 @@ Strings compare by code point. `panes` takes `NAMES` too.
 
 ## Protocol, replies, and the snapshot
 
-`strata --qa <directory>` (cargo feature `qa`, never in releases) opens the
-normal window on the directory, then reads one JSON command per line on
-stdin, runs it on the GTK main loop, and writes one reply per line on stdout
-once the main context drains. `strata --qa --portal` runs the FileChooser
-portal backend instead. Input is real XTEST sent from inside the process;
-state is read from the widget tree by accessible names, with no AT-SPI bridge.
+`strata --qa <directory>` (cargo feature `qa`, never in releases) opens on the
+directory, reads one JSON command per line on stdin, runs it through
+`strata-qa`'s engine and `strata-app`'s QA backend (`crates/strata-app/src/qa/`),
+and writes one reply per line on stdout. By default it runs on Rune's offscreen
+QA host (no display required); with `"host": "session"` (`STRATA_QA_WINDOW=1`)
+it opens a real window on a private headless `sway` compositor and receives
+Wayland virtual keyboard and pointer input. `strata --qa --portal` runs the
+FileChooser portal backend instead. State is read directly from Rune's
+accessibility tree (roles mapped to AT-SPI role names).
 
 `STRATA_INPUT_LOG=<path>` appends each synthetic event, one per line; the
 runner sets it for every run and saves the file as `input.log`:
 
 ```text
-key <keycode> down|up
+key <name> down|up
 motion <x> <y>
 pointer <x> <y> button <n> down|up
 ```
 
-Coordinates are X root coordinates minus the main window's X surface origin
-(a portal run's adopted chooser's), and keycodes are the X server's.
-`motion` records each XTEST motion, both steps of the approach and every drag
-point included; `pointer` is a button event at the final pointer position
-before it, with the wheel as buttons 4 and 5.
+Coordinates are window points and key names are the scenario's own names or
+`ctrl`, `shift`, `alt`, `altgr`.
+
+`{"keymap":{"layouts":"us,ru","variants":"","group":1,"caps_lock":false}}` is
+an internal runner request sent to the offscreen host after a `layout` step
+(scenarios cannot write it directly). `{"invariants":{}}` queries internal
+consistency invariants (`crates/strata-app/src/qa/invariants.rs`).
 
 A reply is `{"ok","app","changed","criticals","result","failures","error"}`:
 `ok` false with `error` stops the run; `failures` lists
@@ -469,7 +471,9 @@ the run. `app` is the snapshot:
   "menu": null,
   "preview": null,
   "field": null,
-  "matches": ["todo.txt"]
+  "matches": ["todo.txt"],
+  "toplevels": [],
+  "window_focused": true
 }
 ```
 
@@ -479,18 +483,20 @@ The `app` keys are exactly these:
 - `directory`: the focused pane's directory, else the deepest pane's;
   `focused_pane`: the focused pane's name.
 - `panes`: left to right, each with its name, its selected names in visual
-  order, and its focused entry or null. A focused widget that is not mapped
-  (a row scrolled away) holds no focus.
+  order, and its focused entry or null.
 - `focused`: the name of the entry holding focus.
-- `dialog`: the open dialog's name, or null.
+- `dialog`: the open dialog's name, or null (the innermost when dialogs nest).
 - `menu`: the open menu's items, or null.
 - `preview`: every non-empty name and text in the open preview drawer in tree
   order, or null when it is closed.
 - `field`: the focused editable field as
   `{"name","text","caret","selection","focused"}` (`selection` is
-  `[start, end]` or null), or null. Caret and selection come from
-  `gtk::Editable`, so they are the offsets AT-SPI's text interface reports.
-- `matches`: the deepest pane's search results, or else its entries.
+  `[start, end]` or null, offsets in characters), or null.
+- `matches`: the deepest pane's search results, or else its entries. A list named
+  "Search results" inside a dialog (the search palette's) is not a pane's.
+- `toplevels`: the titles of drawn windows other than the one the steps act on;
+  empty with none.
+- `window_focused`: whether the window holds keyboard focus.
 
 The snapshot, every target, and the input log belong to the window the run
 started with; reach a floating chooser through a `toplevel` target.
@@ -509,11 +515,10 @@ A failed run, or every run with `STRATA_QA_KEEP_ARTIFACTS=1`, writes
 | `failures.txt` | Failed runs only: every error and failure, one per line. |
 | `result.json` | Scenario, run, mode, errors, and each failure with its line and step. |
 | `transcript.jsonl` | `{"command":..., "reply":...}` per step, starting with the `{"launch":true}` reply (and one per restart): the `app` snapshot after every step. |
-| `tree.txt` | The widget tree: `Type role="..." name="..." description="..." (x,y wxh)`, headed by `focus: ...` (marked when focus sits on an unmapped widget). |
+| `tree.txt` | The accessibility tree: `role#key role="..." name="..." description="..." (x,y wxh)`, headed by `focus: ...`. |
 | `state.json` | The snapshot after the last step, once two reads 250 ms apart agree (at most 5 s). |
-| `screenshot.png` | The X root at the end (the sway output under `STRATA_QA_DISPLAY=wayland`). |
-| `strata.log`, `xvfb.log` | The app's log and the X server's (`sway.log` under Wayland). |
-| `fcitx5.log` | With `input_method`: the input method's log. |
+| `screenshot.txt` | Offscreen capture note referencing `tree.txt` (written by `tests/qa/screen.rs` on both offscreen and session hosts). |
+| `strata.log`, `sway.log` | The app's log and, for session runs, the compositor's log. |
 | `input.log` | Every synthetic event, as above. |
 | `fixture.txt` | The fixture listing with sizes and link targets. |
-| `<name>.png`, `<name>.actual.png`, ... | `screenshot` and `baseline` captures. |
+| `<name>.txt` | Explicit `screenshot` step captures (accessibility tree snapshot written under the step's `.png` stem). |

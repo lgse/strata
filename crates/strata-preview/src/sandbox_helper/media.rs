@@ -11,16 +11,15 @@ use std::{
 use crate::{
     media::{self, AUDIO_BYTES, FRAME_TIMEOUT, Frame, Header, TimedReader},
     sandbox::{Cancellation, MediaPreviewBackend, gpu_devices, numbered_name, runtime},
-    services::{
-        MediaPreviewSize,
-        webp_animation::{WebpAnimation, read_webp_animation},
-    },
+    services::MediaPreviewSize,
 };
 
 use super::{
     MAX_OUTPUT_BYTES, bounded_output, bounded_output_with_timeout, media_preview_size,
     read_limited, stop_child,
 };
+
+mod webp;
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(4);
 const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(4);
@@ -41,28 +40,7 @@ struct Input {
     cover: bool,
     gif_period_us: Option<u64>,
     raw_video: bool,
-    /// The demuxer cannot seek: offsets are reached by decoding and trimming.
-    seekless: bool,
-    /// Source frames the `loop` filter replays, for sources that cannot `-stream_loop`.
-    loop_frames: Option<u32>,
 }
-
-impl Input {
-    fn decodes_in_software(&self) -> bool {
-        self.video.is_none() || self.cover || self.is_animation()
-    }
-
-    fn is_animation(&self) -> bool {
-        self.gif_period_us.is_some() || self.seekless
-    }
-
-    fn loops_in_the_demuxer(&self) -> bool {
-        self.gif_period_us.is_some() && !self.seekless
-    }
-}
-
-/// Decoded source frames a filter-graph loop may hold, at four bytes per pixel.
-const LOOP_BUDGET_BYTES: u64 = 256 * 1024 * 1024;
 
 pub(super) fn run(
     input: &Path,
@@ -85,17 +63,21 @@ fn stream(
     writer: &mut impl Write,
 ) -> Result<(), String> {
     let size = media_preview_size(size)?;
+    if webp::is_animated_webp_file(input) {
+        return webp::stream(input, size, start_tick, writer).map_err(|error| error.to_string());
+    }
     let mode = if audio_only {
         ProbeMode::SkipArtwork
     } else {
         ProbeMode::Playback
     };
     let input_info = probe(input, size, start_tick, mode).map_err(|error| error.to_string())?;
-    let backends = if input_info.decodes_in_software() {
-        vec![Backend::Software]
-    } else {
-        backends(&gpu_devices(Path::new("/dev"), policy), policy)
-    };
+    let backends =
+        if input_info.video.is_none() || input_info.cover || input_info.gif_period_us.is_some() {
+            vec![Backend::Software]
+        } else {
+            backends(&gpu_devices(Path::new("/dev"), policy), policy)
+        };
     let hardware_deadline = Instant::now() + HARDWARE_TIMEOUT;
     for backend in backends {
         let deadline = if backend == Backend::Software {
@@ -151,21 +133,7 @@ fn probe(
     start_tick: u32,
     mode: ProbeMode,
 ) -> io::Result<Input> {
-    let request = ProbeRequest {
-        size,
-        start_tick,
-        mode,
-    };
-    metadata_with(&probe_json(path)?, request, || {
-        let mut file = std::fs::File::open(path).ok()?;
-        read_webp_animation(&mut file).ok().flatten()
-    })
-}
-
-struct ProbeRequest {
-    size: MediaPreviewSize,
-    start_tick: u32,
-    mode: ProbeMode,
+    metadata(&probe_json(path)?, size, start_tick, mode)
 }
 
 fn probe_json(path: &Path) -> io::Result<Vec<u8>> {
@@ -207,77 +175,12 @@ fn attached_picture(streams: &[serde_json::Value]) -> Option<&serde_json::Value>
         .or_else(|| pictures.next())
 }
 
-#[cfg(test)]
 fn metadata(
     bytes: &[u8],
     size: MediaPreviewSize,
     start_tick: u32,
     mode: ProbeMode,
 ) -> io::Result<Input> {
-    let request = ProbeRequest {
-        size,
-        start_tick,
-        mode,
-    };
-    metadata_with(bytes, request, || None)
-}
-
-struct Timing {
-    duration: f64,
-    gif_period_us: Option<u64>,
-    seekless: bool,
-    loop_frames: Option<u32>,
-}
-
-/// Short GIFs and animated WebPs loop inside one 30-second generation. FFmpeg
-/// reports no duration for animated WebP and cannot seek it, so its period comes
-/// from the container's frame durations and its loop from the filter graph.
-fn timing(
-    reported: Option<f64>,
-    format_name: &str,
-    has_video: bool,
-    webp: impl FnOnce() -> Option<WebpAnimation>,
-) -> Timing {
-    let seekless = format_name == "webp_anim";
-    let webp = seekless.then(webp).flatten();
-    let duration = reported
-        .or_else(|| webp.map(|animation| animation.duration_us as f64 / 1_000_000.0))
-        .unwrap_or(media::MAX_DURATION_US as f64 / 1_000_000.0);
-    let loops = format_name == "gif" || webp.is_some_and(fits_loop_budget);
-    let gif_period_us =
-        (has_video && loops && duration < 30.0).then_some((duration * 1_000_000.0).ceil() as u64);
-    Timing {
-        duration: if gif_period_us.is_some() {
-            30.0
-        } else {
-            duration
-        },
-        gif_period_us,
-        seekless,
-        loop_frames: webp
-            .filter(|_| gif_period_us.is_some())
-            .map(|animation| animation.frames),
-    }
-}
-
-fn fits_loop_budget(animation: WebpAnimation) -> bool {
-    u64::from(animation.frames)
-        .saturating_mul(u64::from(animation.canvas_width))
-        .saturating_mul(u64::from(animation.canvas_height))
-        .saturating_mul(4)
-        <= LOOP_BUDGET_BYTES
-}
-
-fn metadata_with(
-    bytes: &[u8],
-    request: ProbeRequest,
-    webp: impl FnOnce() -> Option<WebpAnimation>,
-) -> io::Result<Input> {
-    let ProbeRequest {
-        size,
-        start_tick,
-        mode,
-    } = request;
     let value: serde_json::Value = serde_json::from_slice(bytes)?;
     let streams = value["streams"]
         .as_array()
@@ -300,16 +203,22 @@ fn metadata_with(
     if mode == ProbeMode::Audio && audio.is_none() {
         return Err(media::invalid("The file has no audio track"));
     }
-    let reported = value["format"]["duration"]
+    let duration = value["format"]["duration"]
         .as_str()
         .and_then(|duration| duration.parse::<f64>().ok())
-        .filter(|duration| duration.is_finite() && *duration > 0.0);
+        .filter(|duration| duration.is_finite() && *duration > 0.0)
+        .unwrap_or(media::MAX_DURATION_US as f64 / 1_000_000.0);
     let format_name = value["format"]["format_name"].as_str().unwrap_or("");
-    let timing = timing(reported, format_name, video.is_some(), webp);
+    let gif_period_us = (video.is_some() && format_name == "gif" && duration < 30.0)
+        .then_some((duration * 1_000_000.0).ceil() as u64);
     let raw_video = format_name
         .split(',')
         .any(|name| matches!(name.trim(), "h264" | "hevc"));
-    let duration = timing.duration;
+    let duration = if gif_period_us.is_some() {
+        30.0
+    } else {
+        duration
+    };
     let (width, height) = if let Some(video) = video {
         let width = video["width"].as_u64().unwrap_or(0);
         let height = video["height"].as_u64().unwrap_or(0);
@@ -360,10 +269,8 @@ fn metadata_with(
         video: video.map(stream_index).transpose()?,
         audio: audio.map(stream_index).transpose()?,
         cover: video.is_some_and(is_cover),
-        gif_period_us: timing.gif_period_us,
+        gif_period_us,
         raw_video,
-        seekless: timing.seekless,
-        loop_frames: timing.loop_frames,
     })
 }
 
@@ -450,12 +357,13 @@ pub(super) fn run_peaks(input: &Path, output: &Path) -> Result<(), String> {
     result.map_err(|error| error.to_string())
 }
 
-/// One software keyframe decode per cell, each an input seek, so the cost
-/// scales with the cell count rather than the file length.
 pub(super) fn run_storyboard(input: &Path, output: &Path, cell_edge: u32) -> Result<(), String> {
     use media::storyboard::{self, Sheet};
 
     let mut writer = std::fs::File::create(output).map_err(|error| error.to_string())?;
+    if webp::is_animated_webp_file(input) {
+        return Err("Animations have no storyboard".into());
+    }
     let edge = cell_edge.clamp(storyboard::MIN_CELL_EDGE, storyboard::MAX_CELL_EDGE) as i32;
     let info = probe(
         input,
@@ -467,7 +375,7 @@ pub(super) fn run_storyboard(input: &Path, output: &Path, cell_edge: u32) -> Res
     let Some(video) = info.video.filter(|_| !info.cover && !info.raw_video) else {
         return Err("The file has no seekable video stream".into());
     };
-    if info.is_animation() {
+    if info.gif_period_us.is_some() {
         return Err("Animations have no storyboard".into());
     }
     let duration_us = info.header.duration_us;
@@ -648,7 +556,7 @@ fn command(path: &Path, input: &Input, backend: &Backend, track: Track) -> Comma
         .gif_period_us
         .map_or(start_us, |period| start_us % period.max(1));
     let start = offset_us as f64 / 1_000_000.0;
-    if input.loops_in_the_demuxer() {
+    if input.gif_period_us.is_some() {
         command.args(["-stream_loop", "-1"]);
     }
     let remaining =
@@ -657,27 +565,22 @@ fn command(path: &Path, input: &Input, backend: &Backend, track: Track) -> Comma
     // Input seeking can discard attached pictures and timestamp-less raw video.
     let seek = !cover && offset_us != 0;
     let position = format!("{start:.6}");
-    let input_seek = seek && !input.raw_video && !input.seekless;
-    if input_seek {
+    if seek && !input.raw_video {
         command.arg("-ss").arg(&position);
     }
     // Keep the frame covering the seek point; fps trims negative preroll timestamps.
-    if input_seek && matches!(track, Track::Video) {
+    if seek && !input.raw_video && matches!(track, Track::Video) {
         command.arg("-noaccurate_seek");
     }
     command.arg("-i").arg(path);
     if seek && input.raw_video {
-        command.arg("-ss").arg(&position);
+        command.arg("-ss").arg(position);
     }
     match track {
         Track::Video => {
             let filter = format!(
                 "{}scale={}:{}:flags=fast_bilinear,setsar=1,format=rgba",
-                if cover {
-                    String::new()
-                } else {
-                    timeline_filter(input, seek.then_some(position.as_str()))
-                },
+                if cover { "" } else { "fps=30:start_time=0," },
                 input.header.width,
                 input.header.height
             );
@@ -736,20 +639,6 @@ fn command(path: &Path, input: &Input, backend: &Backend, track: Track) -> Comma
         }
     }
     command
-}
-
-/// The 30 fps timeline. Sources that cannot seek loop in the filter graph, before
-/// frame duplication, and reach an offset by trimming decoded frames.
-fn timeline_filter(input: &Input, position: Option<&str>) -> String {
-    let replay = input
-        .loop_frames
-        .map(|frames| format!("loop=loop=-1:size={frames},"))
-        .unwrap_or_default();
-    let trim = position
-        .filter(|_| input.seekless)
-        .map(|position| format!(",trim=start={position},setpts=PTS-STARTPTS"))
-        .unwrap_or_default();
-    format!("{replay}fps=30:start_time=0{trim},")
 }
 
 struct RawDecoder {

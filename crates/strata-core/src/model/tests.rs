@@ -195,8 +195,6 @@ fn uri_display_names_are_percent_decoded() {
     assert_eq!(Location::uri("sftp://host/").display_name(), "host");
 }
 
-/// GVfs reports "/" as the leaf name of a mount root such as an SMB share, so these names
-/// must come from the URI without GIO's help.
 #[test]
 fn mount_roots_without_a_gio_leaf_name_are_named_by_their_decoded_uri() {
     for (uri, name) in [

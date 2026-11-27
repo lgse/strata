@@ -1,0 +1,370 @@
+// SPDX-License-Identifier: MIT
+
+use rune::Color;
+use strata_kit::icons::IconName;
+
+use super::intent::Section;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ItemId {
+    /// A built-in place: `home`, `trash`, `downloads`, …
+    Place(String),
+    /// A pinned folder.
+    Pin(String),
+    /// A volume, mount or network share under DEVICES.
+    Device(String),
+}
+
+impl ItemId {
+    /// The id inside.
+    pub fn id(&self) -> &str {
+        match self {
+            ItemId::Place(id) | ItemId::Pin(id) | ItemId::Device(id) => id,
+        }
+    }
+
+    /// The row's key under the sidebar's `key`.
+    pub fn key(&self, key: &str) -> String {
+        let kind = match self {
+            ItemId::Place(_) => "place",
+            ItemId::Pin(_) => "pin",
+            ItemId::Device(_) => "device",
+        };
+        format!("{key}-{kind}-{}", self.id())
+    }
+}
+
+/// A row's icon: a semantic one, or a folder's custom icon or emoji badge.
+#[derive(Clone, Debug, PartialEq)]
+pub enum RowIcon {
+    /// A semantic icon from [`IconName`].
+    Name(IconName),
+    Catalog(String),
+    /// An emoji sequence drawn inside a filled folder.
+    Emoji(String),
+}
+
+/// What a built-in place is, where it matters to the sidebar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlaceKind {
+    /// A folder: Home, Desktop, Documents, …
+    Folder,
+    Trash {
+        /// Trash holds items: it draws [`IconName::TrashFull`].
+        full: bool,
+    },
+    /// Network, Recent and the like: places that aren't folders.
+    Other,
+}
+
+/// A built-in place.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct Place {
+    pub id: String,
+    pub label: String,
+    pub icon: RowIcon,
+    /// The folder's saved colour (folder customization), as the user chose it.
+    pub tint: Option<Color>,
+    pub kind: PlaceKind,
+    /// Files dropped on the row go into the place ([`super::SidebarIntent::DropInto`]).
+    pub accepts_drops: bool,
+    /// The `g` chord's keycap, shown while [`super::SidebarState::keycaps`] is on.
+    pub keycap: Option<String>,
+    /// The row's accessible description: Strata gives its location.
+    pub description: Option<String>,
+}
+
+impl Place {
+    /// A folder place that takes drops.
+    pub fn folder(id: impl Into<String>, label: impl Into<String>, icon: IconName) -> Place {
+        Place {
+            id: id.into(),
+            label: label.into(),
+            icon: RowIcon::Name(icon),
+            tint: None,
+            kind: PlaceKind::Folder,
+            accepts_drops: true,
+            keycap: None,
+            description: None,
+        }
+    }
+
+    /// The Trash, empty or not, which takes drops.
+    pub fn trash(label: impl Into<String>, full: bool) -> Place {
+        Place {
+            kind: PlaceKind::Trash { full },
+            ..Place::folder("trash", label, IconName::Trash)
+        }
+    }
+
+    /// A place that isn't a folder (Network, Recent): it takes no drops.
+    pub fn other(id: impl Into<String>, label: impl Into<String>, icon: IconName) -> Place {
+        Place {
+            kind: PlaceKind::Other,
+            accepts_drops: false,
+            ..Place::folder(id, label, icon)
+        }
+    }
+
+    pub fn tint(mut self, tint: Option<Color>) -> Place {
+        self.tint = tint;
+        self
+    }
+
+    pub fn icon(mut self, icon: RowIcon) -> Place {
+        self.icon = icon;
+        self
+    }
+
+    pub fn keycap(mut self, keycap: impl Into<String>) -> Place {
+        self.keycap = Some(keycap.into());
+        self
+    }
+
+    pub fn accepts_drops(mut self, accepts: bool) -> Place {
+        self.accepts_drops = accepts;
+        self
+    }
+
+    pub fn description(mut self, description: impl Into<String>) -> Place {
+        self.description = Some(description.into());
+        self
+    }
+
+    pub fn item(&self) -> ItemId {
+        ItemId::Place(self.id.clone())
+    }
+}
+
+/// A pinned folder.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct Pin {
+    pub id: String,
+    pub label: String,
+    pub icon: RowIcon,
+    pub tint: Option<Color>,
+    pub accepts_drops: bool,
+    pub keycap: Option<String>,
+    /// The row's accessible description: Strata gives its location.
+    pub description: Option<String>,
+}
+
+impl Pin {
+    /// A local folder pin, which takes drops.
+    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Pin {
+        Pin {
+            id: id.into(),
+            label: label.into(),
+            icon: RowIcon::Name(IconName::Folder),
+            tint: None,
+            accepts_drops: true,
+            keycap: None,
+            description: None,
+        }
+    }
+
+    /// A remote pin (SMB, SFTP): its row takes no drops.
+    pub fn remote(id: impl Into<String>, label: impl Into<String>) -> Pin {
+        Pin {
+            icon: RowIcon::Name(IconName::Network),
+            accepts_drops: false,
+            ..Pin::new(id, label)
+        }
+    }
+
+    pub fn tint(mut self, tint: Option<Color>) -> Pin {
+        self.tint = tint;
+        self
+    }
+
+    pub fn icon(mut self, icon: RowIcon) -> Pin {
+        self.icon = icon;
+        self
+    }
+
+    pub fn keycap(mut self, keycap: impl Into<String>) -> Pin {
+        self.keycap = Some(keycap.into());
+        self
+    }
+
+    pub fn accepts_drops(mut self, accepts: bool) -> Pin {
+        self.accepts_drops = accepts;
+        self
+    }
+
+    pub fn description(mut self, description: impl Into<String>) -> Pin {
+        self.description = Some(description.into());
+        self
+    }
+
+    pub fn item(&self) -> ItemId {
+        ItemId::Pin(self.id.clone())
+    }
+}
+
+/// How a device row's release button reads, from what the volume or mount allows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Release {
+    /// It can eject: "Eject".
+    Eject,
+    /// It can only unmount: "Unmount".
+    Unmount,
+}
+
+/// An encrypted device's state, which names its lock button after its action.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LockState {
+    /// Locked: an "Unlock" button with a lock icon.
+    Locked,
+    /// Unlocked: a "Lock" button with an open-lock icon.
+    Unlocked,
+}
+
+/// A row under DEVICES.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct Device {
+    pub id: String,
+    /// The Strata label, else the system name.
+    pub label: String,
+    pub icon: IconName,
+    pub mounted: bool,
+    /// Its mount path when mounted, else its device path: the row's accessible description.
+    pub description: String,
+    /// The release button, or none (a fixed disk, a network share).
+    pub release: Option<Release>,
+    /// The lock button, on encrypted devices only.
+    pub lock: Option<LockState>,
+    /// A release is running: the row stays, disabled, with a spinner in the release column.
+    pub pending: bool,
+    /// Files dropped on the row go to the device's root.
+    pub accepts_drops: bool,
+}
+
+impl Device {
+    /// A mounted device that takes drops, with no buttons.
+    pub fn new(
+        id: impl Into<String>,
+        label: impl Into<String>,
+        icon: IconName,
+        description: impl Into<String>,
+    ) -> Device {
+        Device {
+            id: id.into(),
+            label: label.into(),
+            icon,
+            mounted: true,
+            description: description.into(),
+            release: None,
+            lock: None,
+            pending: false,
+            accepts_drops: true,
+        }
+    }
+
+    pub fn mounted(mut self, mounted: bool) -> Device {
+        self.mounted = mounted;
+        self.accepts_drops &= mounted;
+        self
+    }
+
+    pub fn release(mut self, release: Release) -> Device {
+        self.release = Some(release);
+        self
+    }
+
+    pub fn lock(mut self, lock: LockState) -> Device {
+        self.lock = Some(lock);
+        self
+    }
+
+    pub fn pending(mut self, pending: bool) -> Device {
+        self.pending = pending;
+        self
+    }
+
+    pub fn accepts_drops(mut self, accepts: bool) -> Device {
+        self.accepts_drops = accepts;
+        self
+    }
+
+    pub fn item(&self) -> ItemId {
+        ItemId::Device(self.id.clone())
+    }
+}
+
+/// Everything the sidebar lists this frame.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SidebarData<'a> {
+    pub places: &'a [Place],
+    pub pins: &'a [Pin],
+    pub devices: &'a [Device],
+    pub current: Option<&'a ItemId>,
+    /// What the sidebar says, in the host's language.
+    pub labels: SidebarLabels<'a>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SidebarLabels<'a> {
+    pub pinned: &'a str,
+    pub devices: &'a str,
+    pub rows: fn(usize) -> String,
+    /// The device rows' buttons and their pending release.
+    pub device: DeviceLabels<'a>,
+}
+
+/// No words: a host that leaves them out gets unnamed headings, never English.
+impl Default for SidebarLabels<'_> {
+    fn default() -> Self {
+        Self {
+            pinned: "",
+            devices: "",
+            rows: |_| String::new(),
+            device: DeviceLabels::default(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DeviceLabels<'a> {
+    /// The release button of a device that can eject.
+    pub eject: &'a str,
+    /// The release button of a device that can only unmount.
+    pub unmount: &'a str,
+    /// The lock button of a locked device.
+    pub unlock: &'a str,
+    /// The lock button of an unlocked device.
+    pub lock: &'a str,
+    /// A row whose release is running.
+    pub releasing: &'a str,
+}
+
+impl DeviceLabels<'_> {
+    pub(crate) fn release(&self, release: Release) -> &str {
+        match release {
+            Release::Eject => self.eject,
+            Release::Unmount => self.unmount,
+        }
+    }
+}
+
+impl SidebarLabels<'_> {
+    pub(crate) fn heading(&self, section: Section) -> &str {
+        match section {
+            Section::Pinned => self.pinned,
+            Section::Devices => self.devices,
+        }
+    }
+}
+
+impl SidebarData<'_> {
+    /// The index of the open pin, if the open location is a pin.
+    pub fn current_pin(&self) -> Option<usize> {
+        match self.current {
+            Some(ItemId::Pin(id)) => self.pins.iter().position(|p| &p.id == id),
+            _ => None,
+        }
+    }
+}

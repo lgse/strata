@@ -1,4 +1,4 @@
-{"scenario":"customization-follows-move-and-trash","modes":["list"],"prefs":{"browser_mode":"list"},"layout":"us","mutation":null,"known_bug":null,"cost":{"list":2.0},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":3,"score":38,"note":"Folder customization follows cut/paste move and trash/undo in settings.toml; no unit test found for this, rename scenario covers only rename"}}
+{"scenario":"customization-follows-move-and-trash","modes":["list"],"prefs":{"browser_mode":"list"},"layout":"us","mutation":null,"known_bug":null,"cost":{"list":2.0},"quality":{"impact":3,"coverage":3,"criticality":2,"diagnostic":3,"score":20,"note":"Folder colour follows move, trash and undo in settings.toml; GUI wiring only, logic unit-tested in item_customization/tests.rs"}}
 {"click":{"entry":"pictures"},"button":3}
 {"wait":{"menu_items":{}},"message":"the context menu for 'pictures'"}
 {"wait":{"present":{"menu_item":"Customize…"}},"message":"the menu item 'Customize…'"}

@@ -16,8 +16,6 @@ fn flushes_visible_changes(event: &OperationEvent) -> bool {
 }
 
 impl Browser {
-    /// Returns whether `event` was a progress or per-item event rather than
-    /// the operation's terminal.
     pub(super) fn publish_operation_progress(self: &Rc<Self>, event: &OperationEvent) -> bool {
         if self.record_operation_item(event) {
             return true;
@@ -32,8 +30,6 @@ impl Browser {
         true
     }
 
-    /// Per-item events update the undo and report bookkeeping without
-    /// publishing progress.
     fn record_operation_item(&self, event: &OperationEvent) -> bool {
         match event {
             OperationEvent::Merged {
@@ -157,8 +153,6 @@ impl Browser {
         }
     }
 
-    /// DeleteProgress carries the processed path, which is how a merge undo
-    /// reports trashed `created` items, and ItemKept the ones it left.
     fn mark_merged_undo_item_completed(&self, location: &Location) {
         let claim = self.undo_claim.borrow();
         if let Some((generation, UndoEntry::Merge { .. })) = claim.as_ref() {

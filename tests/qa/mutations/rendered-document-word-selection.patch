@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/clipboard.rs b/crates/strata-app/src/clipboard.rs
+--- a/crates/strata-app/src/clipboard.rs
++++ b/crates/strata-app/src/clipboard.rs
+@@ -87,7 +87,7 @@ impl Part<App> for Clipboard {
+             Stage::FileCommands,
+             &[COPY.ignoring(Modifiers::empty())],
+         )
+-        .when(|_, at| !at.text() && !at.within("preview"))]),
++        .when(|_, at| !at.text())]),
+         Action::new("cut", cut).command(CUT).keys(&[Keys::at(
+             Stage::FileCommands,
+             &[CUT.ignoring(Modifiers::empty())],

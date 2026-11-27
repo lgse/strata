@@ -1,4 +1,4 @@
-{"scenario":"delete-animation-keeps-survivors","modes":["columns","icons","list"],"prefs":{"reduce_motion":false},"layout":"us","mutation":null,"known_bug":null,"gtk_settings":{"gtk-enable-animations":"true"},"cost":{"columns":1.6,"icons":1.5,"list":1.6},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":3,"score":34,"note":"Permanent delete dissolve keeps survivors and post-animation F2 rename works; only scenario chaining delete with rename, dialog covered by permanent-delete-confirmation"}}
+{"scenario":"delete-animation-keeps-survivors","modes":["columns","icons","list"],"prefs":{"reduce_motion":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.6,"icons":1.5,"list":1.6},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":3,"score":30,"note":"Permanent-delete dissolve keeps survivors and F2 rename works after it; dissolve rows unit-tested, delete-then-rename chain only here"}}
 {"expect":{"view_mode":"$view"}}
 {"fs":{"path":"zz-survivor.txt","write":"survivor"}}
 {"fs":{"path":".","remember_names":"original"}}

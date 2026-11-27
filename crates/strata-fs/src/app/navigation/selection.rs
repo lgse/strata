@@ -5,8 +5,6 @@ use std::{cell::OnceCell, cmp::Ordering, collections::HashSet};
 use super::LocationSet;
 use crate::model::{FileEntry, Location};
 
-/// Selected locations and their cached rows, which the column forgets on every listing
-/// change.
 #[derive(Clone, Debug, Default)]
 pub(super) struct SelectedLocations {
     set: LocationSet,
@@ -102,7 +100,7 @@ impl SelectedLocations {
         &self,
         entries: &[FileEntry],
         cursor: Option<usize>,
-        each_location_once: impl FnOnce() -> bool,
+        known_unique: Option<bool>,
     ) -> &[usize] {
         if let Some(positions) = self.positions.get() {
             #[cfg(feature = "invariant-checks")]
@@ -122,9 +120,19 @@ impl SelectedLocations {
                     && entries
                         .get(*cursor)
                         .is_some_and(|entry| self.set.contains(&entry.location))
-            }) && each_location_once()
-            {
-                return vec![cursor];
+            }) {
+                if known_unique == Some(true) {
+                    return vec![cursor];
+                }
+                // Check for repeats of the single selected location directly instead of
+                // allocating an O(N) HashSet over the entire listing.
+                let target = &entries[cursor].location;
+                return entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| entry.location == *target)
+                    .map(|(position, _)| position)
+                    .collect();
             }
             self.scan(entries)
         })
@@ -142,8 +150,6 @@ impl SelectedLocations {
             .collect()
     }
 
-    /// The cached rows when they map one to one onto the selected locations. A lone
-    /// location's cached row is its only one.
     pub(super) fn exact_positions(
         &self,
         each_location_once: impl FnOnce() -> bool,
@@ -170,9 +176,6 @@ impl SelectedLocations {
         self.positions = OnceCell::from(vec![position]);
     }
 
-    /// `positions` must be ascending, distinct and within `entries`. An explicit
-    /// selection changes by difference, so a drag rehashes only the rows that changed;
-    /// a select-all becomes explicit on its first change.
     pub(super) fn select_positions(
         &mut self,
         entries: &[FileEntry],
@@ -207,8 +210,6 @@ impl SelectedLocations {
         self.remember(positions, each_location_once);
     }
 
-    /// `positions` are the rows the selection was built from or matched. Another row
-    /// can hold a selected location only in a listing that repeats one.
     pub(super) fn remember(
         &mut self,
         positions: Vec<usize>,

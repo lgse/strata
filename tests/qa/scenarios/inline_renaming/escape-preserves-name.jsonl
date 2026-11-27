@@ -1,4 +1,4 @@
-{"scenario":"escape-preserves-name","modes":["columns"],"layout":"us","mutation":"rename-escape","known_bug":null,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":2,"criticality":4,"diagnostic":4,"score":16,"note":"Escape discards a typed name on an existing file; subset of escape-preserves-name-remaining, only the file entry kind is unique"}}
+{"scenario":"escape-preserves-name","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Escape discards F2 rename of an existing file; escape-preserves-name-remaining covers folder and new-item routes; headless rename test pins it"}}
 {"select":{"entry":"readme.md"}}
 {"select_with_keyboard":"todo.txt"}
 {"key":"F2"}

@@ -4,7 +4,7 @@ Strata styles the interface with nine semantic color tokens. Bundled themes are 
 
 ## System light/dark mode
 
-**Follow system light/dark mode** follows only the desktop's light/dark preference; it never loads the desktop's GTK theme, icon theme, or accent color. Its primary source is the `color-scheme` key in the `org.freedesktop.appearance` namespace of `org.freedesktop.portal.Settings`, which uses `1` for dark, `2` for light, and `0` for no preference. This supports KDE and sandboxed Flatpak installations. A dark or light portal value is authoritative. For no preference or an unavailable portal, Strata reads GNOME's `org.gnome.desktop.interface` `color-scheme` key without writing it: `prefer-dark` selects dark, while `default`, `prefer-light`, and unexpected values select light. When the switch is on, Strata waits up to 500 ms for the first portal result before applying its initial palette. It uses the GSettings result, or light when absent, after a portal failure, no preference, or timeout; a late reply updates the palette. Changes apply live to the GTK base variant, Strata tokens, interface and file icons, document views, source highlighting, previews, and open settings pages. The setting is hidden and a saved system selection is repaired only after both sources are unavailable.
+**Follow system light/dark mode** follows only the desktop's light/dark preference; it never loads the desktop's widget theme, icon theme, or accent color. Its primary source is the `color-scheme` key in the `org.freedesktop.appearance` namespace of `org.freedesktop.portal.Settings`, which uses `1` for dark, `2` for light, and `0` for no preference. This supports KDE and sandboxed Flatpak installations. A dark or light portal value is authoritative. For no preference or an unavailable portal, Strata reads GNOME's `org.gnome.desktop.interface` `color-scheme` key without writing it: `prefer-dark` selects dark, while `default`, `prefer-light`, and unexpected values select light. When the switch is on, Strata waits up to 500 ms for the first portal result before applying its initial palette. It uses the GSettings result, or light when absent, after a portal failure, no preference, or timeout; a late reply updates the palette. Changes apply live to Strata's look tokens, interface and file icons, document views, source highlighting, previews, and open settings pages. The setting is hidden and a saved system selection is repaired only after both sources are unavailable.
 
 The saved `theme` remains the family anchor. The effective selection can therefore be its paired theme, and Settings shows that effective palette as both **Current theme** and the selected catalog card. Clicking a catalog card while following the system changes the anchor and keeps following enabled. A custom theme file that overrides a paired stable ID participates in the same family. Unpaired bundled and custom IDs deliberately resolve to themselves for both appearances.
 
@@ -14,72 +14,36 @@ The serialized theme `mode` accepts `"theme"`, `"system"`, and `"omarchy"`. If t
 
 Tinted Base16 entries map colors to Strata tokens as follows: `base00` to background, `base01` to surface, `base05` to text, `base0D` to accent, `base08` to danger, `base02` to muted and highlight, `base03` to border, and `base04` to dim text. A few bundled entries override the mapped foreground values so body text stays readable: text is at least 4.5:1 on background and 3:1 on surface; the catalog comments each override next to the value. Where the upstream dim text is also unreadable, loading the bundled theme lifts it to the same floors, stopping as soon as they are met so it stays dimmer than text. Source revision and licensing details are recorded in [`THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md).
 
-## GTK CSS precedence
+## Appearance isolation and look tokens
 
-Strata defines its named colors as `@strata_bg`, `@strata_surface`,
-`@strata_accent`, and other `@strata_*` tokens. These replace the former
-`@theme_*` names; user stylesheets referencing those names must be updated.
-Custom theme TOML keys are unchanged.
+Strata draws its entire interface with Rune and `strata-kit::Look` tokens rather than adopting desktop widget themes:
 
-Strata isolates its appearance from desktop GTK styling:
+- Desktop widget themes, icon themes, and accent colors are never applied to Strata's chrome (Open With currently renders bundled icons rather than system icon-theme entries via Rune's `ImageCache::themed_icon`).
+- Interface icons (Lucide) and code/config file-type icons (Catppuccin) are bundled into `strata-kit` and follow the active theme live.
+- Menus, popovers, and tooltips render inside Strata's GPU window surface, keeping their corners and shadows everywhere.
+- **Variable surface transparency & frosted glass** (**Settings → Appearance → Transparency**) scale main background and raised chrome surface alpha independently while keeping text, icons, thumbnails, selection fills, and media at full opacity, paired with Rune's GPU backdrop blur and native Wayland compositor blur (`ext_background_effect_v1` / KWin blur).
 
-- The GTK theme setting is pinned to an empty theme bundled with Strata. A
-  desktop theme selected through the settings portal, `settings.ini`, or
-  `GTK_THEME` is ignored; `GTK_THEME` is dropped from the environment before
-  GTK starts.
-- The built-in theme's light or dark variant follows the active Strata theme's
-  background, not the desktop color scheme, and the high-contrast variant is
-  never used.
-- Above GTK's user priority, Strata unsets every property and restates GTK's
-  built-in `Default` theme before its own stylesheets, so
-  `~/.config/gtk-4.0/gtk.css` cannot change any property of Strata's widgets.
-- Interface icons are bundled. GTK controls that would otherwise draw icons
-  from the desktop icon theme, such as dropdown arrows and spin button steps,
-  use bundled symbolic icons instead. Application icons in Open With still
-  come from the desktop theme.
-- On a display without a compositor, such as X11 without a compositing
-  manager, popovers, menus, and tooltips drop their shadow and corner radius,
-  because the transparent pixels of a popup surface would render solid black.
-  This fallback sits below the user stylesheet and follows the display's
-  composited state live.
+## Token overrides
 
-The `@strata_*` namespace prevents accidental collisions with other
-stylesheets' `@theme_*` colors; it does not stop deliberate `@strata_*`
-redefinitions in a user stylesheet.
+`strata-app` currently applies built-in and custom themes, system light/dark mode, Omarchy following, and **Settings → Appearance** controls (corner roundness, density, text size, element glow, and surface transparency).
 
-## User stylesheet
+At the kit layer, `crates/strata-kit/src/overrides/` implements `overrides.toml` parsing, token application onto `strata-kit::Look`, and `migrate_css` for converting legacy 1.x `style.css` rules (exercised in `strata-gallery` and documented in `crates/strata-kit/src/overrides/MIGRATION.md`). `strata-app` does not yet wire `strata_kit::overrides`, load or watch `~/.config/strata/overrides.toml`, run `style.css` migration, or display override diagnostics in **Settings → Appearance**.
 
-To restyle Strata itself, create an optional stylesheet at:
+The `strata-kit::overrides` TOML format targets semantic look and component tokens:
 
-```text
-~/.config/strata/style.css
+```toml
+radius.md = 4
+color.border_focus = "#ff9e64"
+
+[sidebar.row]
+height = 32
+
+[sidebar.hover]
+fill = "alpha(@color.text_base, 0.06)"
+
+[dark]
+color.bg_base = "#101018"
 ```
-
-It is loaded above every stylesheet Strata ships, including the active theme,
-so its rules win over Strata's own. The `@strata_*` colors of the active theme
-are available, which keeps overrides in step with theme changes:
-
-```css
-/* A floating, rounded sidebar */
-.sidebar-shell {
-    margin: 8px 0 8px 8px;
-    border-right: none;
-    border-radius: 14px;
-    background: alpha(@strata_surface, 0.6);
-}
-
-/* Let the card show through the sidebar's own opaque layers */
-.sidebar-shell .sidebar-scroll,
-.sidebar-shell .sidebar-scroll viewport,
-.sidebar-shell .sidebar {
-    background: transparent;
-}
-```
-
-Strata re-reads the file when it changes, so edits apply to open windows
-without a restart; deleting it restores the default appearance. Rules GTK
-cannot parse are skipped and logged as warnings. Class names are not a stable
-interface and may change between releases.
 
 ## Custom theme files
 
@@ -104,7 +68,7 @@ border = "#315b75"
 dim_text = "#6f8da3"
 ```
 
-Strata discovers valid `.toml` files in this directory on startup, re-reads them when they change (see [Live updates](#live-updates)), and displays them under **Your themes**. If a custom filename matches a bundled theme ID, the custom theme replaces that bundled entry so saved preferences and selection always use the user’s palette. Colors load as `#rrggbb`, or `#rrggbbaa` when translucent, so GTK-only forms such as 9-digit hex still apply; the file is not rewritten. Interface icons ignore the alpha.
+Strata discovers valid `.toml` files in this directory on startup, re-reads them when they change (see [Live updates](#live-updates)), and displays them under **Your themes**. If a custom filename matches a bundled theme ID, the custom theme replaces that bundled entry so saved preferences and selection always use the user’s palette. Colors load as `#rrggbb`, or `#rrggbbaa` when translucent; the file is not rewritten. Interface icons ignore the alpha.
 
 The configurator derives a new file's ID from the theme name, lowercased, keeping ASCII letters and digits and joining the rest with `-` (for example `Ocean Blue` becomes `ocean-blue.toml`). Names without ASCII letters or digits are saved as `custom-theme.toml`. The `name` field keeps the name exactly as typed, so names such as `日本語` are still shown as written.
 
@@ -173,7 +137,7 @@ All 95 bundled themes include explicit code-preview palettes. Tinted Base16 pale
 
 Under **Settings → Appearance → Add theme**, the syntax color pickers start with the selected theme's colors. Each picker previews changes immediately in open code previews; Cancel restores the selected theme, and Add theme saves all five syntax colors with the interface palette. Closing Settings by any route (Escape, Close settings, a click outside it, or closing the window) discards an unsaved preview the same way. Opening the editor again starts from the selected theme's colors. Changing text size or glow while previewing keeps the preview until it is cancelled or saved. **Dim text / comments** controls comments as well as dim interface text. Markdown headings continue to use the accent color.
 
-Each color swatch in the editor opens GTK's color chooser. Its Cancel and Select buttons and its custom color editor (hex entry, hue slider, and the value popups) follow the active theme and update live, as does the same chooser in the custom folder color dialog.
+Each color swatch in the editor opens Strata's themed color picker (hex entry, hue/saturation picker, and presets), which follows the active theme and updates live, as does the same picker in the custom folder color dialog.
 
 Custom TOML files can override any syntax role independently:
 
@@ -185,9 +149,9 @@ syntax_type = "#ffa657"
 syntax_preprocessor = "#d2a8ff"
 ```
 
-Recognized source languages keep syntax highlighting regardless of the loaded text's byte count, line count, or individual line length. Source text still loads incrementally, and the separate 1 MiB preview-read cap remains in effect. Large plain-text files without a recognized language can still use virtualized rendering.
+Recognized source languages keep syntax highlighting (via `syntect`) regardless of the loaded text's byte count, line count, or individual line length. Source text still loads incrementally, and the separate 1 MiB preview-read cap remains in effect. Large plain-text files without a recognized language use virtualized rendering.
 
-These fields accept GTK CSS color formats. Omitted fields retain the previous accent/text-derived colors, so existing files remain valid. The editor initializes omitted fields from those derived colors when creating a theme. Invalid colors cause a custom file to be excluded at startup. Preview schemes canonicalize colors to opaque `#rrggbb`.
+These fields accept hex (`#rrggbb` / `#rrggbbaa`) and standard CSS color formats. Omitted fields retain the previous accent/text-derived colors, so existing files remain valid. The editor initializes omitted fields from those derived colors when creating a theme. Invalid colors cause a custom file to be excluded at startup. Preview schemes canonicalize colors to opaque `#rrggbb`.
 
 ## Omarchy Quattro
 
@@ -210,6 +174,6 @@ Lighter and Darker use the theme's colors as authored; Darker only changes which
 
 The choice is remembered separately for each Omarchy theme, saved under `[omarchy_variants]` in Strata's `settings.toml` keyed by theme name (for example `tokyo-night = "lighter"`). It applies before Settings opens and live across windows, menus, dialogs, icons, and previews. Switching Omarchy themes restores the variant last chosen for that theme, or Darker for a theme without one. Turning off Follow Omarchy disables the selector but remembers its value; bundled and custom themes are unaffected.
 
-Syntax colors follow Quattro's named `magenta`, `green`, `orange`, `cyan`, and `yellow` colors. Older terminal palettes can supply `color5` for keywords, `color2` for strings, `color9` for constants, and `color3` for types. Missing colors retain the existing source-palette or derived fallback. Quattro values load in the same canonical hex form as custom theme files; values GTK cannot parse count as missing.
+Syntax colors follow Quattro's named `magenta`, `green`, `orange`, `cyan`, and `yellow` colors. Older terminal palettes can supply `color5` for keywords, `color2` for strings, `color9` for constants, and `color3` for types. Missing colors retain the existing source-palette or derived fallback. Quattro values load in the same canonical hex form as custom theme files; unparsable values count as missing.
 
 The system option is not shown when a valid Quattro current-theme state is unavailable. If that state disappears while Strata is running, following turns off and Strata returns to the selected built-in theme. If it only becomes invalid, for example midway through an Omarchy theme switch, the last applied Omarchy palette stays in use until the next valid change. Legacy Omarchy theme layouts and alacritty-based color extraction are intentionally unsupported.

@@ -65,8 +65,6 @@ fn copy_suffix_parsing_and_candidate_naming() {
     );
 }
 
-/// An entry's name, whether it is a folder, whether it is fixed, the name
-/// planned for it, and why that differs.
 type Sibling = (String, bool, bool, String, Option<RenameCause>);
 
 fn fixed_sibling(name: &str, is_directory: bool, planned: &str) -> Sibling {
@@ -259,8 +257,6 @@ fn planning_fails_where_a_fixed_name_has_no_free_number() {
     );
 }
 
-/// A name, whether it names a folder, the limit of its mount, and the first
-/// numbered name within that limit.
 type Cut = (String, bool, NameLimit, String);
 
 fn cut_to_posix_bytes() -> Vec<Cut> {

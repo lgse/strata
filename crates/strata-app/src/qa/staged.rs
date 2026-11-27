@@ -1,0 +1,315 @@
+// SPDX-License-Identifier: MIT
+
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    time::Duration,
+};
+
+use rune::{KeyEvent, PointerButton, WheelEvent, accesskit::Action};
+use strata_components::contract::EntryId;
+use strata_qa::{Chord, Keymap, Modifier};
+
+use super::{
+    host::{Activated, Host},
+    input_log::{InputLog, modifier_name},
+    keyboard::Keyboard,
+    replaced::Replacements,
+    stage::Stage,
+    tree::{Node, Snapshot},
+};
+use crate::{App, host::offscreen::Offscreen};
+
+/// How far one click of the wheel scrolls, in points.
+const WHEEL_CLICK: f32 = 40.0;
+
+pub(super) struct Staged {
+    stage: RefCell<Stage>,
+    keyboard: RefCell<Keyboard>,
+    /// Where the last motion put the pointer, in window points.
+    pointer: Cell<(i16, i16)>,
+    log: InputLog,
+    replacements: Rc<Replacements>,
+}
+
+impl Staged {
+    pub(super) fn new(host: Offscreen, log: InputLog) -> Self {
+        Self::named("window".to_owned(), host, log)
+    }
+
+    pub(super) fn named(root_key: String, host: Offscreen, log: InputLog) -> Self {
+        let replacements = Replacements::watch(host.app());
+        Self {
+            replacements,
+            stage: RefCell::new(Stage::named(root_key, host)),
+            keyboard: RefCell::default(),
+            pointer: Cell::new((0, 0)),
+            log,
+        }
+    }
+
+    /// The window's state, for the idle loop and a test to reach behind the steps.
+    pub(super) fn app<T>(&self, read: impl FnOnce(&App) -> T) -> T {
+        read(self.stage.borrow().app())
+    }
+
+    /// The proof this host's thread owns the default GLib context.
+    pub(super) fn ui(&self) -> crate::startup::UiThread {
+        self.stage.borrow().app_host().ui()
+    }
+
+    /// The floating chooser the window asked to open, if it asked since the last call.
+    pub(super) fn take_floating(&self) -> Option<crate::chooser::floating::FloatingRequest> {
+        if !self.app(crate::chooser::floating::has_pending) {
+            return None;
+        }
+        let stage = &mut *self.stage.borrow_mut();
+        crate::chooser::floating::take(stage.host().app_mut())
+    }
+
+    /// One turn of the host while no step runs. Returns whether it did anything.
+    pub(super) fn turn(&self) -> bool {
+        let turned = self.stage.borrow_mut().turn();
+        self.replacements.follow(self.stage.borrow().app());
+        turned
+    }
+
+    pub(super) fn update(&self, act: impl FnOnce(&mut App, &mut rune::Tx)) {
+        let stage = &mut *self.stage.borrow_mut();
+        stage.host().runtime().update(act);
+        stage.settle();
+    }
+
+    pub(super) fn window_focus(&self, focused: bool) {
+        let stage = &mut *self.stage.borrow_mut();
+        stage.host().runtime().window_focus(focused);
+        stage.settle();
+    }
+
+    fn show_modifiers(&self, stage: &mut Stage) {
+        let mods = self.keyboard.borrow().mods();
+        stage.host().modifiers(mods);
+    }
+
+    fn tap(&self, name: &str, event: Option<KeyEvent>) {
+        let origin = self.keyboard.borrow().origin();
+        let stage = &mut *self.stage.borrow_mut();
+        if let Some(event) = event {
+            let host = stage.host();
+            host.modifiers(event.mods);
+            let runtime = host.runtime();
+            match origin.and_then(|origin| Some((origin.physical?, origin.base))) {
+                Some((physical, base)) => runtime.key_with(event.clone(), physical, base),
+                None => runtime.key(event.clone()),
+            }
+            runtime.key_up(event);
+        }
+        self.log.key(name, true);
+        self.log.key(name, false);
+        self.show_modifiers(stage);
+        stage.settle();
+    }
+
+    fn wheel_click(&self, x: f32, y: f32, delta: f32) -> WheelEvent {
+        let mods = self.keyboard.borrow().mods();
+        let (dx, dy) = if mods.shift {
+            (delta, 0.0)
+        } else {
+            (0.0, delta)
+        };
+        WheelEvent::new(dx, dy).at(x, y).mods(mods)
+    }
+
+    fn set_modifier(&self, modifier: Modifier, pressed: bool) {
+        let mut keyboard = self.keyboard.borrow_mut();
+        if pressed {
+            keyboard.hold(modifier);
+        } else {
+            keyboard.release(modifier);
+        }
+        self.log.key(modifier_name(modifier), pressed);
+    }
+}
+
+impl Host for Staged {
+    fn idle_turn(&self) -> bool {
+        self.turn()
+    }
+
+    fn snapshot(&self) -> Rc<Snapshot> {
+        self.stage.borrow_mut().snapshot()
+    }
+
+    fn with_app<T: Send + 'static>(
+        &self,
+        read: impl FnOnce(&App) -> T + Send + 'static,
+    ) -> Result<T, String> {
+        Ok(self.app(read))
+    }
+
+    fn replacements(&self) -> u64 {
+        self.replacements.follow(self.stage.borrow().app());
+        self.replacements.now()
+    }
+
+    fn replaced_since(&self, entry: EntryId, since: u64) -> bool {
+        let stage = self.stage.borrow();
+        self.replacements.follow(stage.app());
+        self.replacements.replaced_since(stage.app(), entry, since)
+    }
+
+    async fn settle(&self) {
+        let mut stage = self.stage.borrow_mut();
+        stage.settle();
+    }
+
+    async fn sleep(&self, time: Duration) {
+        self.stage.borrow_mut().sleep(time);
+    }
+
+    fn pause(&self, limit: Duration) {
+        self.stage.borrow_mut().wait(limit);
+    }
+
+    /// The host has one surface, at the origin: a box in the window is a box on the screen.
+    fn origin(&self, _node: &Node) -> Result<(f64, f64), String> {
+        Ok((0.0, 0.0))
+    }
+
+    async fn resize(&self, width: f32, height: f32) -> Result<(), String> {
+        let stage = &mut *self.stage.borrow_mut();
+        stage.host().runtime().set_viewport((width, height), 1.0);
+        Ok(())
+    }
+
+    fn set_layout(&self, keymap: &Keymap) -> Result<(), String> {
+        self.keyboard.borrow_mut().set_layout(keymap)
+    }
+
+    async fn chord(&self, chord: &Chord) -> Result<(), String> {
+        let event = self
+            .keyboard
+            .borrow_mut()
+            .strike(&chord.key, &chord.modifiers)?;
+        for modifier in &chord.modifiers {
+            self.log.key(modifier_name(*modifier), true);
+        }
+        self.tap(&chord.key, event);
+        for modifier in chord.modifiers.iter().rev() {
+            self.log.key(modifier_name(*modifier), false);
+        }
+        Ok(())
+    }
+
+    async fn text_input(&self, character: char) -> Result<(), String> {
+        let event = self.keyboard.borrow_mut().typed(character);
+        self.tap(&character.to_string(), event);
+        Ok(())
+    }
+
+    async fn hold(&self, modifiers: &[Modifier]) -> Result<(), String> {
+        for modifier in modifiers {
+            self.set_modifier(*modifier, true);
+        }
+        let stage = &mut *self.stage.borrow_mut();
+        self.show_modifiers(stage);
+        stage.settle();
+        Ok(())
+    }
+
+    async fn release(&self, modifiers: &[Modifier]) {
+        for modifier in modifiers.iter().rev() {
+            self.set_modifier(*modifier, false);
+        }
+        let stage = &mut *self.stage.borrow_mut();
+        self.show_modifiers(stage);
+        stage.settle();
+    }
+
+    async fn key(&self, name: &str, pressed: bool) -> Result<(), String> {
+        let stage = &mut *self.stage.borrow_mut();
+        if let Ok(modifier) = Modifier::parse(name) {
+            self.set_modifier(modifier, pressed);
+            self.show_modifiers(stage);
+            return Ok(());
+        }
+        // A release composes nothing, and a dead key's is a release a window hears nothing of.
+        let event = match pressed {
+            true => self.keyboard.borrow_mut().strike(name, &[])?,
+            false => self.keyboard.borrow().press(name, &[]).ok(),
+        };
+        self.log.key(name, pressed);
+        let Some(event) = event else {
+            return Ok(());
+        };
+        let origin = self.keyboard.borrow().origin();
+        let host = stage.host();
+        if pressed {
+            host.modifiers(event.mods);
+            match origin.and_then(|origin| Some((origin.physical?, origin.base))) {
+                Some((physical, base)) => host.runtime().key_with(event, physical, base),
+                None => host.runtime().key(event),
+            }
+        } else {
+            host.runtime().key_up(event);
+            self.show_modifiers(stage);
+        }
+        Ok(())
+    }
+
+    async fn pointer_move(&self, x: i16, y: i16) -> Result<(), String> {
+        self.log.motion((x, y));
+        self.pointer.set((x, y));
+        let stage = &mut *self.stage.borrow_mut();
+        stage
+            .host()
+            .runtime()
+            .pointer_move(f32::from(x), f32::from(y));
+        Ok(())
+    }
+
+    fn pointer_position(&self) -> (i16, i16) {
+        self.pointer.get()
+    }
+
+    async fn button(&self, number: u8, pressed: bool) -> Result<(), String> {
+        let at = self.pointer.get();
+        let (x, y) = (f32::from(at.0), f32::from(at.1));
+        let stage = &mut *self.stage.borrow_mut();
+        let runtime = stage.host().runtime();
+        match (number, pressed) {
+            (1, true) => runtime.pointer_down(x, y),
+            (1, false) => runtime.pointer_up(x, y),
+            (2, true) => runtime.button_down(x, y, PointerButton::Middle),
+            (2, false) => runtime.button_up(x, y, PointerButton::Middle),
+            (3, true) => runtime.secondary_down(x, y),
+            (3, false) => runtime.secondary_up(x, y),
+            (4, true) => runtime.wheel_event(self.wheel_click(x, y, WHEEL_CLICK)),
+            (5, true) => runtime.wheel_event(self.wheel_click(x, y, -WHEEL_CLICK)),
+            (4 | 5, false) => {}
+            _ => return Err(format!("the pointer has no button {number}")),
+        }
+        self.log.button(at, number, pressed);
+        Ok(())
+    }
+
+    /// The element's press handler, through the click an assistive client asks for.
+    fn activate(&self, target: &Activated) -> bool {
+        let stage = &mut *self.stage.borrow_mut();
+        stage
+            .host()
+            .runtime()
+            .accessibility_action(&target.key, Action::Click, None)
+    }
+
+    async fn scroll_to(&self, (_, key): (&Node, &str), x: f32, y: f32) -> Result<(), String> {
+        let key = key.to_owned();
+        let stage = &mut *self.stage.borrow_mut();
+        stage
+            .host()
+            .runtime()
+            .update(move |_, tx| tx.scroll_to_instant(key, x, y));
+        stage.settle();
+        Ok(())
+    }
+}

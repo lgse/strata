@@ -34,8 +34,6 @@ async fn run(
     }
 }
 
-/// What the paste worked out before it transfers anything. `operation` comes last so it
-/// ends after everything that reports progress has gone.
 struct Plan {
     request: PasteRequest,
     emit: Rc<dyn Fn(OperationEvent)>,

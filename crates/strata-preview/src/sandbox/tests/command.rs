@@ -36,10 +36,6 @@ fn photo_thumbnail() -> Sandbox<'static> {
 
 #[test]
 fn file_size_limit_holds_a_full_resolution_decoded_frame() {
-    // gdk-pixbuf decodes through glycin, which sizes a memfd to
-    // `width * height * channels` before scaling down. RLIMIT_FSIZE covers that
-    // buffer too, and exceeding it kills the loader with SIGXFSZ rather than
-    // surfacing an error, so the limit has to clear the largest frame we expect.
     const LARGEST_SUPPORTED_PIXELS: u64 = 50_000_000;
     const RGBA_CHANNELS: u64 = 4;
 
@@ -104,11 +100,34 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
             "preview-pdf /input.pdf /output/result.png 2:640x800 software",
         ],
     );
-    // RLIMIT_NPROC counts every process owned by the host user, not just the
-    // sandbox, and can prevent legitimate media decoders from starting.
     assert_contains_none(
         &joined,
         &["--nproc", "--ro-bind /home /home", "--share-net"],
+    );
+}
+
+#[test]
+fn pdf_text_index_uses_resource_limited_sandbox_and_validated_json_output() {
+    let arguments = Sandbox::new("/fixtures/report.pdf", ParseOperation::PreviewPdfText)
+        .installed_at("/app/strata", "/private-output")
+        .joined();
+    assert_contains_all(
+        &arguments,
+        &[
+            ISOLATED,
+            SOFTWARE_LIMITS,
+            "preview-pdf-text /input.pdf /output/result.json 0 software",
+        ],
+    );
+    assert_contains_none(&arguments, &["--share-net", "--dev-bind"]);
+    let valid = serde_json::to_vec(&crate::services::PdfTextIndex {
+        pages: vec![Some("page one".into()), None, Some("page three".into())],
+        truncated: false,
+    })
+    .expect("serialize PDF text index");
+    assert_validity(
+        &ParseOperation::PreviewPdfText,
+        &[(&valid, true), (b"not json", false)],
     );
 }
 

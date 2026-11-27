@@ -265,8 +265,6 @@ fn a_paste_records_no_more_than_its_limit_across_its_merges() -> Result<(), Box<
 #[test]
 fn a_merge_records_what_it_creates_only_where_undo_cannot_trash_it() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // A created folder of four entries sorts ahead of z.txt, with room to
-    // record three.
     let _limit = PlacedEntriesGuard::set(3);
     for overwrites in [true, false] {
         let root = tempfile::tempdir()?;

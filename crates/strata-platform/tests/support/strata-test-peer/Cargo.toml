@@ -1,0 +1,21 @@
+[package]
+name = "strata-test-peer"
+description = "The second process in strata-platform's compositor tests: raw Wayland and X11 clipboard, drag and drop and virtual input, driven by JSON lines"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+wayland-client.workspace = true
+wayland-protocols = { workspace = true, features = ["client", "staging", "unstable"] }
+wayland-protocols-misc = { workspace = true, features = ["client"] }
+wayland-protocols-wlr = { workspace = true, features = ["client"] }
+x11rb = { workspace = true, features = ["xfixes"] }
+xkbcommon.workspace = true
+
+[lints]
+workspace = true

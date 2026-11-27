@@ -1,4 +1,4 @@
-{"scenario":"new-file-collision-dialog","modes":["columns"],"layout":"us","mutation":"new-entry-collision","known_bug":null,"cost":{"columns":1.6},"quality":{"impact":5,"coverage":3,"criticality":3,"diagnostic":4,"score":38,"note":"context-menu New File onto existing todo.txt errors and keeps file; menu route unique, new-folder-collision-dialog covers the shortcut route"}}
+{"scenario":"new-file-collision-dialog","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.6},"quality":{"impact":4,"coverage":3,"criticality":3,"diagnostic":4,"score":33,"note":"New File via context menu onto existing todo.txt errors and keeps file; menu route unique, new-folder-collision-dialog covers the shortcut route"}}
 {"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open"}
 {"wait":{"present":{"role":"toggle button","name":"Preview panel"}},"message":"the preview panel toggle"}
 {"key":"Escape","when":{"state":{"target":{"role":"toggle button","name":"Preview panel"},"pressed":false}}}

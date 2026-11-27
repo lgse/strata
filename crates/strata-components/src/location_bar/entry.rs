@@ -1,0 +1,138 @@
+// SPDX-License-Identifier: MIT
+
+use rune::{El, Key, KeyEvent, Tx, row};
+use rune_kit::TextInput;
+use strata_kit::icons::IconName;
+
+use super::build::{Ctx, field_key, option_key, route};
+use super::completion::Command;
+use super::state::Polled;
+use crate::header;
+
+pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
+    let look = cx.look;
+    let k = &look.kit;
+    let state = cx.state;
+    let access = cx.access;
+    let open = state.suggestions_open();
+    let active = state
+        .highlighted()
+        .filter(|_| open)
+        .map(|i| option_key(cx.key, i));
+    let (change_emit, key_emit) = (cx.emit.clone(), cx.emit.clone());
+    let complete = cx.complete.to_vec();
+    let field = TextInput::new(&state.edit)
+        .width(None)
+        .height(cx.row())
+        .label(cx.labels.entry.clone())
+        .placeholder(cx.labels.placeholder.clone())
+        .active_descendant(active)
+        .on_edit(move |s: &mut S| &mut access(s).edit)
+        .on_change(move |s: &mut S, tx: &mut Tx| {
+            let polled = access(s).edited();
+            route(&change_emit, s, polled, tx);
+        })
+        .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
+            let (polled, taken) = key(access(s), ev, tx, &complete);
+            route(&key_emit, s, polled, tx);
+            taken
+        })
+        .build(k);
+    row()
+        .key(format!("{}-entry", cx.key))
+        .role("combobox")
+        .label(cx.labels.entry.clone())
+        .expanded(open)
+        .w_full()
+        .h(cx.row())
+        .items_center()
+        .gap(look.space.xxs)
+        .child(
+            row()
+                .key(field_key(cx.key))
+                .grow(1.0)
+                .min_w(0.0)
+                .child(field),
+        )
+        .child(entry_button(cx, IconName::Check, "navigate", false))
+        .child(entry_button(cx, IconName::Close, "cancel", true))
+}
+
+fn entry_button<S: 'static>(cx: &Ctx<'_, S>, icon: IconName, suffix: &str, cancel: bool) -> El {
+    let access = cx.access;
+    let emit = cx.emit.clone();
+    let label = if cancel {
+        &cx.labels.cancel
+    } else {
+        &cx.labels.navigate
+    };
+    // The header's action look; its tooltip names it.
+    header::action(cx.look, icon, label)
+        .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+            let st = access(s);
+            let polled = if cancel {
+                st.cancel()
+            } else {
+                let text = st.edit.text.clone();
+                st.submit(text)
+            };
+            tx.blur();
+            route(&emit, s, polled, tx);
+        })
+        .build(&cx.look.accent_icon_kit())
+        .key(format!("{}-{suffix}", cx.key))
+        .focusable(false)
+        .preserve_focus_on_press(true)
+}
+
+/// A key in the entry, before the editor sees it. True takes it.
+fn key(
+    st: &mut super::LocationBarState,
+    ev: &KeyEvent,
+    tx: &mut Tx,
+    complete: &[rune::Chord],
+) -> (Polled, bool) {
+    if st.edit.is_composing() {
+        return (Polled::default(), false);
+    }
+    let m = ev.mods;
+    let plain = !(m.ctrl || m.alt || m.cmd || m.logo);
+    if ev.key == Key::Escape {
+        if tx.key_repeat() {
+            return (Polled::default(), true);
+        }
+        tx.blur();
+        return (st.cancel(), true);
+    }
+    if complete.iter().any(|c| c.matches_tx(ev, tx)) {
+        return (st.command(Command::Complete).0, true);
+    }
+    // Shift doesn't change these, as Strata's bindings ignore it.
+    let command = match ev.key {
+        Key::Enter if plain => Command::Activate,
+        Key::Down if plain => Command::Down,
+        Key::Up if plain => Command::Step(-1),
+        Key::PageDown if plain => Command::Step(5),
+        Key::PageUp if plain => Command::Step(-5),
+        _ => return (Polled::default(), false),
+    };
+    if command == Command::Activate && tx.key_repeat() {
+        return (Polled::default(), true);
+    }
+    let (mut polled, proceeds) = st.command(command);
+    if !proceeds {
+        return (polled, true);
+    }
+    match command {
+        Command::Activate => {
+            let text = st.edit.text.clone();
+            let submitted = st.submit(text);
+            tx.blur();
+            polled.changed |= submitted.changed;
+            polled.intents.extend(submitted.intents);
+            (polled, true)
+        }
+        // Up and the paging keys with no list showing are the editor's.
+        _ => (polled, false),
+    }
+}

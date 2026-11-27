@@ -171,6 +171,7 @@ pub enum ParseOperation {
     PreviewWorkbook,
     PreviewDocument(DocumentFormat),
     PreviewPdf(PdfRenderSize),
+    PreviewPdfText,
     PreviewModel(ModelRender),
     PreviewRoute(crate::services::route_preview::RouteRender),
     PreviewMedia(MediaPreviewSize),
@@ -211,6 +212,7 @@ impl ParseOperation {
             Self::PreviewWorkbook => "preview-workbook",
             Self::PreviewDocument(_) => "preview-document",
             Self::PreviewPdf(_) => "preview-pdf",
+            Self::PreviewPdfText => "preview-pdf-text",
             Self::PreviewModel(_) => "preview-model",
             Self::PreviewRoute(_) => "preview-route",
             Self::PreviewMedia(_) => "preview-media",
@@ -255,6 +257,7 @@ impl ParseOperation {
                 | Self::RawMetadata
                 | Self::PreviewWorkbook
                 | Self::PreviewDocument(_)
+                | Self::PreviewPdfText
                 | Self::PreviewRoute(_)
                 | Self::InspectImage
         ) {
@@ -304,6 +307,7 @@ impl ParseOperation {
             | Self::RawMetadata
             | Self::PreviewWorkbook
             | Self::PreviewDocument(_)
+            | Self::PreviewPdfText
             | Self::ArchiveList { .. } => None,
         }
     }
@@ -316,7 +320,8 @@ impl ParseOperation {
             | Self::PreviewImage
             | Self::PreviewRaw
             | Self::RawMetadata
-            | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
+            | Self::PreviewPdf(_)
+            | Self::PreviewPdfText => Some(MAX_RASTER_INPUT_BYTES),
             Self::PreviewModel(render) if render.format != ModelFormat::Gcode => {
                 Some(MAX_MODEL_INPUT_BYTES)
             }

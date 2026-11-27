@@ -281,7 +281,8 @@ fn viewport_flush_never_disturbs_an_active_sort() {
                 location: Location::local("/fixture/beta"),
                 include_icon_details: false,
             },
-        ],
+        ]
+        .into(),
     );
     browser.flush_metadata_fills();
     assert_eq!(source.fill_calls.borrow().len(), 1);
@@ -539,7 +540,10 @@ fn visible_metadata_is_admitted_when_the_offscreen_backlog_is_full() {
         location: beta.clone(),
         include_icon_details: false,
     });
-    browser.metadata_pending.borrow_mut().insert(0, backlog);
+    browser
+        .metadata_pending
+        .borrow_mut()
+        .insert(0, backlog.into());
 
     browser.request_visible_metadata_fill(0, 1, beta.clone(), true);
     browser.request_visible_metadata_fill(0, 2, gamma.clone(), false);
@@ -560,11 +564,25 @@ fn visible_metadata_is_admitted_when_the_offscreen_backlog_is_full() {
         outcome: MetadataOutcome::Complete,
     });
     pump_until(|| source.fill_calls.borrow().len() == 2);
+    let (second_id, second_emit) = {
+        let calls = source.fill_calls.borrow();
+        assert_eq!(calls[1].entries, vec![beta]);
+        assert!(
+            calls[1].include_icon_details,
+            "promoted entries retain richer requests"
+        );
+        (calls[1].id, calls[1].emit.clone())
+    };
+    second_emit(DirectoryEvent::MetadataFinished {
+        request_id: second_id,
+        outcome: MetadataOutcome::Complete,
+    });
+    pump_until(|| source.fill_calls.borrow().len() == 3);
     let calls = source.fill_calls.borrow();
-    assert_eq!(&calls[1].entries[..2], &[beta, gamma]);
+    assert_eq!(calls[2].entries.first(), Some(&gamma));
     assert!(
-        calls[1].include_icon_details,
-        "promoted entries retain richer requests"
+        !calls[2].include_icon_details,
+        "non-icon-details targets do not inherit icon details from earlier targets"
     );
 }
 
@@ -636,7 +654,8 @@ fn shifted_viewport_rows_go_stale_without_repaint() {
             position: 1,
             location: Location::local("/fixture/beta"),
             include_icon_details: false,
-        }],
+        }]
+        .into(),
     );
     browser.flush_metadata_fills();
     assert_eq!(source.fill_calls.borrow().len(), 1);
@@ -701,7 +720,8 @@ fn remote_name_listing_fills_visible_metadata() {
                 location: Location::uri("sftp://host/share/notes.txt"),
                 include_icon_details: false,
             },
-        ],
+        ]
+        .into(),
     );
     browser.flush_metadata_fills();
     assert_eq!(source.fill_calls.borrow().len(), 1);

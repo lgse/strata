@@ -127,10 +127,6 @@ fn copy_recursively_does_not_follow_a_symlink_nested_inside_the_tree() -> Result
         "the decoy must be copied as a symlink, not followed into a real directory"
     );
     assert_eq!(fs::read_link(&decoy_dest)?, outside);
-    // `is_symlink` above already rules out a real directory of copied
-    // content existing under this name; confirm the thing it still points
-    // at (unavoidably reachable by following the recreated symlink, same as
-    // the original) was left untouched rather than overwritten.
     assert_eq!(fs::read(outside.join("secret.txt"))?, b"do not copy me");
 
     fs::remove_dir_all(root)?;

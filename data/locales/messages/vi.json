@@ -204,6 +204,7 @@
   "Cannot permanently delete the filesystem root": "Không thể xóa vĩnh viễn thư mục gốc của hệ thống tệp",
   "Cannot restore the filesystem root": "Không thể khôi phục thư mục gốc của hệ thống tệp",
   "Can’t compress these items": "Không thể nén các mục này",
+  "Can’t extract these items": "Không thể giải nén các mục này",
   "Can’t create items here": "Không thể tạo mục ở đây",
   "Can’t cut these items": "Không thể cắt các mục này",
   "Can’t move these items": "Không thể di chuyển các mục này",
@@ -421,6 +422,7 @@
   "Extract the archive here / to a typed folder": "Giải nén tại đây / vào thư mục được nhập",
   "Extract the archive to a folder": "Giải nén vào một thư mục",
   "Extracted entries remain in “%{folder}”.": "Các mục đã giải nén vẫn nằm trong “%{folder}”.",
+  "Extracting archive %{current} of %{total}": "Đang giải nén tệp nén %{current} / %{total}",
   "Extraction destination must use an absolute path": "Đích giải nén phải dùng đường dẫn tuyệt đối",
   "Extraction stopped unexpectedly": "Quá trình giải nén đã dừng đột ngột",
   "Failed after %{elapsed}": "Thất bại sau %{elapsed}",
@@ -1151,5 +1153,6 @@
   "Press the new key for “%{action}”": "Nhấn phím mới cho “%{action}”",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} để hủy, và %{backspace} để gỡ mọi phím của hành động này.",
   "“%{group}” has no key, so this action cannot run.": "“%{group}” chưa có phím nào, nên không thể chạy thao tác này.",
-  "Custom action %{number}": "Hành động tùy chỉnh %{number}"
+  "Custom action %{number}": "Hành động tùy chỉnh %{number}",
+  "Volume": "Âm lượng"
 }

@@ -41,8 +41,6 @@ use std::{
 
 const HOLD_LIMIT: Duration = Duration::from_secs(30);
 
-/// Holds a staged compression's writer on its worker until the test releases it, which
-/// dropping this does too, so a failed assertion never leaves the worker spinning.
 #[derive(Default)]
 struct HeldWriter {
     held: Arc<AtomicBool>,
@@ -111,8 +109,6 @@ impl HeldWriter {
 impl Drop for HeldWriter {
     fn drop(&mut self) {
         self.release();
-        // The spawned task belongs to this thread: run it to its end here, or the
-        // next test to iterate the default context finalizes it on another thread.
         if !self.spawned.get() {
             return;
         }

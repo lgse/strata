@@ -1,13 +1,24 @@
 # SPDX-License-Identifier: MIT
 """Runs a foreign drag source and prints its button for the QA runner.
 
-Stdout gets `bounds X Y WIDTH HEIGHT` whenever the button's screen box changes
-and `label TEXT` after each label change.
+On X11, with no window manager, every window maps at the screen's top-left
+corner, where it would cover Strata's first tab, so the source's window first
+moves to the screen's bottom-right corner, which Strata's default window leaves
+free; its place then comes from the X server. On the session host's sway
+(`GDK_BACKEND=wayland`) sway tiles the source beside Strata and no client can
+learn where its window is, so its place comes from sway's tree over `SWAYSOCK`;
+the window is undecorated there, so its widgets start at the window's corner.
+
+Stdout then gets `bounds X Y WIDTH HEIGHT` whenever the button's screen box
+changes and `label TEXT` after each label change.
 """
 
 import ctypes
 import ctypes.util
+import json
+import os
 import runpy
+import subprocess
 import sys
 
 import gi
@@ -17,30 +28,74 @@ gi.require_version("GdkX11", "4.0")
 from gi.repository import GdkX11, GLib, Gtk  # noqa: E402
 
 POLL_MS = 50
+APP_ID = "io.github.lgse.Strata.TestDragSource"
+WAYLAND = os.environ.get("GDK_BACKEND") == "wayland"
 
 xlib = ctypes.CDLL(ctypes.util.find_library("X11"))
 xlib.XOpenDisplay.restype = ctypes.c_void_p
 xlib.XOpenDisplay.argtypes = [ctypes.c_char_p]
 xlib.XDefaultRootWindow.restype = ctypes.c_ulong
 xlib.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+xlib.XDefaultScreen.argtypes = [ctypes.c_void_p]
+xlib.XDisplayWidth.argtypes = [ctypes.c_void_p, ctypes.c_int]
+xlib.XDisplayHeight.argtypes = [ctypes.c_void_p, ctypes.c_int]
+xlib.XMoveWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_int]
+xlib.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
 xlib.XTranslateCoordinates.argtypes = [
     ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_int, ctypes.c_int,
     ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_ulong),
 ]
-display = xlib.XOpenDisplay(None)
+display = None if WAYLAND else xlib.XOpenDisplay(None)
 
 
 def report(line):
     print(line, flush=True)
 
 
+def sway_window(node):
+    if node.get("app_id") == APP_ID:
+        return node
+    for child in node.get("nodes", []) + node.get("floating_nodes", []):
+        found = sway_window(child)
+        if found is not None:
+            return found
+    return None
+
+
+def sway_origin():
+    tree = subprocess.run(
+        ["swaymsg", "--socket", os.environ["SWAYSOCK"], "--type", "get_tree", "--raw"],
+        capture_output=True, check=False,
+    )
+    try:
+        window = sway_window(json.loads(tree.stdout))
+    except ValueError:
+        return None
+    if window is None:
+        return None
+    rect, inner = window["rect"], window["window_rect"]
+    return rect["x"] + inner["x"], rect["y"] + inner["y"]
+
+
 def surface_origin(surface):
+    if WAYLAND:
+        return sway_origin()
     x, y, child = ctypes.c_int(), ctypes.c_int(), ctypes.c_ulong()
     xlib.XTranslateCoordinates(
         display, GdkX11.X11Surface.get_xid(surface), xlib.XDefaultRootWindow(display),
         0, 0, ctypes.byref(x), ctypes.byref(y), ctypes.byref(child),
     )
     return x.value, y.value
+
+
+def move_to_bottom_right(surface):
+    screen = xlib.XDefaultScreen(display)
+    xlib.XMoveWindow(
+        display, GdkX11.X11Surface.get_xid(surface),
+        xlib.XDisplayWidth(display, screen) - surface.get_width(),
+        xlib.XDisplayHeight(display, screen) - surface.get_height(),
+    )
+    xlib.XSync(display, False)
 
 
 set_label = Gtk.Button.set_label
@@ -54,26 +109,44 @@ def reporting_set_label(button, label):
 present = Gtk.Window.present
 
 
+def button_box(window):
+    """The button's screen box, or None while it is not shown or not placed."""
+    button, surface = window.get_child(), window.get_surface()
+    if button is None or surface is None or not button.get_mapped():
+        return None
+    found, bounds = button.compute_bounds(window)
+    if not found or bounds.get_width() <= 0 or bounds.get_height() <= 0:
+        return None
+    origin = surface_origin(surface)
+    if origin is None:
+        return None
+    offset_x, offset_y = window.get_surface_transform()
+    return (
+        origin[0] + int(offset_x + bounds.get_x()),
+        origin[1] + int(offset_y + bounds.get_y()),
+        int(bounds.get_width()),
+        int(bounds.get_height()),
+    )
+
+
 def reporting_present(window):
+    if WAYLAND:
+        window.set_decorated(False)
     present(window)
     last = []
+    moved = []
 
     def poll():
-        button, surface = window.get_child(), window.get_surface()
-        if button is not None and surface is not None and button.get_mapped():
-            found, bounds = button.compute_bounds(window)
-            if found and bounds.get_width() > 0 and bounds.get_height() > 0:
-                origin_x, origin_y = surface_origin(surface)
-                offset_x, offset_y = window.get_surface_transform()
-                box = (
-                    origin_x + int(offset_x + bounds.get_x()),
-                    origin_y + int(offset_y + bounds.get_y()),
-                    int(bounds.get_width()),
-                    int(bounds.get_height()),
-                )
-                if box not in last:
-                    last[:] = [box]
-                    report("bounds " + " ".join(map(str, box)))
+        box = button_box(window)
+        if box is None:
+            return GLib.SOURCE_CONTINUE
+        if not WAYLAND and not moved:
+            move_to_bottom_right(window.get_surface())
+            moved.append(True)
+            return GLib.SOURCE_CONTINUE
+        if box not in last:
+            last[:] = [box]
+            report("bounds " + " ".join(map(str, box)))
         return GLib.SOURCE_CONTINUE
 
     GLib.timeout_add(POLL_MS, poll)

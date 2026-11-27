@@ -6,8 +6,6 @@ pub mod operations;
 
 pub use strata_test_support::*;
 
-/// Runs the test `name` in a process of its own with disposable preferences, the mount
-/// watcher started and its thread marked as the UI thread.
 pub fn isolated_test(name: &str, run: impl FnOnce()) {
     strata_test_support::isolated_test(
         name,

@@ -48,10 +48,26 @@ if [[ "$group_id" != 0 ]]; then
   printf 'strata-quality:x:%s:\n' "$group_id" >> "$accounts/group"
 fi
 # Tests need O_TMPFILE in their temporary folders, which an overlay /tmp may refuse. Podman caps a
-# container at 2048 tasks by default; the lanes' libtest threads and GTK children exceed that and
-# then fail to spawn threads with EAGAIN.
+# container at 2048 tasks by default; concurrent test lanes and their isolated children can exceed
+# that and fail to spawn threads with EAGAIN.
 options=(--rm --platform=linux/amd64 --user "$user_id:$group_id" --shm-size=512m --pids-limit=-1
   --tmpfs /tmp:rw,exec,nosuid,nodev,size=2g,mode=1777)
+if [[ -z "${CI:-}" || -n "${STRATA_CONTAINER_CPU_SHARES:-}" ]]; then
+  cpu_shares="${STRATA_CONTAINER_CPU_SHARES:-128}"
+  if [[ "$cpu_shares" != 0 ]]; then
+    options+=(--cpu-shares="$cpu_shares")
+  fi
+fi
+cpus="${STRATA_CONTAINER_CPUS:-}"
+if [[ -z "$cpus" && -z "${CI:-}" ]]; then
+  host_cpus="$(nproc 2>/dev/null || echo 0)"
+  if ((host_cpus >= 6)); then
+    cpus="$((host_cpus * 2 / 3))"
+  fi
+fi
+if [[ -n "$cpus" && "$cpus" != 0 ]]; then
+  options+=(--cpus="$cpus")
+fi
 if [[ "$(basename "$engine")" == podman ]]; then
   options+=(--userns=keep-id --passwd=false)
 fi
@@ -61,6 +77,8 @@ fi
 for variable in STRATA_QUALITY_TASK STRATA_QUALITY_SHARD; do
   if [[ -n "${!variable:-}" ]]; then options+=(--env "$variable"); fi
 done
+# The image carries gvfs for the QA runner's fake devices. The Rust tests keep GIO's local VFS,
+# as the image had before, so a URI with no backend stays a stand-in file.
 exec "$engine" run "${options[@]}" \
   --mount "type=bind,source=$repository,target=/workspace" \
   --mount "type=bind,source=$accounts/passwd,target=/etc/passwd,readonly" \
@@ -70,16 +88,25 @@ exec "$engine" run "${options[@]}" \
   --env CARGO_HOME=/workspace/target/quality-container/cargo \
   --env CARGO_TARGET_DIR=/workspace/target/quality-container/build \
   --env CARGO_PROFILE_DEV_DEBUG=0 --env CARGO_INCREMENTAL=0 \
+  --env GIO_USE_VFS=local \
   --env "STRATA_QUALITY_COMMIT=$(git -C "$repository" rev-parse HEAD)" \
   "$image" bash -euc '
     mkdir -p "$HOME" "$CARGO_HOME"
+    # An empty cache takes the crates the image holds; a used one is left alone. Formatting
+    # needs none, and a shard runs the binaries its build task compiled.
+    case "$1:${STRATA_QUALITY_TASK:-test}" in
+      fmt:*|test:shard) ;;
+      *) python3 scripts/dependency_seed.py ;;
+    esac
     rustc --version
     case "$1" in all|fmt) cargo fmt --all --check ;; esac
-    case "$1" in all|clippy) cargo clippy --locked --workspace --all-targets --all-features -- -D warnings ;; esac
+    case "$1" in all|clippy)
+      cargo clippy --locked --workspace --all-targets --all-features -- -D warnings ;;
+    esac
     case "$1" in all|test)
       case "${STRATA_QUALITY_TASK:-test}" in
         build) python3 scripts/quality_ci.py build ;;
-        # Each lane starts its own private Xvfb and D-Bus session.
+        # Each lane runs headless with no display and an unreachable session bus.
         shard) STRATA_REQUIRE_DEVICE_TESTS=1 python3 scripts/quality_ci.py run "${@:2}" ;;
         test) python3 scripts/quality_ci.py local "${@:2}" ;;
         *) echo "Invalid STRATA_QUALITY_TASK" >&2; exit 2 ;;

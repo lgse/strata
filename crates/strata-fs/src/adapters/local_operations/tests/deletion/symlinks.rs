@@ -14,9 +14,6 @@ fn permanent_delete_removes_a_symlink_standing_in_for_a_directory_without_follow
     fs::create_dir_all(&outside)?;
     let sentinel = outside.join("sentinel.txt");
     fs::write(&sentinel, b"do not delete me")?;
-    // `directory_entry` reports `kind: Directory` even though the entry is
-    // actually a symlink on disk, standing in for a `FileEntry` whose type
-    // went stale because the real directory was swapped for a symlink.
     std::os::unix::fs::symlink(&outside, &decoy)?;
 
     let events = Rc::new(RefCell::new(Vec::new()));
@@ -238,8 +235,6 @@ fn change_since(since: Since, path: &Path, theirs: &Path, row: &str) -> Result<(
     Ok(())
 }
 
-/// Removes `item` beneath `root` only if it is still `expected`, through
-/// the permanent delete or the placement's removal.
 fn remove_recorded(
     root: &Path,
     expected: super::super::super::native_fs::Recorded,

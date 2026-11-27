@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Letter bookmarks are kept apart from sidebar pins and preferences. All
-//! reads and read-modify-writes use the storage worker, so windows see each
-//! other's changes without doing filesystem work on the GTK thread.
-
 use std::{
     collections::BTreeMap,
     io,
@@ -13,8 +9,6 @@ use std::{
 use gio::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Unknown fields and unusable entries are ignored on reading, so a file a
-/// newer version or a hand edit wrote still loads.
 #[derive(Default, Deserialize, Serialize)]
 struct Bookmarks {
     #[serde(default)]
@@ -55,8 +49,6 @@ fn read(path: &Path, letter: char) -> io::Result<Option<PathBuf>> {
         .transpose()
 }
 
-/// Only `file:` URIs name a local folder. A remote URI can still resolve to
-/// a path through a gvfs FUSE mount, which is not local.
 fn local_directory(uri: &str) -> Option<PathBuf> {
     let (path, host) = glib::filename_from_uri(uri).ok()?;
     host.is_none_or(|host| host == "localhost")

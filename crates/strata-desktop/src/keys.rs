@@ -1,0 +1,660 @@
+// SPDX-License-Identifier: MIT
+
+mod active;
+mod alias;
+mod backend;
+pub mod bindings;
+mod command;
+pub mod conflicts;
+mod key;
+mod key_constants;
+mod label;
+mod parts;
+mod table;
+#[cfg(feature = "xkb-keys")]
+mod xkb;
+
+pub use active::{Active, Fixed, set_active};
+pub use alias::{Context, FALLBACK, rewrite};
+pub use backend::{Backend, NeverFires, install};
+#[cfg(any(test, feature = "test-support"))]
+pub use command::use_keymap;
+pub use command::{
+    Alternate, Command, Group, Keymap, Kind as CommandKind, Map, Matcher, Rejected, Spec,
+    active_keymap, registry,
+};
+pub use key::{Key, Modifiers};
+pub use label::{
+    Digits, Keys, Letters, Shown, digit_label, label, label_in, label_in_map, modifiers_label,
+    modifiers_label_in, search_text, shown,
+};
+pub use parts::{KeyPressParts, Typed};
+pub use table::Table;
+#[cfg(all(feature = "xkb-keys", any(test, feature = "test-support")))]
+pub use xkb::library_name;
+#[cfg(feature = "xkb-keys")]
+pub use xkb::{Xkb, library_in_use};
+
+/// The modifiers shortcuts compare. Locks, AltGr, Hyper and Meta never count.
+pub const SHORTCUT_MODIFIERS: Modifiers = Modifiers::CONTROL_MASK
+    .union(Modifiers::ALT_MASK)
+    .union(Modifiers::SHIFT_MASK)
+    .union(Modifiers::SUPER_MASK);
+
+pub const TEXT_EDITING: [(Command, &str); 6] = [
+    (bindings::COPY, "clipboard.copy"),
+    (bindings::CUT, "clipboard.cut"),
+    (bindings::PASTE, "clipboard.paste"),
+    (bindings::SELECT_ALL, "selection.select-all"),
+    (bindings::UNDO, "text.undo"),
+    (bindings::REDO, "text.redo"),
+];
+
+pub const DIRECT_IN_DEFAULT: [Command; 27] = [
+    bindings::OPEN_WITH,
+    bindings::MOVE_TO,
+    bindings::COPY_TO,
+    bindings::RESTORE,
+    bindings::ACTIONS_COMPRESS,
+    bindings::ACTIONS_EXTRACT,
+    bindings::ACTIONS_EXTRACT_TO,
+    bindings::ACTIONS_TERMINAL,
+    bindings::SORT_BY_NAME,
+    bindings::SORT_BY_MODIFIED,
+    bindings::SORT_BY_SIZE,
+    bindings::SORT_BY_TYPE,
+    bindings::SORT_BY_EXTENSION,
+    bindings::SORT_BY_CREATED,
+    bindings::SORT_BY_UNSORTED,
+    bindings::SORT_BY_NATURAL,
+    bindings::SORT_BY_ALPHABETICAL,
+    bindings::SORT_BY_CASE_SENSITIVE,
+    bindings::SORT_BY_FOLDERS_FIRST,
+    bindings::COPY_AS_PATH,
+    bindings::COPY_AS_NAME,
+    bindings::INVERT_SELECTION,
+    bindings::SEARCH_SUBFOLDERS,
+    bindings::JUMP_VISITED,
+    bindings::JUMP_RECENT,
+    bindings::HALF_PAGE_UP,
+    bindings::HALF_PAGE_DOWN,
+];
+
+/// See [`DIRECT_IN_DEFAULT`].
+pub const DIRECT_IN_TENXER: [Command; 4] = [
+    bindings::DUPLICATE,
+    bindings::PIN,
+    bindings::JUMP_TO_FOLDER,
+    bindings::ARROW_SCOPE,
+];
+
+pub fn direct_commands(map: Map) -> &'static [Command] {
+    match map {
+        Map::Default => &DIRECT_IN_DEFAULT,
+        Map::Tenxer => &DIRECT_IN_TENXER,
+    }
+}
+
+pub const CUSTOM_ACTIONS: [Command; 10] = [
+    bindings::CUSTOM_ACTION_1,
+    bindings::CUSTOM_ACTION_2,
+    bindings::CUSTOM_ACTION_3,
+    bindings::CUSTOM_ACTION_4,
+    bindings::CUSTOM_ACTION_5,
+    bindings::CUSTOM_ACTION_6,
+    bindings::CUSTOM_ACTION_7,
+    bindings::CUSTOM_ACTION_8,
+    bindings::CUSTOM_ACTION_9,
+    bindings::CUSTOM_ACTION_10,
+];
+
+pub fn custom_action_slot(command: Command) -> Option<usize> {
+    CUSTOM_ACTIONS
+        .iter()
+        .position(|slot| *slot == command)
+        .map(|index| index + 1)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Binding {
+    pub key: Key,
+    pub modifiers: Modifiers,
+    pub ignored: Modifiers,
+}
+
+impl Binding {
+    pub const fn new(key: Key, modifiers: Modifiers) -> Self {
+        Self {
+            key,
+            modifiers,
+            ignored: Modifiers::empty(),
+        }
+    }
+
+    pub const fn plain(key: Key) -> Self {
+        Self::new(key, Modifiers::empty())
+    }
+
+    pub const fn shift(key: Key) -> Self {
+        Self::new(key, Modifiers::SHIFT_MASK)
+    }
+
+    pub const fn ctrl(key: Key) -> Self {
+        Self::new(key, Modifiers::CONTROL_MASK)
+    }
+
+    pub const fn ctrl_shift(key: Key) -> Self {
+        Self::new(key, Modifiers::CONTROL_MASK.union(Modifiers::SHIFT_MASK))
+    }
+
+    pub const fn alt(key: Key) -> Self {
+        Self::new(key, Modifiers::ALT_MASK)
+    }
+
+    pub const fn ctrl_alt(key: Key) -> Self {
+        Self::new(key, Modifiers::CONTROL_MASK.union(Modifiers::ALT_MASK))
+    }
+
+    pub const fn ignoring(self, modifiers: Modifiers) -> Self {
+        Self {
+            ignored: self.ignored.union(modifiers),
+            ..self
+        }
+    }
+
+    pub const fn key(self) -> Key {
+        self.key
+    }
+
+    pub const fn modifiers(self) -> Modifiers {
+        self.modifiers
+    }
+
+    pub fn accelerator(self) -> glib::GString {
+        backend::backend()
+            .accelerator_name(self.key, self.modifiers)
+            .into()
+    }
+
+    pub fn normalized(self) -> Self {
+        if self.modifiers.is_empty() && digit_value(self.key).is_some() {
+            self.ignoring(Modifiers::SHIFT_MASK)
+        } else {
+            self
+        }
+    }
+
+    pub fn parse(accelerator: &str) -> Option<Self> {
+        let (key, modifiers) = backend::backend().accelerator_parse(accelerator)?;
+        Self::canonical(key, modifiers)
+    }
+
+    fn canonical(key: Key, mut modifiers: Modifiers) -> Option<Self> {
+        if !SHORTCUT_MODIFIERS.contains(modifiers)
+            || key.keysym() == 0
+            || key == Key::VoidSymbol
+            || MODIFIER_KEYS.contains(&key)
+        {
+            return None;
+        }
+        let key = if key == Key::ISO_Left_Tab {
+            modifiers.insert(Modifiers::SHIFT_MASK);
+            Key::Tab
+        } else if let Some(digit) = KEYPAD_DIGITS.iter().position(|digit| *digit == key) {
+            DIGITS[digit]
+        } else {
+            main_key(key.to_lower())
+        };
+        Some(Self::new(key, modifiers).normalized())
+    }
+
+    pub const fn shown(self) -> Shown {
+        Shown::Binding(self)
+    }
+}
+
+pub trait Match {
+    fn matches(&self, press: &KeyPress) -> bool;
+}
+
+impl<T: Match + ?Sized> Match for &T {
+    fn matches(&self, press: &KeyPress) -> bool {
+        (**self).matches(press)
+    }
+}
+
+impl Match for Binding {
+    fn matches(&self, press: &KeyPress) -> bool {
+        self.matches_pressed(press)
+            || (press.aliased() && self.key == press.key && self.matches_read(press))
+    }
+}
+
+impl Binding {
+    fn matches_pressed(&self, press: &KeyPress) -> bool {
+        let (key, modifiers) = press.physical_key();
+        self.matches_key(press, key, modifiers)
+    }
+
+    fn matches_key(&self, press: &KeyPress, key: Key, modifiers: Modifiers) -> bool {
+        let compared = SHORTCUT_MODIFIERS.difference(self.ignored);
+        match digit_value(self.key) {
+            Some(digit) => {
+                press.digit == Some(digit) && press.state & compared == self.modifiers & compared
+            }
+            None => self.key == key && modifiers & compared == self.modifiers & compared,
+        }
+    }
+
+    fn matches_read(&self, press: &KeyPress) -> bool {
+        self.matches_key(press, press.key, press.shortcut_modifiers)
+    }
+
+    /// A plain printable key, which types rather than commands.
+    pub fn is_typed(self) -> bool {
+        !self
+            .modifiers
+            .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+            && self
+                .key
+                .to_unicode()
+                .is_some_and(|character| !character.is_control())
+    }
+}
+
+/// One key event, normalized once for every handler that sees it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyPress {
+    key: Key,
+    shortcut_modifiers: Modifiers,
+    state: Modifiers,
+    typed: Key,
+    digit: Option<u8>,
+    fallback: bool,
+    modifier: bool,
+    aliasing: alias::Aliasing,
+    alias: Option<alias::Alias>,
+}
+
+impl KeyPress {
+    pub fn is(&self, key: impl Match) -> bool {
+        key.matches(self)
+    }
+
+    pub fn is_any<M: Match>(&self, keys: &[M]) -> bool {
+        keys.iter().any(|key| key.matches(self))
+    }
+
+    pub fn digit_in(&self, digits: Digits) -> Option<u8> {
+        let compared = SHORTCUT_MODIFIERS.difference(digits.ignored());
+        self.digit.filter(|digit| {
+            self.state & compared == digits.modifiers() & compared && digits.contains(*digit)
+        })
+    }
+
+    pub fn letter(&self) -> Option<char> {
+        let (key, modifiers) = self.physical_key();
+        let letter = key.to_unicode().filter(char::is_ascii_lowercase)?;
+        (modifiers & SHORTCUT_MODIFIERS)
+            .is_empty()
+            .then_some(letter)
+    }
+
+    pub fn text(&self) -> Option<char> {
+        if self
+            .state
+            .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+        {
+            return None;
+        }
+        self.typed
+            .to_unicode()
+            .filter(|character| !character.is_control())
+    }
+
+    pub fn is_modifier(&self) -> bool {
+        self.modifier
+    }
+
+    pub fn modifiers(&self) -> Modifiers {
+        if self.alias.is_some() {
+            self.shortcut_modifiers
+        } else {
+            self.state
+        }
+    }
+
+    pub fn modifier_key(&self) -> Modifiers {
+        modifier_of(self.typed)
+    }
+
+    pub fn used_fallback(&self) -> bool {
+        self.fallback
+    }
+
+    pub fn aliased(&self) -> bool {
+        self.alias.is_some()
+    }
+
+    pub fn binding(&self) -> Option<Binding> {
+        // Tab numbers read Shift on the digit row by position, not as the
+        // symbol it types.
+        let (key, modifiers) = match self.digit_position() {
+            Some(position) if self.state.contains(Modifiers::SHIFT_MASK) => {
+                (position.key, position.modifiers)
+            }
+            _ => self.physical_key(),
+        };
+        Binding::canonical(key, modifiers)
+    }
+
+    pub fn digit_position(&self) -> Option<Binding> {
+        self.digit
+            .filter(|_| {
+                self.state.intersects(
+                    Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK,
+                )
+            })
+            .map(|digit| Binding::new(DIGITS[usize::from(digit)], self.state))
+    }
+
+    pub fn untyped(self) -> Self {
+        if !self.alias.is_some_and(|alias| alias.typed) {
+            return self;
+        }
+        let (key, shortcut_modifiers) = self.physical_key();
+        Self {
+            key,
+            shortcut_modifiers,
+            alias: None,
+            ..self
+        }
+    }
+
+    fn read_as(self, canonical: Binding, typed: bool) -> Self {
+        Self {
+            key: canonical.key,
+            shortcut_modifiers: canonical.modifiers,
+            alias: Some(alias::Alias {
+                key: self.key,
+                modifiers: self.shortcut_modifiers,
+                typed,
+            }),
+            ..self
+        }
+    }
+
+    fn physical_key(&self) -> (Key, Modifiers) {
+        self.alias
+            .map_or((self.key, self.shortcut_modifiers), |alias| {
+                (alias.key, alias.modifiers)
+            })
+    }
+
+    pub fn from_signal(keyval: Key, keycode: u32, state: Modifiers) -> Self {
+        normalize(&Event::synthetic(keyval, keycode, state), |_| {
+            None::<(u32, u32, Key)>
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Event {
+    pub matched: (Key, Modifiers),
+    pub typed: Key,
+    pub state: Modifiers,
+    pub keycode: u32,
+    pub layout: u32,
+    pub level: u32,
+    pub modifier: bool,
+}
+
+impl Event {
+    fn synthetic(typed: Key, keycode: u32, state: Modifiers) -> Self {
+        let position = us_position(typed);
+        let key = if typed == Key::ISO_Left_Tab {
+            Key::Tab
+        } else {
+            typed.to_lower()
+        };
+        let mut modifiers = state;
+        if key != typed {
+            // Caps Lock alone types uppercase and never changes a shortcut.
+            if !state.contains(Modifiers::LOCK_MASK) || state.contains(Modifiers::SHIFT_MASK) {
+                modifiers.insert(Modifiers::SHIFT_MASK);
+            }
+        } else if position.is_some() && typed.to_upper() == typed {
+            // GDK reports the Shift that typed a digit or symbol as consumed.
+            modifiers.remove(Modifiers::SHIFT_MASK);
+        }
+        Self {
+            matched: (key, modifiers),
+            typed,
+            state,
+            keycode: match position {
+                Some((position, _)) if keycode == 0 => position,
+                _ => keycode,
+            },
+            layout: 0,
+            level: position.map_or(0, |(_, level)| level),
+            modifier: MODIFIER_KEYS.contains(&typed),
+        }
+    }
+}
+
+const MODIFIER_KEYS: [Key; 22] = [
+    Key::Shift_L,
+    Key::Shift_R,
+    Key::Control_L,
+    Key::Control_R,
+    Key::Alt_L,
+    Key::Alt_R,
+    Key::Super_L,
+    Key::Super_R,
+    Key::Meta_L,
+    Key::Meta_R,
+    Key::Hyper_L,
+    Key::Hyper_R,
+    Key::ISO_Level3_Shift,
+    Key::ISO_Level5_Shift,
+    Key::Mode_switch,
+    Key::ISO_Next_Group,
+    Key::ISO_Prev_Group,
+    Key::ISO_First_Group,
+    Key::ISO_Last_Group,
+    Key::Caps_Lock,
+    Key::Num_Lock,
+    Key::Scroll_Lock,
+];
+
+fn modifier_of(key: Key) -> Modifiers {
+    match key {
+        Key::Control_L | Key::Control_R => Modifiers::CONTROL_MASK,
+        Key::Shift_L | Key::Shift_R => Modifiers::SHIFT_MASK,
+        Key::Alt_L | Key::Alt_R | Key::Meta_L | Key::Meta_R => Modifiers::ALT_MASK,
+        Key::Super_L | Key::Super_R => Modifiers::SUPER_MASK,
+        _ => Modifiers::empty(),
+    }
+}
+
+pub fn normalize<Entries>(event: &Event, keymap: impl FnOnce(u32) -> Entries) -> KeyPress
+where
+    Entries: IntoIterator<Item = (u32, u32, Key)>,
+{
+    let (mut key, mut modifiers) = event.matched;
+    modifiers &= SHORTCUT_MODIFIERS;
+    let state = event.state & SHORTCUT_MODIFIERS;
+    // Levels 2 and 3 are AltGr text. Caps Lock can raise the event's level, so
+    // the fallback reads the level Shift selects.
+    let latin = (event.level <= 1 && types_beyond_ascii(key))
+        .then(|| {
+            let level = u32::from(state.contains(Modifiers::SHIFT_MASK));
+            keymap(event.keycode)
+                .into_iter()
+                .find(|&(layout, entry_level, entry)| {
+                    layout != event.layout && entry_level == level && printable_ascii(entry)
+                })
+                .map(|(_, _, entry)| entry)
+                .or_else(|| us_qwerty(event.keycode).map(|keys| keys[level as usize]))
+        })
+        .flatten();
+    if let Some(latin) = latin {
+        key = latin.to_lower();
+        modifiers.set(Modifiers::SHIFT_MASK, key != latin);
+    }
+    KeyPress {
+        key: main_key(key),
+        shortcut_modifiers: modifiers,
+        state,
+        typed: event.typed,
+        digit: position_digit(event.keycode, event.typed, event.level),
+        fallback: latin.is_some(),
+        // GDK does not count AltGr or a layout switch on every backend.
+        modifier: event.modifier || MODIFIER_KEYS.contains(&event.typed),
+        aliasing: alias::Aliasing::Off,
+        alias: None,
+    }
+}
+
+fn printable_ascii(key: Key) -> bool {
+    (0x20..=0x7e).contains(&key.keysym())
+}
+
+fn types_beyond_ascii(key: Key) -> bool {
+    !printable_ascii(key)
+        && key
+            .to_unicode()
+            .is_some_and(|character| !character.is_ascii() && !character.is_control())
+}
+
+pub fn main_key(key: Key) -> Key {
+    match key {
+        Key::KP_Enter => Key::Return,
+        Key::KP_Up => Key::Up,
+        Key::KP_Down => Key::Down,
+        Key::KP_Left => Key::Left,
+        Key::KP_Right => Key::Right,
+        Key::KP_Home => Key::Home,
+        Key::KP_End => Key::End,
+        Key::KP_Page_Up => Key::Page_Up,
+        Key::KP_Page_Down => Key::Page_Down,
+        Key::KP_Insert => Key::Insert,
+        Key::KP_Delete => Key::Delete,
+        Key::KP_Tab => Key::Tab,
+        Key::KP_Space => Key::space,
+        Key::KP_Add => Key::plus,
+        Key::KP_Subtract => Key::minus,
+        Key::KP_Multiply => Key::asterisk,
+        Key::KP_Divide => Key::slash,
+        Key::KP_Equal => Key::equal,
+        _ => key,
+    }
+}
+
+const DIGITS: [Key; 10] = [
+    Key::_0,
+    Key::_1,
+    Key::_2,
+    Key::_3,
+    Key::_4,
+    Key::_5,
+    Key::_6,
+    Key::_7,
+    Key::_8,
+    Key::_9,
+];
+
+const KEYPAD_DIGITS: [Key; 10] = [
+    Key::KP_0,
+    Key::KP_1,
+    Key::KP_2,
+    Key::KP_3,
+    Key::KP_4,
+    Key::KP_5,
+    Key::KP_6,
+    Key::KP_7,
+    Key::KP_8,
+    Key::KP_9,
+];
+
+pub fn digit_value(key: Key) -> Option<u8> {
+    DIGITS
+        .iter()
+        .position(|digit| *digit == key)
+        .map(|digit| digit as u8)
+}
+
+fn position_digit(keycode: u32, typed: Key, level: u32) -> Option<u8> {
+    match keycode {
+        10..=19 if level <= 1 => Some(((keycode - 9) % 10) as u8),
+        10..=19 => digit_value(typed),
+        _ => KEYPAD_DIGITS
+            .iter()
+            .position(|digit| *digit == typed)
+            .map(|digit| digit as u8)
+            .or_else(|| digit_value(typed).filter(|_| level <= 1)),
+    }
+}
+
+/// The US-QWERTY characters at levels 0 and 1, by keycode.
+fn us_qwerty(keycode: u32) -> Option<[Key; 2]> {
+    Some(match keycode {
+        10 => [Key::_1, Key::exclam],
+        11 => [Key::_2, Key::at],
+        12 => [Key::_3, Key::numbersign],
+        13 => [Key::_4, Key::dollar],
+        14 => [Key::_5, Key::percent],
+        15 => [Key::_6, Key::asciicircum],
+        16 => [Key::_7, Key::ampersand],
+        17 => [Key::_8, Key::asterisk],
+        18 => [Key::_9, Key::parenleft],
+        19 => [Key::_0, Key::parenright],
+        20 => [Key::minus, Key::underscore],
+        21 => [Key::equal, Key::plus],
+        24 => [Key::q, Key::Q],
+        25 => [Key::w, Key::W],
+        26 => [Key::e, Key::E],
+        27 => [Key::r, Key::R],
+        28 => [Key::t, Key::T],
+        29 => [Key::y, Key::Y],
+        30 => [Key::u, Key::U],
+        31 => [Key::i, Key::I],
+        32 => [Key::o, Key::O],
+        33 => [Key::p, Key::P],
+        34 => [Key::bracketleft, Key::braceleft],
+        35 => [Key::bracketright, Key::braceright],
+        38 => [Key::a, Key::A],
+        39 => [Key::s, Key::S],
+        40 => [Key::d, Key::D],
+        41 => [Key::f, Key::F],
+        42 => [Key::g, Key::G],
+        43 => [Key::h, Key::H],
+        44 => [Key::j, Key::J],
+        45 => [Key::k, Key::K],
+        46 => [Key::l, Key::L],
+        47 => [Key::semicolon, Key::colon],
+        48 => [Key::apostrophe, Key::quotedbl],
+        49 => [Key::grave, Key::asciitilde],
+        51 => [Key::backslash, Key::bar],
+        52 => [Key::z, Key::Z],
+        53 => [Key::x, Key::X],
+        54 => [Key::c, Key::C],
+        55 => [Key::v, Key::V],
+        56 => [Key::b, Key::B],
+        57 => [Key::n, Key::N],
+        58 => [Key::m, Key::M],
+        59 => [Key::comma, Key::less],
+        60 => [Key::period, Key::greater],
+        61 => [Key::slash, Key::question],
+        _ => return None,
+    })
+}
+
+fn us_position(key: Key) -> Option<(u32, u32)> {
+    (10..=61).find_map(|keycode| {
+        us_qwerty(keycode)?
+            .iter()
+            .position(|level| *level == key)
+            .map(|level| (keycode, level as u32))
+    })
+}

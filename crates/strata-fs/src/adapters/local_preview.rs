@@ -18,8 +18,8 @@ use crate::{
     adapters::gio_close::Closing,
     sandbox::{Cancellation, MediaPreviewBackend, PdfRenderSize},
     services::{
-        LoadHandle, MediaPreviewSize, ModelRender, PreviewContent, PreviewEvent, PreviewProvider,
-        PreviewRequest, normalize_preview_text, route_preview::RouteRender,
+        LoadHandle, MediaPreviewSize, ModelRender, PdfTextIndex, PreviewContent, PreviewEvent,
+        PreviewProvider, PreviewRequest, normalize_preview_text, route_preview::RouteRender,
     },
 };
 // The test modules reach these through `super::*`.
@@ -160,6 +160,33 @@ impl PreviewCache {
             }
         }
     }
+
+    fn evict_path(&mut self, path: &Path) {
+        self.recent.retain(|key| key.path != path);
+        let mut freed = 0usize;
+        self.entries.retain(|key, content| {
+            if key.path == path {
+                freed = freed.saturating_add(preview_content_size(content));
+                false
+            } else {
+                true
+            }
+        });
+        self.byte_count = self.byte_count.saturating_sub(freed);
+        if self.entries.is_empty() {
+            self.byte_count = 0;
+            self.entries.shrink_to_fit();
+            self.recent.shrink_to_fit();
+        }
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.recent.clear();
+        self.byte_count = 0;
+        self.entries.shrink_to_fit();
+        self.recent.shrink_to_fit();
+    }
 }
 
 fn preview_content_size(content: &PreviewContent) -> usize {
@@ -240,6 +267,43 @@ impl PreviewProvider for LocalPreviewProvider {
             drop(load);
             progress_task.abort();
         })
+    }
+
+    fn extract_pdf_text(
+        &self,
+        entry: &crate::model::FileEntry,
+        emit: Rc<dyn Fn(Result<PdfTextIndex, String>)>,
+    ) -> Option<LoadHandle> {
+        let path = entry.location.native_path()?.to_path_buf();
+        let cancellation = Cancellation::default();
+        let worker_cancel = cancellation.clone();
+        let check_cancel = cancellation.clone();
+        let task = glib::MainContext::default().spawn_local(async move {
+            let result = gio::spawn_blocking(move || {
+                crate::sandbox::extract_pdf_text(&path, &worker_cancel)
+            })
+            .await;
+            if check_cancel.is_cancelled() {
+                return;
+            }
+            let outcome = match result {
+                Ok(outcome) => outcome,
+                Err(_) => Err("The preview worker stopped unexpectedly.".to_owned()),
+            };
+            emit(outcome);
+        });
+        Some(LoadHandle::new(move || {
+            cancellation.cancel();
+            task.abort();
+        }))
+    }
+
+    fn evict(&self, path: &Path) {
+        PREVIEW_CACHE.with(|cache| cache.borrow_mut().evict_path(path));
+    }
+
+    fn clear_cache(&self) {
+        PREVIEW_CACHE.with(|cache| cache.borrow_mut().clear());
     }
 }
 

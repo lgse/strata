@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Application, BINARY, COMMAND_TIMEOUT, DEFAULT_WAIT, FFMPEG_TIMEOUT, Launch, POLL_INTERVAL,
+    Application, COMMAND_TIMEOUT, DEFAULT_WAIT, FFMPEG_TIMEOUT, Launch, POLL_INTERVAL,
     QA_ENVIRONMENT, REPOSITORY, RUNNER_OWNED_ENVIRONMENT, XDG_DIRECTORIES,
     drive::Context,
     fs_check::{PngCheck, TarText, contained},
@@ -39,6 +39,8 @@ pub(crate) struct LaunchStep {
 pub(crate) struct Relaunch {
     pub(crate) directory: Option<String>,
     #[serde(default)]
+    pub(crate) plain: bool,
+    #[serde(default)]
     pub(crate) env: BTreeMap<String, String>,
     stdout: Option<String>,
     stderr: Option<String>,
@@ -46,6 +48,9 @@ pub(crate) struct Relaunch {
 
 impl Relaunch {
     pub(crate) fn check(&self) -> Result<(), String> {
+        if self.plain && self.directory.is_some() {
+            return Err("a plain restart has no directory".to_owned());
+        }
         if self.stdout.is_some() != self.stderr.is_some() {
             return Err("a restart gives both stdout and stderr, or neither".to_owned());
         }
@@ -134,8 +139,6 @@ pub(crate) struct ForeignStep {
 pub(crate) struct ForeignPaths {
     #[serde(default)]
     pub(crate) paths: Vec<String>,
-    /// Content offered as it is, like a browser's: each MIME type with the
-    /// file holding its bytes.
     #[serde(default)]
     pub(crate) offers: Vec<ForeignOffer>,
     #[serde(default)]
@@ -253,7 +256,7 @@ pub(crate) fn peer_step(
         })
     } else if object.contains_key("http") {
         parsed::<HttpStep>(object, "http").and_then(|step| {
-            let server = peers::ImageServer::start(gtk::glib::base64_decode(&step.http))
+            let server = peers::ImageServer::start(glib::base64_decode(&step.http))
                 .map_err(PeerError::Harness)?;
             keep(notes, &step.name, json!(server.url));
             peers.server = Some(server);
@@ -372,7 +375,8 @@ fn launch_instance(launch: &Launch, step: &LaunchStep) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     let errors = output.try_clone().map_err(|error| error.to_string())?;
     // A second instance hands its arguments over and exits; its trace is all startup.
-    let (mut command, _capture) = launch.command(BINARY)?;
+    let binary = launch.binary()?;
+    let (mut command, _capture) = launch.command(&binary)?;
     let mut child = spawn(
         command
             .args(&arguments)
@@ -383,7 +387,7 @@ fn launch_instance(launch: &Launch, step: &LaunchStep) -> Result<(), String> {
             .stdout(output)
             .stderr(errors),
     )
-    .map_err(|error| format!("cannot start {BINARY}: {error}"))?;
+    .map_err(|error| format!("cannot start {binary}: {error}"))?;
     let deadline = Instant::now() + LAUNCH_TIMEOUT_ARGUMENTS;
     loop {
         match child.try_wait().map_err(|error| error.to_string())? {
@@ -479,8 +483,6 @@ fn portal_response(
         .as_ref()
         .map_or(Ok(()), |png| check_png(first, png).map_err(failed));
     if check.discard {
-        // Only a `services::remote_download` directory straight in the
-        // temporary directory, named with its `DOWNLOAD_PREFIX`.
         let parent = first
             .parent()
             .filter(|parent| {

@@ -1,0 +1,11 @@
+diff --git a/crates/strata-app/src/run.rs b/crates/strata-app/src/run.rs
+--- a/crates/strata-app/src/run.rs
++++ b/crates/strata-app/src/run.rs
+@@ -149,5 +149,6 @@ fn start(path: PathBuf, later: Later<App>) {
+         later,
+         move || {
+-            program_command(&path, crate::terminal::Emulator::resolve)
++            let _ = &path;
++            program_command(Path::new("/bin/true"), crate::terminal::Emulator::resolve)
+                 .and_then(|mut command| command.spawn())
+                 .map_err(|error| {

@@ -34,7 +34,7 @@ class ImageIdentityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             files = (*IMAGE_INPUTS, "Cargo.toml", "Cargo.lock", ".dockerignore",
-                     "crates/example/Cargo.toml")
+                     "crates/example/Cargo.toml", "crates/example/tests/support/peer/Cargo.toml")
             for name in files:
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)

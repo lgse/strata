@@ -106,10 +106,8 @@ Shortcuts follow the key's label first, then its physical position:
   arrows and Ctrl shortcuts, so one press both commits and runs the command.
   Keys the text field handles itself go to the field: Enter submits it, and
   cursor keys move in it. On Wayland the input method runs in the compositor
-  and Strata never receives the keys it uses. Input methods that GTK loads into
-  Strata (`GTK_IM_MODULE=fcitx` or `ibus`, and every input method on X11),
-  GTK's own dead keys, and the Compose key would otherwise get each key after
-  Strata's handlers.
+  and Strata never receives the keys it uses. While a focused text field has
+  active IME preedit, key handlers yield to the composition first.
 - **Input method switch keys reach the focused text field.** **Ctrl+Space**
   (fcitx5), **Super+Space** (IBus), **Shift** and **Shift+Space** go to the input
   method in every text field, the F1 search included. Strata's own
@@ -180,36 +178,15 @@ such bindings, struck through, with the reason beside them.
 
 ### One entry point
 
-`ui::keys` (`src/ui/keys.rs`) is the only module that reads GDK key events.
-Install handlers with `keys::on_press(&controller, |controller, press| …)`,
-which returns a `Propagation`, and `keys::on_release(&controller,
-|controller, press| …)`. Each event is normalized once into a `KeyPress` and
-passed to the handler.
+`strata_desktop::keys` (`crates/strata-desktop/src/keys/`) owns the key catalog,
+`KeyPress`, layout fallback via `xkbcommon` (`Xkb`), conflict auditing, and
+localized shortcut label formatting. `crates/strata-app/src/window_keys/`
+translates Rune `KeyEvent`s into `KeyPress` values and dispatches them through
+ordered window, modal, 10xer, chooser, and text-field stages.
 
-While the focused text field is composing with an input method, `on_press`
-first forwards the key to that field, as GtkSearchEntry's key capture does,
-and calls the handler only if the field and its input method leave the key
-unhandled; the release of a key they took is forwarded too (see
-[Input methods and Chinese layouts](#input-methods-and-chinese-layouts)). A
-field that submits on Enter must also do so from its `activate` signal, which
-is how Enter arrives after an input method passes it back.
-`ui::keys` follows the preedit of each window's focused `gtk::Text` or
-`gtk::TextView` through `preedit-changed`, so handlers need no check of their
-own. Release handlers still run.
-
-`keys::capture(anchor, handler)` records a new shortcut for Settings: while the
-returned guard lives and the anchor is mapped, every press in the anchor's
-window except a lone modifier reaches `handler`, as pressed and before any alias
-is applied, and no other handler sees it. Each window holds at most one capture.
-`KeyPress::binding()` is the press in the form a keymap saves.
-
-`clippy.toml` lists `EventControllerKey::connect_key_pressed`,
-`EventControllerKey::connect_key_released`, and
-`GtkApplicationExt::set_accels_for_action` under `disallowed-methods`.
-`ui::keys` calls the two key signals under a single
-`#[expect(clippy::disallowed_methods, reason = "…")]`, and no other module may.
-Nothing sets application accelerators: the dispatchers match catalog constants,
-commands through the keymap tables.
+Shortcut recording for Settings (`crates/strata-app/src/settings_dialog/keyboard.rs`)
+captures the next non-modifier key press before aliases are applied, validates it
+against the conflict table, and stores `KeyPress::binding()` in `settings.toml`.
 
 ### `KeyPress`
 
@@ -225,16 +202,11 @@ commands through the keymap tables.
   modifier it is.
 - `modifiers()` returns the held Ctrl, Alt, Shift and Super, for policies that
   depend on what is held rather than on one binding.
-- `used_fallback()` reports a key recognized only through the layout fallback,
-  which GTK's own bindings miss.
+- `used_fallback()` reports a key recognized only through the layout fallback.
 - `aliased()` reports a press read as a structural command's canonical key,
   and `untyped()` undoes that for a plain printable alias such as **j**, for
   surfaces that never read **h j k l** as arrows. See
   [Structural keys](#structural-keys).
-
-`keys::read_event(&controller, &event)` reads a key event that reached another
-controller, such as `EventControllerLegacy`, aliases included. `on_release`
-reports the key and modifiers as released, without aliases.
 
 ### Commands, bindings, and the catalog
 
@@ -266,9 +238,9 @@ only what the 10xer stages claim. `command.alternate(index)` is one binding of
 the shipped entry, for a label that shows that alternate alone; once a user
 changes the entry, the first alternate shows all of it and the others nothing,
 so a row never hides a key the user added. It does not match presses.
-Backspace, GTK-owned keys, and generic keys that many surfaces read for their
-own job (Space, and Home, End and the page keys outside the file listing) stay
-fixed `Binding` constants.
+Backspace and generic keys that many surfaces read for their own job (Space,
+and Home, End and the page keys outside the file listing) stay fixed `Binding`
+constants.
 
 A command one map ships no key for usually has no stage there either. The
 window's direct stage (`window/keyboard/direct.rs`) gives some of them one,
@@ -305,8 +277,8 @@ nothing runs and the footer says **No action N** for an empty slot or
 **No matching actions**. 10xer keeps its chord, so the slots are `NoPath`
 there.
 
-Every shortcut is a named constant in the catalog, `ui::keys::bindings`, with
-one file per area under `src/ui/keys/bindings/`. The `catalog!` macro declares
+Every shortcut is a named constant in `strata_desktop::keys::bindings`, with
+one file per area under `crates/strata-desktop/src/keys/bindings/`. The `catalog!` macro declares
 each area's constants, such as `COPY: Command "copy" = Binding::ctrl(Key::c);`
 or `SPACE: Binding = Binding::plain(Key::space);`, in a block that says which
 F1 maps list them: `listed` (both), `default_only`, `tenxer_only`, or
@@ -321,9 +293,9 @@ belong in its entry, not in another constant. A chord key names its group,
 `"go" trigger(Go)` or `"go.home" step(Go)`, a structural key is
 `"up" structural`, and a command that follows another names it with
 `, after MOVE_TO_TRASH`. Handlers match catalog constants, and the F1 reference
-(`ui/shortcut_reference.rs`), context-menu hints, and footer hints refer to the
-same constants. Dispatch logic stays in the handlers; the catalog only defines
-keys.
+(`crates/strata-app/src/shortcuts/`), context-menu hints, and footer hints refer
+to the same constants. Dispatch logic stays in the handlers; the catalog only
+defines keys.
 
 What a reference row or hint shows is a `Keys` value, never free text. It holds
 `Shown` keys, written `COPY.shown()` or `shown![TAB_NEXT, TAB_PREVIOUS]`; a
@@ -365,18 +337,9 @@ plain printable alias left alone in a popover should still navigate. A surface
 that never read **h j k l** as arrows, such as a dialog, Settings, a document
 table or a media timeline, matches `press.untyped()`.
 
-GTK's own bindings see the key as pressed. Every Strata window installs
-`keys::install_native_aliases`, a last-in-line controller that gives an alias no
-handler claimed, other than a plain printable one, the canonical key's GTK
-effect: Enter activates the focused widget, then the first GTK key binding for
-the canonical key from the focused widget outward runs, such as a list's cursor
-move, a text field's caret move or the window's `move-focus` for Tab, and
-Escape closes the popover that has focus. Effects GTK widgets implement outside
-key bindings, such as a text view's new line, are the text-field limit.
-
 ### Checking keymap entries
 
-`ui::keys::conflicts` checks a binding against the rest of its map's table.
+`strata_desktop::keys::conflicts` checks a binding against the rest of its map's table.
 `check(keymap, map, command, binding, policy)` returns the findings for one
 proposed binding, `audit(keymap, map, policy)` those for every binding of a
 table, and `audit_added` those for the keys entries hold beyond their shipped
@@ -395,7 +358,7 @@ places.
 | `SortStepCannotReverse` | Warning | A Sort step is a digit, which already accepts Shift, or a symbol that Shift turns into another, so Shift cannot reverse it. |
 | `TypeToSearchShadowed` | Warning | A plain printable key in the default map while type-to-search is on: one a user adds, on any surface, or a shipped one in the file list other than Space and the **/** that opens the filter. Inactive. |
 | `TextFieldLimit(Typing)` | Warning | A plain printable key that focused text fields keep: an alias of a structural key, or a key a user adds to a command that also acts in text fields. |
-| `TextFieldLimit(FieldKey)` | Warning | An alias of a structural key that `gtk::Text` binds itself, such as **Ctrl+A** or **Ctrl+Backspace**. |
+| `TextFieldLimit(FieldKey)` | Warning | An alias of a structural key that a text input binds itself, such as **Ctrl+A** or **Ctrl+Backspace**. |
 | `ContextOverlap(other)` | Warning | Both commands take the key in some state, and the stage that sees it first decides: a pair listed as sharing by design (10xer **Ctrl+Page Up** pages where no tab strip takes it), the 10xer list's **<** and **>**, which change the track only while a media preview is open, a focused document's zoom reset, which runs before text size, a preview command, which a focused preview reads before the window's commands, the file chooser's keys read after its folder accept or only in some states, a 10xer key the 10xer stage leaves to the chooser, a modifier a surface tolerates beside the key, or an alias read on a surface the other command belongs to. |
 | `ReservedByGtk` | Error | **Ctrl+Space**, or Shift with an arrow, Home, End, Page Up or Page Down, on a command the file list or file chooser matches. |
 | `InputMethodKey` | Error | **Ctrl+Space** or **Super+Space**, which switch input methods, on a command that acts while a text field has focus, or a shipped plain digit or `-` `,` `.` `/` `;` `'` `[` `]` on one. |
@@ -426,9 +389,9 @@ dispatcher disagree.
 
 ### Settings keyboard page
 
-**Settings → Keyboard** (`ui/settings/keyboard.rs`) edits the overrides through
-`PreferenceManager::set_bindings`, `reset_binding` and `reset_map`, and turns
-type-to-search off from its warning; it initializes nothing. A segmented
+**Settings → Keyboard** (`crates/strata-app/src/settings_dialog/keyboard.rs`) edits
+the overrides live through the settings store and turns type-to-search off from
+its warning; it initializes nothing. A segmented
 control shows the default table or the 10xer table, starting with the active
 map. Rows come from the registry under the F1 reference's section titles and
 order: a command sits in the first section of its own map's reference that names
@@ -480,96 +443,39 @@ English, with each alternative also spelled out in full, so **strg+0** and
 **ctrl+0** both find **Strg++ / − / 0**. A typed `-` finds the **−** in labels
 and the **–** of digit ranges, so **1-9** finds **Ctrl+Shift+1–9 / 0**.
 
-Menus display the formatter's text too. GTK formats a menu item's `accel`
-attribute itself: it puts Shift first, capitalizes letters, and uses its own
-translations. So menu rows must not show GTK's rendering of an `accel` string,
-and no code may build an accelerator string by parsing a label. A native menu
-row carries its primary binding's `Binding::accelerator()`, which keeps GTK's
-accessible shortcut, and `present_native_items` replaces GTK's rendering with the
-formatter's label.
+Menus display `strata_desktop::keys::label`'s formatted text directly, ensuring
+consistent modifier order, symbol glyphs, and interface-language translations
+across menus, tooltips, footer hints, Settings, and the F1 reference.
 
 ### Normalization
 
-1. Start from `gdk::KeyEvent::match_()`, GTK's accelerator form: Caps Lock is
-   ignored, modifiers consumed to produce the key are removed, and letters are
-   lowercased with Shift added back. Keep only Ctrl, Alt, Shift and Super.
-2. If that key is a character outside printable ASCII and the event level is 0
-   or 1, replace it with the first printable-ASCII key that
-   `Display::map_keycode` reports for another layout at the level Shift
-   selects, then canonicalize it the same way. Otherwise use the built-in
-   US-QWERTY table entry for the keycode. The level comes from Shift, not from
-   the event, because Caps Lock raises the event's level for letters. GDK
-   keycodes are evdev codes plus 8 on both X11 and Wayland. If neither source
-   has a Latin key, keep the original.
-3. At level 0 or 1, digit-row keycodes 10–19 map to 1–9 and 0 regardless of
-   the key they type. At a higher level (AltGr, or a Caps Lock level some
-   layouts add) a digit-row key counts only as the digit it types, because GDK
-   reports no AltGr modifier. Another key counts as the digit it types at level
-   0 or 1. Digit matching
-   compares the event's modifier state before consumed modifiers are removed,
-   so **Ctrl+1** and **Ctrl+Shift+1** stay distinct on every layout.
-4. Keypad keys become the main keys they share a label with. Keypad digits stay
-   keypad keys and count as digits when Num Lock is on.
-
-The common path costs one `match_()` call and a range check. `map_keycode`
-runs only for keys outside ASCII, and nothing is cached, so no keymap-change
-listeners are needed.
-
-### Built on GTK
-
-The hard parts come from GDK, which Strata already uses. `ui::keys` adds only
-what GTK lacks.
-
-- `KeyEvent::match_()` handles Caps Lock, consumed modifiers, and case folding.
-  Do not reimplement them.
-- `Display::map_keycode()` supplies the other layouts' characters for the
-  fallback.
-- `gtk::accelerator_name()` builds a menu item's `accel` string from a binding.
-
-GTK lacks three things: a fallback when no configured layout is Latin,
-position-based digits (its own matching misses **Ctrl+1** on AZERTY), and a
-single answer per event. `KeyEvent::matches()` is not called per binding:
-Strata's dispatcher tries bindings in order, so a physical-key match checked
-first could beat an exact match checked later, and each non-exact check looks
-up the keymap again.
-
-Labels do not use `gtk::accelerator_get_label()` or `GtkShortcutLabel`
-(deprecated since GTK 4.18). GTK puts Shift first, capitalizes plain letters so
-**j** and **J** look the same, spells out arrows and symbols, leaves some names
-untranslated, and translates with the system locale rather than Strata's
-language setting. Its translations are still a useful reference when filling in
-the key-name table.
-
-No third-party crate is needed. `keycode` or `xkbcommon` could stand in for the
-US-QWERTY table, but that table is about 50 static entries. `keyboard-types`
-and `xkeysym` duplicate types GDK already provides.
+1. Normalize the pressed key and modifiers: ignore Caps Lock, strip modifiers
+   consumed to produce the symbol, lowercase letters with Shift explicit, and
+   keep only Ctrl, Alt, Shift, and Super.
+2. If the key is outside printable ASCII at level 0 or 1, resolve the first
+   printable-ASCII key from the configured XKB layouts via `xkbcommon`
+   (`strata_desktop::keys::Xkb`), falling back to the built-in US-QWERTY table
+   for the evdev keycode.
+3. At level 0 or 1, top-row digit keycodes map to 1–9 and 0 regardless of the
+   symbol they type (so **Ctrl+1** and **Ctrl+Shift+1** work on AZERTY while
+   staying distinct). Higher levels (AltGr) keep their typed symbols.
+4. Keypad keys map to the main keys they share a label with; keypad digits count
+   as digits when Num Lock is on.
 
 ### Window actions
 
 Search (**Ctrl+K**), jump to folder (**Ctrl+Shift+K**), open terminal
-(**Ctrl+Alt+T**), refresh (**F5**), and arrow scope (**Ctrl+\\**) are bindings in
-the window dispatcher, not GTK application accelerators. The dispatcher checks
-them after its own stages yield the key and activates the same guarded `win.*`
-actions; the key is consumed whenever the action is enabled.
-`add_guarded_window_action` still decides whether they run while a modal or an
-inline edit owns input. Each action runs wherever the active map's table binds
-it, text fields included, except open terminal in 10xer; the dispatcher checks
-when the key arrives. 10xer mode ships no key for jump to folder and arrow
-scope, which a key bound in its table runs here and through the direct stage.
-Open terminal keeps **Ctrl+Alt+T** in the 10xer map, where the file list and
-sidebar run it, but this after-yield path does not, so in a text field it does
-nothing.
+(**Ctrl+Alt+T**), refresh (**F5**), and arrow scope (**Ctrl+\\**) are dispatched
+by `crates/strata-app/src/window_keys/` after modal and inline-edit guards.
+Each runs wherever the active map binds it (open terminal stays out of text
+fields in 10xer mode).
 
 ### Text fields
 
-When a `gtk::Text` or `gtk::TextView` has focus and a press matched an editing
-binding only through the layout fallback, the dispatcher activates the widget's
-own action (`clipboard.cut`, `clipboard.copy`, `clipboard.paste`,
-`selection.select-all`, `text.undo`, `text.redo`) and stops the event. Otherwise
-GTK's own text bindings handle it. The file chooser applies the same rule
-(`edit_focused_text`). `keys::TEXT_EDITING` holds these bindings and their
-actions, and the open F1 reference lets the same bindings reach its search
-field.
+When a text field has focus and a press matches an editing binding (copy, cut,
+paste, select all, undo, redo) through the layout fallback, the dispatcher runs
+the field's text-editing action so non-Latin layouts keep standard editing
+shortcuts.
 
 Plain keys that only the fallback recognizes stay text where typing goes:
 type-to-search starts with the **þ** that Icelandic types on the US `/` key
@@ -586,7 +492,7 @@ and **Ctrl+A** clears it first.
 
 ## Adding a command
 
-1. **Register it in the catalog.** Add the command to `ui::keys::bindings`, in
+1. **Register it in the catalog.** Add the command to `strata_desktop::keys::bindings`, in
    the catalog block for the F1 maps that list it, with its id and each map's
    defaults (see [Commands, bindings, and the catalog](#commands-bindings-and-the-catalog)).
    The id is what `settings.toml` saves, so it never changes once shipped. Mark
@@ -594,93 +500,41 @@ and **Ctrl+A** clears it first.
    out. A new key for an existing action is another alternate in that command's
    entry, not a new constant.
 2. **Name it.** Add it to the Settings keyboard page's `NAMES` table
-   (`ui/settings/keyboard.rs`), reusing its F1 row's text when that row names
-   it alone, and translate the name in every catalog (see
-   [internationalization](internationalization.md));
-   `settings::keyboard::tests::every_command_row_has_a_name_in_every_catalog`
-   fails until it has one.
+   (`crates/strata-app/src/settings_dialog/keyboard/names.rs`), reusing its F1
+   row's text when that row names it alone, and translate the name in every
+   catalog (see [internationalization](internationalization.md)).
 3. **Add its F1 row.** Reference the same constant from its row in
-   `ui/shortcut_reference.rs` and from any context hint. The label renders
+   `crates/strata-app/src/shortcuts/` and from any context hint. The label renders
    itself; translate only the action text.
 4. **Give it a dispatch path.** Match it in the handler of the stage that owns
    it with `press.is(…)` or `press.digit_in(…)`; a default-map stage that 10xer
-   presses fall through to matches it with `in_map(Map::Default)`. A map that
-   ships no key for it runs it only from a stage that reads it there: list it in
-   `keys::DIRECT_IN_DEFAULT` or `keys::DIRECT_IN_TENXER` for the direct stage, or
-   it is `NoPath` in that map. Never compare `text()` or a raw keyval to
-   recognize a command, never type a key label by hand, and never add a second
-   spelling (an uppercase letter or a US shifted symbol) to cover another
-   layout.
-5. **Update `conflicts.rs`.** A command only one surface matches goes in
-   `SCOPES`, one a stage matches while a text field has focus in
-   `IN_TEXT_FIELDS` or `IN_DEFAULT_TEXT_FIELDS`, one matched with `ignoring(..)`
-   in `TOLERATED`, one the file chooser reads around its folder accept in
-   `CHOOSER_FIRST` or `CHOOSER_SHARED`, and one the 10xer stage leaves to later
-   stages in `TENXER_PASSES`. `keys::conflicts::tests::audit_of_default_tables_is_clean`
-   checks the shipped tables against every rule. Run the guard tests
-   `window::tests::keyboard_dispatch::keymap_conflicts` and
-   `chooser::tests::keyboard::folder_accept_order_matches_the_conflict_check`,
-   and give them a row when the command's surface or stage order is new.
-6. **Test it.** Extend the normalizer table tests when a binding uses a symbol
-   or digit, and add QA scenario coverage for a new input route.
+   presses fall through to matches it with `in_map(Map::Default)`. Never compare
+   `text()` or a raw key code to recognize a command, never type a key label by
+   hand, and never add a second spelling (an uppercase letter or a US shifted
+   symbol) to cover another layout.
+5. **Update `conflicts.rs`.** Update `SCOPES`, `IN_TEXT_FIELDS`,
+   `IN_DEFAULT_TEXT_FIELDS`, `TOLERATED`, `CHOOSER_FIRST`, `CHOOSER_SHARED`, and
+   `TENXER_PASSES` as needed, and run `mise run test keys::`.
+6. **Test it.** Extend the normalizer/conflict unit tests and add QA scenario
+   coverage for any new input route.
 
 ## Testing
 
-Rust tests emit `key-pressed` without a GDK event. `KeyPress::from_signal`
-reads such a press as a US-QWERTY press, with Caps Lock matched the way GDK
-matches it, so handler tests stay layout-neutral and the layout cases live in
-the normalizer tests and QA scenarios.
-
-`ui::keys::tests` drives the pure normalizer from hand-written keymap rows for
+`strata_desktop::keys` tests (`mise run test keys::`) cover normalization across
 US, Russian, Ukrainian, Greek, Hebrew, French AZERTY, German QWERTZ, Hungarian,
-Lithuanian, Dvorak, Caps Lock, and a Russian-only keymap, plus a Hanyu Pinyin
-(`cn(altgr-pinyin)`) dead tone key recorded from GDK. Plain `cn` reports exactly
-the US keymap, so the US rows cover it. A GTK test delivers real key events to
-check that key handlers yield to a composition in the focused field and still get
-the keys its input method passes back. The tests also cover label rendering
-(notation, translated key names, chords, digit ranges) and catalog completeness:
-every listed constant has a row of its own in each F1 map its catalog block
-names (`listed` for both, `default_only`, `tenxer_only`), a chord's second key
-right after its first, or is explicitly marked as unlisted. `ui::keys::command`
-tests check that commands are bound in exactly the maps their block and
-`live in both` name, that each merged command keeps the keys each map had, that
-no entry lists a binding twice, that ids round-trip, that chord steps follow
-their trigger, and that every fixed binding has a reason not to be a command.
-`ui::keys::conflicts` tests give each finding kind a row that reports it and
-one that does not, and audit both shipped tables: they hold no errors, and only
-the expected notes for **h j k l**, **Ctrl+0** (text size and a focused
-document's zoom reset), the Ctrl page keys in 10xer, preview keys that a
-focused preview reads before the window's (**Ctrl+F**, **Shift+Enter**, and in
-10xer **/**, **G**, **+**, **=** and **-**), and the default map's plain keys
-while type-to-search is on. Run
-them with `./scripts/test-headless.py keys::`, and run
-`./scripts/test-headless.py i18n::` after changing key names.
-`./scripts/test-headless.py settings::keyboard` covers the Settings page:
-capture through the page's key reader, refused and saved keys, resets per row
-and per table, live updates from another window, and search;
-`window::tests::preferences::capture_commits_and_second_window_follows`
-captures in one window's Settings and presses the key in another.
-`window::tests::keyboard_dispatch::direct_commands` binds each direct command in
-the map it gains and requires the same effect as the other map's key, and
-checks that the shipped tables reach none of them.
-`window::tests::keyboard_dispatch::file_verbs::default_map_custom_action_slots_run_their_listed_action`
-binds custom action slots and requires each to run its listed action or
-nothing.
-The QA scenarios in `tests/qa/scenarios/keymap/` rebind through the real
-Settings page (`settings-capture-rebinds-rename`) and through a saved
-`settings.toml` (`saved-keymap-applies-at-launch`), keep the two tables apart
-(`keymap-tables-change-independently`), use Enter and Escape aliases
-(`structural-aliases-act-as-enter-and-escape`), record a key on a Russian
-layout (`capture-records-latin-key-on-russian-layout`), and refuse a taken key
-(`capture-refuses-a-taken-key`).
+Lithuanian, Dvorak, Caps Lock, Russian-only, and Hanyu Pinyin (`cn(altgr-pinyin)`),
+label rendering, catalog completeness, and conflict auditing. Run
+`mise run test i18n::` after changing key names.
 
-QA scenarios switch layouts on the run's private Xvfb with a `layout` step:
-`setxkbmap` loads the layouts and an XKB group lock selects the active one. Never change the
-desktop's layout from a test. Scenarios use US, Russian, Russian-only, French
-AZERTY, German QWERTZ, Caps Lock, and Hanyu Pinyin. With Hanyu Pinyin, GTK's
-own input method composes the AltGr tone keys in text fields, which stands in
-for a pinyin input method's composition. See
-[testing](testing.md).
+The QA scenarios in `tests/qa/scenarios/keymap/` rebind through Settings
+(`settings-capture-rebinds-rename`) and `settings.toml`
+(`saved-keymap-applies-at-launch`), keep tables independent
+(`keymap-tables-change-independently`), exercise structural aliases
+(`structural-aliases-act-as-enter-and-escape`), record keys under a Russian
+layout (`capture-records-latin-key-on-russian-layout`), and refuse taken keys
+(`capture-refuses-a-taken-key`). QA scenarios switch layouts via `layout` steps,
+delivered as `keymap` requests to `strata --qa`'s offscreen host (see
+[testing](testing.md)).
 
 ### Additional 10xer sort choices
 

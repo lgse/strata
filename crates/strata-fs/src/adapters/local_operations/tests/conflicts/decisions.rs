@@ -102,8 +102,6 @@ fn mixed_conflict_choices_apply_independently_across_a_multi_item_paste()
     Ok(())
 }
 
-/// A paste onto a mount whose prompt confirmed `confirmed`, which the mount
-/// may store beside `fixed`.
 struct Confirmed {
     mount: &'static str,
     quirks: Preset,

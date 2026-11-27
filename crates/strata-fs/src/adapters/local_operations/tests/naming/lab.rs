@@ -496,8 +496,6 @@ fn reserved_cells() -> Vec<Cells> {
     ]
 }
 
-/// exfat-fuse stored overlong and surrogate names and then failed; its
-/// preset refuses them with `EUCLEAN`.
 fn malformed(fuse: Lab, ntfs_3g: Lab, posix: &'static str) -> [Lab; 13] {
     with(
         STORED,

@@ -1,4 +1,4 @@
-{"scenario":"named-location-controls","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.7},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Location Navigate/Cancel buttons by click and their names; Navigate via Return is typed-path-navigates, Cancel-by-click is unique here"}}
+{"scenario":"named-location-controls","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.7},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Location Navigate/Cancel buttons present by name and Cancel-by-click; typed-path-navigates covers Return route, names unchecked elsewhere"}}
 {"key":"ctrl+l"}
 {"expect":{"present":{"role":"text","name":"Location (Ctrl+L)"}}}
 {"expect":[{"present":{"role":"button","name":"Navigate (Enter)"}},{"present":{"role":"button","name":"Cancel (Escape)"}}]}

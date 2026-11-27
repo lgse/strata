@@ -82,8 +82,6 @@ fn below_racer<T: Send + 'static>(
     }
 }
 
-/// An SMB mount refusing folder renames while a file below is open, held
-/// by `below`'s program, with `racer` before or after the refusal.
 fn below_quirks(below: Below, renaming: Renaming, racer: Option<Racer>) -> Quirks {
     let refused_by = refused_by(renaming);
     let holder = match below {

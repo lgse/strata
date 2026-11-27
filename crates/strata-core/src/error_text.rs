@@ -5,8 +5,6 @@
 #[cfg(test)]
 mod tests;
 
-/// Localized text for an I/O failure. An unrecognized OS error gets a generic reason and its
-/// system text is logged; errors built by Strata or a library keep their own message.
 pub fn io_error_message(error: &std::io::Error) -> String {
     if let Some(link) = error
         .get_ref()
@@ -85,9 +83,6 @@ pub fn system_error_text(error: &std::io::Error) -> String {
     }
 }
 
-/// Adapts a standalone, capitalized error reason for a `…: %{error}` slot. French, Spanish,
-/// Italian, Portuguese, Hungarian, Russian and Vietnamese continue in lower case after a colon;
-/// German capitalizes nouns, and English and CJK keep the text as is.
 pub fn error_detail(text: String) -> String {
     error_detail_in(&rust_i18n::locale(), text)
 }

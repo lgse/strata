@@ -1,0 +1,10 @@
+diff --git a/crates/strata-app/src/window_keys.rs b/crates/strata-app/src/window_keys.rs
+--- a/crates/strata-app/src/window_keys.rs
++++ b/crates/strata-app/src/window_keys.rs
+@@ -110,5 +110,5 @@ pub(crate) const COMMANDS: &[Action<App>] = &[
+         ]),
+     Action::new("activate", activated)
+         .command(ENTER)
+-        .keys(&[Keys::at(Stage::ItemNavigation, &[ENTER_ANY_SHIFT]).when(from_the_listing)]),
++        .keys(&[Keys::at(Stage::ItemNavigation, &[ENTER_ANY_SHIFT]).when(|_, _| false)]),
+ ];

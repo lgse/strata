@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! ZIP, TAR/gzip and 7z decoding adapters feeding the same extraction session.
-//! Format-specific member enumeration, passwords and error translation stay here.
-//!
-
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -99,8 +95,6 @@ fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
     }
 }
 
-/// Only encrypted data permits password retry; plain-header 7z and ZipCrypto
-/// cannot distinguish a wrong password from damage.
 fn archive_read_error(error: std::io::Error, decrypting: bool) -> std::io::Error {
     use std::io::ErrorKind;
     let checksum_failed = matches!(

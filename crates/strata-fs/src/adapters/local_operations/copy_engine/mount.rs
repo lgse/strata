@@ -33,8 +33,6 @@ impl Mount {
         }
     }
 
-    /// The SMB client answers stats from attributes it cached, whose change time can predate
-    /// one the server set since, such as once the deferred close of a file written there lands.
     pub(super) fn caches_attributes(&self) -> bool {
         self.attribute_cache.is_some()
     }

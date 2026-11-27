@@ -87,8 +87,6 @@ fn wait_for_first_event(context: &glib::MainContext, events: &RecordedEvents) {
     });
 }
 
-/// Loads `request` with an injected renderer and returns the events seen
-/// until the first one arrives or five seconds pass.
 fn load_until_first_event(
     provider: &LocalPreviewProvider,
     context: &glib::MainContext,

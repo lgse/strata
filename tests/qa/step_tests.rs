@@ -11,8 +11,7 @@ use serde_json::{Value, json};
 
 use crate::{
     CONTROLLER_PANIC, REPOSITORY,
-    baseline::{DIFFERENT_PIXEL_BUDGET, compare_in, different_fraction, differing_pixels},
-    drive::file_failure,
+    drive::{file_failure, wait_for_fs},
     fixture::{OrderedMap, expand_tree, fixed_fixture_name, manifest},
     fs_check::{FsState, FsStep, contained},
     fs_helpers::{glob_matches, pdf_image, raw_photo},
@@ -24,6 +23,7 @@ use crate::{
     run::Outcome,
     runner_steps::{EachStep, ProcStep},
     scenario::{Header, Image, Scenario, load_scenario},
+    screen::{DREW_NOTHING, closing_text, step_text, write_offscreen},
     steps::{
         check_step, flag_names, increment, run_steps, slice, stem, substitute_notes,
         unknown_variable,
@@ -84,6 +84,7 @@ pub(crate) fn a_run_keeps_its_own_mode_steps_and_rejects_a_malformed_one() {
         json!({ "key": "Escape", "when": { "modal": true } }),
         json!({ "holds": { "dialog": true } }),
         json!({ "layout": "klingon" }),
+        json!({ "keymap": { "layouts": "ru" } }),
         json!({ "expect": { "dialog": true }, "as": "open", "when": { "dialog": true } }),
         json!({ "wait": { "all": [] } }),
         json!({ "fs": { "path": "a", "volume": "/dev/shm", "with": { "../b": "c" } } }),
@@ -187,6 +188,34 @@ pub(crate) fn notes_stand_in_for_what_a_run_reads_and_unknown_variables_are_reje
     assert_eq!(increment("folder-087"), Ok("folder-088".to_owned()));
     assert_eq!(increment("folder-099"), Ok("folder-100".to_owned()));
     assert!(increment("readme").is_err());
+}
+
+pub(crate) fn an_fs_check_can_hold_and_an_fs_action_cannot() {
+    assert!(check_step(&json!({ "fs": { "path": "a", "exists": false }, "hold_ms": 300 })).is_ok());
+    assert!(check_step(&json!({ "fs": { "path": "a", "write": "x" }, "hold_ms": 300 })).is_err());
+    let root = tempfile::tempdir().expect("a scratch directory");
+    let check = |hold_ms: u64| {
+        wait_for_fs(
+            &json!({ "fs": { "path": "late.txt", "exists": false }, "hold_ms": hold_ms, "message": "no late file" }),
+            root.path(),
+            SystemTime::UNIX_EPOCH,
+            &mut FsState::default(),
+        )
+    };
+    assert_eq!(check(150), Ok(()));
+    let late = root.path().join("late.txt");
+    let writer = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(100));
+        fs::write(late, "late\n").expect("the late file should be written");
+    });
+    let held = check(2_000);
+    writer.join().expect("the writer should finish");
+    assert!(
+        held.as_ref()
+            .is_err_and(|error| error.starts_with("stopped holding after")
+                && error.contains("no late file")),
+        "{held:?}"
+    );
 }
 
 pub(crate) fn fs_actions_make_numbered_directories_and_pin_a_populated_tree() {
@@ -602,6 +631,7 @@ pub(crate) fn peer_restart_and_guard_steps_check_their_shape_before_the_run() {
         json!({ "launch": ["$fixture"] }),
         json!({ "launch": ["a-%FF"], "percent_path": true }),
         json!({ "restart": { "directory": "/tmp/x", "env": { "RUST_LOG": "trace" }, "stdout": "closed", "stderr": "null" } }),
+        json!({ "restart": { "plain": true } }),
         json!({ "portal_open": "Title", "options": { "current_folder": "/tmp", "multiple": true } }),
         json!({ "portal_response": { "done": false } }),
         json!({ "portal_response": { "done": true, "status": 0, "names": ["a"] }, "timeout_ms": 20000 }),
@@ -620,6 +650,7 @@ pub(crate) fn peer_restart_and_guard_steps_check_their_shape_before_the_run() {
     for invalid in [
         json!({ "launch": [] }),
         json!({ "restart": { "stdout": "closed" } }),
+        json!({ "restart": { "plain": true, "directory": "/tmp/x" } }),
         json!({ "restart": { "stdout": "piped", "stderr": "null" } }),
         json!({ "restart": { "env": { "DISPLAY": ":1" } } }),
         json!({ "portal_response": { "done": false, "status": 0 } }),
@@ -749,68 +780,7 @@ pub(crate) fn a_heif_family_output_must_carry_its_iso_bmff_brand() {
     }
 }
 
-pub(crate) fn baseline_comparison_thresholds_pixels_and_budget() {
-    let grey = image::Rgb([100, 100, 100]);
-    let baseline = image::RgbImage::from_pixel(200, 1, grey);
-    for (channel, shift, differs) in [(0, 24, false), (1, 25, true), (2, -25, true)] {
-        let mut candidate = baseline.clone();
-        let mut moved = grey;
-        moved.0[channel] = moved.0[channel].saturating_add_signed(shift);
-        candidate.put_pixel(7, 0, moved);
-        let mask = differing_pixels(&baseline, &candidate);
-        assert_eq!(
-            mask.iter().filter(|value| **value).count(),
-            usize::from(differs)
-        );
-    }
-    for (different, matched) in [(1, true), (2, false)] {
-        let mask: Vec<bool> = (0..200).map(|index| index < different).collect();
-        assert_eq!(different_fraction(&mask) <= DIFFERENT_PIXEL_BUDGET, matched);
-    }
-}
-
-pub(crate) fn baseline_mismatches_fail_and_only_an_update_writes_the_baseline() {
-    let scratch = tempfile::tempdir().expect("a scratch directory");
-    let (images, artifacts) = (
-        scratch.path().join("gtk-4.22"),
-        scratch.path().join("artifacts"),
-    );
-    fs::create_dir_all(&images).expect("the baseline directory");
-    fs::create_dir_all(&artifacts).expect("the artifact directory");
-    let save = |path: &Path, width| {
-        image::RgbImage::from_pixel(width, 2, image::Rgb([9, 9, 9]))
-            .save_with_format(path, image::ImageFormat::Png)
-            .expect("an image");
-    };
-    let (expected, actual) = (images.join("view.png"), scratch.path().join("capture.png"));
-    save(&expected, 2);
-    save(&actual, 3);
-    let committed = fs::read(&expected).expect("the baseline");
-
-    let resized = compare_in(&images, "view", &actual, &artifacts, false).expect("a comparison");
-    assert!(!resized.matched);
-    assert_eq!(resized.detail, "size changed from (2, 2) to (3, 2)");
-    let missing = compare_in(&images, "absent", &actual, &artifacts, false).expect("a comparison");
-    assert!(!missing.matched);
-    assert_eq!(missing.detail, "no baseline at gtk-4.22/absent.png");
-    assert_eq!(missing.different_fraction, 1.0);
-
-    assert_eq!(fs::read(&expected).expect("the baseline"), committed);
-    assert!(!images.join("absent.png").exists());
-    assert!(artifacts.join("view.actual.png").is_file());
-
-    let captured = fs::read(&actual).expect("the capture");
-    for name in ["view", "absent"] {
-        let updated = compare_in(&images, name, &actual, &artifacts, true).expect("an update");
-        assert!(updated.matched, "{name}");
-        assert_eq!(
-            fs::read(images.join(format!("{name}.png"))).expect("the baseline"),
-            captured
-        );
-    }
-}
-
-pub(crate) fn fixture_roots_and_baseline_steps_check_their_shape_before_the_run() {
+pub(crate) fn fixture_roots_check_their_shape_before_the_run() {
     let names = [
         ("/tmp/strata-e2e-baseline", Some("strata-e2e-baseline")),
         ("/tmp/a/b", None),
@@ -820,14 +790,6 @@ pub(crate) fn fixture_roots_and_baseline_steps_check_their_shape_before_the_run(
     ];
     for (root, name) in names {
         assert_eq!(fixed_fixture_name(root), name, "{root}");
-    }
-    assert!(check_step(&json!({ "baseline": "columns-view" })).is_ok());
-    for step in [
-        json!({ "baseline": "columns-view.png" }),
-        json!({ "baseline": "" }),
-        json!({ "baseline": "a", "timeout_ms": 5 }),
-    ] {
-        assert!(check_step(&step).is_err(), "{step}");
     }
 }
 
@@ -880,5 +842,28 @@ pub(crate) fn prefs_write_nested_tables_into_settings_toml() {
     assert_eq!(
         serde_json::to_value(written).expect("TOML converts to JSON"),
         json!({ "type_to_search": false, "keymap": keymap })
+    );
+}
+
+pub(crate) fn a_rune_screen_is_its_tree_as_text_beside_the_image_it_cannot_take() {
+    let directory = tempfile::tempdir().expect("a directory");
+    let image = directory.path().join("after-drop.png");
+    let said = step_text(&json!({ "result": "window role=\"frame\"\n" }));
+    write_offscreen(&image, &said).expect("the text");
+    assert!(!image.exists(), "no image stands in for the screen");
+    let text = fs::read_to_string(directory.path().join("after-drop.txt")).expect("the text");
+    assert!(
+        text.starts_with(DREW_NOTHING) && text.ends_with("window role=\"frame\"\n"),
+        "{text}"
+    );
+    let refused = step_text(&json!({ "error": "the window is gone" }));
+    assert!(
+        refused.contains("the window is gone"),
+        "an answer that is no tree is written: {refused}"
+    );
+    assert!(closing_text(true).contains("tree.txt"));
+    assert!(
+        closing_text(false).contains("no tree.txt"),
+        "no file is named that the run did not write"
     );
 }

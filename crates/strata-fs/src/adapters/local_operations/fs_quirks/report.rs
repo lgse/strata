@@ -214,8 +214,6 @@ impl Scope {
 }
 
 impl State {
-    /// The birth time and inode number an entry reports, before any name
-    /// pattern applies.
     fn report_identity(&mut self, path: Option<&Path>, key: (u64, u64), stat: &mut EntryStat) {
         if self.quirks.births == Births::Recorded
             && stat.identity.birth.is_none_or(|birth| birth == (0, 0))

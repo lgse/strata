@@ -155,8 +155,6 @@ pub(super) fn child_pidfd(child: &Child) -> Option<rustix::fd::OwnedFd> {
     rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok()
 }
 
-/// A pidfd wakes on child exit; poll errors degrade to a short sleep, and the
-/// deadline bounds every path.
 fn wait_step(pidfd: Option<&rustix::fd::OwnedFd>, deadline: Instant) {
     let remaining = deadline.saturating_duration_since(Instant::now());
     let quantum = remaining.min(Duration::from_millis(20));

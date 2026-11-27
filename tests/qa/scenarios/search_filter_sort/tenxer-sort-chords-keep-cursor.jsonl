@@ -1,7 +1,7 @@
-{"scenario":"tenxer-sort-chords-keep-cursor","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false,"filter_include_subfolders":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7,"icons":0.6,"list":0.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"10xer ,-chord sort and . hidden toggle keep cursor on readme.md; file_verbs unit test covers sort logic, GUI cursor retention is unique"}}
+{"scenario":"tenxer-sort-chords-keep-cursor","modes":["columns","icons","list"],"prefs":{"tenxer_mode":true,"type_to_search":false,"single_click_previews":false,"filter_include_subfolders":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.7,"icons":0.6,"list":0.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"10xer , chord sorts, reverses and toggles folders first, keeping cursor on readme.md; chord route is GUI-only, menu route in additional-sort-choices"}}
 {"select_with_keyboard":"readme.md"}
 {"key":","}
-{"wait":{"present":{"role":"label","name":",-"}},"message":"the armed sort chord"}
+{"wait":{"present":{"role":"status bar","name":",-"}},"message":"the armed sort chord"}
 {"key":"s"}
 {"wait":{"entries":{"ends_with":["todo.txt","readme.md"]},"dir":"$root"},"message":", s to sort by size"}
 {"key":","}
@@ -11,7 +11,7 @@
 {"note":"entries","dir":"$root","as":"before"}
 {"key":","}
 {"key":"q"}
-{"wait":{"present":{"role":"label","name":"Unknown chord"}},"message":", q to cancel"}
+{"wait":{"present":{"role":"status bar","name":"Unknown chord"}},"message":", q to cancel"}
 {"expect":{"entries":"$before","dir":"$root"}}
 {"expect":{"not":{"field":{}}}}
 {"key":","}

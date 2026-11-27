@@ -183,8 +183,6 @@ fn unknown_daemon() -> Quirks {
     }
 }
 
-// Known rules never learn. This one also refuses a hard link's name,
-// and the lookup of a name, as sshfs does.
 fn strict_ext4() -> Quirks {
     Quirks {
         invalid_name: Some(refuses_colons),
@@ -375,8 +373,6 @@ fn a_mount_that_learns_keeps_only_the_rules_its_refused_member_names_needed()
 
 type Fails<'a> = &'a [(Op, &'a str, Errno)];
 
-/// Only `py:3` has a stricter name; the destination refuses it too, and
-/// the first refusal is the one reported.
 fn refused_member_rows() -> [(Entry<'static>, Fails<'static>, String); 10] {
     let invalid = "The name isn’t valid at this location";
     let io_failed = crate::services::io_error_message(&Errno::IO.into());
@@ -430,8 +426,6 @@ fn refused_member_rows() -> [(Entry<'static>, Fails<'static>, String); 10] {
             &[(Op::Link, "hard", Errno::INVAL)],
             format!("Could not link “bin/hard” to “bin/python”: {invalid}"),
         ),
-        // The copy that stands in for a hard link the mount cannot hold
-        // reports why its target could not be read, not the refused link.
         (
             (b"bin/hard", Hard("bin/python")),
             &[

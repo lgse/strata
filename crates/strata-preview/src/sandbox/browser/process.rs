@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Only the single-threaded, codec-free supervisor and its setup child use this
-//! module. The GTK application and decoder runtimes must never fork through it.
-
 use std::io;
 
 use rustix::process::{Pid, WaitOptions, waitpid};
@@ -29,7 +26,6 @@ pub(super) fn fork() -> io::Result<Option<Pid>> {
     // verified task, no shared mappings or external locks, and no decoder/RNG
     // state. libc runs its atfork handlers and resets threading-runtime state.
     // Children close inherited control descriptors and exit without reentering
-    // the supervisor. No GTK/GIO application process uses this boundary.
     let pid = unsafe { libc::fork() };
     if pid < 0 {
         return Err(io::Error::last_os_error());

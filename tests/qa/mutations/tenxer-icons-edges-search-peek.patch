@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/single/mod.rs b/crates/strata-app/src/single/mod.rs
+--- a/crates/strata-app/src/single/mod.rs
++++ b/crates/strata-app/src/single/mod.rs
+@@ -502,7 +502,7 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
+         Intent::OpenInNew { id, window } => open_in_new::<V>(app, (depth, id), window, tx),
+         Intent::Reveal { id } => reveal::<V>(app, (depth, id), tx),
+         Intent::Edge(Direction::Left) => {
+-            if !shell::preferences(app).tenxer_mode {
++            if !shell::preferences(app).tenxer_mode || true {
+                 shell::leave_view_at_start(app, tx);
+             }
+         }

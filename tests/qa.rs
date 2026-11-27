@@ -9,9 +9,6 @@ mod peers;
 #[path = "qa/harness.rs"]
 mod harness;
 
-#[path = "qa/baseline.rs"]
-mod baseline;
-
 #[path = "qa/drive.rs"]
 mod drive;
 
@@ -30,9 +27,6 @@ mod input_method;
 #[path = "qa/isobmff.rs"]
 mod isobmff;
 
-#[path = "qa/keyboard.rs"]
-mod keyboard;
-
 #[path = "qa/main_io.rs"]
 mod main_io;
 
@@ -44,6 +38,9 @@ mod process;
 
 #[path = "qa/run.rs"]
 mod run;
+
+#[path = "qa/screen.rs"]
+mod screen;
 
 #[path = "qa/runner_steps.rs"]
 mod runner_steps;
@@ -60,11 +57,17 @@ mod step_tests;
 #[path = "qa/steps.rs"]
 mod steps;
 
+#[path = "qa/target.rs"]
+mod target;
+
 #[path = "qa/unit_tests.rs"]
 mod unit_tests;
 
 #[path = "qa/variables.rs"]
 mod variables;
+
+#[path = "qa/volume_monitor.rs"]
+mod volume_monitor;
 
 #[path = "qa/wayland.rs"]
 mod wayland;
@@ -73,33 +76,32 @@ use std::{
     fmt::Write as _,
     fs::{self, File},
     io::{BufRead, BufReader, Write},
-    os::{fd::AsRawFd, unix::fs::PermissionsExt},
+    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{
         Mutex,
-        atomic::{AtomicU32, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use serde_json::{Value, json};
-use x11rb::{protocol::xkb, rust_connection::RustConnection};
 
 use drive::{Context, drive, wait_for_fs};
 use fixture::{
-    FIXED_FIXTURES, Manifest, OrderedMap, expand_tree, fixed_fixture_name, fixture_time,
-    gtk_settings, listing, pin_times,
+    FIXED_FIXTURES, Manifest, OrderedMap, expand_tree, fixed_fixture_name, fixture_time, listing,
+    pin_times,
 };
 use fs_check::FsState;
 use input_method::InputMethod;
 use peer_steps::{Peers, Relaunch};
-use process::{Bus, SPAWN, spawn, tail, terminate, wait_for_exit};
+use process::{Bus, spawn, tail, wait_for_exit};
 use run::{Outcome, pretty, run_result, settled_state};
 use scenario::{Scenario, planned_tests};
 use steps::run_steps;
 use variables::{Places, Run, substitute, substitute_text, unescape, variables};
+use volume_monitor::VolumeMonitor;
 
 // scripts/test_qa_drive.py checks qa-drive.sh against the launch values in this file.
 const REPOSITORY: &str = env!("CARGO_MANIFEST_DIR");
@@ -112,18 +114,14 @@ const EXIT_TIMEOUT: Duration = Duration::from_secs(10);
 /// `TERMINATE_GRACE_SECONDS` in `scripts/headless/process.py`.
 const TERMINATE_GRACE: Duration = Duration::from_secs(5);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
-const FIRST_DISPLAY: u32 = 90;
-const DISPLAY_TRIES: u32 = 256;
-const XVFB_START_TIMEOUT: Duration = Duration::from_secs(15);
 const DEFAULT_LAYOUT: &str = "us";
 const CONTROLLER_PANIC: &str = "the QA controller panicked";
-const RUNNER_COMMANDS: [&str; 24] = [
+const RUNNER_COMMANDS: [&str; 23] = [
     "layout",
     "fs",
     "increment",
     "slice",
     "screenshot",
-    "baseline",
     "stem",
     "parent",
     "flag",
@@ -145,9 +143,6 @@ const RUNNER_COMMANDS: [&str; 24] = [
 ];
 const NOTED_PLACEHOLDER: &str = "noted";
 const FFMPEG_TIMEOUT: Duration = Duration::from_secs(30);
-const CAPTURE_TIMEOUT: Duration = Duration::from_secs(15);
-/// `SESSION_BUS_CONFIG` in `scripts/headless/display.py`: no service directories, so
-/// nothing on the bus is D-Bus-activatable.
 const SESSION_BUS_CONFIG: &str = r#"<!DOCTYPE busconfig PUBLIC
  "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
@@ -188,9 +183,7 @@ const RUNNER_OWNED_ENVIRONMENT: [&str; 8] = [
     SHADER_CACHE_VARIABLE,
 ];
 /// No AT-SPI: the process reads its own widget tree.
-const QA_ENVIRONMENT: [(&str, &str); 2] = [("GTK_A11Y", "none"), ("NO_AT_BRIDGE", "1")];
-/// One Mesa shader cache for every run, so launches do not recompile shaders in their
-/// fresh `XDG_CACHE_HOME`.
+const QA_ENVIRONMENT: [(&str, &str); 1] = [("NO_AT_BRIDGE", "1")];
 const SHADER_CACHE_VARIABLE: &str = "MESA_SHADER_CACHE_DIR";
 static SHADER_CACHE: Mutex<Option<tempfile::TempDir>> = Mutex::new(None);
 
@@ -216,12 +209,7 @@ fn main() -> std::process::ExitCode {
             return std::process::ExitCode::from(harness::FAILED);
         }
     };
-    if host_run() {
-        eprintln!(
-            "UNSUPPORTED: STRATA_QA_HOST=1 runs QA scenarios on the host toolkit. \
-             This run is not validation evidence; use ./scripts/qa.sh."
-        );
-    }
+    announce_host_run();
     let status = harness::run(planned_tests(), &arguments);
     drop(
         SHADER_CACHE
@@ -240,15 +228,26 @@ fn host_run() -> bool {
     !in_container() && std::env::var_os("STRATA_QA_HOST").is_some_and(|value| value == "1")
 }
 
+/// Why a run outside the pinned container is refused, for a scenario and for a fuzz replay.
+const CONTAINER_ONLY: &str = "QA scenarios run only in the pinned container: use \
+    ./scripts/qa.sh (STRATA_QA_CONTAINER=1 is set there). A host run needs the owner's \
+    explicit consent and STRATA_QA_HOST=1, and is never validation evidence.";
+
+/// Labels a host run as what it is, whatever the runner was asked to do.
+fn announce_host_run() {
+    if host_run() {
+        eprintln!(
+            "UNSUPPORTED: STRATA_QA_HOST=1 runs QA scenarios on the host toolkit. \
+             This run is not validation evidence; use ./scripts/qa.sh."
+        );
+    }
+}
+
 fn require_container() {
     if in_container() || host_run() {
         return;
     }
-    panic!(
-        "QA scenarios run only in the pinned container: use ./scripts/qa.sh \
-         (STRATA_QA_CONTAINER=1 is set there). A host run needs the owner's explicit \
-         consent and STRATA_QA_HOST=1, and is never validation evidence."
-    );
+    panic!("{CONTAINER_ONLY}");
 }
 
 fn render_toml(values: &OrderedMap) -> String {
@@ -311,182 +310,40 @@ fn populate(directory: &Path, tree: &Value) {
     }
 }
 
-static NEXT_DISPLAY: AtomicU32 = AtomicU32::new(0);
-
-/// `x11` (the default) or `wayland`: the display server every run of this process gets.
-const DISPLAY_VARIABLE: &str = "STRATA_QA_DISPLAY";
-
-struct Display {
-    name: String,
-    server: Child,
-    log: PathBuf,
-    kind: Server,
-}
-
-enum Server {
-    X11 { connection: Box<RustConnection> },
+/// The display for a run: none for offscreen runs, or a private headless sway for session runs.
+enum Display {
+    Offscreen,
     Wayland(wayland::Sway),
 }
 
 impl Display {
-    fn start(scratch: &Path, runtime: &Path) -> Result<Self, String> {
-        match std::env::var(DISPLAY_VARIABLE).as_deref() {
-            Err(std::env::VarError::NotPresent) | Ok("" | "x11") => {
-                Self::start_x11(scratch.join("xvfb.log"))
-            }
-            Ok("wayland") => wayland::start(scratch, runtime),
-            Ok(other) => Err(format!(
-                "{DISPLAY_VARIABLE} is x11 or wayland, not {other:?}"
-            )),
-            Err(error) => Err(format!("{DISPLAY_VARIABLE}: {error}")),
+    fn start(host: scenario::Host, scratch: &Path, runtime: &Path) -> Result<Self, String> {
+        match host {
+            scenario::Host::Offscreen => Ok(Self::Offscreen),
+            scenario::Host::Session => wayland::start(scratch, runtime).map(Self::Wayland),
         }
-    }
-
-    /// `-displayfd` confirms this server, not a concurrently starting one, owns the number;
-    /// one that loses a number to another server tries the next.
-    fn start_x11(log: PathBuf) -> Result<Self, String> {
-        let first = NEXT_DISPLAY.fetch_add(1, Ordering::Relaxed);
-        for offset in 0..DISPLAY_TRIES {
-            let number = FIRST_DISPLAY + first.wrapping_add(offset) % DISPLAY_TRIES;
-            if Path::new(&format!("/tmp/.X{number}-lock")).exists()
-                || Path::new(&format!("/tmp/.X11-unix/X{number}")).exists()
-            {
-                continue;
-            }
-            if let Some(display) = Self::try_start(number, &log)? {
-                return Ok(display);
-            }
-        }
-        Err(format!(
-            "no free X display in :{FIRST_DISPLAY}-:{}",
-            FIRST_DISPLAY + DISPLAY_TRIES - 1
-        ))
-    }
-
-    fn try_start(number: u32, log: &Path) -> Result<Option<Self>, String> {
-        let io = |error: std::io::Error| error.to_string();
-        let output = File::create(log).map_err(io)?;
-        let errors = output.try_clone().map_err(io)?;
-        let (reader, writer) = std::io::pipe().map_err(io)?;
-        let mut command = Command::new("Xvfb");
-        command
-            .arg(format!(":{number}"))
-            .args(["-displayfd", &writer.as_raw_fd().to_string()])
-            .args(["-screen", "0", "1440x900x24", "-dpi", "96"])
-            .args(["-nolisten", "tcp", "-noreset", "-ac"])
-            .env_clear()
-            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-            .stdin(Stdio::null())
-            .stdout(output)
-            .stderr(errors);
-        let mut server = {
-            let _spawning = SPAWN.lock().map_err(|error| error.to_string())?;
-            rustix::io::fcntl_setfd(&writer, rustix::io::FdFlags::empty())
-                .map_err(|error| error.to_string())?;
-            let spawned = command.spawn();
-            rustix::io::fcntl_setfd(&writer, rustix::io::FdFlags::CLOEXEC)
-                .map_err(|error| error.to_string())?;
-            spawned.map_err(|error| format!("cannot start Xvfb: {error}"))?
-        };
-        let (sender, advertised) = mpsc::channel();
-        std::thread::spawn(move || {
-            let mut line = String::new();
-            let _ = BufReader::new(reader).read_line(&mut line);
-            let _ = sender.send(line);
-        });
-        let deadline = Instant::now() + XVFB_START_TIMEOUT;
-        let owned = loop {
-            match advertised.recv_timeout(POLL_INTERVAL) {
-                Ok(line) => break line == format!("{number}\n"),
-                Err(RecvTimeoutError::Timeout)
-                    if Instant::now() < deadline && matches!(server.try_wait(), Ok(None)) => {}
-                Err(_) => break false,
-            }
-        };
-        // Xvfb writes the number and the newline separately; the pipe stays
-        // open until both arrived so the newline cannot hit EPIPE.
-        drop(writer);
-        let name = format!(":{number}");
-        let connection = owned.then(|| x11rb::connect(Some(&name)).ok()).flatten();
-        let Some((connection, _)) = connection else {
-            terminate(&mut server);
-            return Ok(None);
-        };
-        xkb::use_extension(&connection, 1, 0)
-            .map_err(|error| error.to_string())?
-            .reply()
-            .map_err(|error| error.to_string())?;
-        Ok(Some(Self {
-            name,
-            server,
-            log: log.to_owned(),
-            kind: Server::X11 {
-                connection: Box::new(connection),
-            },
-        }))
     }
 
     /// What a client needs to reach this display.
     fn environment(&self) -> Vec<(&'static str, String)> {
-        match &self.kind {
-            Server::X11 { .. } => vec![("DISPLAY", self.name.clone())],
-            Server::Wayland(sway) => vec![
-                ("WAYLAND_DISPLAY", self.name.clone()),
+        match self {
+            Self::Offscreen => Vec::new(),
+            Self::Wayland(sway) => vec![
+                ("WAYLAND_DISPLAY", sway.name.clone()),
                 (
                     wayland::SWAY_SOCKET_VARIABLE,
                     sway.ipc.display().to_string(),
                 ),
-                ("GDK_BACKEND", "wayland".to_owned()),
+                (wayland::WINDOW_VARIABLE, "1".to_owned()),
             ],
         }
     }
 
-    fn x11(&self) -> Result<&RustConnection, String> {
-        match &self.kind {
-            Server::X11 { connection } => Ok(connection),
-            Server::Wayland(_) => Err("keyboard layouts need the X11 display".to_owned()),
+    fn log(&self) -> Option<(&'static str, &Path)> {
+        match self {
+            Self::Offscreen => None,
+            Self::Wayland(sway) => Some(("sway.log", sway.log.as_path())),
         }
-    }
-
-    fn screenshot(&self, destination: &Path) -> Result<(), String> {
-        let mut child = match &self.kind {
-            Server::X11 { .. } => spawn(
-                Command::new("import")
-                    .args(["-display", &self.name, "-window", "root"])
-                    .arg(destination)
-                    .env_clear()
-                    .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null()),
-            )
-            .map_err(|error| format!("cannot run import: {error}"))?,
-            Server::Wayland(sway) => sway.screenshot(&self.name, destination)?,
-        };
-        let program = match &self.kind {
-            Server::X11 { .. } => "import",
-            Server::Wayland(_) => "grim",
-        };
-        let deadline = Instant::now() + CAPTURE_TIMEOUT;
-        loop {
-            match child.try_wait().map_err(|error| error.to_string())? {
-                Some(status) if status.success() => return Ok(()),
-                Some(status) => return Err(format!("{program} exited with {status}")),
-                None if Instant::now() >= deadline => {
-                    terminate(&mut child);
-                    return Err(format!(
-                        "{program} ran past {} s",
-                        CAPTURE_TIMEOUT.as_secs()
-                    ));
-                }
-                None => std::thread::sleep(POLL_INTERVAL),
-            }
-        }
-    }
-}
-
-impl Drop for Display {
-    fn drop(&mut self) {
-        terminate(&mut self.server);
     }
 }
 
@@ -501,6 +358,8 @@ struct Launch<'a> {
     extra: Vec<(String, String)>,
     bus: Option<&'a str>,
     portal: bool,
+    /// The run started `volume_monitor`, so GIO must load its remote volume monitors.
+    volume_monitor: bool,
     audit: Option<&'a main_io::Audit>,
 }
 
@@ -541,6 +400,11 @@ impl Launch<'_> {
         variables
     }
 
+    /// The binary this run drives.
+    fn binary(&self) -> Result<String, String> {
+        Ok(target::binary().to_owned())
+    }
+
     /// `program`, under `strace` when the run is part of a main-thread I/O audit.
     fn command(&self, program: &str) -> Result<(Command, Option<main_io::Capture>), String> {
         match self.audit {
@@ -571,19 +435,24 @@ struct Application {
     traced: std::cell::OnceCell<u32>,
 }
 
+fn launch_argument<'a>(launch: &'a Launch, relaunch: &'a Relaunch) -> &'a std::ffi::OsStr {
+    match (&relaunch.directory, launch.portal) {
+        (Some(directory), _) => directory.as_ref(),
+        (None, _) if relaunch.plain => "--plain".as_ref(),
+        (None, true) => "--portal".as_ref(),
+        (None, false) => launch.fixture.as_os_str(),
+    }
+}
+
 impl Application {
     fn start(launch: &Launch, relaunch: &Relaunch) -> Result<Self, String> {
         let log = launch.log.clone();
         let output = File::create(&log).map_err(|error| error.to_string())?;
-        let (mut command, capture) = launch.command(BINARY)?;
+        let binary = launch.binary()?;
+        let (mut command, capture) = launch.command(&binary)?;
         // Its own process group, so a restart can signal the application and whatever it started.
         std::os::unix::process::CommandExt::process_group(&mut command, 0);
-        command.arg("--qa");
-        match (&relaunch.directory, launch.portal) {
-            (Some(directory), _) => command.arg(directory),
-            (None, true) => command.arg("--portal"),
-            (None, false) => command.arg(launch.fixture),
-        };
+        command.arg("--qa").arg(launch_argument(launch, relaunch));
         command
             .current_dir(launch.fixture)
             .env_clear()
@@ -615,11 +484,14 @@ impl Application {
         command.envs(launch.extra.iter().map(|(key, value)| (key, value)));
         command.envs(stall_limit());
         command.envs(&relaunch.env);
+        if launch.volume_monitor {
+            volume_monitor::prepare(&mut command);
+        }
         if let Some(streams) = relaunch.streams() {
             command.env("STRATA_QA_STREAMS", streams);
         }
         let mut child =
-            spawn(&mut command).map_err(|error| format!("cannot start {BINARY}: {error}"))?;
+            spawn(&mut command).map_err(|error| format!("cannot start {binary}: {error}"))?;
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let (sender, replies) = mpsc::channel();
         std::thread::spawn(move || {
@@ -656,8 +528,6 @@ impl Application {
             Ok(line) => {
                 let reply: Value = serde_json::from_str(&line)
                     .map_err(|error| format!("unreadable reply {line:?}: {error}"))?;
-                // A pane shows once the first window is up: the browser, or the
-                // portal backend's first chooser.
                 if let Some(capture) = &mut self.capture
                     && reply["app"]["panes"]
                         .as_array()
@@ -724,6 +594,45 @@ impl Drop for Application {
     }
 }
 
+/// Where a run's own processes on its session bus start.
+struct BusPlaces<'a> {
+    manifest: &'a Manifest,
+    home: &'a Path,
+    runtime: &'a Path,
+    display: &'a Display,
+}
+
+fn start_bus_peers(
+    scenario: &Scenario,
+    bus: Option<&Bus>,
+    places: &BusPlaces<'_>,
+) -> Result<(Option<InputMethod>, Option<VolumeMonitor>), String> {
+    let Some(bus) = bus else {
+        return Ok((None, None));
+    };
+    let input_method = scenario
+        .header
+        .input_method
+        .as_ref()
+        .map(|name| {
+            InputMethod::start(
+                name,
+                places.manifest,
+                places.home,
+                places.runtime,
+                places.display,
+                &bus.address,
+            )
+        })
+        .transpose()?;
+    let volume_monitor = scenario
+        .header
+        .volume_monitor
+        .then(|| VolumeMonitor::start(&bus.address, places.home, places.runtime))
+        .transpose()?;
+    Ok((input_method, volume_monitor))
+}
+
 fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
     let scratch = tempfile::Builder::new()
         .prefix("strata-qa-")
@@ -759,7 +668,7 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
         }
     };
     let artifacts = Path::new(REPOSITORY)
-        .join("target/qa-artifacts")
+        .join(target::artifacts())
         .join(&scenario.header.scenario)
         .join(&run.label);
     let _ = fs::remove_dir_all(&artifacts);
@@ -820,7 +729,8 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
         Ok(audit) => audit,
         Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
     };
-    let display = match Display::start(scratch.path(), &runtime) {
+    let display = match Display::start(scenario.header.host(&run.variant), scratch.path(), &runtime)
+    {
         Ok(display) => display,
         Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
     };
@@ -832,14 +742,16 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
     } else {
         None
     };
-    let input_method = match (&scenario.header.input_method, &bus) {
-        (Some(name), Some(bus)) => {
-            match InputMethod::start(name, manifest, &home, &runtime, &display, &bus.address) {
-                Ok(input_method) => Some(input_method),
-                Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
-            }
-        }
-        _ => None,
+    let bus_places = BusPlaces {
+        manifest,
+        home: &home,
+        runtime: &runtime,
+        display: &display,
+    };
+    let (input_method, volume_monitor) = match start_bus_peers(scenario, bus.as_ref(), &bus_places)
+    {
+        Ok(peers) => peers,
+        Err(error) => return failed_setup(format!("setup: {error}"), &mut fs_state),
     };
     let launch = Launch {
         manifest,
@@ -868,6 +780,7 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
             .collect(),
         bus: bus.as_ref().map(|bus| bus.address.as_str()),
         portal: scenario.header.portal,
+        volume_monitor: volume_monitor.is_some(),
         audit: audit.as_ref(),
     };
     let mut application = match launch.start() {
@@ -888,22 +801,15 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
                 .as_deref()
                 .unwrap_or(&scenario.header.layout),
             manifest,
-            display: &display,
             fixture: fixture.path(),
             fixture_time: fixture_time(manifest),
             screens: &scratch.path().join("screenshots"),
-            artifacts: &artifacts,
             launch: &launch,
         },
         &mut layout,
         &mut fs_state,
     );
     outcome.errors.extend(teardown(&mut fs_state));
-    if layout != DEFAULT_LAYOUT
-        && let Err(error) = display.restore_layout()
-    {
-        outcome.errors.push(format!("teardown: {error}"));
-    }
     let failed = !outcome.errors.is_empty() || !outcome.failures.is_empty();
     let collect =
         failed || std::env::var_os("STRATA_QA_KEEP_ARTIFACTS").is_some_and(|value| value == "1");
@@ -921,7 +827,8 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
             outcome.last_tree = reply["result"].as_str().map(str::to_owned);
         }
         let _ = fs::create_dir_all(&artifacts);
-        if let Err(error) = display.screenshot(&artifacts.join("screenshot.png")) {
+        let with_tree = outcome.last_tree.is_some();
+        if let Err(error) = screen::take_last(&artifacts.join("screenshot.png"), with_tree) {
             outcome.errors.push(format!("artifacts: {error}"));
         }
     }
@@ -935,14 +842,6 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
                 fs::read_to_string(&application.log).unwrap_or_default(),
             ),
             (
-                display
-                    .log
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .unwrap_or("display.log"),
-                fs::read_to_string(&display.log).unwrap_or_default(),
-            ),
-            (
                 INPUT_LOG,
                 fs::read_to_string(scratch.path().join(INPUT_LOG)).unwrap_or_default(),
             ),
@@ -952,6 +851,9 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
                 pretty(&run_result(scenario, run, &steps, &outcome)),
             ),
         ];
+        if let Some((name, log)) = display.log() {
+            files.push((name, fs::read_to_string(log).unwrap_or_default()));
+        }
         if failed {
             let all: Vec<String> = outcome
                 .errors
@@ -970,6 +872,7 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
                 fs::read_to_string(&input_method.log).unwrap_or_default(),
             ));
         }
+        files.extend(volume_monitor.as_ref().map(VolumeMonitor::artifact));
         for (file, contents) in files {
             let _ = fs::write(artifacts.join(file), contents);
         }
@@ -1001,13 +904,6 @@ fn seed(
     }
     fs::create_dir_all(runtime).map_err(io)?;
     fs::set_permissions(runtime, fs::Permissions::from_mode(0o700)).map_err(io)?;
-    let gtk = home.join("config/gtk-4.0");
-    fs::create_dir_all(&gtk).map_err(io)?;
-    fs::write(
-        gtk.join("settings.ini"),
-        gtk_settings(&manifest.gtk_settings, &scenario.header.gtk_settings)?,
-    )
-    .map_err(io)?;
     let strata = home.join("config/strata");
     fs::create_dir_all(&strata).map_err(io)?;
     // Pre-answers the first-run portal offer, which would cover every scenario.

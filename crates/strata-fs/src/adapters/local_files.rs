@@ -67,8 +67,7 @@ use stamps::*;
 const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::target-uri,access::can-trash,access::can-delete";
 const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::created,time::modified,unix::mode,access::can-trash,access::can-delete";
 const RECENT_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::target-uri,recent::modified";
-const METADATA_ATTRIBUTES: &str =
-    "standard::type,standard::size,time::created,time::modified,unix::mode";
+const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::created,time::modified,time::modified-nsec,time::changed,time::changed-nsec,unix::mode";
 const STAMP_ATTRIBUTES: &str =
     "standard::type,time::modified,time::modified-usec,time::changed,time::changed-usec";
 
@@ -676,9 +675,6 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
     );
 }
 
-/// Where the folder last seen at `departed` is now: renamed in place, or moved along with
-/// its deepest missing ancestor renamed within the nearest ancestor that remains, a rename
-/// that inotify does not report to the folder's own watch.
 fn native_relocated_folder(
     departed: &Path,
     identity: ItemIdentity,
@@ -712,9 +708,6 @@ fn native_relocated_folder(
         .find(|candidate| has_identity(candidate, identity, progress))
 }
 
-/// The folders of `directory` whose path `below` stays on the mount of `directory`, judged
-/// from its real path by the mount table: a mount point cannot be renamed, and looking into
-/// another mount can wait on a server that stopped answering or trigger an automount.
 fn native_folders(
     directory: &Path,
     below: &Path,

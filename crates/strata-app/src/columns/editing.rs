@@ -1,0 +1,146 @@
+// SPDX-License-Identifier: MIT
+
+use std::rc::Rc;
+
+use rune::Tx;
+use strata_components::{
+    contract::{EntryId, EntrySource, ThumbKey},
+    rename::{By, Initial, Polled, RenameState},
+};
+use strata_fs::app::Browser;
+use strata_kit::look::Look;
+
+use super::Columns;
+
+impl Columns {
+    /// The column whose collection is keyed `scope`, while it is open.
+    fn depth_of(&self, scope: &str) -> Option<usize> {
+        (0..self.open()).find(|depth| self.state.column_key(*depth).as_deref() == Some(scope))
+    }
+
+    /// The key of column `depth`'s collection, which names the edit's column to the editor.
+    pub(crate) fn scope(&self, depth: usize) -> Option<String> {
+        (depth < self.open())
+            .then(|| self.state.column_key(depth))
+            .flatten()
+    }
+
+    pub(crate) fn begin_rename(
+        &self,
+        editor: &mut RenameState,
+        (depth, id): (usize, EntryId),
+        tx: &mut Tx,
+    ) -> Option<Polled> {
+        let scope = self.scope(depth)?;
+        let column = self.listings.shown(depth)?;
+        let index = column.index_of(id)?;
+        let entry = column.entry(index);
+        let polled = editor.begin(&scope, id, entry.name, entry.kind, Initial::Stem);
+        self.state
+            .column(depth)?
+            .collection
+            .reveal(&scope, column, index, tx);
+        Some(polled)
+    }
+
+    /// Scrolls the row of entry `id` in column `depth` into view, just far enough.
+    pub(crate) fn reveal_row(&self, (depth, id): (usize, EntryId), tx: &mut Tx) {
+        let (Some(scope), Some(column)) = (self.scope(depth), self.listings.shown(depth)) else {
+            return;
+        };
+        if let (Some(index), Some(state)) = (column.index_of(id), self.state.column(depth)) {
+            state.collection.reveal(&scope, column, index, tx);
+        }
+    }
+
+    pub(crate) fn tick_rename(&self, editor: &mut RenameState) -> Polled {
+        let Some(scope) = editor.scope().map(str::to_owned) else {
+            return Polled::default();
+        };
+        let parts = self.depth_of(&scope).and_then(|depth| {
+            let column = self.listings.shown(depth)?;
+            Some((column, &self.state.column(depth)?.collection))
+        });
+        match parts {
+            Some((column, collection)) => editor.tick(&scope, column, collection),
+            None => editor.cancel(By::Listing),
+        }
+    }
+
+    /// The entry `step` rows after `id` in column `depth`, as the view lists them.
+    pub(crate) fn neighbour(&self, depth: usize, id: EntryId, step: isize) -> Option<EntryId> {
+        let column = self.listings.shown(depth)?;
+        let index = column.index_of(id)?.checked_add_signed(step)?;
+        (index < column.len()).then(|| column.id_at(index))
+    }
+
+    pub(crate) fn select_only(&mut self, (depth, id): (usize, EntryId), look: &Look, tx: &mut Tx) {
+        let (Some(column), Some(state)) =
+            (self.listings.shown(depth), self.state.column_mut(depth))
+        else {
+            return;
+        };
+        let Some(index) = column.index_of(id) else {
+            return;
+        };
+        let _ = state.collection.selection.select_only(column, index);
+        state.collection.note_selection(column);
+        if depth != self.state.active() {
+            self.state.set_active(depth, look, tx);
+        }
+    }
+
+    pub(crate) fn mirror_now(&self, browser: &Rc<Browser>) {
+        if let Some((depth, id)) = self.focused()
+            && let Some(position) = self.position(depth, id)
+        {
+            self.mirror.now(browser, depth, position);
+        }
+    }
+
+    /// An edit is open, or none is: the mirror waits while one is.
+    pub(crate) fn hold_mirror(&self, editing: bool) {
+        self.mirror.hold(editing);
+    }
+
+    pub(super) fn moved(&mut self, from: EntryId, to: EntryId) {
+        self.moving.moved_in(from, to, &self.listings.columns);
+    }
+
+    /// Thumbnail `(from, to)` keys to relocate in the window's store after an arrived rename.
+    pub(super) fn take_relocated_thumbnails(&mut self) -> Vec<(ThumbKey, ThumbKey)> {
+        self.moving.take_thumbnails()
+    }
+
+    pub(super) fn arrived(&mut self, depth: usize) {
+        let Some(column) = self.listings.columns.get(depth) else {
+            return;
+        };
+        // The collection holds a filter's results, by their own ids.
+        if self.listings.hits_at(depth) {
+            return;
+        }
+        let arrived = match self.state.column_mut(depth) {
+            Some(state) => self.moving.arrived(column, &mut state.collection),
+            None => self.moving.arriving(column),
+        };
+        for (from, to) in arrived {
+            self.follow_moved(from, to);
+        }
+        // A pair whose old id no column lists any more has nothing left to move.
+        let columns = &self.listings.columns;
+        self.moving.forget(|id| {
+            columns
+                .iter()
+                .any(|column| column.position_of(id).is_some())
+        });
+    }
+
+    /// The cursor the child column follows holds `to` where it held `from`.
+    fn follow_moved(&mut self, from: EntryId, to: EntryId) {
+        let followed = self.followed.as_mut().map(|(_, followed)| followed);
+        if let Some(followed) = followed.filter(|followed| **followed == from) {
+            *followed = to;
+        }
+    }
+}

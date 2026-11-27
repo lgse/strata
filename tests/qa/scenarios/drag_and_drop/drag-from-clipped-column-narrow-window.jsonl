@@ -1,4 +1,4 @@
-{"scenario":"drag-from-clipped-column-narrow-window","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Drag from a clipped Columns column in a narrow window; regression of fix #1049 via reveal overlay; sole GUI check of this drag route"}}
+{"scenario":"drag-from-clipped-column-narrow-window","modes":["columns"],"prefs":{"single_click_previews":false},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Drag a file from a clipped Columns column in a narrow window to sidebar Home; fix #1049 overlay regression; sole GUI drag-from-clipped route"}}
 {"select":{"entry":"documents"}}
 {"wait":{"directory":"documents"},"message":"the browser to be working in 'documents'"}
 {"settle":{"pane":"documents"}}

@@ -22,20 +22,15 @@ BUNDLE = ROOT / "target/quality-bundle"
 REPORTS = ROOT / "target/quality-reports"
 LOCAL = ROOT / "target/quality-local"
 SHARDS = 4
-# Tests outside GTK children share libtest's threads, four on CI runners, instead of queueing
-# for the display, so they cost a shard about a quarter of their serial time.
-PARALLEL_DISCOUNT = 4
-# GTK tests serialize per display, not per machine, so each lane of a shard owns an Xvfb server.
-FIRST_DISPLAY = 99
-XVFB_SERVER = "-screen 0 1280x1024x24 -nolisten tcp -noreset"
-PRIVATE_GTK_ENV = ("GDK_BACKEND=x11", "GTK_A11Y=none", "NO_AT_BRIDGE=1", "STRATA_REQUIRE_GTK_TESTS=1")
-ISOLATED_TEST = (
-    "ui::search::tests::"
-    "deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset"
+# Every test lane runs headless with no display and an unreachable session bus.
+PRIVATE_TEST_ENV = (
+    "WAYLAND_DISPLAY=strata-test-no-wayland",
+    "DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/strata-test-no-bus",
+    "NO_AT_BRIDGE=1",
 )
-# Parent libtest lines start a test; a GTK child repeats its name and prints no time of its own.
-TIMED = re.compile(r"^test (\S+) \.\.\. |\bok <(\d+(?:\.\d+)?)s>$", re.MULTILINE)
-TIMING_ARGS = ("-Z", "unstable-options", "--report-time", "--test-threads=1")
+# Parent libtest lines start a test; a subprocess repeats its name and prints no time of its own.
+TIMED = re.compile(r"^test (\S+)(?: - should panic)? \.\.\. |\bok <(\d+(?:\.\d+)?)s>$", re.MULTILINE)
+TIMING_ARGS = ("-Z", "unstable-options", "--report-time")
 SUMMARY = re.compile(
     r"^test result: ok\. (\d+) passed; 0 failed; (\d+) ignored; 0 measured; \d+ filtered out;.*$",
     re.MULTILINE,
@@ -81,21 +76,37 @@ def test_source_key(repository):
     return hashlib.sha256(json.dumps(inputs).encode()).hexdigest()
 
 
-def build():
-    BUNDLE.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        ["cargo", "test", "--locked", "--workspace", "--all-targets", "--all-features", "--no-run",
-         "--message-format=json"], cwd=ROOT, text=True, stdout=subprocess.PIPE,
-    )
-    artifacts = {}
-    for line in result.stdout.splitlines():
+def _collect_artifacts(stdout):
+    """Collects test executables and compiled binary executables from cargo's JSON stream."""
+    tests, bins = {}, {}
+    for line in stdout.splitlines():
         message = json.loads(line)
         if message.get("reason") == "compiler-message":
             print(message["message"].get("rendered", ""), end="", flush=True)
-        if message.get("reason") == "compiler-artifact" and message.get("profile", {}).get("test"):
-            executable = message.get("executable")
-            if executable:
-                artifacts[executable] = message["target"]["name"]
+        if message.get("reason") != "compiler-artifact":
+            continue
+        executable = message.get("executable")
+        if not executable:
+            continue
+        target = message["target"]
+        if message.get("profile", {}).get("test"):
+            tests[executable] = target["name"]
+        elif "bin" in target.get("kind", []):
+            name = target["name"]
+            if name in bins and bins[name] != executable:
+                raise ValueError(f"Duplicate compiled binary target: {name}")
+            bins[name] = executable
+    return tests, bins
+
+
+def build():
+    BUNDLE.mkdir(parents=True, exist_ok=True)
+    command = [
+        "cargo", "test", "--locked", "--workspace",
+        "--all-targets", "--all-features", "--no-run", "--message-format=json",
+    ]
+    result = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE)
+    artifacts, compiled_bins = _collect_artifacts(result.stdout)
     result.check_returncode()
     if not artifacts:
         raise ValueError("Cargo produced no test executables")
@@ -108,15 +119,38 @@ def build():
         ignored = inventory(destination, ignored=True)
         binaries.append(dict(file=destination.name, target=target, sha256=digest(destination),
                              tests=tests, ignored=ignored, shards=partition(tests, durations)))
+    executables = []
+    for name, executable in sorted(compiled_bins.items()):
+        destination = BUNDLE / f"bin-{name}"
+        shutil.copy2(executable, destination)
+        executables.append(dict(file=destination.name, target=name, sha256=digest(destination)))
     plan = dict(version=1, commit=os.environ["STRATA_QUALITY_COMMIT"],
-                source_key=test_source_key(ROOT), image_key=image_key(ROOT), binaries=binaries)
+                source_key=test_source_key(ROOT), image_key=image_key(ROOT),
+                binaries=binaries, executables=executables)
     validate_plan(plan)
     (BUNDLE / "plan.json").write_text(json.dumps(plan, indent=2) + "\n")
+
+
+def _validate_executables(executables):
+    if not isinstance(executables, list):
+        raise ValueError("Invalid executables list")
+    files, targets = [], []
+    for item in executables:
+        name, target, sha = item.get("file", ""), item.get("target", ""), item.get("sha256", "")
+        if not re.fullmatch(r"bin-[A-Za-z0-9._-]+", name) or not re.fullmatch(r"[A-Za-z0-9._-]+", target):
+            raise ValueError("Invalid bundled executable entry")
+        if not isinstance(sha, str) or not sha:
+            raise ValueError("Missing bundled executable checksum")
+        files.append(name)
+        targets.append(target)
+    if len(files) != len(set(files)) or len(targets) != len(set(targets)):
+        raise ValueError("Duplicate bundled executable")
 
 
 def validate_plan(plan):
     if plan["version"] != 1 or not plan["binaries"]:
         raise ValueError("Unsupported or empty plan")
+    _validate_executables(plan.get("executables", []))
     files = []
     totals = [0] * SHARDS
     for binary in plan["binaries"]:
@@ -133,30 +167,25 @@ def validate_plan(plan):
             raise ValueError("Missing, extra, or duplicate assignment")
         for index, shard in enumerate(shards):
             totals[index] += len(set(shard) - set(ignored))
-    if sum(ISOLATED_TEST in binary["tests"] and ISOLATED_TEST not in binary["ignored"]
-           for binary in plan["binaries"]) != 1:
-        raise ValueError("Expected exactly one runnable isolated test")
     if len(files) != len(set(files)) or not all(totals):
         raise ValueError("Duplicate binary or empty runnable shard")
 
 
 def test_times(output):
-    """Each test's serial wall time, and whether it ran in an isolated GTK child."""
-    times, starts, current = {}, Counter(), None
+    """Each test's serial wall time."""
+    times, current = {}, None
     for match in TIMED.finditer(output):
         if match[1]:
             current = match[1]
-            starts[current] += 1
         elif current is not None:
             times[current] = float(match[2])
             current = None
-    return {name: dict(seconds=seconds, gtk=starts[name] > 1) for name, seconds in times.items()}
+    return times
 
 
 def balancing_weights(measured):
-    """Seconds each test occupies its shard; zero weights would all land on one shard."""
-    return {name: max(0.01, round(time["seconds"] / (1 if time["gtk"] else PARALLEL_DISCOUNT), 2))
-            for name, time in sorted(measured.items())}
+    """Seconds each test occupies its lane; zero weights would all land on one shard."""
+    return {name: max(0.01, round(seconds, 2)) for name, seconds in sorted(measured.items())}
 
 
 def balancing_hints():
@@ -167,42 +196,59 @@ def default_lanes():
     return max(1, len(os.sched_getaffinity(0)) // 2)
 
 
-def private_display(display, command):
-    return ["xvfb-run", "-n", str(display), "-s", XVFB_SERVER, "dbus-run-session", "--",
-            "env", "-u", "WAYLAND_DISPLAY", *PRIVATE_GTK_ENV, *command]
+def isolated_command(command):
+    return [
+        "env",
+        "-u", "DISPLAY",
+        "-u", "WAYLAND_SOCKET",
+        "-u", "DBUS_STARTER_ADDRESS",
+        *PRIVATE_TEST_ENV,
+        *command,
+    ]
 
 
-def run_lane(lane, lanes, work, timings, log_path):
-    """Run one lane's tests on displays no other lane uses; libtest must account for each batch."""
+def _bundled_bin_env(plan):
+    """Verifies bundled non-test executables and maps them to Cargo's CARGO_BIN_EXE_* env vars."""
+    bin_env = {}
+    for item in plan.get("executables", []):
+        executable = BUNDLE / item["file"]
+        if digest(executable) != item["sha256"]:
+            raise ValueError("Bundled executable checksum mismatch")
+        executable.chmod(0o755)
+        bin_env[f"CARGO_BIN_EXE_{item['target']}"] = str(executable)
+    return bin_env
+
+
+def run_lane(lane, work, options):
+    """Run one lane's tests headless one at a time; libtest must account for each batch."""
+    timings, log_path, bin_env = options["timings"], options["log_path"], options["bin_env"]
     started = time.monotonic()
-    displays = iter(range(FIRST_DISPLAY + lane, sys.maxsize, lanes))
     measured = {}
     with log_path.open("wb") as log:
         for binary, executable, tests in work:
-            batches = [[test for test in tests if test == ISOLATED_TEST],
-                       [test for test in tests if test != ISOLATED_TEST]]
-            for batch in filter(None, batches):
-                command = [str(executable), "--exact", *batch, "--nocapture"]
-                environment = None
-                if timings:
-                    # Stable libtest reports times only behind -Z; one thread keeps GTK lock waits out.
-                    command.extend(TIMING_ARGS)
-                    environment = {**os.environ, "RUSTC_BOOTSTRAP": "1"}
-                log.flush()
-                offset = log.tell()
-                code = subprocess.run(private_display(next(displays), command), cwd=ROOT,
-                                      stdout=log, stderr=subprocess.STDOUT, env=environment).returncode
-                log.seek(0, os.SEEK_END)
-                with log_path.open("rb") as written:
-                    written.seek(offset)
-                    output = written.read().decode(errors="replace")
-                summaries = SUMMARY.findall(output)
-                ignored_count = len(set(batch) & set(binary["ignored"]))
-                expected = (str(len(batch) - ignored_count), str(ignored_count))
-                if code or not summaries or summaries[-1] != expected:
-                    log.write(f"\n{binary['file']} failed or did not execute its complete selection\n".encode())
-                    return lane, False, time.monotonic() - started, measured
-                measured.update(test_times(output))
+            if not tests:
+                continue
+            command = [str(executable), "--exact", *tests, "--nocapture", "--test-threads=1"]
+            environment = {**os.environ, **bin_env} if (bin_env or timings) else None
+            if timings:
+                # Stable libtest reports times only behind -Z.
+                command.extend(TIMING_ARGS)
+                environment["RUSTC_BOOTSTRAP"] = "1"
+            log.flush()
+            offset = log.tell()
+            code = subprocess.run(isolated_command(command), cwd=ROOT,
+                                  stdout=log, stderr=subprocess.STDOUT, env=environment).returncode
+            log.seek(0, os.SEEK_END)
+            with log_path.open("rb") as written:
+                written.seek(offset)
+                output = written.read().decode(errors="replace")
+            summaries = SUMMARY.findall(output)
+            ignored_count = len(set(tests) & set(binary["ignored"]))
+            expected = (str(len(tests) - ignored_count), str(ignored_count))
+            if code or not summaries or summaries[-1] != expected:
+                log.write(f"\n{binary['file']} failed or did not execute its complete selection\n".encode())
+                return lane, False, time.monotonic() - started, measured
+            measured.update(test_times(output))
     return lane, True, time.monotonic() - started, measured
 
 
@@ -225,6 +271,7 @@ def run(shard, lanes=1, timings=False):
             or plan["source_key"] != test_source_key(ROOT) or plan["image_key"] != image_key(ROOT)):
         raise ValueError("Bundle checkout or environment mismatch")
     started = time.monotonic()
+    bin_env = _bundled_bin_env(plan)
     report = dict(plan_sha256=digest(plan_path), shard=shard, binaries=[])
     hints = balancing_hints()
     work = [[] for _ in range(lanes)]
@@ -248,12 +295,18 @@ def run(shard, lanes=1, timings=False):
                                        ignored=ignored))
     # Lane output goes only to the logs, so a hung lane is diagnosed from them, not this console.
     logs = (REPORTS / f"shard-{shard}-lane-*.log").relative_to(ROOT)
-    print(f"Shard {shard}: running {lanes} lanes, each on its own display and session bus; "
-          f"output in {logs}", flush=True)
+    print(f"Shard {shard}: running {lanes} headless lanes; output in {logs}", flush=True)
     failed, measured = [], {}
     with ThreadPoolExecutor(lanes) as pool:
-        futures = [pool.submit(run_lane, lane, lanes, tests, timings, REPORTS / f"shard-{shard}-lane-{lane}.log")
-                   for lane, tests in enumerate(work) if tests]
+        futures = [
+            pool.submit(
+                run_lane,
+                lane,
+                tests,
+                dict(timings=timings, log_path=REPORTS / f"shard-{shard}-lane-{lane}.log", bin_env=bin_env),
+            )
+            for lane, tests in enumerate(work) if tests
+        ]
         for future in as_completed(futures):
             lane, passed, seconds, times = future.result()
             print(f"Shard {shard} lane {lane} {'passed' if passed else 'FAILED'} in {seconds:.1f}s", flush=True)
@@ -347,7 +400,7 @@ def main():
     parser.add_argument("--plan", type=Path, default=BUNDLE / "plan.json")
     parser.add_argument("--reports", type=Path, default=REPORTS)
     parser.add_argument("--lanes", type=int, default=None,
-                        help="concurrent displays on this machine (default: half the available CPUs)")
+                        help="concurrent test lanes on this machine (default: half the available CPUs)")
     parser.add_argument("--refresh-timings", action="store_true",
                         help="local only: measure every test and rewrite scripts/quality-durations.json")
     args = parser.parse_args()

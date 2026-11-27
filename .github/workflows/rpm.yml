@@ -1,6 +1,7 @@
 name: RPM packaging
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -9,7 +10,6 @@ on:
       - 'scripts/update_aur.py'
       - 'Cargo.toml'
       - 'Cargo.lock'
-      - 'build.rs'
       - 'crates/*/Cargo.toml'
       - 'crates/*/build.rs'
       - 'data/licenses/**'
@@ -26,6 +26,17 @@ on:
       - 'packaging/rpm/**'
       - 'scripts/build_srpm.py'
       - 'scripts/update_aur.py'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/*/Cargo.toml'
+      - 'crates/*/build.rs'
+      - 'data/licenses/**'
+      - 'data/icons/scalable/apps/**'
+      - 'data/io.github.lgse.Strata.*'
+      - 'docs/portal-file-chooser.md'
+      - 'LICENSE'
+      - 'README.md'
+      - 'THIRD_PARTY_LICENSES.md'
       - '.github/workflows/publish-copr.yml'
       - '.github/workflows/rpm.yml'
 
@@ -38,7 +49,7 @@ concurrency:
 
 jobs:
   rpm:
-    name: Build and inspect the RPM package
+    name: Validate the source RPM
     runs-on: ubuntu-24.04
     container:
       image: registry.fedoraproject.org/fedora:latest
@@ -49,7 +60,7 @@ jobs:
 
     steps:
       - name: Install packaging tools
-        run: dnf install -y git rpm-build rpmlint cargo-rpm-macros cargo-vendor-filterer python3 'dnf-command(builddep)'
+        run: dnf install -y git rpm-build rpmlint cargo-rpm-macros cargo-vendor-filterer python3
 
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,16 +70,25 @@ jobs:
       - name: Build the source RPM
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          version=$(grep -m1 -oP '^version = "\K[^"]+' Cargo.toml)
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
           python3 scripts/build_srpm.py --tag "v$version" --ref HEAD --outdir dist
 
+      - name: Check the source RPM with rpmlint
+        run: rpmlint dist/*.src.rpm
+
+      # Full binary RPM builds run on manual workflow_dispatch (COPR preview builds cover RC/release tags).
       - name: Install build dependencies
-        run: dnf builddep -y dist/*.src.rpm
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          dnf install -y 'dnf-command(builddep)'
+          dnf builddep -y dist/*.src.rpm
 
       - name: Build the binary RPMs
+        if: github.event_name == 'workflow_dispatch'
         run: rpmbuild --rebuild --define "_topdir $PWD/rpmbuild" dist/*.src.rpm 2>&1 | tee rpmbuild.log
 
       - name: Verify the build configuration
+        if: github.event_name == 'workflow_dispatch'
         run: |
           workspace_rustc=$(grep -E -- '--crate-name strata(_[a-z]+)* ' rpmbuild.log)
           if ! grep -q -- '--cfg strata_updater_disabled' <<<"$workspace_rustc"; then
@@ -80,10 +100,12 @@ jobs:
             exit 1
           fi
 
-      - name: Check the packages with rpmlint
-        run: rpmlint dist/*.src.rpm rpmbuild/RPMS/*/*.rpm
+      - name: Check the binary packages with rpmlint
+        if: github.event_name == 'workflow_dispatch'
+        run: rpmlint rpmbuild/RPMS/*/*.rpm
 
       - name: Install the package and verify its contents
+        if: github.event_name == 'workflow_dispatch'
         run: |
           dnf install -y rpmbuild/RPMS/*/strata-[0-9]*.rpm
           strata --version
@@ -93,7 +115,11 @@ jobs:
             echo "The package activates a D-Bus service or installs the AUR update marker." >&2
             exit 1
           fi
-          rpm -q --provides strata | grep -q '^bundled(crate(gtk4))'
+          rpm -q --provides strata | grep -q '^bundled(crate(rune))'
+          if rpm -q --provides strata | grep -q '^bundled(crate(gtk4))'; then
+            echo "The package bundles GTK 4." >&2
+            exit 1
+          fi
           if rpm -q --provides strata | grep -E '^bundled\(crate\(unrar'; then
             echo "The package bundles UnRAR." >&2
             exit 1

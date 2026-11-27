@@ -13,16 +13,12 @@ use crate::{
 
 use super::{Browser, ColumnFreshness, UNREACHABLE_RETRY, blind};
 
-/// A column whose stamp one check asks for, held weakly so a closed column
-/// ignores its late answer.
 struct Checked {
     depth: usize,
     location: Location,
     column: Weak<RefCell<ColumnFreshness>>,
 }
 
-/// One check in flight for a group of columns on the same mount; `departed`
-/// remembers the shallowest folder found gone so deeper ones do not repeat it.
 struct StampCheck {
     group: Vec<Checked>,
     departed: Cell<Option<usize>>,
@@ -73,8 +69,6 @@ impl Finding {
     }
 }
 
-/// What one answer means for its column: the finding, whether the column was
-/// confirming a quiet stamp, and whether it is free to be relisted right now.
 #[derive(Clone, Copy)]
 struct Verdict {
     finding: Finding,
@@ -158,8 +152,6 @@ impl Browser {
         self.follow_responsiveness();
     }
 
-    /// A blind mount relists instead of checking, a busy column waits for its
-    /// next interval, and the rest join a stamp check.
     fn due_check(
         &self,
         now: Instant,

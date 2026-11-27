@@ -8,6 +8,7 @@ mod audio;
 mod commands;
 mod playback;
 mod runtime;
+mod webp;
 
 fn probe(path: &Path, size: MediaPreviewSize, start_tick: u32) -> io::Result<Input> {
     super::probe(path, size, start_tick, ProbeMode::Playback)
@@ -97,17 +98,6 @@ fn animated_gif(path: &Path, seconds: u32) {
     );
 }
 
-fn animated_webp(path: &Path, seconds: u32) {
-    success(
-        Command::new("ffmpeg")
-            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
-            .arg(format!("testsrc2=size=64x48:rate=10:duration={seconds}"))
-            .args(["-c:v", "libwebp_anim", "-lossless", "1", "-loop", "0"])
-            .args(["-threads", "1"])
-            .arg(path),
-    );
-}
-
 fn decoded(input: &Path, size: &str, start: u32) -> (Header, Vec<Frame>, u64) {
     let mut bytes = Vec::new();
     stream(
@@ -157,8 +147,6 @@ fn audible(block: &[u8]) -> bool {
     block.iter().any(|sample| *sample != 0)
 }
 
-/// The PCM block for the audio tick `offset` ticks after the first frame; the
-/// lead places it in the first record or ahead of its own frame.
 fn audio_block(frames: &[Frame], offset: usize) -> &[u8] {
     let lead = media::AUDIO_LEAD_TICKS as usize;
     if offset <= lead {
@@ -253,7 +241,5 @@ fn sample_input(start_tick: u32, raw_video: bool) -> Input {
         cover: false,
         gif_period_us: None,
         raw_video,
-        seekless: false,
-        loop_frames: None,
     }
 }

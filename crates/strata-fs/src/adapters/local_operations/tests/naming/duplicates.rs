@@ -16,8 +16,6 @@ impl Duplicated {
     }
 }
 
-/// Makes the entry `prepare` writes at the returned path and pastes it into
-/// its own folder without a conflict choice.
 fn duplicate(
     id: u64,
     prepare: impl FnOnce(&Path) -> io::Result<PathBuf>,

@@ -204,6 +204,7 @@
   "Cannot permanently delete the filesystem root": "Das Stammverzeichnis des Dateisystems kann nicht endgültig gelöscht werden",
   "Cannot restore the filesystem root": "Das Stammverzeichnis des Dateisystems kann nicht wiederhergestellt werden",
   "Can’t compress these items": "Diese Elemente können nicht komprimiert werden",
+  "Can’t extract these items": "Diese Elemente können nicht entpackt werden",
   "Can’t create items here": "Hier können keine Elemente erstellt werden",
   "Can’t cut these items": "Diese Elemente können nicht ausgeschnitten werden",
   "Can’t move these items": "Diese Elemente können nicht verschoben werden",
@@ -421,6 +422,7 @@
   "Extract the archive here / to a typed folder": "Archiv hier / in einen eingegebenen Ordner entpacken",
   "Extract the archive to a folder": "Archiv in einen Ordner entpacken",
   "Extracted entries remain in “%{folder}”.": "Entpackte Einträge verbleiben in „%{folder}“.",
+  "Extracting archive %{current} of %{total}": "Archiv %{current} von %{total} wird entpackt",
   "Extraction destination must use an absolute path": "Das Entpackziel muss einen absoluten Pfad verwenden",
   "Extraction stopped unexpectedly": "Das Entpacken wurde unerwartet beendet",
   "Failed after %{elapsed}": "Nach %{elapsed} fehlgeschlagen",
@@ -1151,5 +1153,6 @@
   "Press the new key for “%{action}”": "Neue Taste für „%{action}“ drücken",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} bricht ab, und %{backspace} entfernt alle Tasten dieser Aktion.",
   "“%{group}” has no key, so this action cannot run.": "„%{group}“ hat keine Taste, daher kann diese Aktion nicht ausgeführt werden.",
-  "Custom action %{number}": "Benutzerdefinierte Aktion %{number}"
+  "Custom action %{number}": "Benutzerdefinierte Aktion %{number}",
+  "Volume": "Lautstärke"
 }

@@ -16,8 +16,6 @@ pub(in crate::adapters::local_operations) struct Options {
     pub names: NamePolicy,
     pub workers: Option<usize>,
     pub manifest: bool,
-    /// What only the copy will hold is deleted once its [`Barrier`] is reached,
-    /// so files that barrier cannot reach are synced as written.
     pub durable: bool,
 }
 
@@ -110,8 +108,6 @@ pub(in crate::adapters::local_operations) async fn copy_to_stage(
     Ok((staged, followed.manifest, left_report(&root, followed.left)))
 }
 
-/// For a mount that can place neither the item nor a stage. A failed copy
-/// removes only what it made.
 pub(in crate::adapters::local_operations) async fn copy_in_place(
     (source, name, expected): (Arc<OwnedFd>, OsString, LocalFileIdentity),
     (parent, target): (Arc<OwnedFd>, PathBuf),

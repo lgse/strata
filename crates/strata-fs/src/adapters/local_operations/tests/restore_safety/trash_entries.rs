@@ -414,8 +414,6 @@ fn trash_items_whose_files_share_names_are_restored_whole() -> Result<(), Box<dy
 #[test]
 fn a_trash_entry_stays_restorable_while_its_item_is_in_the_trash() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
-    // An entry added to the Trash item once the copy listed it, or an item
-    // put at its name in the Trash once the restore removed it.
     for added in [true, false] {
         let fixture = tempfile::tempdir()?;
         let report = TrashedReport::create(fixture.path())?;

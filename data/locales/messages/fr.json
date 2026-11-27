@@ -204,6 +204,7 @@
   "Cannot permanently delete the filesystem root": "Impossible de supprimer définitivement la racine du système de fichiers",
   "Cannot restore the filesystem root": "Impossible de restaurer la racine du système de fichiers",
   "Can’t compress these items": "Impossible de compresser ces éléments",
+  "Can’t extract these items": "Impossible d’extraire ces éléments",
   "Can’t create items here": "Impossible de créer des éléments ici",
   "Can’t cut these items": "Impossible de couper ces éléments",
   "Can’t move these items": "Impossible de déplacer ces éléments",
@@ -421,6 +422,7 @@
   "Extract the archive here / to a typed folder": "Extraire l’archive ici / vers un dossier saisi",
   "Extract the archive to a folder": "Extraire l’archive dans un dossier",
   "Extracted entries remain in “%{folder}”.": "Les éléments extraits restent dans « %{folder} ».",
+  "Extracting archive %{current} of %{total}": "Extraction de l’archive %{current} sur %{total}",
   "Extraction destination must use an absolute path": "La destination d’extraction doit utiliser un chemin absolu",
   "Extraction stopped unexpectedly": "L’extraction s’est arrêtée de manière inattendue",
   "Failed after %{elapsed}": "Échec après %{elapsed}",
@@ -1151,5 +1153,6 @@
   "Press the new key for “%{action}”": "Appuyez sur la nouvelle touche pour « %{action} »",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} annule, et %{backspace} retire toutes les touches de cette action.",
   "“%{group}” has no key, so this action cannot run.": "« %{group} » n’a pas de touche, donc cette action ne peut pas s’exécuter.",
-  "Custom action %{number}": "Action personnalisée %{number}"
+  "Custom action %{number}": "Action personnalisée %{number}",
+  "Volume": "Volume"
 }

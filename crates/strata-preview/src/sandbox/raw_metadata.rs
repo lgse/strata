@@ -63,52 +63,62 @@ fn valid_text(value: &str) -> bool {
 }
 
 pub fn is_raw(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| {
-            matches!(
-                extension.to_ascii_lowercase().as_str(),
-                "3fr"
-                    | "ari"
-                    | "arq"
-                    | "arw"
-                    | "bay"
-                    | "cr2"
-                    | "cr3"
-                    | "crw"
-                    | "dc2"
-                    | "dcr"
-                    | "dng"
-                    | "erf"
-                    | "fff"
-                    | "gpr"
-                    | "iiq"
-                    | "k25"
-                    | "kc2"
-                    | "kdc"
-                    | "mdc"
-                    | "mef"
-                    | "mos"
-                    | "mrw"
-                    | "nef"
-                    | "nrw"
-                    | "orf"
-                    | "ori"
-                    | "pef"
-                    | "pxn"
-                    | "qtk"
-                    | "raf"
-                    | "raw"
-                    | "rdc"
-                    | "rw2"
-                    | "rwl"
-                    | "rwz"
-                    | "sr2"
-                    | "srf"
-                    | "srw"
-                    | "x3f"
-            )
-        })
+    let Some(ext) = path.extension().and_then(|extension| extension.to_str()) else {
+        return false;
+    };
+    if ext.len() > 8 || !ext.is_ascii() {
+        return false;
+    }
+    let mut buf = [0_u8; 8];
+    for (dst, &byte) in buf.iter_mut().zip(ext.as_bytes()) {
+        *dst = byte.to_ascii_lowercase();
+    }
+    std::str::from_utf8(&buf[..ext.len()]).is_ok_and(is_raw_lowercased_extension)
+}
+
+pub fn is_raw_lowercased_extension(extension: &str) -> bool {
+    matches!(
+        extension,
+        "3fr"
+            | "ari"
+            | "arq"
+            | "arw"
+            | "bay"
+            | "cr2"
+            | "cr3"
+            | "crw"
+            | "dc2"
+            | "dcr"
+            | "dng"
+            | "erf"
+            | "fff"
+            | "gpr"
+            | "iiq"
+            | "k25"
+            | "kc2"
+            | "kdc"
+            | "mdc"
+            | "mef"
+            | "mos"
+            | "mrw"
+            | "nef"
+            | "nrw"
+            | "orf"
+            | "ori"
+            | "pef"
+            | "pxn"
+            | "qtk"
+            | "raf"
+            | "raw"
+            | "rdc"
+            | "rw2"
+            | "rwl"
+            | "rwz"
+            | "sr2"
+            | "srf"
+            | "srw"
+            | "x3f"
+    )
 }
 
 #[cfg(test)]

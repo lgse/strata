@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/columns/view.rs b/crates/strata-app/src/columns/view.rs
+--- a/crates/strata-app/src/columns/view.rs
++++ b/crates/strata-app/src/columns/view.rs
+@@ -30,7 +30,7 @@ impl Labels {
+         labels.width = tr("Column width");
+         labels.pane = tr("Columns view");
+         labels.list = tr("Files");
+-        labels.reveal = rust_i18n::t!("Reveal %{value1} column", value1 = "{name}").into_owned();
++        labels.reveal = String::new();
+         Self(labels)
+     }
+ }

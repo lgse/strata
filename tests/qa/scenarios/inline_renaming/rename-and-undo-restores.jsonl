@@ -1,4 +1,4 @@
-{"scenario":"rename-and-undo-restores","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","vars":{"kind":"file"}},{"id":"folder","vars":{"kind":"folder"}}],"cost":{"columns-file":1.0,"columns-folder":0.9},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":3,"score":30,"note":"F2 rename then Ctrl+Z restores original; only GUI undo-of-rename check, logic in app/browser/tests/undo.rs"}}
+{"scenario":"rename-and-undo-restores","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"file","vars":{"kind":"file"}},{"id":"folder","vars":{"kind":"folder"}}],"cost":{"columns-file":1.0,"columns-folder":0.9},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"F2 rename then Ctrl+Z restores file and folder; GUI editor route only, undo key headless in strata-app/src/undo/tests.rs"}}
 {"fs":{"path":"archive/marker.txt","write":"keep\n"},"variants":["folder"]}
 {"select":{"entry":"readme.md"},"variants":["file"]}
 {"select_with_keyboard":"todo.txt","variants":["file"]}

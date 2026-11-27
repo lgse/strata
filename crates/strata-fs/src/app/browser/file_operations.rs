@@ -26,8 +26,6 @@ impl Browser {
         self.start_rename(entry, new_name, false)
     }
 
-    /// Names an item just created for naming, whose creation undo then
-    /// covers the name too, as [`Self::place_entry`] does for a path.
     pub fn name_new_item(
         self: &Rc<Self>,
         entry: FileEntry,
@@ -82,9 +80,6 @@ impl Browser {
         Some(request_id)
     }
 
-    /// Moves an item to a typed relative path, which a rename cannot.
-    /// `new_item` is one just created for naming, whose creation undo then
-    /// covers the placement too.
     pub fn place_entry(
         self: &Rc<Self>,
         entry: FileEntry,
@@ -576,8 +571,6 @@ impl PendingRename {
     }
 }
 
-/// Where a placed item went: the typed path's folders from outermost to the
-/// item itself.
 struct Placement<'a> {
     original: &'a Location,
     placed: &'a [Location],

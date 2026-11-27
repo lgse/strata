@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! libtest-compatible harness that starts the costliest runs first. The `--list` lines
-//! and the `test result:` summary must stay libtest's: `scripts/quality_ci.py` parses them.
-
 use std::{
     cell::RefCell,
     cmp::Ordering,

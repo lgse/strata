@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/dnd/policy.rs b/crates/strata-app/src/dnd/policy.rs
+index 3b327abc9..2b8074759 100644
+--- a/crates/strata-app/src/dnd/policy.rs
++++ b/crates/strata-app/src/dnd/policy.rs
+@@ -251,7 +251,7 @@ pub(crate) fn apply_drop_action(
+ ) {
+     match action {
+         DropAction::Copy => transfer::start_drop_transfer(app, destination, sources, false),
+-        DropAction::Move => transfer::start_drop_transfer(app, destination, sources, true),
++        DropAction::Move => transfer::start_drop_transfer(app, destination, sources, false),
+         DropAction::Ask => drop_dialog::prompt(app, destination, sources, relation),
+         DropAction::Link => {}
+     }

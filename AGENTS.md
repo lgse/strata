@@ -30,17 +30,16 @@ npx skills experimental_install
 ```
 
 That installs them into `.agents/skills/`, which is gitignored apart from the
-project's own skills below. Keep
-`skills-lock.json` in version control. Add or update skills with `npx skills add`
-and `npx skills update`, then commit the lockfile. Do not vendor third-party
-skill files under `.agents/`.
+project's own skills below. Keep `skills-lock.json` in version control. Add or
+update skills with `npx skills add` and `npx skills update`, then commit the
+lockfile. Do not vendor third-party skill files under `.agents/`.
 
 The project's own skills are the exception: `.agents/skills/qa-*` and
 `.agents/skills/pr-review` are written here and committed, each un-ignored in
 `.gitignore` and linked from `.claude/skills/`. Use `qa-scenarios` to write
 and manage QA scenarios, `qa-drive` to verify a change by driving the
 application in QA mode, `qa-quality` to score a scenario's value, and
-`pr-review` to merge main into a pull request, prune tautological tests,
+`pr-review` to merge `main` into a pull request, prune tautological tests,
 review and fix it, and watch CI until it is green.
 
 ## Git workflow
@@ -75,15 +74,23 @@ pass before merge.
   If the owner directs scoped validation, do not expand it without renewed consent.
 - Run local lint and formatting checks only at the pre-push checkpoint, not
   after each edit or during the test/implementation loop. For Rust changes, run
-  `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy` on the final code
-  before pushing. If fixes change that code, rerun the affected checks before
-  the push. CI continues to run its existing lint and formatting checks.
-- Use `scripts/test-headless.py` for native targeted Rust tests, for example
-  `./scripts/test-headless.py services::operations::tests`; its arguments are
-  forwarded after the fixed `cargo test --workspace --all-targets --all-features`
-  arguments. This filters test names across targets, not compilation to one target.
-  The selected filter must match at least one test, including relevant views,
-  callers, or preferences coverage.
+  `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy` (or
+  `cargo fmt --all --check` and
+  `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`)
+  on the final code before pushing. If fixes change that code, rerun the affected
+  checks before the push. CI continues to run its existing lint and formatting checks.
+- Use `mise run test [filter]` or `./scripts/test-headless.py [filter]` for
+  native targeted Rust tests across the unified workspace, for example
+  `mise run test services::operations::tests` or
+  `./scripts/test-headless.py services::operations::tests`. Both run headless
+  with `--workspace --all-targets --all-features` (`mise run test-rune` is a
+  compatibility alias). The selected filter must match at least one test,
+  including relevant views, callers, or preferences coverage.
+- Run compositor, D-Bus, and windowed tests with `mise run test-platform [filter]`
+  (for example `mise run test-platform window::` for changes to the host, shell,
+  key routing, or QA session host, or `mise run test-platform p2::` for a
+  `strata-platform` shim). Each test runs in its own private headless sway
+  session and D-Bus.
 - QA selections name scenarios, or `<scenario>/<run>` for one run, for
   example `./scripts/qa.sh copy-leaves-source` or
   `./scripts/qa.sh arrow-keys-move-focus/columns-arrows`; `qa.sh` rejects unknown
@@ -92,18 +99,18 @@ pass before merge.
   `all`, `fmt`, `clippy`, or `test`, plus `--jobs N` and `--refresh-timings`
   for the test phase, and does not forward test filters.
 - Use full pinned `./scripts/quality.sh` phases and a full `./scripts/qa.sh`
-  run when impact is broad or uncertain. Escalate to both for shared infrastructure, dependencies,
-  build/CI/harness code, cross-cutting behavior, or uncertain coverage.
+  run when impact is broad or uncertain. Escalate to both for shared infrastructure,
+  dependencies, build/CI/harness code, cross-cutting behavior, or uncertain coverage.
   Even after escalation, isolate individual failures with scoped tests rather
   than repeating the full run. Use `./scripts/quality.sh test` only when a full
   Rust run is justified; defer `fmt` and `clippy` to the pre-push checkpoint.
   Preserve pinned image provenance and the existing `target/quality-container`
   and `target/qa-container` caches.
 - GUI and delegated checks must never use the desktop or an inherited session
-  bus. Use private Xvfb and private D-Bus, clear inherited display variables,
-  disable accessibility bridging, and require GTK tests to run (not silently
-  skip). Stop if the isolated display or bus is unavailable; never fall back to
-  the user's display. See `docs/testing.md`.
+  bus. Clear inherited display variables, use a private display/compositor and
+  private D-Bus, and disable accessibility bridging. Stop if the isolated display
+  or bus is unavailable; never fall back to the user's display. See
+  `docs/testing.md`.
 - Documentation-only changes need no GUI/build tests: review the complete diff,
   validate links and example filters against the scripts and existing tests, and
   run `git diff --check`. These checks do not bypass required CI checks.
@@ -111,9 +118,9 @@ pass before merge.
   not just local tests. A generic request to push does not by itself authorize
   skipping checks; a direct request to push without specified checks does.
 - Unless explicitly overridden, fix failures before pushing rather than
-  relying on CI. Keep tests portable
-  across supported environments and avoid assertions that depend on
-  platform-specific URI normalization or other incidental system behavior.
+  relying on CI. Keep tests portable across supported environments and avoid
+  assertions that depend on platform-specific URI normalization or other
+  incidental system behavior.
 
 ## QA scenarios
 
@@ -130,9 +137,6 @@ pass before merge.
   When a scenario with a `mutation` changes, or its patch in
   `tests/qa/mutations/` stops applying, check it with
   `./scripts/qa-mutation.sh <scenario>`.
-- Regenerate visual baselines only deliberately, with
-  `STRATA_QA_UPDATE_BASELINES=1 ./scripts/qa.sh <baseline scenario>`, and
-  review the images before committing them.
 
 ## Test image reuse
 
@@ -154,26 +158,12 @@ pass before merge.
 - Test failures, incomplete coverage, and invalid image provenance fail CI.
   See `docs/testing.md`.
 
-## Private media runtime patches
+## Archived media-runtime patch kit
 
-- Before changing GTK, GStreamer, GLib, their Rust bindings, media plugins, or
-  release/build images, review `packaging/media-runtime/README.md` and the pinned
-  patches/source hashes. These are version-specific toolkit patches, not Cargo
-  patches; updating Rust crates alone does not apply or retire them.
-- For each runtime update, inspect upstream fixes and the affected ownership paths.
-  Record whether each patch is still required, needs rebasing, or is superseded.
-  Never silently drop a patch or accept a fuzzy application. Update source hashes,
-  notices, build requirements, and evidence together when changing the baseline.
-- Rebuild and rerun the standalone lifetime and GTK lifecycle regressions against
-  both the unpatched and patched candidate baseline. Confirm actual private-library
-  loading and test supported architectures, plugins, sandbox helpers, and installed
-  upgrade/rollback paths before promoting a runtime-bearing release. Preserve GUI
-  isolation; owner-operated GPU captures require the documented explicit consent.
-- The current patch kit is opt-in source material, not integrated into release
-  builds or installation. Do not claim the next release contains these fixes until
-  the build applies them, the artifact includes the runtime, and installed-artifact
-  tests verify it is loaded. Keep unresolved RAM growth separate from demonstrated
-  crash/GL-resource improvements.
+`packaging/media-runtime/` holds an archived, opt-in GStreamer/GTK patch kit from
+the 1.x release series (`#779`). Strata's Rune build does not link GTK or
+GStreamer and does not use those patches. Do not modify or claim release coverage
+for `packaging/media-runtime/` without reviewing `packaging/media-runtime/README.md`.
 
 ## Issues and pull requests
 
@@ -187,13 +177,71 @@ pass before merge.
 
 ## Workspace crates
 
-- Code that needs no GTK lives in the crates under `crates/`; the root package is the GTK
-  application. Follow `docs/workspace.md` for the layering, which `cargo deny check`
-  enforces, and for how visibility, translations and log targets work across crates.
-- Never add `gtk4`, `gdk4`, `sourceview5` or `gstreamer` to a crate under `crates/`.
+- The repository is a single unified Cargo workspace (`cargo check --workspace --all-targets --all-features --locked`, `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`).
+- Follow `docs/workspace.md` for the crate layering, which `cargo deny --workspace check` (`deny.toml`) enforces, and for how visibility, translations, and log targets work across crates.
+- `gtk4`, `gdk4`, `gdk4-wayland`, `gdk4-x11`, `sourceview5`, `gstreamer`, and `gstreamer-app` are banned workspace-wide in `deny.toml`. Never reintroduce them.
 - Test-only code that another crate's tests use is gated with
   `#[cfg(any(test, feature = "test-support"))]`; a `tests` module is never compiled
   outside tests. Run tests with `--all-features`.
+
+## The Rune interface
+
+`crates/strata-platform`, `crates/strata-kit`, `crates/strata-components`, and
+`crates/strata-gallery` hold the Rune UI stack; `crates/strata-app` joins them to
+Strata's shared crates (`strata-core`, `strata-preview`, `strata-fs`,
+`strata-desktop`, `strata-qa`), and the root `strata` package (`src/main.rs`) is
+its thin binary entrypoint.
+
+### Crate rules
+
+- `strata-platform` depends on `rune` only: never on `rune-kit`, `strata-kit`, or
+  a shared crate. Its API carries no Strata names. Each shim is a module behind
+  its own cargo feature (`mise run compile-features` verifies each feature in
+  isolation), and its docs link the upstream Rune issue and say what Rune lacks.
+- Components in `strata-components` take state by accessor
+  (`fn(&S) -> &X`, `fn(&mut S) -> &mut X`), as `rune-kit`'s Table and Tree do.
+  They own no I/O: listings, thumbnails, and search results arrive as data.
+- Components read only `Kit` tokens and `strata-kit` extensions, never a theme by
+  name, and never hardcoded colours.
+- Components carry no user-facing text. Labels and accessible names arrive as
+  data, so the thirteen catalogs under `data/locales/` stay the only source.
+- Strata's file-manager behaviour stays out of `strata-components`. A component
+  holds the interaction model and placement, not the policy.
+- Shared crates (`strata-core`, `strata-preview`, `strata-fs`, `strata-desktop`)
+  never depend on Rune or on a Rune-side crate.
+- `strata-app` is the only crate that depends on both sides, and only the root
+  `strata` binary depends on `strata-app`.
+- In `strata-app`, a `Browser` observer only queues: it runs inside GLib's
+  dispatch, while Rune holds the application state. The state changes in `poll`
+  or in an update.
+- Reach Rune's loop from another thread with `AppHandle::update_if`, never with a
+  `Waker` alone: under a covered Wayland window a `Waker` call does not run `poll`.
+
+### Rune
+
+- Rune is pre-release and takes no pull requests. When Rune core lacks something,
+  file an issue upstream with a headless repro, or add a thin shim in
+  `strata-platform` that names the issue. Never vendor or patch Rune.
+- Every Rune crate pins the same `dev` rev in the root `Cargo.toml` (along with
+  its `[patch.crates-io]` entries). Move the rev on purpose in its own change, and
+  update the Rust version in `mise.toml` and `tests/container/Dockerfile` with it.
+- Rune's API reference is `crates/rune/README.md` and `crates/rune-kit/README.md`
+  at the pinned rev. Read them there, not from memory.
+
+### Tests and gallery
+
+- Workspace Rust tests run headless on Rune's virtual clock and never use the
+  desktop display or session bus. Run them with `mise run test [filter]` and
+  confirm the filter matched at least one test.
+- Compositor, D-Bus, and windowed tests run with `mise run test-platform [filter]`,
+  each in a private headless sway session; `strata`'s `tests/window.rs` is among
+  them. Follow `docs/testing.md`.
+- `strata-gallery` is an interactive component display showcase (`mise run gallery`)
+  with a minimal headless unit and smoke test suite (plus `#[ignore]`d compositor
+  DnD and clipboard session tests run by `mise run test-platform`). Primary
+  end-to-end verification lives in the QA scenarios (`./scripts/qa.sh`).
+- Screenshots and manual inspection cover the look. Do not assert layout geometry,
+  spacing, or pixel placement.
 
 ## Test organization
 
@@ -204,7 +252,7 @@ pass before merge.
 ### Test value
 
 - Test observable behavior, not implementation echoes. Do not add tests whose
-  only purpose is to repeat constants or setter assignments, match CSS text,
+  only purpose is to repeat constants or setter assignments, match style text,
   count incidental widget children, or enforce cosmetic pixel sizes, spacing,
   and alignment.
 - Never write layout tests. Do not add assertions for widget geometry, alignment,
@@ -236,7 +284,7 @@ the files changed against `origin/main`. It needs `CS_ACCESS_TOKEN`.
   script on them before pushing and fix new findings in the same change.
 - Put new behavior in a new submodule instead of growing a file past about
   1,500 lines. Keep functions under about 70 lines and a cyclomatic complexity
-  under 9; extract signal handlers and builder stages into named functions.
+  under 9; extract handlers and builder stages into named functions.
 - Pass more than four values through a context, options, or request struct
   instead of positional arguments.
 - Name complex conditions as predicates, and keep nesting under four levels.
@@ -248,9 +296,15 @@ the files changed against `origin/main`. It needs `CS_ACCESS_TOKEN`.
 ## Saved preferences
 
 - Follow `docs/preferences.md` when adding or changing application-wide settings.
-- Use `ThemeManager::bind_preference` for immediate initialization and live updates, or read the manager at action dispatch. Settings pages must only edit preferences, never initialize browser behavior.
-- Use shared control bindings rather than window-local copies or one-off broadcasts. Preserve documented chooser and window-local exceptions.
-- Extend the exhaustive saved-preferences fixture and behavioral coverage for startup before Settings opens, changes across two windows, and relevant view rebuilds. Serialization-only tests are not sufficient.
+  A setting's schema field and default live in `strata_desktop::settings`; its
+  live application, Settings UI, and host/app wiring live in `crates/strata-app/src/settings/`
+  and `crates/strata-app/src/settings_dialog/`.
+- Apply preferences at startup before Settings opens and propagate changes live
+  across open windows. Settings pages must only edit preferences, never initialize
+  browser behavior. Preserve documented chooser and window-local exceptions.
+- Extend the exhaustive saved-preferences fixture and behavioral coverage for
+  startup before Settings opens, changes across windows, and relevant view rebuilds.
+  Serialization-only tests are not sufficient.
 
 ## Internationalization
 
@@ -271,22 +325,23 @@ the files changed against `origin/main`. It needs `CS_ACCESS_TOKEN`.
   filenames, protocol/action identifiers, user-authored content, or labels and
   values supplied by another application.
 - When changing UI text or catalogs, run the catalog coverage and interpolation
-  regressions with `./scripts/test-headless.py i18n::`, plus affected behavioral
-  tests as required by the validation policy above.
+  regressions with `mise run test i18n::`, plus affected behavioral tests as
+  required by the validation policy above.
 
 ## Keyboard shortcuts
 
-- Read key input only through `ui::keys` (`keys::on_press`, `keys::on_release`,
-  `keys::read_event`); `clippy.toml` rejects raw key signals elsewhere.
-- Define every shortcut as a constant in the `ui::keys::bindings` catalog and
-  match it with `press.is(…)` or `press.digit_in(…)`. Never compare raw keyvals or
-  typed text to recognize a command.
+- Define every shortcut in `strata_desktop::keys` (`crates/strata-desktop/src/keys/`),
+  and match key presses through `KeyPress::is(…)` or `KeyPress::digit_in(…)`.
+  Never compare raw key codes or typed text to recognize a command.
+- Missing key constants belong in `crates/strata-desktop/src/keys/key_constants.rs`.
 - Never type a key label by hand. F1 rows, hints, tooltips, and menus render
-  catalog bindings with `keys::label`. Follow `docs/keyboard-shortcuts.md`.
+  catalog bindings with `strata_desktop::keys::label`. Follow `docs/keyboard-shortcuts.md`.
 
 ## UI controls
 
-- Reuse existing control builders, shared bindings, and CSS classes for dropdowns, buttons, toggles, and segmented controls before creating new ones. Match their hover, active, focus, disabled, and theme states; do not style a new control as a generic form field when an existing button style applies.
+- Reuse existing `strata-components` and `rune-kit` controls and `strata-kit` look
+  tokens for dropdowns, buttons, toggles, and segmented controls before creating
+  new ones. Match their hover, active, focus, disabled, and theme states.
 
 ## Tooltips
 
@@ -306,14 +361,13 @@ the files changed against `origin/main`. It needs `CS_ACCESS_TOKEN`.
 
 ## Icons
 
-- Bundled icons come from two sources, each with its own job:
-  - **Lucide** for interface icons and generic file categories (documents, pictures, archives, keys, folders). Add new interface icons only from Lucide, keep its geometry intact, and store them under `data/icons/scalable/actions/`.
-  - **Catppuccin VSCode Icons** for code, language, and config file types. Store them under `data/icons/catppuccin/`, copied unchanged from upstream's `icons/css-variables/` set, and add their filename and extension associations to the generated `src/ui/browser/entry/catppuccin.rs` by rerunning `scripts/catppuccin_icons.py <upstream checkout>` rather than editing it by hand.
-- Namespace every bundled asset with `strata-` (`strata-ctp-` for Catppuccin) and keep the Lucide ISC and Catppuccin MIT attributions in `THIRD_PARTY_LICENSES.md` current, including the upstream revision.
-- Render theme-colored bundled icons through `assets::primary_icon` / `assets::set_primary_icon`; direct icon-theme loading preserves the SVG's fallback color and will not follow live theme changes.
-- Lucide icons are tinted with the theme accent. Catppuccin icons keep their own palette by default, resolved at render time to Mocha on dark backgrounds and Latte on light ones; the **File icon colors** preference switches them to the accent. Route both behaviors through `assets`; never hardcode a flavor or bypass the preference.
+- Bundled icons come from two sources, compiled into `strata-kit` (`crates/strata-kit/icons/README.md`):
+  - **Lucide** for interface icons and generic file categories (documents, pictures, archives, keys, folders). Add new interface icons only from Lucide, keeping geometry intact.
+  - **Catppuccin VSCode Icons** for code, language, and config file types, with filename and extension associations in `crates/strata-app/src/entry_icon/catppuccin.rs`.
+- Namespace every bundled asset with `strata-` (`strata-ctp-` for Catppuccin) and keep the Lucide ISC and Catppuccin MIT attributions in `THIRD_PARTY_LICENSES.md` and `crates/strata-kit/icons/` current, including the upstream revision.
+- Lucide icons are tinted with semantic theme tokens. Catppuccin icons keep their own palette by default (Mocha on dark backgrounds, Latte on light ones); the **File icon colors** preference switches them to theme colors. Route both behaviors through `strata-kit::icons`; never hardcode a flavor or bypass the preference.
 
 ## Theming
 
-- Apply semantic `@strata_*` colors to every visual state of new interface elements, including icons, text, backgrounds, borders, focus rings, selections, hover/active states, menus, and dialogs.
-- Never use static hex/RGB colors for themeable interface elements. Built-in, custom, and Omarchy themes must remain visually consistent and update live.
+- Apply semantic `Kit` / `strata-kit::Look` tokens to every visual state of new interface elements, including icons, text, backgrounds, borders, focus rings, selections, hover/active states, menus, and dialogs.
+- Never use static hex/RGB colors for themeable interface elements. Built-in, custom, and Omarchy themes, as well as live appearance and transparency changes (and kit-layer `strata-kit::overrides` tokens), must remain visually consistent and update live.

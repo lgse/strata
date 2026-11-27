@@ -4,11 +4,27 @@ set -euo pipefail
 cargo fmt --all --check
 cargo check --workspace --all-targets --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-# Display-dependent tests are exercised by test-headless.py and qa.sh.
-env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 STRATA_REQUIRE_DEVICE_TESTS=1 cargo test --workspace --all-targets --all-features
+
+# Run tests headless: no X display, and a Wayland socket and session bus that do not exist.
+# Built without debug info to keep links small.
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+env -u DISPLAY -u WAYLAND_SOCKET WAYLAND_DISPLAY=strata-test-no-wayland \
+  DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/strata-test-no-bus \
+  GIO_USE_VFS=local \
+  CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" \
+  RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}" \
+  HOME="$tmp" \
+  XDG_CONFIG_HOME="$tmp/config" \
+  XDG_DATA_HOME="$tmp/data" \
+  XDG_CACHE_HOME="$tmp/cache" \
+  XDG_STATE_HOME="$tmp/state" \
+  STRATA_REQUIRE_DEVICE_TESTS=1 \
+  CARGO_PROFILE_DEV_DEBUG=0 \
+  cargo test --workspace --all-targets --all-features
 
 if command -v cargo-deny >/dev/null 2>&1; then
-  cargo deny check
+  cargo deny --workspace check
 else
   echo "note: cargo-deny is not installed; skipping dependency policy checks" >&2
 fi

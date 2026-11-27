@@ -810,7 +810,10 @@ fn cancelling_extraction_keeps_progress_until_the_worker_reports_cancellation() 
     assert_eq!(browser.current_operation.get(), None);
     assert!(events.borrow().iter().any(|event| matches!(
         event,
-        BrowserEvent::ArchiveCompleted { select_name } if select_name.is_empty()
+        BrowserEvent::ArchiveCompleted {
+            select_name,
+            cancelled: true,
+        } if select_name.is_empty()
     )));
     assert!(events.borrow().iter().any(|event| matches!(
         event,

@@ -12,7 +12,7 @@ use super::{
 
 mod parse;
 
-pub use parse::parse_command;
+pub use parse::{parse_command, parse_request};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -47,6 +47,7 @@ pub enum Command {
     },
     Adopt {
         title: String,
+        activate: bool,
         timeout: Duration,
         message: Option<String>,
     },
@@ -118,22 +119,6 @@ pub enum Command {
         duration: Duration,
         every: Duration,
     },
-    Capture {
-        target: Target,
-        inset: u16,
-        name: String,
-    },
-    MeasureText {
-        kept: String,
-        name: String,
-    },
-    DropSamples {
-        kept: String,
-        resting: String,
-        dragging: String,
-        escape: bool,
-        name: String,
-    },
     Drag {
         from: Target,
         to: Target,
@@ -181,11 +166,27 @@ pub enum Command {
         message: Option<String>,
     },
     Query(Query),
+    Keymap(Keymap),
+    Invariants,
 }
 
-pub const COMMANDS: [&str; 37] = [
+/// A keyboard layout as XKB names it, with the group and the lock that are on.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Keymap {
+    pub layouts: String,
+    #[serde(default)]
+    pub variants: String,
+    #[serde(default)]
+    pub group: u8,
+    #[serde(default)]
+    pub caps_lock: bool,
+}
+
+pub const COMMANDS: [&str; 35] = [
     "key",
     "adopt",
+    "activate_window",
     "keep",
     "reveal_control",
     "reveal",
@@ -196,9 +197,6 @@ pub const COMMANDS: [&str; 37] = [
     "key_down",
     "key_up",
     "during",
-    "capture",
-    "measure_text",
-    "drop_samples",
     "type",
     "click",
     "select",
@@ -276,6 +274,20 @@ struct AdoptFields {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct ActivateWindowFields {
+    activate_window: WindowMatch,
+    timeout_ms: Option<u64>,
+    message: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WindowMatch {
+    title: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct KeepFields {
     keep: [i64; 4],
     #[serde(rename = "as")]
@@ -314,36 +326,6 @@ struct DuringFields {
     #[serde(default = "poll_ms")]
     every_ms: u64,
     message: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CaptureFields {
-    capture: Target,
-    #[serde(default)]
-    inset: u16,
-    #[serde(rename = "as")]
-    name: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct MeasureTextFields {
-    measure_text: String,
-    #[serde(rename = "as")]
-    name: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct DropSamplesFields {
-    drop_samples: String,
-    resting: String,
-    dragging: String,
-    #[serde(default)]
-    escape: bool,
-    #[serde(rename = "as")]
-    name: String,
 }
 
 #[derive(Deserialize)]
@@ -623,12 +605,16 @@ struct ExpectFields {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct KeymapFields {
+    keymap: Keymap,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ClipboardSetFields {
     clipboard_set: ClipboardContent,
 }
 
-/// Text, or raw offers under their MIME types the way another application
-/// such as a file manager fills the clipboard.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
 pub enum ClipboardContent {

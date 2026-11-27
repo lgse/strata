@@ -1,0 +1,11 @@
+diff --git a/crates/strata-app/src/single/mod.rs b/crates/strata-app/src/single/mod.rs
+--- a/crates/strata-app/src/single/mod.rs
++++ b/crates/strata-app/src/single/mod.rs
+@@ -532,6 +532,7 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
+         return;
+     };
+     match intent {
++        Intent::Activate { how: Activation::Key, .. } => {}
+         Intent::Activate { id, how } => open_in_place::<V>(app, (depth, id), how, tx),
+         // A slow second click on the name.
+         Intent::BeginRename { id } => rename::begin_on(app, depth, id, tx),

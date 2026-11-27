@@ -362,8 +362,6 @@ fn external_directory_changes_refresh_only_indexes_covering_the_directory() {
     let (flat, flat_events) = filter(root.to_path_buf(), false);
     let (_deep, deep_events) = filter(root.to_path_buf(), true);
     let (unrelated, _unrelated_events) = filter(root.join("other"), true);
-    // A change, the folder it lands in, the flat index's expected hits (None when it
-    // should not refresh) and the recursive index's expected hits.
     type Row<'a> = (Change, &'a str, Option<&'a [&'a str]>, &'a [&'a str]);
     let rows: [Row; 3] = [
         (

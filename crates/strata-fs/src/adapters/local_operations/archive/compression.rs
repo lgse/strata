@@ -51,17 +51,6 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-/// Writes an archive through a private staging file, then publishes it at
-/// `archive_path` without ever replacing an entry it did not account for.
-///
-/// Staging, encoding and publication run in one blocking step. A
-/// replacement strategy is chosen before encoding, so an archive is never
-/// written that cannot be published: the original goes to Trash where
-/// possible, otherwise it is exchanged or set aside and deleted once the new
-/// archive is on disk. [`KeepBoth`] numbers the name without encoding again.
-/// The published mode is the replaced file's, or `0o666` masked by the umask.
-/// [`Failed`]: ArchiveError::Failed
-/// [`KeepBoth`]: TransferConflict::KeepBoth
 pub(super) async fn write_staged_archive<F>(
     destination: &Path,
     archive_path: &Path,
@@ -572,11 +561,7 @@ fn encoder_failure(error: &dyn std::fmt::Display) -> String {
     crate::i18n::tr("The archive could not be written")
 }
 
-/// An opened compression source, re-read from disk relative to its parent
-/// directory rather than trusted from any earlier listing.
 enum ArchiveSource {
-    /// Open file description for a regular file, opened with `BENEATH`,
-    /// `NO_SYMLINKS`, and `NO_MAGICLINKS`.
     File(std::fs::File),
     /// Open directory used to walk children descriptor-relative.
     Directory(std::fs::File),
@@ -656,18 +641,6 @@ fn zip_member_options<'k, 'n>(
     Ok(options)
 }
 
-/// Opens the child named `name` inside `parent` without following symbolic links.
-///
-/// Regular files are opened with [`rustix::fs::ResolveFlags::BENEATH`],
-/// [`rustix::fs::ResolveFlags::NO_SYMLINKS`], and
-/// [`rustix::fs::ResolveFlags::NO_MAGICLINKS`]. Directories go through
-/// [`open_local_child_directory`]. Symlinks are read with `readlinkat` and
-/// stored as [`ArchiveSource::Symlink`].
-///
-/// # Errors
-///
-/// Returns an error if `name` cannot be inspected, is an unsupported file
-/// type, or changes from a regular file between `statat` and `openat2`.
 fn open_archive_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<ArchiveSource, String> {
     let stat = fs()
         .stat(Entry::new(parent, name), false)
@@ -716,20 +689,6 @@ fn open_archive_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<ArchiveSou
     }
 }
 
-/// Walks each path in `entries` and its descendants, calling `visit` per member.
-///
-/// Selected roots are opened from their parent directory via
-/// [`open_local_parent_directory`], then recursion stays descriptor-relative
-/// through [`visit_archive_entry`].
-///
-/// # Errors
-///
-/// - [`Cancelled`] if `cancelled` is set before or during the walk
-/// - [`Failed`] if a root has no file name or parent, cannot be opened, or
-///   `visit` fails
-///
-/// [`Cancelled`]: ArchiveError::Cancelled
-/// [`Failed`]: ArchiveError::Failed
 fn visit_archive_entries(
     entries: &[PathBuf],
     cancelled: &AtomicBool,
@@ -750,26 +709,6 @@ fn visit_archive_entries(
     Ok(())
 }
 
-/// Visits `name` inside `parent` and, for directories, each child beneath it.
-///
-/// `archive_path` is the member path written into the archive, rooted at the
-/// originally selected entry's file name.
-///
-/// # Arguments
-///
-/// * `parent` - Already-open parent directory of `name`
-/// * `name` - Directory entry to open without following symbolic links
-/// * `archive_path` - Relative path recorded for this member
-/// * `cancelled` - Flag checked before opening and before each child
-/// * `visit` - Callback invoked with the archive path and opened source
-///
-/// # Errors
-///
-/// - [`Cancelled`] if `cancelled` is set
-/// - [`Failed`] if the entry cannot be opened or `visit` fails
-///
-/// [`Cancelled`]: ArchiveError::Cancelled
-/// [`Failed`]: ArchiveError::Failed
 fn visit_archive_entry<Fd: AsFd>(
     parent: &Fd,
     name: &OsStr,
@@ -857,28 +796,6 @@ fn compression_result(
     result
 }
 
-/// Writes a ZIP archive of `entries` into `file`.
-///
-/// Regular files use deflate level 6 unless [`is_incompressible`] selects
-/// stored. An optional `password` enables AES-256 encryption. Symbolic-link
-/// targets must be UTF-8; otherwise the caller is asked to use TAR instead.
-///
-/// # Arguments
-///
-/// * `file` - Staging file that receives the ZIP bytes
-/// * `entries` - Absolute paths of selected files, directories, and links
-/// * `password` - Optional AES-256 password
-/// * `progress` - Counter incremented once per non-directory member
-/// * `cancelled` - Flag checked between members and during copies
-///
-/// # Errors
-///
-/// - [`Cancelled`] if `cancelled` is set during the walk or copy
-/// - [`Failed`] if a member cannot be opened, a symlink target is not UTF-8,
-///   or ZIP encoding fails
-///
-/// [`Cancelled`]: ArchiveError::Cancelled
-/// [`Failed`]: ArchiveError::Failed
 pub(super) fn compress_zip(
     file: impl Write + Seek,
     entries: &[std::path::PathBuf],
@@ -961,26 +878,6 @@ pub(super) fn compress_zip(
     })
 }
 
-/// Writes a TAR archive of `entries` into `file`.
-///
-/// When `gzip` is set, the TAR stream is wrapped in one gzip member at that level.
-/// Symbolic links are preserved as links.
-///
-/// # Arguments
-///
-/// * `file` - Staging file that receives the archive bytes
-/// * `entries` - Absolute paths of selected files, directories, and links
-/// * `gzip` - Stream-wide gzip level, or `None` for uncompressed TAR
-/// * `progress` - Counter incremented once per non-directory member
-/// * `cancelled` - Flag checked between members and during copies
-///
-/// # Errors
-///
-/// - [`Cancelled`] if `cancelled` is set during the walk or copy
-/// - [`Failed`] if a member cannot be opened or TAR/gzip encoding fails
-///
-/// [`Cancelled`]: ArchiveError::Cancelled
-/// [`Failed`]: ArchiveError::Failed
 pub(super) fn compress_tar(
     file: impl Write,
     entries: &[std::path::PathBuf],
@@ -1010,22 +907,6 @@ pub(super) fn compress_tar(
     })
 }
 
-/// Appends `entries` to an already-constructed TAR builder on `writer`.
-///
-/// # Arguments
-///
-/// * `writer` - Destination of the TAR stream, possibly a gzip encoder
-/// * `entries` - Absolute paths of selected files, directories, and links
-/// * `progress` - Counter incremented once per non-directory member
-/// * `cancelled` - Flag checked between members
-///
-/// # Errors
-///
-/// - [`Cancelled`] if `cancelled` is set during the walk
-/// - [`Failed`] if a member cannot be opened or TAR encoding fails
-///
-/// [`Cancelled`]: ArchiveError::Cancelled
-/// [`Failed`]: ArchiveError::Failed
 fn append_tar_entries(
     writer: &mut dyn std::io::Write,
     entries: &[std::path::PathBuf],
@@ -1093,16 +974,6 @@ impl ArchiveSources {
     }
 }
 
-/// Counts non-directory members and selects a stream-wide gzip policy without
-/// reading payloads. Unknown formats retain compression; links are never followed.
-///
-/// # Errors
-///
-/// - [`Cancelled`] if `cancelled` is set during the walk
-/// - [`Failed`] if a member cannot be opened
-///
-/// [`Cancelled`]: ArchiveError::Cancelled
-/// [`Failed`]: ArchiveError::Failed
 pub(super) fn inspect_archive_sources(
     entries: &[PathBuf],
     cancelled: &AtomicBool,
@@ -1123,9 +994,6 @@ pub(super) fn inspect_archive_sources(
     Ok(sources)
 }
 
-/// A filename heuristic, not a claim about every possible payload in a container.
-/// Unknown extensions and commonly raw containers (TAR, BMP, WAV, AVI, ISO) retain
-/// compression. ZIP/7Z choose per member; gzip can only choose for the whole TAR.
 const INCOMPRESSIBLE_EXTS: &[&str] = &[
     "zip", "7z", "gz", "tgz", "bz2", "tbz", "tbz2", "xz", "txz", "zst", "tzst", "rar", "lz", "lz4",
     "br", "mp4", "mkv", "mov", "webm", "flv", "wmv", "jpg", "jpeg", "png", "webp", "gif", "heic",
@@ -1141,28 +1009,6 @@ fn is_incompressible(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Writes a 7z archive of `entries` into `file`.
-///
-/// Uses LZMA2 at level 6 with a thread count from
-/// [`std::thread::available_parallelism`]. An optional `password` adds AES
-/// encryption. Symbolic links are not supported.
-///
-/// # Arguments
-///
-/// * `file` - Staging file that receives the 7z bytes
-/// * `entries` - Absolute paths of selected files and directories
-/// * `password` - Optional AES password
-/// * `progress` - Counter incremented once per non-directory member
-/// * `cancelled` - Flag checked between members
-///
-/// # Errors
-///
-/// - [`Cancelled`] if `cancelled` is set during the walk
-/// - [`Failed`] if a member cannot be opened, a symbolic link is selected,
-///   or 7z encoding fails
-///
-/// [`Cancelled`]: ArchiveError::Cancelled
-/// [`Failed`]: ArchiveError::Failed
 pub(super) fn compress_7z(
     file: impl Write + Seek,
     entries: &[std::path::PathBuf],

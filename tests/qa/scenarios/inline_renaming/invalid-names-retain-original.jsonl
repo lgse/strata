@@ -1,4 +1,4 @@
-{"scenario":"invalid-names-retain-original","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"enter","vars":{"action":"enter"}},{"id":"click","vars":{"action":"click"}}],"cost":{"columns-enter":0.8,"columns-click":0.9},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Invalid F2 rename to bad//name on Return or click-away keeps todo.txt; rule unit-tested in services/operations/tests.rs, New File entry point is invalid-new-file-names-corrected"}}
+{"scenario":"invalid-names-retain-original","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"enter","vars":{"action":"enter"}},{"id":"click","vars":{"action":"click"}}],"cost":{"columns-enter":0.8,"columns-click":0.9},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"Invalid F2 rename to bad//name on Return or click-away keeps todo.txt; headless columns and qa rename tests pin both routes, only real-window run unique"}}
 {"select":{"entry":"readme.md"}}
 {"select_with_keyboard":"todo.txt"}
 {"key":"F2"}

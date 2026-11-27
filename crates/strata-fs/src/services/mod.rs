@@ -11,6 +11,7 @@ pub(crate) mod jobs;
 pub mod letter_bookmarks;
 mod listeners;
 mod mime_type;
+mod name_field;
 mod native_fs;
 mod navigation_history;
 pub mod network_error;
@@ -49,7 +50,11 @@ pub use jobs::{
     expand_command_arguments,
 };
 pub use listeners::{ListenerGuard, Listeners};
-pub use mime_type::{EntryType, FOLDER_TYPE_NAME, OTHER_TYPE_NAME, entry_type};
+pub use mime_type::{
+    EntryType, FOLDER_TYPE_NAME, OTHER_TYPE_NAME, entry_type, entry_type_description_for_name,
+    entry_type_for_name, mime_description_rc,
+};
+pub use name_field::{Naming, name_field_error, rename_stem_end};
 pub(crate) use native_fs::{
     is_hidden_name, link_target_kind, listed_kind, native_hidden_names, native_kind, symlink_kind,
 };

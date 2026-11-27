@@ -50,7 +50,7 @@ only "Invalid argument" for it.
   finds it inside a folder: the folder stays, and the error names the program where it can. See
   [Files that are still open](#files-that-are-still-open).
 - **Keep file calls off the interface thread.** Apart from the exceptions listed under
-  [Unresponsive mounts](#unresponsive-mounts), code on the GTK main thread makes no filesystem
+  [Unresponsive mounts](#unresponsive-mounts), code on the UI thread makes no filesystem
   call, synchronous GIO file call, mount-table or udev read, and waits for no process that makes
   one. It asks a worker and applies the answer only while it is still current. Folder loads,
   probes and monitors on a mount that stops answering are bounded, so such a mount makes an action
@@ -209,13 +209,13 @@ that the name still holds that placeholder (same inode, a regular file, still em
 the item over it. For a folder, and for a file on a
 [FUSE daemon over remote storage](#fuse-daemons-over-remote-storage), it checks that the name is
 free, then renames. If the rename fails with an errno that shows it did not happen, the
-placeholder is removed only while the name still holds it unchanged. After one that may hide a lost reply (`EIO`, `ETIMEDOUT`, `ENOENT` and
-the like), nothing is removed: the item counts as placed only if its old name is gone and the new
-one reports its identity, and otherwise the result is reported as unconfirmed. sshfs keeps a
-name's inode number when a rename's reply is lost, so the placeholder's number there proves
-nothing. The empty placeholder therefore stays at the destination name after an unconfirmed
-rename, a check that cannot read the name, a lost reply to its creation, or if Strata stops before
-the rename.
+placeholder is removed only while the name still holds it unchanged. After one that may hide a lost
+reply (`EIO`, `ETIMEDOUT`, `ENOENT` and the like), nothing is removed: the item counts as placed
+only if its old name is gone and the new one reports its identity, and otherwise the result is
+reported as unconfirmed. sshfs keeps a name's inode number when a rename's reply is lost, so the
+placeholder's number there proves nothing. The empty placeholder therefore stays at the destination
+name after an unconfirmed rename, a check that cannot read the name, a lost reply to its creation,
+or if Strata stops before the rename.
 
 What it risks, and why that is low:
 
@@ -1239,7 +1239,7 @@ since, is passed over without a report. Redo fixes the names again.
 
 ### The conflict prompt
 
-Before a paste asks about conflicts, it works out, off the GTK thread, the name each item will get,
+Before a paste asks about conflicts, it works out, off the UI thread, the name each item will get,
 and looks for an existing item, a broken link included, under that name. Where that name is
 another, the prompt says so first ("“a:b” will be saved as “a_b” in this location."), so copying
 `a:b` onto a stick that holds `a_b` offers Replace or Keep Both instead of failing with "already
@@ -1289,7 +1289,7 @@ naming a new archive is refused before anything changes where the folder's rules
 mount has learned from refusals, would store the name as another, and the message names what the
 location cannot hold: the characters, each quoted and given by code point where it shows nothing of
 its own (`U+0009`, `U+0301`), a leading space (MTP) or a trailing space or period, a device name
-Windows reserves, or the length. The 10xer create and rename prompts check the name off the GTK
+Windows reserves, or the length. The 10xer create and rename prompts check the name off the UI
 thread before they close and stay open with that message. A rename is held to the length of a file,
 since Samba's shorter limit for folders applies only to the folders it creates. Names Strata
 chooses itself, such as "new folder", are not checked.
@@ -1844,7 +1844,7 @@ waits off the interface thread and bounds how many workers they can hold.
 
 ### Off the interface thread
 
-The GTK main thread is marked at start (`crates/strata-core/src/util/ui_thread.rs`), and every seam that touches the
+The UI thread is marked at start (`crates/strata-core/src/util/ui_thread.rs`), and every seam that touches the
 disk asserts that it runs elsewhere, also outside main-loop dispatch: the syscall seam, the probes,
 mount-table reads and the settings writer. What the interface needs from the disk it asks of a
 worker:
@@ -1865,10 +1865,8 @@ worker:
   link is undone, and a destination that cannot be checked is written only by an exclusive create,
   which never replaces.
 - Search results are checked on the search worker, and only hits proven gone are dropped.
-- A media preview's audio output is built, opened, played, paused and closed on one audio worker,
-  GStreamer's start-up included, since starting GStreamer can scan its plugins and rewrite its
-  registry in the cache folder, building the output loads sound plugins, opening it opens the
-  device and closing it can wait on the sound server.
+- A media preview's audio output is streamed, drained, and closed on Rune's audio worker
+  (`rune::AudioOutput`), keeping device writes and draining off the UI thread.
 - The file chooser reads a downloaded link's image type, checks that an earlier download of the
   same link is still there and gives it its image extension on a worker; Open waits for that step.
 - Programs and terminals are resolved and started on a worker, since starting a child waits until
@@ -1890,10 +1888,9 @@ worker:
 
 The exceptions are:
 
-- The reads at start, before the first window shows: Strata's settings and state files, GTK's
-  bookmarks file, the install marker beside Strata's executable and the check for a Flatpak
-  sandbox. The bundled font Strata writes at start is read by fontconfig whenever it lays out
-  text. Before any of them, and before anything asks GIO for its default VFS, which waits about
+- The reads at start, before the first window shows: Strata's settings and state files, the shared
+  `gtk-3.0/bookmarks` file, the install marker beside Strata's executable and the check for a Flatpak
+  sandbox. Before any of them, and before anything asks GIO for its default VFS, which waits about
   25 s on a `gvfsd` that does not answer, Strata checks in a subprocess that GVfs answers within
   2 s; if it does not, Strata restarts with GIO's local file and volume backends. Loading the
   settings already asks GIO for its default VFS, so a debug build stops at that check if anything
@@ -1910,9 +1907,9 @@ The exceptions are:
   while the daemon of such a FUSE mount (ntfs-3g, exfat-fuse) was stopped. Once the monitor exists,
   later mount changes did not block it.
 - GIO's checks of an application's program while it lists or launches applications
-  (`GDesktopAppInfo`), and the toolkit's own resources (icons, fonts, styles, MIME data) from
-  system paths. Text previews take their languages from GtkSourceView's bundled and system
-  folders and never read the user's own `gtksourceview-5` folder.
+  (`GDesktopAppInfo`), and system resources (fonts, desktop icons, MIME data) from
+  system paths. Syntax highlighting uses bundled `syntect` definitions compiled into
+  `strata-components` and never reads user syntax directories.
 - On a GVfs location, a stream whose open or create succeeds just as it is cancelled (a text
   preview, a camera thumbnail, New File, a copy's hidden stage). GLib then frees it itself, and its
   close is one request to the GVfs backend on the interface thread. These opens keep their cancel,
@@ -2136,14 +2133,14 @@ that the racily clean check, the wait for SMB's deferred close and the emulated 
 read, and set a paste's batch limits and clock.
 
 The seam, the probes, mount-table reads and the settings writer assert that no call runs on the
-interface thread. That thread is marked at start, and GTK tests mark the thread they run on, so a
+interface thread. That thread is marked at start, and UI tests mark the thread they run on, so a
 call outside main-loop dispatch is caught too; only the named start-up and exit exceptions take a
 scoped `ui_thread::allow`. A test that checks that the window keeps running while a call hangs
 parks the call with a seam racer that waits on `test_support::Gate`, pumps the main loop until the
 call is reached, checks that nothing waited for it, then releases it. Lane tests hand the lanes'
 state the time, past 2 s and 10 s, instead of waiting. The [main-thread I/O audit and the stall
-watchdog](testing.md#main-thread-io-audit) look for calls the asserts cannot see, inside GLib
-and GTK.
+watchdog](testing.md#main-thread-io-audit) look for calls the asserts cannot see, including inside
+GLib.
 
 For [files that are still open](#files-that-are-still-open) they emulate each mount family's
 leftovers: the name NFS, SMB or FUSE gives a file unlinked while open, which references count (any

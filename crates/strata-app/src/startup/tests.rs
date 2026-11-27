@@ -1,0 +1,124 @@
+// SPDX-License-Identifier: MIT
+
+use strata_desktop::{
+    keys::{
+        self, Backend, Context, Key, KeyPress, KeyPressParts, Keys, Map, Modifiers, Typed,
+        bindings::COPY, conflicts, label_in_map, rewrite,
+    },
+    services::{Channel, InstallSource},
+    settings::Preferences,
+};
+
+use super::UiThread;
+
+const MODULE: &str = "startup::tests";
+
+#[test]
+fn a_window_matches_and_labels_catalog_keys_without_a_toolkit() {
+    crate::test_support::hosted(
+        MODULE,
+        "a_window_matches_and_labels_catalog_keys_without_a_toolkit",
+        |_| {
+            let press = KeyPress::from_parts(KeyPressParts {
+                key: Key::c,
+                modifiers: Modifiers::CONTROL_MASK,
+                held: Modifiers::CONTROL_MASK,
+                typed: Typed::Character('c'),
+                digit: None,
+                fallback: false,
+            });
+            assert!(rewrite(press, Context { typing: false }).is(COPY));
+            assert_eq!(
+                label_in_map("en", &Keys::One(COPY.shown()), Map::Default),
+                "Ctrl+C"
+            );
+        },
+    );
+}
+
+#[test]
+fn a_window_reads_keys_the_code_does_not_declare_as_gdk_does() {
+    crate::test_support::hosted(
+        MODULE,
+        "a_window_reads_keys_the_code_does_not_declare_as_gdk_does",
+        |_| {
+            let play = Key::from_name("AudioPlay").expect("a vendor key's name");
+            assert_eq!(play.name().as_deref(), Some("AudioPlay"));
+            assert_eq!(Key::from_char('ψ').name().as_deref(), Some("Greek_psi"));
+            assert_eq!(Key::Cyrillic_ES.to_lower(), Key::Cyrillic_es);
+            assert_eq!(Key::from_name("guillemetleft"), None);
+        },
+    );
+}
+
+/// Some other key library, as a process that linked two interfaces would have.
+struct Foreign;
+
+impl Backend for Foreign {
+    fn key_name(&self, _: Key) -> Option<String> {
+        None
+    }
+
+    fn key_from_name(&self, _: &str) -> Option<Key> {
+        None
+    }
+
+    fn key_to_unicode(&self, _: Key) -> Option<char> {
+        None
+    }
+
+    fn key_from_unicode(&self, _: char) -> Key {
+        Key::VoidSymbol
+    }
+
+    fn key_to_lower(&self, key: Key) -> Key {
+        key
+    }
+
+    fn key_to_upper(&self, key: Key) -> Key {
+        key
+    }
+
+    fn accelerator_parse(&self, _: &str) -> Option<(Key, Modifiers)> {
+        None
+    }
+
+    fn accelerator_name(&self, _: Key, _: Modifiers) -> String {
+        String::new()
+    }
+}
+
+#[test]
+fn the_ui_thread_is_not_claimed_over_another_key_library() {
+    let test = "startup::tests::the_ui_thread_is_not_claimed_over_another_key_library";
+    crate::test_support::in_own_process(test, &[], || {
+        assert!(keys::install(&Foreign, conflicts::never_fires));
+        let refused = UiThread::claim().err().expect("the claim is refused");
+        assert!(refused.contains("key library"), "{refused}");
+    });
+}
+
+#[test]
+fn claiming_the_ui_thread_warms_install_source() {
+    let test = "startup::tests::claiming_the_ui_thread_warms_install_source";
+    crate::test_support::in_own_process(test, &[], || {
+        let _ui = UiThread::claim().expect("the UI thread");
+        let already_detected =
+            std::panic::catch_unwind(|| InstallSource::seed_for_test("manager = \"pacman\"\n"));
+        assert!(
+            already_detected.is_err(),
+            "UiThread::claim must initialize InstallSource::detect before marking the UI thread"
+        );
+        let _ = Preferences::default().release_channel();
+    });
+}
+
+#[test]
+fn claiming_the_ui_thread_keeps_a_preseeded_install_source() {
+    let test = "startup::tests::claiming_the_ui_thread_keeps_a_preseeded_install_source";
+    crate::test_support::in_own_process(test, &[], || {
+        InstallSource::seed_for_test("manager = \"pacman\"\nchannel = \"nightly\"\n");
+        let _ui = UiThread::claim().expect("the UI thread");
+        assert_eq!(Preferences::default().release_channel(), Channel::Nightly);
+    });
+}

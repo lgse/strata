@@ -1,0 +1,14 @@
+diff --git a/crates/strata-app/src/transfer.rs b/crates/strata-app/src/transfer.rs
+index 510d5e094..197bb58ff 100644
+--- a/crates/strata-app/src/transfer.rs
++++ b/crates/strata-app/src/transfer.rs
+@@ -401,7 +401,8 @@ fn paste_into(app: &mut App, into: PasteInto, tx: &mut Tx) {
+                 return;
+             };
+             later.then(move |app, _| {
+-                let move_sources = foreign_cut || clipboard::is_cut_match(app, &sources);
++                let _ = foreign_cut || clipboard::is_cut_match(app, &sources);
++                let move_sources = false;
+                 let request = TransferRequest::new(destination, sources, move_sources);
+                 begin_transfer_request(app, request.focusing(focus));
+                 false

@@ -39,7 +39,11 @@ class QualityCiTests(unittest.TestCase):
             "  sys.exit('the option `Z` is only accepted on the nightly compiler')\n"
             " with open(os.environ['RECORD'], 'a') as record:\n"
             "  record.write(json.dumps(dict(display=os.environ.get('DISPLAY'), selected=selected,\n"
-            "                               gtk=os.environ.get('STRATA_REQUIRE_GTK_TESTS'))) + '\\n')\n"
+            "                               wayland=os.environ.get('WAYLAND_DISPLAY'),\n"
+            "                               bus=os.environ.get('DBUS_SESSION_BUS_ADDRESS'),\n"
+            "                               gtk_a11y=os.environ.get('GTK_A11Y'),\n"
+            "                               threads=next((a for a in args if a.startswith('--test-threads=')), None),\n"
+            "                               bin_exe=os.environ.get('CARGO_BIN_EXE_strata'))) + '\\n')\n"
             " if os.environ.get('FAIL_TEST') in selected:\n"
             "  print(\"thread 'x' panicked at src/fixture.rs:1:1:\\nboom\")\n"
             "  sys.exit(101)\n"
@@ -47,6 +51,8 @@ class QualityCiTests(unittest.TestCase):
             "  for name in selected:\n"
             "   if name == 'b':\n"
             "    print('test b ... \\nrunning 1 test\\ntest b ... ok\\n\\nok <2.00s>')\n"
+            "   elif name == 'c':\n"
+            "    print('test c - should panic ... \\nthread panicked\\nok <0.20s>')\n"
             "   elif name != 'ignored':\n"
             "    print(f'test {name} ... ok <0.20s>')\n"
             " if os.environ.get('SUMMARY') != 'none':\n"
@@ -65,32 +71,14 @@ class QualityCiTests(unittest.TestCase):
         scripts = self.root / "scripts"
         scripts.mkdir()
         (scripts / "quality-durations.json").write_text("{}")
-        tools = self.root / "tools"
-        tools.mkdir()
-        # The fakes keep only what isolation provides: a display per lane and a wrapped bus.
-        (tools / "xvfb-run").write_text(
-            f"#!{sys.executable}\n"
-            "import os, sys\n"
-            "args = sys.argv[1:]\n"
-            "assert args[0] == '-n' and args[2] == '-s' and args[4] == 'dbus-run-session', args\n"
-            "os.environ['DISPLAY'] = ':' + args[1]\n"
-            "os.execvp(args[4], args[4:])\n")
-        (tools / "dbus-run-session").write_text(
-            f"#!{sys.executable}\n"
-            "import os, sys\n"
-            "args = sys.argv[sys.argv.index('--') + 1:]\n"
-            "os.execvp(args[0], args)\n")
-        for tool in tools.iterdir():
-            tool.chmod(0o755)
         for name, value in (("ROOT", self.root), ("BUNDLE", self.bundle), ("REPORTS", self.reports),
                             ("LOCAL", self.root / "local")):
             patcher = patch.object(quality, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
-        for patcher in (patch.object(quality, "ISOLATED_TEST", "a"),
-                        patch.object(quality, "SHARDS", 2),
+        for patcher in (patch.object(quality, "SHARDS", 2),
                         patch.dict(quality.os.environ, STRATA_QUALITY_COMMIT="fixture", RECORD=str(self.record),
-                                   PATH=f"{tools}:{quality.os.environ['PATH']}"),
+                                   DISPLAY=":0", WAYLAND_SOCKET="7", DBUS_STARTER_ADDRESS="unix:path=/desktop"),
                         patch.object(quality, "test_source_key", return_value="source"),
                         patch.object(quality, "image_key", return_value="image")):
             patcher.start()
@@ -120,26 +108,18 @@ class QualityCiTests(unittest.TestCase):
         report = json.loads((self.reports / "shard-1.json").read_text())
         self.assertEqual(report["binaries"][0]["ignored"], ["ignored"])
 
-    def test_mixed_shard_runs_isolated_test_in_a_separate_process(self):
-        self.plan["binaries"][0]["shards"] = [["a", "b", "ignored"], ["c", "d"]]
-        self.save_plan()
-        self.run_all()
-        self.verify()
-        self.assertEqual([run["selected"] for run in self.runs()], [["a"], ["b", "ignored"], ["c", "d"]])
-        report = json.loads((self.reports / "shard-0.json").read_text())
-        self.assertEqual(report["binaries"][0]["passed"], ["a", "b"])
-        self.assertEqual(report["binaries"][0]["ignored"], ["ignored"])
-
-    def test_lanes_split_a_shard_across_private_displays_under_one_receipt(self):
+    def test_lanes_split_a_shard_headless_under_one_receipt(self):
         self.run_all(lanes=2)
         self.verify()
         runs = self.runs()
         self.assertEqual(sorted(name for run in runs for name in run["selected"]), self.plan["binaries"][0]["tests"])
-        self.assertTrue(all(run["gtk"] == "1" for run in runs))
-        self.assertNotIn(None, [run["display"] for run in runs])
+        self.assertTrue(all(run["display"] is None for run in runs))
+        self.assertTrue(all(run["wayland"] == "strata-test-no-wayland" for run in runs))
+        self.assertTrue(all(run["bus"] == "unix:path=/nonexistent/strata-test-no-bus" for run in runs))
+        self.assertTrue(all(run["gtk_a11y"] is None for run in runs))
+        self.assertTrue(all(run["threads"] == "--test-threads=1" for run in runs))
         shard_1 = [run for run in runs if "a" not in run["selected"]]
         self.assertEqual(len(shard_1), 2)
-        self.assertNotEqual(shard_1[0]["display"], shard_1[1]["display"])
 
     def test_partition_balances_both_shards_using_timing_hints(self):
         names = ["a", *[f"test_{index}" for index in range(20)]]
@@ -162,26 +142,6 @@ class QualityCiTests(unittest.TestCase):
         self.assertEqual(binary["shards"], [["e", "g"], ["f"]])
         self.plan["binaries"].append(binary)
         quality.validate_plan(self.plan)
-
-    def test_plan_rejects_missing_ignored_or_duplicate_isolated_test(self):
-        def remove(plan):
-            plan["binaries"][0]["tests"].remove("a")
-            plan["binaries"][0]["shards"][0].remove("a")
-
-        def ignore(plan):
-            plan["binaries"][0]["ignored"].append("a")
-
-        def duplicate(plan):
-            binary = copy.deepcopy(plan["binaries"][0])
-            binary["file"] = "test-1"
-            plan["binaries"].append(binary)
-
-        for mutate in (remove, ignore, duplicate):
-            with self.subTest(mutate=mutate.__name__):
-                plan = copy.deepcopy(self.plan)
-                mutate(plan)
-                with self.assertRaises(ValueError):
-                    quality.validate_plan(plan)
 
     def test_plan_rejects_missing_duplicate_extra_and_empty_assignments(self):
         mutations = [
@@ -265,26 +225,68 @@ class QualityCiTests(unittest.TestCase):
         artifact = self.root / "compiled-test"
         artifact.write_bytes(self.executable.read_bytes())
         artifact.chmod(0o755)
-        message = dict(reason="compiler-artifact", profile=dict(test=True),
-                       executable=str(artifact), target=dict(name="unit"))
+        compiled_bin = self.root / "compiled-strata"
+        compiled_bin.write_text("#!/bin/sh\nexit 0\n")
+        compiled_bin.chmod(0o644)
+        messages = [
+            dict(reason="compiler-artifact", profile=dict(test=True),
+                 executable=str(artifact), target=dict(name="unit", kind=["test"])),
+            dict(reason="compiler-artifact", profile=dict(test=False),
+                 executable=str(compiled_bin), target=dict(name="strata", kind=["bin"])),
+            dict(reason="compiler-artifact", profile=dict(test=False),
+                 executable=str(compiled_bin), target=dict(name="demo", kind=["example"])),
+        ]
         real_run = subprocess.run
         commands = []
 
         def run(command, **kwargs):
             if command[0] == "cargo":
                 commands.append(command)
-                return subprocess.CompletedProcess(command, 0, json.dumps(message) + "\n")
+                payload = "\n".join(json.dumps(message) for message in messages) + "\n"
+                return subprocess.CompletedProcess(command, 0, payload)
             return real_run(command, **kwargs)
 
         with patch.object(quality.subprocess, "run", side_effect=run):
             quality.build()
         self.assertEqual(len(commands), 1)
-        self.assertTrue({"--locked", "--all-targets", "--all-features", "--no-run"} <= set(commands[0]))
+        self.assertTrue({"--locked", "--workspace", "--all-targets", "--all-features", "--no-run"} <= set(commands[0]))
         plan = json.loads(self.plan_path.read_text())
         self.assertEqual(plan["binaries"][0]["tests"], self.plan["binaries"][0]["tests"])
         self.assertEqual(plan["binaries"][0]["ignored"], ["ignored"])
         self.assertEqual(plan["binaries"][0]["shards"],
                          quality.partition(plan["binaries"][0]["tests"], {}))
+        self.assertEqual(
+            plan["executables"],
+            [dict(file="bin-strata", target="strata", sha256=quality.digest(compiled_bin))],
+        )
+        # Removing the original compiled path still lets shards run with CARGO_BIN_EXE_strata.
+        compiled_bin.unlink()
+        self.run_all(lanes=2)
+        self.verify()
+        bundled = self.bundle / "bin-strata"
+        self.assertTrue(bundled.stat().st_mode & 0o111)
+        self.assertTrue(all(run["bin_exe"] == str(bundled) for run in self.runs()))
+
+    def test_bundled_executables_reject_invalid_plan_entries_and_tampered_files(self):
+        bundled = self.bundle / "bin-strata"
+        bundled.write_text("#!/bin/sh\nexit 0\n")
+        good = dict(file="bin-strata", target="strata", sha256=quality.digest(bundled))
+        for bad in (
+            [dict(file="../bin-strata", target="strata", sha256=good["sha256"])],
+            [dict(file="bin-strata", target="../strata", sha256=good["sha256"])],
+            [dict(file="bin-strata", target="strata", sha256="")],
+            [good, good],
+        ):
+            with self.subTest(bad=bad):
+                plan = copy.deepcopy(self.plan)
+                plan["executables"] = bad
+                with self.assertRaises(ValueError):
+                    quality.validate_plan(plan)
+        self.plan["executables"] = [good]
+        self.save_plan()
+        bundled.write_text("#!/bin/sh\nexit 1\n")
+        with self.assertRaises(ValueError):
+            quality.run(0)
 
     def run_local(self, lanes=2, timings=False):
         artifact = self.root / "compiled-test"
@@ -309,13 +311,14 @@ class QualityCiTests(unittest.TestCase):
         self.assertIn("Verified 4 passed tests exactly once; 1 explicitly ignored by libtest", output)
         runs = self.runs()
         self.assertEqual(sorted(name for run in runs for name in run["selected"]), self.plan["binaries"][0]["tests"])
-        self.assertEqual(len({run["display"] for run in runs}), len(runs))
+        self.assertEqual(len(runs), 2)
+        self.assertTrue(all(run["display"] is None for run in runs))
         self.assertEqual(len(json.loads((self.root / "local/bundle/plan.json").read_text())["binaries"][0]["shards"]), 1)
 
-    def test_refreshed_timings_weigh_gtk_children_fully_and_the_rest_by_parallelism(self):
+    def test_refreshed_timings_record_each_tests_serial_lane_time(self):
         self.run_local(timings=True)
         weights = json.loads((self.root / "scripts/quality-durations.json").read_text())
-        self.assertEqual(weights, {"a": 0.05, "b": 2.0, "c": 0.05, "d": 0.05})
+        self.assertEqual(weights, {"a": 0.2, "b": 2.0, "c": 0.2, "d": 0.2})
 
     def test_failure_excerpt_keeps_failed_test_panics_and_drops_expected_ones(self):
         log = "\n".join([

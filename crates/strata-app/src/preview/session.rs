@@ -1,0 +1,277 @@
+// SPDX-License-Identifier: MIT
+
+use std::time::Duration;
+
+use rune::Tx;
+use strata_components::preview_drawer::HeaderInfo;
+use strata_core::model::{FileEntry, MetadataValue};
+
+use super::{load, preview_target, viewer::Viewer};
+use crate::{App, filter, shell};
+
+const FOCUS_PREVIEW_DELAY: Duration = Duration::from_millis(75);
+
+pub(super) fn browsing_columns(app: &App) -> bool {
+    shell::shown_view(app).is_some_and(|view| (view.shows)("columns"))
+}
+
+pub(super) fn browsing_icons(app: &App) -> bool {
+    shell::shown_view(app).is_some_and(|view| (view.shows)("icons"))
+}
+
+pub(super) fn in_band(app: &App) -> bool {
+    if app.filter.pane.in_band() {
+        return true;
+    }
+    if browsing_columns(app) {
+        app.columns.in_band()
+    } else if browsing_icons(app) {
+        app.icons.single.in_band()
+    } else {
+        app.list.single.in_band()
+    }
+}
+
+pub(super) fn selected_entry(app: &App) -> (Option<usize>, Option<FileEntry>) {
+    if let Some((depth, entry)) = filter::targets::preview_result(app) {
+        return (Some(depth), Some(entry));
+    }
+    if let Some((depth, _, entry)) = app.browser.focused_item() {
+        return (Some(depth), Some(entry));
+    }
+    (app.browser.active_depth(), app.browser.focused_entry())
+}
+
+pub(super) fn cancel_focus_timer(app: &mut App) {
+    app.preview.pending_focus = None;
+    if let Some(timer) = app.preview.focus_timer.borrow_mut().take() {
+        timer.remove();
+    }
+}
+
+pub(super) fn toggle_panel(
+    app: &mut App,
+    entry: Option<FileEntry>,
+    depth: Option<usize>,
+    tx: &mut Tx,
+) {
+    let active = app.preview.enabled || app.preview.reserves_column_space(app);
+    app.preview.reserve_columns = !active;
+    if active {
+        app.preview.dismissed = true;
+        close(app, tx);
+    } else {
+        toggle(app, entry, depth, tx);
+    }
+}
+
+pub(super) fn toggle(app: &mut App, entry: Option<FileEntry>, depth: Option<usize>, tx: &mut Tx) {
+    if app.preview.enabled {
+        close(app, tx);
+        return;
+    }
+    app.preview.reserve_columns = true;
+    app.preview.dismissed = false;
+    app.preview.enabled = true;
+    let folder = entry.as_ref().is_some_and(FileEntry::is_directory);
+    if let Some(entry) = preview_target(entry) {
+        show(app, entry, depth, tx);
+    } else {
+        app.preview.child_pane = folder && browsing_columns(app);
+        clear_target(app, tx);
+    }
+}
+
+fn same_preview_version(current: &FileEntry, next: &FileEntry) -> bool {
+    current.location == next.location
+        && !metadata_changed(&current.size, &next.size)
+        && !metadata_changed(&current.modified_unix_seconds, &next.modified_unix_seconds)
+}
+
+fn metadata_changed<T: PartialEq>(old: &MetadataValue<T>, new: &MetadataValue<T>) -> bool {
+    matches!((old, new), (MetadataValue::Known(a), MetadataValue::Known(b)) if a != b)
+}
+
+fn refresh_entry_metadata(app: &mut App, entry: FileEntry) {
+    app.preview.current = Some(entry.clone());
+    if let Some((source, _)) = &mut app.preview.header_source {
+        *source = entry;
+        super::refresh_header(app);
+    }
+}
+
+pub(super) fn evict_current(app: &App) {
+    if let Some(path) = app
+        .preview
+        .current
+        .as_ref()
+        .and_then(|entry| entry.location.native_path())
+    {
+        app.preview.loader.provider().evict(path);
+    }
+}
+
+pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &mut Tx) {
+    let other_file = app
+        .preview
+        .current
+        .as_ref()
+        .is_none_or(|current| current.location != entry.location);
+    if other_file {
+        evict_current(app);
+        app.preview.drawer.reset_find();
+        app.preview.viewer.stop();
+        app.preview.viewer = Viewer::Empty;
+        app.preview.content_focus = super::ContentFocus::None;
+    }
+    app.preview.reload_on_tab_shown = false;
+    cancel_focus_timer(app);
+    app.preview.click_opening = None;
+    let was_open = app.preview.drawer.is_open();
+    let already_showing = app
+        .preview
+        .current
+        .as_ref()
+        .is_some_and(|current| same_preview_version(current, &entry))
+        && (app.preview.loader.is_active() || !app.preview.viewer.is_empty());
+    app.preview.current_depth = depth;
+    app.preview.current = Some(entry.clone());
+    app.preview.reserve_columns = true;
+    app.preview.dismissed = false;
+    app.preview.child_pane = false;
+    app.preview.enabled = true;
+    sync_reservation(app);
+    app.preview.drawer.open(&app.look, tx);
+    if !was_open && browsing_columns(app) {
+        app.columns.reveal_active(&app.look, tx);
+    }
+    if !was_open || !already_showing {
+        load::start(app, entry);
+    } else {
+        refresh_entry_metadata(app, entry);
+    }
+}
+
+pub(super) fn show_after_focus_change(
+    app: &mut App,
+    entry: FileEntry,
+    depth: Option<usize>,
+    tx: &mut Tx,
+) {
+    cancel_focus_timer(app);
+    let already_showing = app
+        .preview
+        .current
+        .as_ref()
+        .is_some_and(|current| same_preview_version(current, &entry))
+        && (app.preview.loader.is_active() || !app.preview.viewer.is_empty());
+    if already_showing {
+        refresh_entry_metadata(app, entry);
+        return;
+    }
+    if !app.preview.drawer.is_open() {
+        show(app, entry, depth, tx);
+        return;
+    }
+    app.preview.reload_on_tab_shown = false;
+    app.preview.pending_focus = Some((entry.clone(), depth));
+    app.preview.loader.cancel();
+    let later = app.preview.loader.later.clone();
+    let slot = app.preview.focus_timer.clone();
+    let source = glib::timeout_add_local_once(FOCUS_PREVIEW_DELAY, move || {
+        slot.borrow_mut().take();
+        later.then(move |app: &mut App, tx: &mut Tx| {
+            app.preview.pending_focus = None;
+            if app.preview.enabled {
+                show(app, entry, depth, tx);
+                return true;
+            }
+            false
+        });
+    });
+    app.preview.focus_timer.replace(Some(source));
+}
+
+pub(super) fn lend_slot_to_child(app: &mut App, depth: usize, entry: Option<&FileEntry>) {
+    let active = app.browser.active_depth();
+    let opening = click_opens(app, depth, entry);
+    if !opening {
+        app.preview.click_opening = None;
+    }
+    app.preview.child_pane = browsing_columns(app)
+        && !opening
+        && (entry.is_some_and(FileEntry::is_directory) || active.is_some_and(|a| depth > a));
+}
+
+fn click_opens(app: &App, depth: usize, entry: Option<&FileEntry>) -> bool {
+    let Some(opening) = app.preview.click_opening.as_ref() else {
+        return false;
+    };
+    match entry {
+        Some(entry) => opening.depth == depth && entry.location == opening.folder,
+        None => {
+            opening.depth + 1 == depth
+                && app.browser.location_at(depth).as_ref() == Some(&opening.folder)
+        }
+    }
+}
+
+pub(super) fn click_opened(app: &mut App, depth: usize) {
+    let opened = app.preview.click_opening.as_ref().is_some_and(|opening| {
+        opening.depth + 1 == depth
+            && app.browser.location_at(depth).as_ref() == Some(&opening.folder)
+    });
+    if opened {
+        app.preview.click_opening = None;
+    }
+}
+
+pub(super) fn show_empty_slot_after_switch(app: &mut App, tab_shown: bool, tx: &mut Tx) {
+    let (_, entry) = selected_entry(app);
+    let lend = browsing_columns(app) && entry.as_ref().is_some_and(FileEntry::is_directory);
+    app.preview.child_pane = lend && (tab_shown || app.preview.child_pane);
+    if app.preview.reserves_empty_preview(app) {
+        app.preview.drawer.open(&app.look, tx);
+    } else {
+        app.preview.drawer.close(&app.look, tx);
+    }
+}
+
+pub(super) fn clear_target(app: &mut App, tx: &mut Tx) {
+    cancel_focus_timer(app);
+    evict_current(app);
+    app.preview.reload_on_tab_shown = false;
+    app.preview.loader.focus_archive_on_ready = false;
+    app.preview.loader.cancel();
+    app.preview.raw.clear();
+    app.preview.drawer.reset_find();
+    app.preview.current = None;
+    app.preview.current_depth = None;
+    app.preview.header_source = None;
+    app.preview.content_focus = super::ContentFocus::None;
+    super::clear_focus_handoff(app);
+    app.preview.viewer.stop();
+    app.preview.viewer = Viewer::Empty;
+    app.preview.header = HeaderInfo::default();
+    sync_reservation(app);
+    if app.preview.reserves_empty_preview(app) {
+        app.preview.drawer.open(&app.look, tx);
+    } else {
+        app.preview.drawer.close(&app.look, tx);
+    }
+}
+
+pub(super) fn close(app: &mut App, tx: &mut Tx) {
+    app.preview.media_checks.stop();
+    if app.preview.enabled {
+        app.preview.dismissed = true;
+    }
+    app.preview.enabled = false;
+    app.preview.child_pane = false;
+    clear_target(app, tx);
+}
+
+pub(super) fn sync_reservation(app: &mut App) {
+    let reserved = app.preview.reserves_column_space(app);
+    app.preview.drawer.reserve(reserved);
+}

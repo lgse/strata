@@ -2,8 +2,6 @@
 
 use super::*;
 
-/// Merges incoming `docs/a.txt` and `docs/b.txt` over originals beside a
-/// file that stays, linking the incoming pair where `change` says.
 fn merge_docs(root: &Path, change: &str) -> Result<(PathBuf, UndoParts), Box<dyn Error>> {
     let source = root.join("source");
     let target = root.join("target");
@@ -116,8 +114,6 @@ fn a_merge_undo_deletes_only_what_the_merge_left_unchanged() -> Result<(), Box<d
     Ok(())
 }
 
-/// A file or `directory` replace, and what changes before or while its
-/// undo runs.
 #[derive(Clone, Copy)]
 struct Replaced {
     directory: bool,
@@ -140,8 +136,6 @@ impl Replaced {
         }
     }
 
-    /// Placed items are recorded with a forced stat on any mount, not only
-    /// on a share this process just wrote to.
     fn recording_quirks(self) -> Option<Quirks> {
         match self.change {
             "untouched on a share" => Some(Quirks::cifs_posix()),
@@ -384,8 +378,6 @@ fn undoing_a_replace_deletes_what_it_placed_only_if_all_of_it_is_unchanged()
 
 type MakeQuirks = Box<dyn Fn() -> Quirks>;
 
-/// A merged item at the root's `merged.txt`, or in its `folder`, and the
-/// staged original of where it was placed.
 fn check_compared_as_moved(
     (mount, quirks, change, undone): (&str, MakeQuirks, &str, bool),
     epoch: SystemTime,
@@ -458,9 +450,6 @@ fn a_merge_undo_compares_what_it_placed_as_a_move_compares_its_sources()
         fail: vec![(Op::OpenSource, "merged.txt", 0, Errno::ACCESS)],
         ..coarse()
     };
-    // Inode numbers that change once the kernel evicts an entry, and a
-    // rewrite within one tick of coarse times, which leaves the size and
-    // times as they were.
     let rows: [(&str, MakeQuirks, &str, bool); 6] = [
         (
             "cifs noserverino",

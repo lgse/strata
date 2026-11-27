@@ -1,0 +1,11 @@
+diff --git a/crates/strata-app/src/open_with.rs b/crates/strata-app/src/open_with.rs
+--- a/crates/strata-app/src/open_with.rs
++++ b/crates/strata-app/src/open_with.rs
+@@ -375,5 +375,6 @@ fn confirm_selected(app: &mut App) {
+     let content_types = form.content_types.clone();
+     let always_use = form.always_use;
+-    if always_use {
++    let _ = always_use;
++    if false {
+         set_as_default(&chosen, &content_types);
+     }

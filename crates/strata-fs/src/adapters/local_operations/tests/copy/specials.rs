@@ -112,8 +112,6 @@ fn named_pipes_are_left_out_only_where_the_destination_refuses_them() -> Result<
 {
     use rustix::io::Errno;
     let _serial = serial()?;
-    // How vfat, exfat-fuse, SMB and others refuse a pipe, and errors that
-    // stop the copy instead.
     let rows = [
         (Errno::PERM, true),
         (Errno::IO, true),

@@ -1,4 +1,4 @@
-{"scenario":"additional-sort-choices","modes":["columns","icons","list"],"prefs":{"remember_folder_views":false},"tree":{"folder":{},"a.rs":"rs","file2.md":"two","file10.md":"ten","z.csv":"csv","Z.md":"upper"}}
+{"scenario":"additional-sort-choices","modes":["columns","icons","list"],"prefs":{"remember_folder_views":false},"tree":{"folder":{},"a.rs":"rs","file2.md":"two","file10.md":"ten","z.csv":"csv","Z.md":"upper"},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Sort menu choices, toggles, List label and restart persistence; ordering and menu keys unit-tested in sort/tests.rs and fs ordering tests"}}
 {"wait":{"entries":["folder","a.rs","file2.md","file10.md","z.csv","Z.md"],"dir":"$root"},"message":"the natural default order"}
 {"click":{"header":"Choose sort field"}}
 {"click":{"role":"radio menu item","name":"Size"}}

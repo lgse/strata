@@ -5,46 +5,49 @@ description: >
   (tests/qa/scenarios/*.jsonl, run by tests/qa.rs through ./scripts/qa.sh),
   and work with the `strata --qa` JSON-lines protocol behind them. Use for any
   task that writes or changes a scenario file or its header (modes, variants,
-  cost, quality, skip, known_bug), reads a QA failure or its artifacts in
-  target/qa-artifacts, or changes the QA runner.
+  host, cost, quality, skip, known_bug, mutation), reads a QA failure or its
+  artifacts in target/qa-artifacts, or changes the QA runner.
 ---
 
 # QA scenarios
 
-QA scenarios are Strata's GUI test suite. Each scenario is one `.jsonl` file
-that drives the real app with real X input and checks what a user would see.
-This file covers the common 80%; [reference.md](reference.md) has every
-header key, step, target, predicate, and `fs` kind, and is the only catalogue
-of them. The "QA scenarios (`--qa` mode)" section of `docs/testing.md` covers
-the run environment, keyboard layouts, scheduling, visual baselines, and
-mutations; its "Skipped scenarios" and "Waits for the app's own timers" lists
-are part of the suite.
+QA scenarios are Strata's end-to-end GUI test suite. Each scenario is one
+`.jsonl` file that drives `strata --qa` and checks both what a user sees and
+what happened on disk. This file covers the common 80%;
+[reference.md](reference.md) has every header key, step, target, predicate, and
+`fs` kind, and is the only catalogue of them. The "QA scenarios (`--qa` mode)"
+section of `docs/testing.md` covers the run environment, offscreen vs. session
+hosts, keyboard layouts, scheduling, and mutations; its "Skipped scenarios" and
+"Waits for the app's own timers" sections are part of the suite.
 
 ## How it fits together
 
 - **The app side.** A build with the `qa` cargo feature (never released)
-  accepts `strata --qa <directory>`: the normal window opens on the directory,
-  then `src/qa.rs` reads one JSON command per line on stdin, runs it on the GTK
-  main loop (`src/qa/dispatch.rs`), and writes one reply per line on stdout once the main context
-  drains. Input is XTEST sent from inside the process; state is read from the
-  widget tree by the accessible names `src/ui/accessibility.rs` sets.
-  `strata --qa --portal` runs the FileChooser portal backend instead.
-  `crates/strata-qa/` parses commands; `src/qa/targets.rs` and its
-  `targets/` submodules resolve targets; `state.rs` builds the snapshot.
+  accepts `strata --qa <directory>`: it opens on the directory, reads one JSON
+  command per line on stdin, runs it through `strata-qa`'s engine and
+  `strata-app`'s QA backend (`crates/strata-app/src/qa/`), and writes one JSON
+  reply per line on stdout. By default it drives Rune's offscreen QA host; for
+  `"host": "session"` runs (`STRATA_QA_WINDOW=1`) it opens a real window on a
+  private headless `sway` compositor (`crates/strata-app/src/qa/session.rs`).
+  `strata --qa --portal` runs the FileChooser portal backend instead. State is
+  read directly from Strata's accessibility tree (roles mapped to standard
+  AT-SPI names).
 - **The reply.** `{"ok","app","changed","criticals","result","failures","error"}`.
   `app` is the state snapshot (view mode, directory, panes with selection and
   focus, focused entry, dialog, menu, preview, field, matches). Any GLib
   warning or critical in `criticals` fails the run.
-- **The runner.** `tests/qa.rs` and its modules in `tests/qa/` (custom harness `tests/qa/harness.rs`,
-  `harness = false`) loads every file, checks every step with the process's
-  own parser before launching anything, and makes each run a test named
-  `<scenario>/<run>`. Each run gets its own Xvfb, HOME, XDG directories, and
-  fixture tree from `tests/fixtures/harness.json`. Runner-side steps (`fs`,
-  `restart`, `layout`, peers in `tests/qa/peers.rs`) execute in the runner;
-  the rest go to the process. Costliest runs start first.
+- **The runner.** `tests/qa.rs` and its modules in `tests/qa/` (custom harness
+  `tests/qa/harness.rs`, `harness = false`) loads every file, validates every
+  step with `strata-qa`'s parser before launching anything, and makes each run
+  a test named `<scenario>/<run>`. Each run gets its own HOME, XDG directories,
+  and fixture tree from `tests/fixtures/harness.json` (plus a private headless
+  `sway` session when `"host": "session"`). Runner-side steps (`fs`, `restart`,
+  `layout`, peers in `tests/qa/peers.rs`) execute in the runner; the rest go to
+  the process. Costliest runs start first.
 - **The container.** `./scripts/qa.sh` runs
-  `cargo test --features qa,invariant-checks --test qa` inside the pinned image.
-  `tests/qa.rs` refuses to start without the `STRATA_QA_CONTAINER=1` it sets.
+  `cargo test --locked --features qa,invariant-checks --test qa` inside the
+  pinned image. `tests/qa.rs` refuses to start without the
+  `STRATA_QA_CONTAINER=1` it sets.
 - **The files.** `tests/qa/scenarios/<folder>/<scenario>.jsonl`, one scenario
   per file. Line 1 is the header; every later line is one step.
 
@@ -116,14 +119,14 @@ Container rules:
    menus, files, preferences, and text. Do not assert widget geometry,
    alignment, spacing, sizes, wrapping, or pixel placement; geometry
    predicates are for behaviour that is positional (a scroll reached its
-   target, a drag landed, a repaint happened, a committed visual baseline).
+   target or a drag landed).
 8. **Target by accessibility.** Copy roles and names from a `tree` query.
    Entry rows are labelled with their name and described `Folder` or `File`;
    panes are labelled with their directory; menu items carry the accelerator
    in their description; dialogs carry the dialog role and a name; a button
    with a text label is named by it. Tooltips never name a target. If a
-   control has no usable name, name it in the app (`accessibility::set_label`
-   for an icon-only button); never reach around the accessibility layer.
+   control has no usable name, name it in the component/app; never reach around
+   the accessibility layer.
 9. **Run it** by name until it passes, then run each of its runs a few times
    and once inside a full `./scripts/qa.sh`, which runs it under load.
 10. **Prove it can fail.** Break the behaviour temporarily (change a step's
@@ -197,9 +200,9 @@ and `$previous`):
 {"wait":{"focused":"readme.md"},"message":"keyboard focus to reach 'readme.md'"}
 {"click":{"entry":"$target","dir":"$root"},"button":3}
 {"wait":{"menu_items":{}},"message":"the context menu for '$target'"}
-{"wait":{"selected":["$target"],"dir":"$root"},"message":"the selection to become ['$target']"}
 {"key":"Escape"}
 {"wait":{"menu_items":null},"message":"the menu to close"}
+{"wait":{"selected":["$target"],"dir":"$root"},"message":"the selection to become ['$target']"}
 {"wait":{"focused":"$target"},"message":"keyboard focus to reach '$target'"}
 {"expect":{"panes":["$root"]},"message":"a folder context menu must not navigate"}
 {"key":"Left","modes":["icons"]}
@@ -217,11 +220,11 @@ send the key that moves back one entry in each view.
 | Key | Use |
 | --- | --- |
 | `modes` | `columns`, `icons`, `list`; one run each. The run's mode is written as `browser_mode` over every `prefs`. |
+| `host` | `"offscreen"` (default) or `"session"` (real window on private headless `sway`, for clipboard, compositor DnD, window focus, or portal scenarios). Variants may override `host`. |
 | `prefs` | `settings.toml` overrides, for example `{"type_to_search":false}`. |
-| `variants` | `[{"id":"ru","layout":"ru","vars":{"key":"value"},"prefs":{...},"modes":[...]}]`: reruns, labelled `<mode>-<id>`; steps opt in with `"variants":["ru"]`. |
+| `variants` | `[{"id":"ru","layout":"ru","host":"session","vars":{"key":"value"},"prefs":{...},"modes":[...]}]`: reruns, labelled `<mode>-<id>`; steps opt in with `"variants":["ru"]`. |
 | `tree`, `images`, `setup`, `teardown` | Fixture contents, written before launch; `teardown` runs however the run ends. |
 | `session_bus`, `env`, `portal`, `fixture_root` | A private D-Bus; extra app variables; the portal backend; a fixed `/tmp/<name>` fixture path. |
-| `input_method` | A private fcitx5 with that input method (host runs only; see `docs/testing.md`). |
 | `known_bug`, `known_bug_step` | An issue and the line expected to fail. |
 | `mutation` | A patch in `tests/qa/mutations/` the scenario must catch; check it with `./scripts/qa-mutation.sh <scenario>`. |
 | `skip` | A reason; keeps the scenario out of the default run. |
@@ -295,20 +298,23 @@ A failed run prints `<scenario>/<run> failed:` with each failure as
 
 The artifact directory holds `failures.txt`, `transcript.jsonl` (every
 command with its reply and `app` snapshot), `tree.txt`, `state.json`,
-`screenshot.png`, `strata.log`, `input.log`, `fixture.txt`, `xvfb.log`, and
-`result.json`. Pass `STRATA_QA_KEEP_ARTIFACTS=1` to keep them for a passing
-run.
+`screenshot.txt`, `strata.log`, `input.log`, `fixture.txt`, `sway.log` (for
+session runs), and `result.json`. Pass `STRATA_QA_KEEP_ARTIFACTS=1` to keep
+them for a passing run.
 
 - **A wait timed out.** The line reads `timed out after 15000 ms: <message>
   expected <predicate>, actual <value>`. Compare `actual` with what you
   expected; then read the `app` snapshot in `transcript.jsonl` for the steps
-  before it to find where the state diverged. Check `screenshot.png` for an
-  unexpected dialog or menu, and `strata.log` for errors. If the state is
-  right but named differently, fix the predicate from `tree.txt`.
+  before it to find where the state diverged. Check `screenshot.txt` and
+  `tree.txt` for an unexpected dialog or menu, and `strata.log` for errors. If
+  the state is right but named differently, fix the predicate from `tree.txt`.
 - **A target was not found.** Search `tree.txt` for the role and name. Names
-  come from labels and `accessibility::set_label`, never tooltips; a widget
-  scrolled away is not `present` (use `reveal`, or `"rendered":false` where
-  presence is enough).
+  come from Rune's real AccessKit tree (`strata-components` and `strata-app`),
+  never tooltips; single-leaf controls (options, tabs, menu items, checkboxes,
+  radios, switches) carry their text on the control itself rather than in child
+  `label` nodes, and modal menus or dialogs hide background surfaces while open.
+  A widget scrolled away is not `present` (use `reveal`, or `"rendered":false`
+  where presence is enough).
 - **Focus is not where expected.** `tree.txt` starts with `focus: ...`,
   marked when focus sits on an unmapped widget; such focus shows as `null`
   in the snapshot. Wait for `{"focused":...}` or `{"focused_widget":...}`
@@ -334,7 +340,7 @@ Runner unit tests live in `tests/qa/scenario_tests.rs` and
 `tests/qa/unit_tests.rs`: the custom harness ignores `#[test]` and
 `#[cfg(test)]`, and `no_test_attribute_hides_a_runner_test` rejects them.
 Unit tests run in every `./scripts/qa.sh` run that names no scenario. Script
-tests: `python3 -m unittest discover -s scripts -p 'test_*.py'`.
+tests: `mise run scripts` (`python3 -m unittest discover -s scripts -p 'test_*.py'`).
 
 The main-thread I/O audit also runs through the runner: with
 `STRATA_QA_MAIN_IO` set, `tests/qa/main_io.rs` starts every Strata launch
@@ -358,7 +364,7 @@ traces still appear. See "Main-thread I/O audit" in `docs/testing.md`.
       re-rated with the `qa-quality` skill and checked by its independent
       cheap-model grader.
 - [ ] `skip`, `known_bug`, and any wait for the app's own timers carry an
-      issue and are listed in the guide.
+      issue and are listed in `docs/testing.md`.
 - [ ] A scenario with a `mutation` still catches it:
       `./scripts/qa-mutation.sh <scenario>`.
 - [ ] Renamed or removed names are gone from `docs/`, `tests/`, and the

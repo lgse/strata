@@ -1,0 +1,199 @@
+// SPDX-License-Identifier: MIT
+
+use std::time::Duration;
+
+use rune::{Cursor, Drag, El, Key, KeyEvent, Phase, Transition, Tx, col, el, text};
+use strata_kit::look::Look;
+
+use super::{DrawerState, Shared, Solved};
+
+pub(super) const GRIP_KEY: &str = "preview-grip";
+
+/// How long the pointer rests on the divider before its caption shows.
+const CAPTION_DELAY: Duration = Duration::from_millis(400);
+
+fn value(st: &DrawerState, solved: Solved, columns: bool) -> f32 {
+    match st.manual_width() {
+        Some(manual) if columns => manual,
+        _ => solved.width,
+    }
+}
+
+fn set<S: 'static>(shared: &Shared<S>, s: &mut S, solved: Solved, width: f32) {
+    let w = width.clamp(solved.min, solved.max);
+    (shared.access)(s).set_manual_width(&shared.rules, w);
+}
+
+pub(super) fn divider<S: 'static>(
+    shared: &Shared<S>,
+    st: &DrawerState,
+    solved: Solved,
+    columns: bool,
+    look: &Look,
+) -> El {
+    let k = &look.kit;
+    let rules = shared.rules;
+    let now = value(st, solved, columns);
+    let step = rules.step;
+
+    let drag = shared.clone();
+    let keys = shared.clone();
+    let steps = shared.clone();
+    let hover = shared.clone();
+    let limits = shared.clone();
+    // Keyed so a script can rest the pointer on either part.
+    let line = el()
+        .key("preview-divider-line")
+        .a11y_hidden()
+        .w(rules.line)
+        .h_full()
+        .fill(k.c.border_base)
+        .child(
+            el().key("preview-divider-lit")
+                .w_full()
+                .h_full()
+                .fill(k.c.border_focus)
+                .group_opacity(if st.lit { 1.0 } else { 0.0 }, 1.0),
+        );
+    let grip = el()
+        .key("preview-divider-strip")
+        .a11y_hidden()
+        .w(rules.grip)
+        .h_full()
+        .fill(k.c.hover)
+        .group_opacity(0.0, 1.0);
+    col()
+        .key(GRIP_KEY)
+        .role("separator")
+        .label(shared.labels.divider.clone())
+        .range_value(f64::from(now), f64::from(solved.min), f64::from(solved.max))
+        .range_step(f64::from(step))
+        // The width in whole points as text too: what a reader says, and what a script checks.
+        .a11y_value(format!("{now:.0}"))
+        .focusable(true)
+        .tab_index(-1)
+        .w(rules.line + rules.grip)
+        .h_full()
+        .pin(Some(0.0), Some(0.0), None, Some(0.0))
+        .paint_order(1)
+        .hover_group()
+        .cursor(Cursor::ResizeColumn)
+        .transition(super::slide_exit(shared.animations))
+        .child(rune::row().w_full().h_full().child(line).child(grip))
+        .hover_delays(CAPTION_DELAY, Duration::ZERO)
+        .on_hover_change(move |s: &mut S, inside: bool, _tx: &mut Tx| {
+            (hover.access)(s).hint = inside;
+        })
+        .on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| match d.phase {
+            Phase::Down => {
+                d.data = now;
+                let st = (drag.access)(s);
+                st.drag_from = st.manual_width();
+                st.dragging = true;
+                st.hint = false;
+            }
+            Phase::Move => {
+                tx.instant();
+                // The divider sits on the preview's leading edge: dragging left widens it.
+                set(&drag, s, solved, d.data - d.dx);
+            }
+            Phase::Up => {
+                let st = (drag.access)(s);
+                if d.cancelled() {
+                    st.cancel_drag();
+                } else {
+                    st.dragging = false;
+                    st.drag_from = None;
+                }
+            }
+        })
+        .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
+            let m = ev.mods;
+            if m.shift || m.ctrl || m.alt || m.cmd || m.logo {
+                return false;
+            }
+            let delta = match ev.key {
+                Key::Left => step,
+                Key::Right => -step,
+                Key::PageUp => 10.0 * step,
+                Key::PageDown => -10.0 * step,
+                _ => return false,
+            };
+            tx.instant();
+            set(&keys, s, solved, now + delta);
+            true
+        })
+        // Up and Down, and assistive increment and decrement, reach here: Up widens.
+        .on_step(move |s: &mut S, delta: i32, tx: &mut Tx| {
+            tx.instant();
+            set(&steps, s, solved, now + delta as f32 * step);
+        })
+        // Home and End: the narrowest and the widest.
+        .on_step_limit(move |s: &mut S, widest: bool, tx: &mut Tx| {
+            tx.instant();
+            set(
+                &limits,
+                s,
+                solved,
+                if widest { solved.max } else { solved.min },
+            );
+        })
+}
+
+pub(super) fn overlays<S: 'static>(
+    shared: &Shared<S>,
+    st: &DrawerState,
+    solved: Solved,
+    available: f32,
+    slot_width: f32,
+    columns: bool,
+    look: &Look,
+) -> Vec<El> {
+    let k = &look.kit;
+    let colors = look.resize_caption();
+    let caption = |key: &'static str| {
+        text(shared.labels.divider.clone())
+            .key(key)
+            .font(k.ty.small)
+            .color(colors.ink)
+            .px(look.space.sm)
+            .py(look.space.xxs)
+            .radius(look.round(k.radius.sm))
+            .fill(colors.fill)
+    };
+    let mut out = Vec::new();
+    if st.hint && !st.dragging {
+        let x = (available - slot_width + shared.rules.line + shared.rules.grip + look.space.xs)
+            .max(0.0);
+        out.push(
+            caption("preview-divider-caption")
+                .role("tooltip")
+                .absolute(x, look.space.sm)
+                .paint_order(1),
+        );
+    }
+    if st.dragging {
+        let width = value(st, solved, columns).min(available);
+        out.push(
+            col()
+                .key("preview-minimum-outline")
+                .role("status")
+                .label(shared.labels.divider.clone())
+                .absolute((available - width).max(0.0), 0.0)
+                .w(width)
+                .h_full()
+                .border(1.0, k.c.border_strong)
+                .border_dash(4.0, 4.0)
+                .padding(look.space.sm)
+                .paint_order(1)
+                // It fades on release, unless animations are off.
+                .transition(if shared.animations {
+                    Transition::opacity()
+                } else {
+                    Transition::none()
+                })
+                .child(caption("preview-minimum-outline-caption")),
+        );
+    }
+    out
+}

@@ -1,4 +1,4 @@
-{"scenario":"tenxer-keeps-location-edit","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"10xer Ctrl+L then typing q goes to the location field, Ctrl+F stays closed; typed-path and icons-edges scenarios cover each half alone"}}
+{"scenario":"tenxer-keeps-location-edit","modes":["columns"],"prefs":{"tenxer_mode":true,"type_to_search":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"10xer Ctrl+L then q types into location, Ctrl+F stays shut; typed-path-navigates is the same route without 10xer on"}}
 {"select":{"entry":"readme.md"}}
 {"note":"entries","as":"names"}
 {"key":"ctrl+f"}

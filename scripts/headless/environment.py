@@ -15,8 +15,6 @@ from .manifest import MANIFEST
 # portal by creating this file in its config directory.
 PORTAL_OFFER_MARKER: str = MANIFEST["portal_offer_marker"]
 
-GTK_SETTINGS: str = MANIFEST["gtk_settings"]
-
 # Every preference the browser reads at startup, pinned so a scenario never
 # inherits a default change. Scenario-specific values are layered on top.
 DEFAULT_PREFERENCES: dict[str, object] = MANIFEST["preferences"]
@@ -58,9 +56,6 @@ class TestEnvironment:
         self.root = Path(tempfile.mkdtemp(prefix="strata-test-home-", dir="/tmp"))
         for name in ("home", "config", "data", "cache", "state"):
             (self.root / name).mkdir()
-        gtk = self.config_home / "gtk-4.0"
-        gtk.mkdir(parents=True)
-        (gtk / "settings.ini").write_text(GTK_SETTINGS)
         self.write_preferences({})
         self._dismiss_portal_offer()
 

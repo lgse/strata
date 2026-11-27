@@ -15,6 +15,8 @@ workspace = true
 default = ["rar"]
 # RAR archives count as a supported format.
 rar = []
+# What the scripted QA mode of either interface needs of this crate. Never in a release build.
+qa = []
 # Test-only items that other crates' tests use. Never in a release build.
 test-support = []
 

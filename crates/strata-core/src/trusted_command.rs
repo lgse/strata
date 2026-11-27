@@ -29,8 +29,6 @@ pub const TRUST_ROOTS: &[&str] = &[
     "/gnu/store",
 ];
 
-/// Colon-separated helper directories a package embeds at build time, such as
-/// the `bin` directories of its Nix runtime closure.
 const CONFIGURED_SEARCH_PATH: &str = match option_env!("STRATA_TRUSTED_COMMAND_PATH") {
     Some(path) => path,
     None => "",
@@ -43,8 +41,6 @@ pub fn resolve(name: &str) -> Result<PathBuf, String> {
     resolve_system(name, false)
 }
 
-/// Sized tmpfs mounts are forbidden by Bubblewrap in privileged mode. Keep the
-/// sandbox limits by selecting a trusted binary without setuid/setgid bits.
 pub fn resolve_unprivileged(name: &str) -> Result<PathBuf, String> {
     resolve_system(name, true)
 }
@@ -56,11 +52,6 @@ fn resolve_system(name: &str, unprivileged: bool) -> Result<PathBuf, String> {
     resolve_matching(name, &search, &trust, unprivileged)
 }
 
-/// Like [`resolve`], but also accepts a search-root entry whose target lies
-/// outside the trust roots when root owns the target and every directory above
-/// it, none writable by group or others, as with packages installed under
-/// `/opt` or `/usr/lib`. Such a match returns the target itself, because the
-/// links leading to it are not checked. Only integration requirements use this.
 pub fn resolve_installed(name: &str) -> Result<PathBuf, String> {
     let trust: Vec<&Path> = TRUST_ROOTS.iter().copied().map(Path::new).collect();
     let search = search_roots(SEARCH_ROOTS, CONFIGURED_SEARCH_PATH, &trust);
@@ -101,9 +92,6 @@ fn owned_up_to(path: &Path, top: &Path, trusted_owner: impl Fn(&Metadata) -> boo
             })
 }
 
-/// Fixed roots keep priority so NixOS wrappers still win. A configured directory
-/// is searched only when it exists and canonicalizes under a trust root, which
-/// keeps user-writable locations out even if a build embeds one.
 fn search_roots(fixed: &[&str], configured: &str, trust_roots: &[&Path]) -> Vec<PathBuf> {
     fixed
         .iter()

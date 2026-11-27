@@ -23,8 +23,6 @@ impl Quirks {
         }
     }
 
-    /// Hard links work, so folders never take the reserved-name rung, and
-    /// nothing else places a folder without `RENAME_NOREPLACE`.
     pub fn without_folder_placement() -> Self {
         Self {
             rename_over_empty_dir: OverEmptyDirectory::NotEmpty,
@@ -32,9 +30,6 @@ impl Quirks {
         }
     }
 
-    /// No rung that cannot replace: no `RENAME_NOREPLACE` or rename over an
-    /// empty folder, and links fail with an errno that says nothing about the
-    /// mount, so the reserved-name rung stays unconfirmed.
     pub fn without_placement() -> Self {
         Self {
             links: Support::Rejected(Errno::MLINK),
@@ -54,8 +49,6 @@ impl Quirks {
         }
     }
 
-    /// NOREPLACE fails with `EINVAL`, and a write delegation sets the
-    /// times of a written file when it is closed.
     pub fn nfs42() -> Self {
         Self {
             mount_type: Some(("nfs4", "rw,vers=4.2")),
@@ -85,9 +78,6 @@ impl Quirks {
         }
     }
 
-    /// No hard links, symbolic links, named pipes or xattrs, and names
-    /// compared without case. This and the presets after it carry the
-    /// mountinfo line of a lab mount, and refuse and store names as it did.
     pub fn vfat() -> Self {
         Self {
             mount_type: Some(("vfat", VFAT_OPTIONS)),
@@ -164,8 +154,6 @@ impl Quirks {
         }
     }
 
-    /// Samba with the client's default `mapposix`, which stores characters
-    /// Windows refuses as private-use ones.
     pub fn cifs() -> Self {
         Self {
             mount_type: Some(("cifs", CIFS_OPTIONS)),
@@ -250,8 +238,6 @@ impl Quirks {
         }
     }
 
-    /// No `RENAME_NOREPLACE` and no hard links, and a folder renamed over another is moved
-    /// entry by entry, which stops at the files still waiting to be uploaded.
     pub fn rclone() -> Self {
         Self {
             mount_type: Some(("fuse.rclone", "rw,user_id=1000,group_id=1000")),

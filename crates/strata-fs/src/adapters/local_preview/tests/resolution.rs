@@ -14,6 +14,8 @@ enum Resolved<'a> {
 
 const BINARY_DATA: &[u8] = &[0, 159, 146, 150, 0, 255, 0, 1];
 const PNG_HEADER: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01";
+const STATIC_WEBP_HEADER: &[u8] = b"RIFF\x16\0\0\0WEBPVP8X\x0a\0\0\0\x10\0\0\0\x01\0\0\x01\0\0";
+const ANIMATED_WEBP_HEADER: &[u8] = b"RIFF\x16\0\0\0WEBPVP8X\x0a\0\0\0\x12\0\0\0\x01\0\0\x01\0\0";
 
 const PREVIEW_FAMILY_CASES: &[(&str, &[u8], Resolved<'static>)] = &[
     (
@@ -82,6 +84,14 @@ const PREVIEW_FAMILY_CASES: &[(&str, &[u8], Resolved<'static>)] = &[
         Resolved::Image,
     ),
     ("GOPR0001.GPR", &[0, 1, 2, 3, 255, 254], Resolved::Image),
+    ("still.webp", STATIC_WEBP_HEADER, Resolved::Image),
+    ("loop.webp", ANIMATED_WEBP_HEADER, Resolved::Media),
+    ("loop.png", ANIMATED_WEBP_HEADER, Resolved::Media),
+    (
+        "notes.webp",
+        b"not a webp\n",
+        Resolved::Text("not a webp\n"),
+    ),
 ];
 
 fn write_fixture(directory: &tempfile::TempDir, name: &str, bytes: &[u8]) -> PathBuf {
@@ -231,10 +241,11 @@ fn text_subclassed_names_resolve_their_preview_from_the_type_hierarchy() {
     });
 }
 
-fn assert_families_resolve(cases: &[(&'static str, &[u8], Resolved<'static>)]) {
+#[test]
+fn preview_families_follow_file_bytes_not_names() {
     with_default_main_context(|provider, context| {
         let directory = tempfile::tempdir().expect("preview fixture directory");
-        for (name, bytes, expected) in cases {
+        for (name, bytes, expected) in PREVIEW_FAMILY_CASES {
             let name = *name;
             let path = write_fixture(&directory, name, bytes);
             let request = PreviewRequest {
@@ -254,31 +265,6 @@ fn assert_families_resolve(cases: &[(&'static str, &[u8], Resolved<'static>)]) {
             assert_eq!(resolve(content, &path, name), *expected, "{name}");
         }
     });
-}
-
-#[test]
-fn preview_families_follow_file_bytes_not_names() {
-    assert_families_resolve(PREVIEW_FAMILY_CASES);
-}
-
-const STILL_WEBP: &[u8] = b"RIFF\x16\0\0\0WEBPVP8X\x0a\0\0\0\x10\0\0\0\x07\0\0\x07\0\0";
-const ANIMATED_WEBP: &[u8] =
-    b"RIFF\x24\0\0\0WEBPVP8X\x0a\0\0\0\x12\0\0\0\x07\0\0\x07\0\0ANIM\x06\0\0\0\0\0\0\0\0\0";
-
-#[test]
-fn animated_webps_play_as_media_only_where_ffmpeg_decodes_them() {
-    let animated = || {
-        if crate::sandbox::decodes_animated_webp() {
-            Resolved::Media
-        } else {
-            Resolved::Image
-        }
-    };
-    assert_families_resolve(&[
-        ("still.webp", STILL_WEBP, Resolved::Image),
-        ("loop.webp", ANIMATED_WEBP, animated()),
-        ("loop.png", ANIMATED_WEBP, animated()),
-    ]);
 }
 
 #[test]

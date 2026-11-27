@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/archive.rs b/crates/strata-app/src/archive.rs
+index b9073c520..38dbb2f3e 100644
+--- a/crates/strata-app/src/archive.rs
++++ b/crates/strata-app/src/archive.rs
+@@ -516,7 +516,7 @@ fn reveal_pending_at(app: &mut App, depth: usize, tx: &mut Tx) -> bool {
+     if app.browser.location_at(depth).as_ref() != Some(destination) {
+         return false;
+     }
+-    if app.archive.pending_select.is_empty() {
++    if !app.archive.pending_select.is_empty() {
+         return false;
+     }
+     if !app

@@ -204,6 +204,7 @@
   "Cannot permanently delete the filesystem root": "A fájlrendszer gyökere nem törölhető véglegesen",
   "Cannot restore the filesystem root": "A fájlrendszer gyökere nem állítható helyre",
   "Can’t compress these items": "Ezek az elemek nem tömöríthetők",
+  "Can’t extract these items": "Ezek az elemek nem bonthatók ki",
   "Can’t create items here": "Itt nem hozhatók létre elemek",
   "Can’t cut these items": "Ezek az elemek nem vághatók ki",
   "Can’t move these items": "Ezek az elemek nem helyezhetők át",
@@ -421,6 +422,7 @@
   "Extract the archive here / to a typed folder": "Archívum kibontása ide / egy beírt mappába",
   "Extract the archive to a folder": "Archívum kibontása egy mappába",
   "Extracted entries remain in “%{folder}”.": "A kibontott bejegyzések a(z) „%{folder}” mappában maradnak.",
+  "Extracting archive %{current} of %{total}": "Archívum kibontása (%{current} / %{total})",
   "Extraction destination must use an absolute path": "A kibontási célhelynek abszolút útvonalat kell használnia",
   "Extraction stopped unexpectedly": "Nem sikerült a kibontás",
   "Failed after %{elapsed}": "Meghiúsult %{elapsed} után",
@@ -1151,5 +1153,6 @@
   "Press the new key for “%{action}”": "Nyomja meg az új billentyűt a következőhöz: „%{action}”",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "Az %{escape} megszakítja, a %{backspace} pedig eltávolítja a művelet összes billentyűjét.",
   "“%{group}” has no key, so this action cannot run.": "A(z) „%{group}” nem rendelkezik billentyűvel, így ez a művelet nem futtatható.",
-  "Custom action %{number}": "%{number}. egyéni művelet"
+  "Custom action %{number}": "%{number}. egyéni művelet",
+  "Volume": "Hangerő"
 }

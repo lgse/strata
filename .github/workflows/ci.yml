@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: [main, strata-next]
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -81,7 +81,7 @@ jobs:
           STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
         run: ./scripts/quality.sh clippy
 
-      - name: Check and exercise the build without UnRAR
+      - name: Check and exercise the build without UnRAR or the in-app updater
         env:
           IMAGE: ${{ steps.environment.outputs.environment_image }}
         run: |
@@ -95,6 +95,7 @@ jobs:
             --env CARGO_HOME=/workspace/target/quality-container/cargo \
             --env CARGO_TARGET_DIR=/workspace/target/quality-container/build \
             --env CARGO_PROFILE_DEV_DEBUG=0 --env CARGO_INCREMENTAL=0 \
+            --env GIO_USE_VFS=local \
             "$IMAGE" bash -euc '
               mkdir -p "$HOME"
               cargo tree --locked --no-default-features -e normal,build --prefix none > /tmp/dependencies.txt
@@ -103,17 +104,22 @@ jobs:
                 exit 1
               fi
               cargo tree --locked -e normal,build --prefix none > /tmp/default-dependencies.txt
-              if grep -E "^(x11rb|wayland-client|wayland-protocols-(misc|wlr)|xkbcommon) v" /tmp/dependencies.txt /tmp/default-dependencies.txt; then
-                echo "x11rb, wayland-client, wayland-protocols-misc, wayland-protocols-wlr and xkbcommon, the input clients of the qa feature, must not be in a default or feature-disabled build" >&2
+              if grep -E "^(strata-qa|wayland-protocols-misc) v" /tmp/dependencies.txt /tmp/default-dependencies.txt; then
+                echo "strata-qa and wayland-protocols-misc, the qa feature crates, must not be in a default or feature-disabled build" >&2
                 exit 1
               fi
-              cargo check --locked --workspace --all-targets --no-default-features --features test-support
-              cargo test --locked --workspace --all-targets --no-default-features --features test-support launch_mode
-              cargo test --locked --workspace --all-targets --no-default-features --features test-support services::operations::tests
-              cargo test --locked --workspace --all-targets --no-default-features --features test-support rar_disabled
-              xvfb-run -a -s "-screen 0 1280x1024x24 -nolisten tcp -noreset" dbus-run-session -- \
-                env -u WAYLAND_DISPLAY GDK_BACKEND=x11 GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
-                cargo test --locked --workspace --all-targets --no-default-features --features test-support archive_extraction_actions_follow_build_support
+              if grep -E "^(gtk4|gdk4|sourceview5|gstreamer) v" /tmp/dependencies.txt /tmp/default-dependencies.txt; then
+                echo "GTK and GStreamer crates must not be in a default or feature-disabled build" >&2
+                exit 1
+              fi
+              cargo check --locked --workspace --no-default-features
+              STRATA_UPDATER=disabled cargo check --locked --workspace --no-default-features
+              cargo check --locked --workspace --all-targets --no-default-features --features strata/test-support,strata/qa
+              cargo test --locked -p strata-fs --no-default-features --features test-support services::operations::tests
+              cargo test --locked -p strata-fs --no-default-features --features test-support rar_archives_report_unsupported_format
+              cargo test --locked -p strata-preview --no-default-features --features test-support rar_disabled
+              cargo test --locked -p strata-app --no-default-features --features test-support,qa launch::tests
+              cargo test --locked -p strata-app --no-default-features --features test-support,qa settings_dialog::diagnostics::tests
             '
 
       - name: Compile all test targets once and plan the test shards
@@ -205,13 +211,13 @@ jobs:
           name: quality-bundle-${{ github.run_attempt }}
           path: target/quality-bundle
 
-      - name: Run assigned tests on private displays and buses without compiling
+      - name: Run assigned headless tests without compiling
         env:
           STRATA_CONTAINER_ENGINE: docker
           STRATA_QUALITY_IMAGE: ${{ needs.quality-build.outputs.environment_image }}
           STRATA_QUALITY_TASK: shard
           STRATA_QUALITY_SHARD: ${{ matrix.shard }}
-        # Three displays on the 4-vCPU runner; at one per CPU, load-sensitive tests start to fail.
+        # Three concurrent lanes on the 4-vCPU runner; at one per CPU, load-sensitive tests start to fail.
         run: ./scripts/quality.sh test --jobs 3
 
       # Lane logs are written as tests run, so they explain a shard that hit its timeout too.
@@ -314,6 +320,64 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # Critical-path QA smoke runs on pull requests in parallel with the Rust shards.
+  qa-smoke:
+    name: QA smoke
+    needs: quality-build
+    if: ${{ github.event_name != 'push' && github.event_name != 'workflow_dispatch' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Pull the exact published environment
+        if: needs.quality-build.outputs.candidate != 'true'
+        env:
+          IMAGE: ${{ needs.quality-build.outputs.environment_image }}
+        run: docker pull --platform=linux/amd64 "$IMAGE"
+
+      - name: Download an unpublished candidate environment
+        if: needs.quality-build.outputs.candidate == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: quality-environment-${{ github.run_attempt }}
+          path: target/quality-environment
+
+      - name: Load the unpublished candidate
+        if: needs.quality-build.outputs.candidate == 'true'
+        run: zstd -dc target/quality-environment/image.tar.zst | docker load
+
+      - name: Restore the quality build's Cargo cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target/quality-container/cargo
+            target/quality-container/build
+          key: strata-quality-v1-${{ needs.quality-build.outputs.inputs }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            strata-quality-v1-${{ needs.quality-build.outputs.inputs }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-
+
+      - name: Build the qa feature and run the critical-path smoke scenarios
+        env:
+          STRATA_CONTAINER_ENGINE: docker
+          STRATA_TEST_IMAGE: ${{ needs.quality-build.outputs.environment_image }}
+          STRATA_TEST_CARGO_CACHE: target/quality-container
+        run: ./scripts/qa.sh --smoke
+
+      - name: Confirm a qa build contains the text the release check rejects
+        run: |
+          strings target/quality-container/build/debug/strata | grep -F "usage: strata --qa"
+
+      - name: Upload failure artifacts
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qa-smoke-artifacts-${{ github.run_attempt }}
+          path: target/qa-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
   release-scripts:
     name: Release workflow scripts
     runs-on: ubuntu-24.04
@@ -339,6 +403,8 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
+          # The whole workspace, with every crate feature enabled.
+          arguments: --all-features --workspace
 
       - name: Check spelling
         if: ${{ !cancelled() }}

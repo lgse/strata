@@ -1,0 +1,591 @@
+// SPDX-License-Identifier: MIT
+
+use std::time::Duration;
+
+use rune::Mods;
+
+use super::clicks::Clicks;
+use super::rename::{Due, PendingRename};
+use super::settings::{ClickCount, PointerSettings};
+use crate::collection::selection::{AnchorRule, Changed, Extend, Selection};
+use crate::contract::{EntryId, EntrySource, Point};
+
+/// The button behind a press.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Button {
+    /// The primary button: select, open, drag, marquee, rename.
+    Primary,
+    /// The middle button: open in a new tab or window.
+    Middle,
+    /// The secondary button: the context menu.
+    Secondary,
+}
+
+/// Where in an entry's row a press lands, as Strata's pointer intent tells them apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Spot {
+    /// The drawn text of the entry's name: content, and where a slow click renames.
+    Name,
+    /// The rest of the entry's hit content: its icon or thumbnail (and Icons' details text).
+    Content,
+    /// Blank row or card space beside the entry, or no entry at all.
+    Gutter,
+}
+
+/// A button going down.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Press {
+    /// Which button.
+    pub button: Button,
+    /// Where, in content coordinates: where a marquee starts.
+    pub at: Point,
+    /// Where, in window points: what click pairs and drags measure from.
+    pub window: Point,
+    /// The entry under the press, by index into the source, or `None` over empty space.
+    pub index: Option<usize>,
+    /// Which part of the entry. Empty space is [`Spot::Gutter`].
+    pub spot: Spot,
+    /// The modifiers held.
+    pub mods: Mods,
+    /// The host's clock, in seconds.
+    pub now: f64,
+}
+
+/// The button coming up, or the gesture ending without a release.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Release {
+    /// The pointer's travel since the press, in points.
+    pub travel: Point,
+    /// The modifiers held now. Only a middle click reads them, as Strata does.
+    pub mods: Mods,
+    /// The host's clock, in seconds.
+    pub now: f64,
+    /// The gesture ended without a release (Escape, focus lost): nothing it would have done on release happens.
+    pub cancelled: bool,
+}
+
+/// How an entry was opened.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ActivateBy {
+    /// A single click, where the entry's kind opens on one.
+    Click,
+    /// A double click.
+    DoubleClick,
+}
+
+/// What the machine asks for besides selection changes.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum Outcome {
+    /// Open the entry.
+    Activate {
+        /// The entry.
+        id: EntryId,
+        /// By one click or two.
+        how: ActivateBy,
+    },
+    /// A plain single click on the entry finished without opening or arming a rename: where single-click previews follow.
+    Clicked {
+        /// The entry.
+        id: EntryId,
+    },
+    /// Open the folder in a new tab, or a new window (a middle click).
+    OpenInNew {
+        /// The folder.
+        id: EntryId,
+        /// A new window rather than a tab (Ctrl or Shift held at release).
+        window: bool,
+    },
+    /// Reveal the file in its folder (a middle click).
+    Reveal {
+        /// The file.
+        id: EntryId,
+    },
+    /// Start a file drag of these entries: the host builds the payload.
+    BeginDrag {
+        /// The dragged entries, in display order.
+        ids: Vec<EntryId>,
+        /// Where the pointer is as the drag starts, in window points.
+        at: Point,
+    },
+    /// Start a marquee at the press.
+    BeginMarquee {
+        /// The press, in content coordinates.
+        at: Point,
+        /// The modifiers held at the press.
+        mods: Mods,
+    },
+    /// Start renaming the entry.
+    BeginRename {
+        /// The entry.
+        id: EntryId,
+    },
+    /// Open the entry's context menu, or the background's.
+    ContextMenu {
+        /// The entry, or `None` for the background.
+        target: Option<EntryId>,
+        /// The press, in window points.
+        at: Point,
+    },
+    /// Call [`PointerMachine::tick`] again after this long.
+    WakeAfter(Duration),
+}
+
+/// What the machine reads and changes: its settings, the source, the selection, and where its outcomes go.
+pub trait Surface {
+    /// The settings now.
+    fn settings(&self) -> PointerSettings;
+
+    /// The entries, in display order.
+    fn source(&self) -> &dyn EntrySource;
+
+    /// The selection, to read.
+    fn selection(&self) -> &Selection;
+
+    /// Runs one selection operation, and returns what it changed.
+    fn apply(&mut self, op: &mut dyn FnMut(&mut Selection, &dyn EntrySource) -> Changed)
+    -> Changed;
+
+    /// Hands on an outcome.
+    fn emit(&mut self, outcome: Outcome);
+}
+
+/// What crossing the drag threshold does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Plan {
+    Drag,
+    Marquee,
+    Nothing,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Deferred {
+    None,
+    Toggle,
+    Extend(Extend),
+}
+
+/// One held button.
+#[derive(Clone, Copy, Debug)]
+struct Gesture {
+    press: Press,
+    /// The entry at the press, and its index then.
+    entry: Option<(usize, EntryId)>,
+    /// Which click of a run the press is: 1, 2, 3, …
+    count: u32,
+    plan: Plan,
+    deferred: Deferred,
+    /// A plain press inside a multi-selection kept the group for a drag; a click collapses it.
+    kept_group: bool,
+    /// The entry was the only selected one before the press.
+    sole_before: bool,
+    crossed: bool,
+}
+
+/// The pointer state machine of one collection.
+#[derive(Debug, Default)]
+pub struct PointerMachine {
+    clicks: Clicks,
+    gesture: Option<Gesture>,
+    rename: Option<PendingRename>,
+}
+
+impl PointerMachine {
+    /// A machine with no gesture held.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Whether a slow-click rename is waiting.
+    pub fn rename_pending(&self) -> bool {
+        self.rename.is_some()
+    }
+
+    /// A button went down.
+    pub fn press(&mut self, press: &Press, s: &mut dyn Surface) -> bool {
+        self.rename = None;
+        self.gesture = None;
+        let settings = s.settings();
+        let entry = press
+            .index
+            .filter(|&i| i < s.source().len())
+            .map(|i| (i, s.source().id_at(i)));
+        match press.button {
+            Button::Secondary => {
+                self.clicks.break_run();
+                secondary(press, entry, settings.missing_anchor_stays, s);
+                true
+            }
+            Button::Middle => {
+                let count = self.count(press, entry, &settings);
+                if entry.is_none() {
+                    return false;
+                }
+                self.gesture = Some(Gesture::new(*press, entry, count, Plan::Nothing));
+                true
+            }
+            Button::Primary => {
+                let count = self.count(press, entry, &settings);
+                self.gesture = Some(primary(press, entry, count, &settings, s));
+                true
+            }
+        }
+    }
+
+    fn count(
+        &mut self,
+        press: &Press,
+        entry: Option<(usize, EntryId)>,
+        settings: &PointerSettings,
+    ) -> u32 {
+        self.clicks.press(
+            press.button,
+            entry.map(|(_, id)| id),
+            press.window,
+            press.now,
+            settings.double_click.as_secs_f64(),
+            settings.double_click_distance,
+        )
+    }
+
+    /// The held pointer moved; `travel` is its travel since the press.
+    pub fn moved(&mut self, travel: Point, s: &mut dyn Surface) -> bool {
+        let threshold = s.settings().drag_threshold;
+        let Some(g) = self.gesture.as_mut() else {
+            return false;
+        };
+        if g.crossed || !past(travel, threshold) {
+            return true;
+        }
+        g.crossed = true;
+        self.clicks.break_run();
+        if g.press.button != Button::Primary {
+            return true;
+        }
+        match g.plan {
+            Plan::Drag => {
+                // A Ctrl-drag carries the entry: it stays selected instead of toggling off.
+                g.deferred = Deferred::None;
+                let ids = s.selection().selected_ids(s.source());
+                if !ids.is_empty() {
+                    let at = Point::new(g.press.window.x + travel.x, g.press.window.y + travel.y);
+                    s.emit(Outcome::BeginDrag { ids, at });
+                }
+            }
+            Plan::Marquee => {
+                // The band applies the modifiers to the selection at press.
+                g.deferred = Deferred::None;
+                s.emit(Outcome::BeginMarquee {
+                    at: g.press.at,
+                    mods: g.press.mods,
+                });
+            }
+            Plan::Nothing => {}
+        }
+        true
+    }
+
+    /// The button came up, or the gesture was cancelled.
+    pub fn release(&mut self, release: &Release, s: &mut dyn Surface) -> bool {
+        let settings = s.settings();
+        let threshold = settings.drag_threshold;
+        let Some(g) = self.gesture.take() else {
+            return false;
+        };
+        if release.cancelled || g.crossed || past(release.travel, threshold) {
+            self.clicks.break_run();
+            return true;
+        }
+        let Some((index, id)) = g.entry else {
+            return true;
+        };
+        if s.source().index_of(id) != Some(index) {
+            self.clicks.break_run();
+            return true;
+        }
+        match g.press.button {
+            Button::Middle => middle(&g, (index, id), release.mods, s),
+            Button::Primary => {
+                self.rename = primary_release(&g, (index, id), &settings, s).map(|due| {
+                    s.emit(Outcome::WakeAfter(settings.double_click));
+                    PendingRename {
+                        id,
+                        due: release.now + due,
+                        revision: s.selection().revision(),
+                    }
+                });
+            }
+            Button::Secondary => {}
+        }
+        true
+    }
+
+    /// Whether a slow-click rename timer is pending.
+    pub fn has_pending_rename(&self) -> bool {
+        self.rename.is_some()
+    }
+
+    /// Runs a pending rename once its interval has passed. True when it renamed.
+    pub fn tick(&mut self, now: f64, s: &mut dyn Surface) -> bool {
+        let Some(pending) = self.rename else {
+            return false;
+        };
+        match pending.due(now, s.selection(), s.source()) {
+            Due::Wait => {
+                // A tick can come early, from another controller's wake-up: ask for our own.
+                s.emit(Outcome::WakeAfter(Duration::from_secs_f64(
+                    pending.due - now,
+                )));
+                false
+            }
+            Due::Cancelled => {
+                self.rename = None;
+                false
+            }
+            Due::Rename(id) => {
+                self.rename = None;
+                s.emit(Outcome::BeginRename { id });
+                true
+            }
+        }
+    }
+
+    /// A key reached the collection: it cancels a pending rename.
+    pub fn interrupt(&mut self) {
+        self.rename = None;
+    }
+
+    /// Drops the press held and a pending rename, and ends the click run.
+    pub fn reset(&mut self) {
+        self.gesture = None;
+        self.rename = None;
+        self.clicks.break_run();
+    }
+}
+
+impl Gesture {
+    fn new(press: Press, entry: Option<(usize, EntryId)>, count: u32, plan: Plan) -> Self {
+        Self {
+            press,
+            entry,
+            count,
+            plan,
+            deferred: Deferred::None,
+            kept_group: false,
+            sole_before: false,
+            crossed: false,
+        }
+    }
+}
+
+fn past(travel: Point, threshold: f32) -> bool {
+    travel.x.abs() > threshold || travel.y.abs() > threshold
+}
+
+fn apply(s: &mut dyn Surface, mut op: impl FnMut(&mut Selection, &dyn EntrySource) -> Changed) {
+    s.apply(&mut op);
+}
+
+fn secondary(
+    press: &Press,
+    entry: Option<(usize, EntryId)>,
+    missing_stays: bool,
+    s: &mut dyn Surface,
+) {
+    if let Some((index, _)) = entry {
+        if s.selection().is_selected_at(s.source(), index) {
+            apply(s, |sel, src| sel.focus_selected_keeping_anchor(src, index));
+        } else {
+            apply(s, |sel, src| {
+                sel.select_only_keeping_anchor(src, index, missing_stays)
+            });
+        }
+    }
+    s.emit(Outcome::ContextMenu {
+        target: entry.map(|(_, id)| id),
+        at: press.window,
+    });
+}
+
+/// What a primary press changes now, and what it leaves to a drag or the release.
+fn primary(
+    press: &Press,
+    entry: Option<(usize, EntryId)>,
+    count: u32,
+    settings: &PointerSettings,
+    s: &mut dyn Surface,
+) -> Gesture {
+    let default_plan = if settings.multiple {
+        Plan::Marquee
+    } else {
+        Plan::Nothing
+    };
+    let mut g = Gesture::new(*press, entry, count, default_plan);
+    let Some((index, _)) = entry else {
+        if !press.mods.ctrl && !press.mods.shift {
+            apply(s, |sel, _| sel.clear());
+        }
+        return g;
+    };
+    let selected = s.selection().is_selected_at(s.source(), index);
+    let len = s.selection().len();
+    g.sole_before = selected && len == 1;
+    let on_entry =
+        press.spot != Spot::Gutter || (settings.drag_selected_rows && settings.drags && selected);
+    if !settings.multiple {
+        return primary_single(g, (index, on_entry), settings, s);
+    }
+    primary_multi(g, (index, selected, len, on_entry), settings, s)
+}
+
+fn primary_single(
+    mut g: Gesture,
+    (index, on_entry): (usize, bool),
+    settings: &PointerSettings,
+    s: &mut dyn Surface,
+) -> Gesture {
+    apply(s, |sel, src| sel.select_only(src, index));
+    // No band selects more than one entry: a drag from blank space or with Alt does nothing.
+    g.plan = match drag_plan(&g, on_entry, settings) {
+        Plan::Marquee => Plan::Nothing,
+        plan => plan,
+    };
+    g
+}
+
+fn primary_multi(
+    mut g: Gesture,
+    (index, selected, len, on_entry): (usize, bool, usize, bool),
+    settings: &PointerSettings,
+    s: &mut dyn Surface,
+) -> Gesture {
+    let modified = g.press.mods.ctrl || g.press.mods.shift;
+    if modified {
+        modified_press(&mut g, (index, selected, on_entry), settings, s);
+    } else if on_entry && selected && len > 1 {
+        g.kept_group = true;
+        apply(s, |sel, src| match sel.is_provisional() {
+            true => Changed::NONE,
+            false => sel.move_cursor(src, index, AnchorRule::Move),
+        });
+    } else {
+        apply(s, |sel, src| sel.select_only(src, index));
+    }
+    g.plan = drag_plan(&g, on_entry, settings);
+    g
+}
+
+fn modified_press(
+    g: &mut Gesture,
+    (index, selected, on_entry): (usize, bool, bool),
+    settings: &PointerSettings,
+    s: &mut dyn Surface,
+) {
+    let ctrl = g.press.mods.ctrl;
+    let range = if ctrl {
+        settings.ctrl_shift
+    } else {
+        Extend::Replace
+    };
+    let now = on_entry && !g.press.mods.alt;
+    if g.press.mods.shift {
+        if now {
+            let stays = settings.missing_anchor_stays;
+            apply(s, |sel, src| {
+                sel.extend_keeping_anchor(src, index, range, stays)
+            });
+        } else {
+            g.deferred = Deferred::Extend(range);
+        }
+    } else if now && !selected {
+        apply(s, |sel, src| sel.toggle(src, index));
+    } else {
+        g.deferred = Deferred::Toggle;
+    }
+}
+
+fn drag_plan(g: &Gesture, on_entry: bool, settings: &PointerSettings) -> Plan {
+    if g.press.mods.alt || !on_entry {
+        Plan::Marquee
+    } else if settings.drags {
+        Plan::Drag
+    } else {
+        Plan::Nothing
+    }
+}
+
+fn apply_deferred(g: &Gesture, index: usize, settings: &PointerSettings, s: &mut dyn Surface) {
+    match g.deferred {
+        Deferred::None => {}
+        Deferred::Toggle => apply(s, |sel, src| sel.toggle(src, index)),
+        Deferred::Extend(mode) => {
+            let stays = settings.missing_anchor_stays;
+            apply(s, |sel, src| {
+                sel.extend_keeping_anchor(src, index, mode, stays)
+            });
+        }
+    }
+}
+
+fn activation_for_click(
+    count: u32,
+    id: EntryId,
+    kind: crate::contract::EntryKind,
+    settings: &PointerSettings,
+) -> Option<ActivateBy> {
+    match (count, settings.modes.for_kind(kind)) {
+        (1, ClickCount::One) => Some(ActivateBy::Click),
+        (2, ClickCount::Two) => Some(ActivateBy::DoubleClick),
+        (2, ClickCount::One) if settings.already_open == Some(id) => Some(ActivateBy::DoubleClick),
+        _ => None,
+    }
+}
+
+fn arms_slow_rename(g: &Gesture, id: EntryId, activates: bool, settings: &PointerSettings) -> bool {
+    let mods = g.press.mods;
+    let plain_name = g.count == 1 && !mods.alt && !mods.logo && g.press.spot == Spot::Name;
+    let eligible = g.sole_before && settings.rename;
+    plain_name && eligible && (!activates || settings.already_open == Some(id))
+}
+
+fn primary_release(
+    g: &Gesture,
+    (index, id): (usize, EntryId),
+    settings: &PointerSettings,
+    s: &mut dyn Surface,
+) -> Option<f64> {
+    apply_deferred(g, index, settings, s);
+    let mods = g.press.mods;
+    if mods.ctrl || mods.shift {
+        return None;
+    }
+    if g.kept_group {
+        apply(s, |sel, src| sel.select_only(src, index));
+    }
+    let kind = s.source().entry(index).kind;
+    let activate = activation_for_click(g.count, id, kind, settings);
+    if arms_slow_rename(g, id, activate.is_some(), settings) {
+        return Some(settings.double_click.as_secs_f64());
+    }
+    if let Some(how) = activate {
+        s.emit(Outcome::Activate { id, how });
+    } else if g.count == 1 {
+        s.emit(Outcome::Clicked { id });
+    }
+    None
+}
+
+fn middle(g: &Gesture, (index, id): (usize, EntryId), mods: Mods, s: &mut dyn Surface) {
+    if g.count != 1 {
+        return;
+    }
+    if s.source().entry(index).kind.is_folder_like() {
+        s.emit(Outcome::OpenInNew {
+            id,
+            window: mods.ctrl || mods.shift,
+        });
+    } else {
+        apply(s, |sel, src| sel.select_only(src, index));
+        s.emit(Outcome::Reveal { id });
+    }
+}

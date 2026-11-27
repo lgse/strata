@@ -1,0 +1,115 @@
+// SPDX-License-Identifier: MIT
+
+use std::path::Path;
+
+use strata_preview::{
+    sandbox::{
+        self, Cancellation, CoverFormat, MediaPreviewBackend, ParseOperation, browser::Thumbnail,
+        raw_metadata,
+    },
+    services::{
+        MediaPreviewSize, ModelFormat, ModelPalette, ModelRender, ModelRenderPurpose, ModelView,
+    },
+};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Kind {
+    Image,
+    RawImage,
+    Pdf,
+    Video,
+    AppImage,
+    EmbeddedModel(ModelFormat),
+    RenderedModel,
+    Cover(CoverFormat),
+}
+
+impl Kind {
+    pub(crate) fn heavy(self) -> bool {
+        !matches!(self, Self::Image | Self::AppImage)
+    }
+}
+
+fn lowercase_ascii_extension(path: &Path) -> Option<([u8; 16], usize)> {
+    let ext = path.extension()?.to_str()?;
+    let bytes = ext.as_bytes();
+    if bytes.is_empty() || bytes.len() > 16 {
+        return None;
+    }
+    if !bytes.is_ascii() {
+        return None;
+    }
+    let mut buf = [0_u8; 16];
+    for (dst, &byte) in buf.iter_mut().zip(bytes) {
+        *dst = byte.to_ascii_lowercase();
+    }
+    Some((buf, bytes.len()))
+}
+
+pub(crate) fn of(path: &Path) -> Option<Kind> {
+    let (buf, len) = lowercase_ascii_extension(path)?;
+    let extension = std::str::from_utf8(&buf[..len]).ok()?;
+    if raw_metadata::is_raw_lowercased_extension(extension) {
+        return Some(Kind::RawImage);
+    }
+    match extension {
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff" | "svg" | "heic"
+        | "heif" | "avif" | "jxl" => Some(Kind::Image),
+        "pdf" => Some(Kind::Pdf),
+        "stl" => Some(Kind::RenderedModel),
+        "3mf" => Some(Kind::EmbeddedModel(ModelFormat::ThreeMf)),
+        "fcstd" => Some(Kind::EmbeddedModel(ModelFormat::FreeCad)),
+        "gcode" | "gco" | "bgcode" => Some(Kind::EmbeddedModel(ModelFormat::Gcode)),
+        "appimage" => Some(Kind::AppImage),
+        "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" => {
+            Some(Kind::Video)
+        }
+        // FFmpeg exposes no art stream for tag-only Ogg, Opus or WAV covers.
+        "mp3" | "flac" | "m4a" | "m4b" | "mka" | "aiff" | "aif" | "wma" => Some(Kind::Video),
+        _ => CoverFormat::from_argument(extension).map(Kind::Cover),
+    }
+}
+
+/// Renders `path`'s thumbnail in the sandbox, as a PNG of at most 256 px.
+pub(crate) fn render(
+    path: &Path,
+    kind: Kind,
+    cancellation: &Cancellation,
+) -> Result<Thumbnail, String> {
+    let operation = match kind {
+        Kind::RenderedModel => {
+            let rendered = sandbox::parse(
+                path,
+                ParseOperation::PreviewModel(ModelRender {
+                    purpose: ModelRenderPurpose::Thumbnail,
+                    format: ModelFormat::Stl,
+                    size: MediaPreviewSize::new(256, 256),
+                    // Shared thumbnail-cache artwork must not depend on the active theme.
+                    palette: ModelPalette {
+                        accent: 0xcccccc,
+                        surface: 0,
+                    },
+                    view: ModelView::default(),
+                }),
+                256,
+                MediaPreviewBackend::Software,
+                cancellation,
+            )?;
+            return Ok(Thumbnail {
+                png: rendered.data,
+                metadata: None,
+            });
+        }
+        Kind::Image => ParseOperation::ThumbnailImage,
+        Kind::RawImage => ParseOperation::ThumbnailRaw,
+        Kind::Pdf => ParseOperation::ThumbnailPdf,
+        Kind::Video => ParseOperation::ThumbnailVideo,
+        Kind::AppImage => ParseOperation::ThumbnailAppImage,
+        Kind::EmbeddedModel(format) => ParseOperation::ThumbnailModel(format),
+        Kind::Cover(format) => ParseOperation::ThumbnailCover(format),
+    };
+    sandbox::browser::thumbnail(path, operation, cancellation)
+}
+
+#[cfg(test)]
+mod tests;

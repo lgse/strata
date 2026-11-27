@@ -2,8 +2,6 @@
 
 use super::*;
 
-/// sshfs reports a taken name as `EPERM`, and SMB a folder in a file's way
-/// as `EISDIR`.
 pub(in crate::adapters::local_operations) fn taken(
     fs: &dyn FsOps,
     entry: Entry<'_>,
@@ -16,8 +14,6 @@ pub(in crate::adapters::local_operations) fn taken(
     }
 }
 
-/// NFS creations are not idempotent, so a taken name may be this copy's own
-/// entry whose reply was lost.
 pub(in crate::adapters::local_operations::copy_engine) fn adopt(
     fs: &dyn FsOps,
     entry: Entry<'_>,
@@ -64,10 +60,6 @@ pub(super) fn claim_folder(
     }
 }
 
-/// Claims a file's name without opening it for writing: vfat mounted with
-/// `flush` waits at every such close, and the file job opens it once more.
-/// On SMB, names made as nodes and looked up while other files were written
-/// left the folder's rename waiting 35 s for Samba, so they are created.
 pub(super) fn claim_file(
     copy: &Copy,
     entry: Entry<'_>,
@@ -120,8 +112,6 @@ pub(super) fn fresh_file(stat: &EntryStat) -> bool {
     stat.kind == FileType::RegularFile && stat.size == 0 && stat.nlink == 1
 }
 
-/// A link the placement made again at its name is another entry, which holds
-/// the copy only with the staged link's target.
 pub(in crate::adapters::local_operations::copy_engine) fn made_again(
     fs: &dyn FsOps,
     at: Entry<'_>,
@@ -216,8 +206,6 @@ fn set_link_times(
     Err(error.into())
 }
 
-/// The source's xattrs are not copied: reading them would open it, which
-/// lets a writer waiting on it go on.
 pub(in crate::adapters::local_operations::copy_engine) fn copy_fifo(
     copy: &Copy,
     (source, target): (Entry<'_>, Entry<'_>),
@@ -277,10 +265,6 @@ pub(in crate::adapters::local_operations::copy_engine) fn finish_pipe(
     best_effort(fs.close(fd)).map_err(Failure::Os)
 }
 
-/// How filesystems refuse a node of `kind` they cannot hold. Without named
-/// pipes, vfat answers `EPERM`, exfat-fuse `EIO` and SMB `EOPNOTSUPP`;
-/// without symbolic links, vfat answers `EPERM`, exfat-fuse `ENOSYS` and
-/// SMB `EOPNOTSUPP`, and ntfs3 refuses a target too long with `EFBIG`.
 pub(in crate::adapters::local_operations) fn refuses_node(kind: FileType, error: Errno) -> bool {
     let refused = match kind {
         FileType::Fifo => &[Errno::PERM, Errno::IO, Errno::NOSYS, Errno::INVAL][..],

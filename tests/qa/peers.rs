@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Peers a scenario runs beside the application: the file-chooser portal client, an
-//! image server, `tests/qa/fixtures/file_drag_source.py`, and a ZipCrypto writer.
-
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::TcpListener,
@@ -16,7 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::{gio, gio::prelude::*, glib};
+use gio::prelude::*;
 use serde::Deserialize;
 
 const BACKEND: &str = "org.freedesktop.impl.portal.desktop.strata";
@@ -316,6 +313,10 @@ impl ForeignSource {
             .args(arguments)
             .env_clear()
             .envs(environment.iter().map(|(key, value)| (key, value)))
+            .env("GDK_BACKEND", "wayland")
+            .env("GSK_RENDERER", "cairo")
+            .env("GTK_A11Y", "none")
+            .env("NO_AT_BRIDGE", "1")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(errors);
@@ -519,8 +520,6 @@ pub(crate) fn write_zipcrypto(
     std::fs::write(path, archive).map_err(|error| format!("{}: {error}", path.display()))
 }
 
-/// The first numeric password whose decrypted check byte matches the CRC's top byte,
-/// which Python's `zipfile` accepts as right before the member fails its CRC.
 pub(crate) fn zipcrypto_collision(path: &Path) -> Result<String, String> {
     let archive = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let field = |at: usize| -> Result<u16, String> {

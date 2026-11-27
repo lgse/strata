@@ -1,0 +1,330 @@
+// SPDX-License-Identifier: MIT
+
+use std::{
+    collections::HashSet,
+    hash::{DefaultHasher, Hash, Hasher},
+};
+
+use strata_components::{
+    collection::element::RowCx,
+    list_table::{
+        Cell, Column as TableColumn, ColumnId, ColumnLayout, ColumnWidths, LayoutChange, LayoutWhy,
+        ListTableLabels,
+    },
+};
+use strata_core::{i18n::tr, model::SortKey};
+use strata_desktop::settings::{
+    ListColumnId, ListColumns, Preferences, default_list_column_order, sanitize_list_column_order,
+    sanitize_list_hidden_columns,
+};
+
+use crate::{App, details, fills::Details, listing::Row, shell};
+
+/// The id a column is saved by (`ListColumnId`'s serde name).
+fn id(column: ListColumnId) -> ColumnId {
+    ColumnId::new(match column {
+        ListColumnId::Name => "name",
+        ListColumnId::Mode => "mode",
+        ListColumnId::Size => "size",
+        ListColumnId::Type => "type",
+        ListColumnId::Modified => "modified",
+        ListColumnId::Duration => "duration",
+        ListColumnId::Dimensions => "dimensions",
+        ListColumnId::Created => "created",
+    })
+}
+
+fn saved(id: &ColumnId) -> Option<ListColumnId> {
+    ListColumnId::ALL
+        .into_iter()
+        .find(|column| self::id(*column) == *id)
+}
+
+pub(crate) fn is_visible(settings: &Preferences, column: ListColumnId) -> bool {
+    if column == ListColumnId::Name {
+        return true;
+    }
+    if column.definition().optional {
+        settings.list_shown_columns.contains(&column)
+    } else {
+        !settings.list_hidden_columns.contains(&column)
+    }
+}
+
+pub(super) fn fill_details(layout: &ColumnLayout) -> Details {
+    let media = ListColumnId::ALL.into_iter().any(|column| {
+        column
+            .definition()
+            .sort_key
+            .is_some_and(SortKey::uses_media_metadata)
+            && layout.is_visible(&id(column))
+    });
+    if media {
+        Details::All
+    } else {
+        Details::Folders
+    }
+}
+
+/// The headings, translated once: the language changes only on restart.
+pub(super) struct Headings([String; ListColumnId::ALL.len()]);
+
+pub(super) fn menu_labels() -> ListTableLabels {
+    let mut labels = ListTableLabels::default();
+    labels.button = tr("Columns");
+    labels.heading = tr("COLUMNS");
+    labels.fixed = Some(tr("The Name column cannot be hidden"));
+    labels.reset = tr("Reset to default columns");
+    labels
+}
+
+impl Headings {
+    pub(super) fn translated() -> Self {
+        Self(ListColumnId::ALL.map(|column| tr(column.title())))
+    }
+}
+
+fn row<'a>(app: &'a App, rcx: &RowCx<'_>) -> Option<&'a Row> {
+    app.list.single.pane.listing()?.row_at(rcx.index)
+}
+
+fn mode(app: &App, rcx: &RowCx<'_>) -> Cell {
+    let text = row(app, rcx).map(|row| details::mode_cell(row.facts()));
+    Cell::text(text.unwrap_or_default())
+}
+
+fn size(app: &App, rcx: &RowCx<'_>) -> Cell {
+    let text = row(app, rcx).map(|row| details::size_cell(row.is_folder(), row.facts()));
+    Cell::text(text.unwrap_or_default())
+}
+
+fn kind(app: &App, rcx: &RowCx<'_>) -> Cell {
+    let listing = app.list.single.pane.listing();
+    let text = listing.and_then(|listing| {
+        let row = listing.row_at(rcx.index)?;
+        Some(details::type_cell(
+            listing.location(),
+            row.entry_kind(),
+            row.name(),
+        ))
+    });
+    Cell::text(text.unwrap_or_default())
+}
+
+fn modified(app: &App, rcx: &RowCx<'_>) -> Cell {
+    let text = row(app, rcx).map(|row| details::modified_cell(row.facts()));
+    Cell::text(text.unwrap_or_default())
+}
+
+fn duration(app: &App, rcx: &RowCx<'_>) -> Cell {
+    let text = row(app, rcx).map(|row| details::duration_cell(row.is_folder(), row.facts()));
+    Cell::text(text.unwrap_or_default())
+}
+
+fn dimensions(app: &App, rcx: &RowCx<'_>) -> Cell {
+    let text = row(app, rcx).map(|row| details::dimensions_cell(row.is_folder(), row.facts()));
+    Cell::text(text.unwrap_or_default())
+}
+
+fn created(app: &App, rcx: &RowCx<'_>) -> Cell {
+    let text = row(app, rcx).map(|row| details::created_cell(row.facts()));
+    Cell::text(text.unwrap_or_default())
+}
+
+pub(super) fn cells_version(app: &App, rcx: &RowCx<'_>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    row(app, rcx).map(Row::facts).hash(&mut hasher);
+    app.list.date_format.as_str().hash(&mut hasher);
+    if app.list.relative_dates {
+        app.list.dates.epoch().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+pub(super) fn row_tooltip(
+    app: &App,
+    rcx: &RowCx<'_>,
+    truncated: &dyn Fn() -> bool,
+) -> Option<String> {
+    let include_date = !app.list.layout.is_visible(&id(ListColumnId::Modified));
+    let facts = row(app, rcx).map(Row::facts);
+    details::entry_tooltip(rcx.entry.name, facts, include_date, truncated)
+}
+
+fn build_column(column: ListColumnId, title: String) -> TableColumn<App> {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "column widths are small point counts"
+    )]
+    let (width, min_width) = {
+        let def = column.definition();
+        (def.width as f32, def.min_width as f32)
+    };
+    let table_column = match column {
+        ListColumnId::Name => TableColumn::primary("name", title),
+        ListColumnId::Mode => TableColumn::new("mode", title, mode),
+        ListColumnId::Size => TableColumn::new("size", title, size),
+        ListColumnId::Type => TableColumn::new("type", title, kind),
+        ListColumnId::Modified => TableColumn::new("modified", title, modified),
+        ListColumnId::Duration => TableColumn::new("duration", title, duration),
+        ListColumnId::Dimensions => TableColumn::new("dimensions", title, dimensions),
+        ListColumnId::Created => TableColumn::new("created", title, created),
+    }
+    .width(width)
+    .min(min_width);
+    if crate::sort::headings::sortable(table_column.id().as_str()) {
+        table_column.sortable()
+    } else {
+        table_column
+    }
+}
+
+pub(super) fn columns(headings: &Headings) -> Vec<TableColumn<App>> {
+    ListColumnId::ALL
+        .into_iter()
+        .zip(headings.0.iter())
+        .map(|(column, title)| build_column(column, title.clone()))
+        .collect()
+}
+
+pub(super) fn layout(settings: &Preferences) -> ColumnLayout {
+    layout_of(
+        &settings.list_column_order,
+        &settings.list_hidden_columns,
+        &settings.list_shown_columns,
+    )
+}
+
+fn layout_of(
+    order: &[ListColumnId],
+    hidden: &[ListColumnId],
+    shown: &[ListColumnId],
+) -> ColumnLayout {
+    let defaults: Vec<ColumnId> = ListColumnId::ALL.into_iter().map(id).collect();
+    let order: Vec<ColumnId> = order.iter().map(|column| id(*column)).collect();
+    let hidden_ids: Vec<ColumnId> = ListColumnId::ALL
+        .into_iter()
+        .filter(|&column| {
+            column != ListColumnId::Name
+                && if column.definition().optional {
+                    !shown.contains(&column)
+                } else {
+                    hidden.contains(&column)
+                }
+        })
+        .map(id)
+        .collect();
+    ColumnLayout::normalize(
+        &defaults,
+        Some(&id(ListColumnId::Name)),
+        order.iter().map(ColumnId::as_str),
+        hidden_ids.iter().map(ColumnId::as_str),
+    )
+}
+
+pub(super) fn widths(settings: &Preferences) -> ColumnWidths {
+    settings
+        .browser_list_columns
+        .as_ref()
+        .filter(|saved| saved.is_valid())
+        .map_or_else(ColumnWidths::new, widths_of)
+}
+
+pub(super) fn chooser_widths(settings: &Preferences) -> ColumnWidths {
+    settings
+        .chooser_list_columns
+        .as_ref()
+        .filter(|saved| saved.is_valid())
+        .map_or_else(ColumnWidths::new, widths_of)
+}
+
+fn widths_of(saved: &ListColumns) -> ColumnWidths {
+    #[expect(clippy::cast_precision_loss, reason = "a width in points")]
+    let points = |width: i32| width as f32;
+    ListColumnId::ALL
+        .into_iter()
+        .filter_map(|column| Some((column, saved.width(column)?)))
+        .fold(ColumnWidths::new(), |widths, (column, width)| {
+            widths.with(&id(column), points(width))
+        })
+}
+
+fn saved_widths(widths: &ColumnWidths) -> ListColumns {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        reason = "column widths are small point counts"
+    )]
+    let width = |column: ListColumnId| {
+        widths
+            .get(&id(column))
+            .unwrap_or(column.definition().width as f32)
+            .round() as i32
+    };
+    ListColumnId::ALL
+        .into_iter()
+        .filter(|&column| {
+            column != ListColumnId::Name || widths.get(&id(ListColumnId::Name)).is_some()
+        })
+        .map(|column| (column, width(column)))
+        .collect()
+}
+
+fn updated_set(
+    saved: &[ListColumnId],
+    belongs: impl Fn(ListColumnId) -> bool,
+) -> Vec<ListColumnId> {
+    let mut seen = HashSet::new();
+    saved
+        .iter()
+        .copied()
+        .chain(ListColumnId::ALL)
+        .filter(|&column| belongs(column) && seen.insert(column))
+        .collect()
+}
+
+pub(super) fn keep_layout(app: &mut App, change: LayoutChange) {
+    let (order, hidden, shown) = if change.why == LayoutWhy::Reset {
+        (default_list_column_order(), Vec::new(), Vec::new())
+    } else {
+        let settings = shell::preferences(app);
+        let order = sanitize_list_column_order(
+            &change
+                .layout
+                .order()
+                .iter()
+                .filter_map(saved)
+                .collect::<Vec<_>>(),
+        );
+        let hidden =
+            sanitize_list_hidden_columns(&updated_set(&settings.list_hidden_columns, |column| {
+                column != ListColumnId::Name
+                    && !column.definition().optional
+                    && !change.layout.is_visible(&id(column))
+            }));
+        let shown = updated_set(&settings.list_shown_columns, |column| {
+            column.definition().optional && change.layout.is_visible(&id(column))
+        });
+        (order, hidden, shown)
+    };
+    app.list.layout = layout_of(&order, &hidden, &shown);
+    app.list.fills.set_details(fill_details(&app.list.layout));
+    shell::saved(app).change(|settings| {
+        settings.list_column_order = order;
+        settings.list_hidden_columns = hidden;
+        settings.list_shown_columns = shown;
+    });
+}
+
+pub(super) fn keep_widths(app: &mut App, widths: ColumnWidths) {
+    let chooser = app.browser.is_chooser_mode();
+    let saved = Some(saved_widths(&widths)).filter(ListColumns::is_valid);
+    app.list.widths = saved.as_ref().map_or_else(ColumnWidths::new, widths_of);
+    shell::saved(app).change(|settings| {
+        if chooser {
+            settings.chooser_list_columns = saved;
+        } else {
+            settings.browser_list_columns = saved;
+        }
+    });
+}

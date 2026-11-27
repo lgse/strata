@@ -12,7 +12,6 @@ use gio::prelude::*;
 
 use crate::model::Location;
 
-// Allow GTK to bind the published rows and admit a visible preview wave first.
 const BIND_GRACE: Duration = Duration::from_millis(200);
 const PREVIEW_BUDGET: Duration = Duration::from_secs(2);
 

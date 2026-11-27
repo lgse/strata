@@ -10,8 +10,6 @@ enum SourceMeanwhile {
     DeletedBefore { closes: bool },
 }
 
-/// A mount, and what happens to the moved folder whose `open.txt` another
-/// program holds open.
 struct HeldOpen {
     mount: &'static str,
     preset: Preset,
@@ -30,8 +28,6 @@ impl HeldOpen {
         }
     }
 
-    /// After the folder's unlink: it is swapped for another, or the hold on
-    /// its file is released.
     fn racer<T: Send + 'static>(
         &self,
         held: &Arc<std::sync::Mutex<Option<T>>>,
@@ -96,8 +92,6 @@ impl HeldOpen {
     }
 }
 
-/// Unlinks `open.txt` of `folder` through the filesystem seam while it is
-/// still held open.
 fn unlink_held(folder: &Path) -> Result<(), Box<dyn Error>> {
     let dir = open_local_parent_directory(folder)?;
     super::super::super::fs_ops::fs().unlink(

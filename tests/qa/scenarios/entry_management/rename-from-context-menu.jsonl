@@ -1,4 +1,4 @@
-{"scenario":"rename-from-context-menu","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Context-menu Rename item then Enter renames on disk; only context-menu route to rename, rename-shortcuts covers F2/ctrl+r"}}
+{"scenario":"rename-from-context-menu","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":3,"score":25,"note":"Context-menu Rename, type name, Enter renames on disk; only context-menu route to a rename commit; menu-opens-editor is headless-tested"}}
 {"click":{"entry":"readme.md"},"button":3}
 {"wait":{"menu_items":{}},"message":"the context menu for 'readme.md'"}
 {"wait":{"present":{"menu_item":"Rename"}},"message":"the menu item 'Rename'"}

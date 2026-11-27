@@ -15,8 +15,6 @@ fn merging(id: u64, destination: &Path, source: PathBuf, move_sources: bool) -> 
     }
 }
 
-/// Pastes `request`, dropping the operation from the main loop once
-/// `cancel` is asked to, until the paste ends.
 fn paste_cancelled_from_main(
     request: PasteRequest,
     cancel: &CancelFromMain,
@@ -118,8 +116,6 @@ fn assert_put_back(
     Ok(())
 }
 
-/// The merge stopped and named the folder it left its original in, beside
-/// the changed copy.
 fn assert_original_kept_aside(events: &[OperationEvent], run: &Path, row: &str) -> io::Result<()> {
     let Some(OperationEvent::TransferFailed { message, .. }) = events.last() else {
         panic!("{row}: expected the merge to stop, got {events:?}");

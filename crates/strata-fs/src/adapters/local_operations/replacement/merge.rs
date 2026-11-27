@@ -31,9 +31,6 @@ pub(in crate::adapters::local_operations) struct MergeCopied {
     pub(in crate::adapters::local_operations) left: Vec<gio::File>,
 }
 
-/// What a merge will write: `created` are the topmost destination paths with
-/// no existing counterpart, `overwritten` are leaf collisions whose originals
-/// go to Trash, or aside where Trash is unavailable.
 #[derive(Default)]
 pub(in crate::adapters::local_operations) struct MergePlan {
     pub(in crate::adapters::local_operations) created: Vec<Location>,
@@ -110,8 +107,6 @@ pub(in crate::adapters::local_operations) struct Merging<'a> {
     pub(in crate::adapters::local_operations) hooks: MergeHooks<'a>,
 }
 
-/// Publish completed children without replacing concurrent arrivals.
-/// Already-published children survive cancellation.
 pub(in crate::adapters::local_operations) async fn merge_owing(
     source: gio::File,
     target: gio::File,
@@ -364,8 +359,6 @@ impl Merge<'_> {
         }
     }
 
-    /// Undo trashes what a merge created, so it needs a record of it only
-    /// where originals could not go to the Trash, or none were offered it.
     async fn records_created(&self, plan: &MergePlan, staged: &Staged) -> bool {
         let Some(root) = &self.target_path else {
             return false;

@@ -13,8 +13,6 @@ pub mod writer;
 
 static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
 
-/// Longest chain of symlinks [`atomic_write_config`] follows before failing
-/// the way a symlink loop would.
 const MAX_LINK_HOPS: usize = 8;
 
 pub const DOWNLOAD_PREFIX: &str = "strata-download-";
@@ -40,8 +38,6 @@ pub fn create_private_file(path: &Path) -> io::Result<fs::File> {
 enum LinkPolicy {
     /// Never follow a final-component symlink: caches, state, installers.
     Reject,
-    /// User-edited configuration that dotfiles setups often symlink: follow a
-    /// chain of links owned by the effective user to a regular file they own.
     FollowUserOwned,
 }
 
@@ -175,8 +171,6 @@ pub fn state_directory() -> PathBuf {
     glib::user_state_dir().join("strata")
 }
 
-/// Tells this process's last write or read of a file apart from another
-/// process's later write.
 pub type FileStamp = (u64, i64, i64, u64);
 
 pub fn stamp_of(metadata: &fs::Metadata) -> FileStamp {
@@ -209,11 +203,6 @@ pub fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
     atomic_write_with(path, LinkPolicy::Reject, |file| file.write_all(contents))
 }
 
-/// [`atomic_write`] for configuration the user may manage as dotfiles. A
-/// symlinked destination is written through to its target, which is replaced
-/// in its own directory while the links stay untouched; every link and the
-/// target must belong to the effective user. An existing destination keeps
-/// its permission bits, and a new one is created owner-only.
 pub fn atomic_write_config(path: &Path, contents: &[u8]) -> io::Result<()> {
     atomic_write_with(path, LinkPolicy::FollowUserOwned, |file| {
         file.write_all(contents)

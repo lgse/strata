@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! What the base under the tests' temporary folders can do. CI runs them on
-//! a tmpfs that can do everything; a packager's overlay `/tmp` cannot, and
-//! the tests that need what it lacks skip there.
-
 use std::{io, os::fd::AsRawFd, path::Path, sync::OnceLock};
 
 use rustix::{
@@ -17,16 +13,11 @@ pub struct BaseNeed {
     pub probe: fn() -> io::Result<bool>,
 }
 
-/// Unnamed files, opened with `O_TMPFILE` and linked into place: overlayfs
-/// has them only since Linux 6.10.
 pub const UNNAMED_FILES: BaseNeed = BaseNeed {
     what: "unnamed files linked into place",
     probe: links_unnamed_files,
 };
 
-/// Whether the base offers what `need` names. A test that needs it returns
-/// early on a base without it, unless `STRATA_REQUIRE_DEVICE_TESTS` is set,
-/// as CI sets it on its tmpfs, which fails the test instead.
 pub fn base_offers(need: &BaseNeed) -> io::Result<bool> {
     let offered = (need.probe)()?;
     if !offered {

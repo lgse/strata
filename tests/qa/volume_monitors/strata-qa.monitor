@@ -1,0 +1,4 @@
+[RemoteVolumeMonitor]
+Name=GProxyVolumeMonitorStrataQa
+DBusName=org.strata.QaVolumeMonitor
+IsNative=false

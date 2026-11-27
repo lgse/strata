@@ -1,0 +1,578 @@
+// SPDX-License-Identifier: MIT
+
+use rune::{Key, Mods};
+use strata_components::{
+    collection::selection::Position,
+    contract::{EntryId, EntrySource},
+};
+use strata_core::model::Location;
+
+use super::SinglePane;
+use crate::{
+    host::offscreen::Offscreen,
+    test_support::{
+        PATIENCE, fixture,
+        view::{
+            Shape, assert_browser_agrees, browser_holds, choose, double_click, drawn, field,
+            hosted_in, idle, open, press, right_click, right_click_blank, seen, shift, wait, wheel,
+        },
+    },
+};
+
+const MODULE: &str = "single::tests";
+const FIXTURE: [&str; 5] = ["archive", "documents", "pictures", "readme.md", "todo.txt"];
+
+/// What differs between the views in these tests.
+struct Case {
+    /// The saved `browser_mode` it opens on.
+    mode: &'static str,
+    shape: Shape,
+    /// The key to the next entry and to the previous one.
+    next: Key,
+    previous: Key,
+    /// A sideways key that stays on the entry, where the view has one.
+    stays: Option<Key>,
+}
+
+const ICONS: Case = Case {
+    mode: "icons",
+    shape: Shape {
+        described: "Icons view",
+        list: "grid",
+        entry: "grid-cell",
+    },
+    next: Key::Right,
+    previous: Key::Left,
+    stays: None,
+};
+
+const LIST: Case = Case {
+    mode: "list",
+    shape: Shape {
+        described: "List view",
+        list: "list",
+        entry: "list-item",
+    },
+    next: Key::Down,
+    previous: Key::Up,
+    stays: Some(Key::Right),
+};
+
+fn opens_named_as_gtk_names_it(case: &Case, mode: &'static str, name: &str) {
+    hosted_in(MODULE, mode, name, |mut host| {
+        let folder = fixture();
+        let name = Location::local(folder.path()).display_name();
+
+        let seen = open(&mut host, case.shape, folder.path());
+
+        let described = case.shape.described.to_owned();
+        assert_eq!(seen.pane, Some([name.clone(), described]));
+        assert_eq!(seen.list, Some([name, "Files".to_owned()]));
+        assert_eq!(seen.names(), FIXTURE);
+        let kinds: Vec<&str> = seen.entries.iter().map(|[_, kind]| kind.as_str()).collect();
+        assert_eq!(kinds, ["Folder", "Folder", "Folder", "File", "File"]);
+        assert_eq!(seen.focused.as_deref(), Some("archive"));
+        assert_browser_agrees(&host, case.shape, "the launch");
+    });
+}
+
+#[test]
+fn a_saved_grid_mode_opens_the_icons_view_named_as_gtk_names_it() {
+    let name = "a_saved_grid_mode_opens_the_icons_view_named_as_gtk_names_it";
+    opens_named_as_gtk_names_it(&ICONS, "grid", name);
+}
+
+#[test]
+fn a_saved_explorer_mode_opens_the_list_view_named_as_gtk_names_it() {
+    let name = "a_saved_explorer_mode_opens_the_list_view_named_as_gtk_names_it";
+    opens_named_as_gtk_names_it(&LIST, "explorer", name);
+}
+
+fn keys_move_and_the_browser_holds_the_result(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, case.shape, folder.path());
+        press(&mut host, Key::End, Mods::default());
+        press(&mut host, case.previous.clone(), Mods::default());
+
+        let none = Mods::default();
+        let mut steps: Vec<(Key, Mods, &str, &[&str])> = vec![
+            (case.next.clone(), none, "todo.txt", &["todo.txt"]),
+            (case.previous.clone(), none, "readme.md", &["readme.md"]),
+        ];
+        if let Some(stays) = &case.stays {
+            steps.push((stays.clone(), none, "readme.md", &["readme.md"]));
+        }
+        steps.push((
+            case.next.clone(),
+            shift(),
+            "todo.txt",
+            &["readme.md", "todo.txt"],
+        ));
+        steps.push((case.previous.clone(), shift(), "readme.md", &["readme.md"]));
+        for (key, mods, focused, selected) in steps {
+            let after = format!("{key:?} with {mods:?}");
+            press(&mut host, key, mods);
+            let seen = seen(&host, case.shape);
+            assert_eq!(seen.focused.as_deref(), Some(focused), "{after}: {seen:#?}");
+            assert_eq!(seen.selected, selected, "{after}");
+            assert_browser_agrees(&host, case.shape, &after);
+        }
+    });
+}
+
+#[test]
+fn keys_move_in_the_grid_and_the_browser_holds_the_result() {
+    let name = "keys_move_in_the_grid_and_the_browser_holds_the_result";
+    keys_move_and_the_browser_holds_the_result(&ICONS, name);
+}
+
+#[test]
+fn keys_move_in_the_table_and_the_browser_holds_the_result() {
+    let name = "keys_move_in_the_table_and_the_browser_holds_the_result";
+    keys_move_and_the_browser_holds_the_result(&LIST, name);
+}
+
+fn return_opens_a_folder_in_place(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, case.shape, folder.path());
+        press(&mut host, case.next.clone(), Mods::default());
+
+        press(&mut host, Key::Enter, Mods::default());
+
+        // The pane takes the folder's name before its listing arrives: wait for both.
+        let entries = ["notes.txt", "report.md", "spreadsheet.csv"];
+        let seen = wait(&mut host, case.shape, "the folder's listing", |seen| {
+            let named = seen
+                .pane
+                .as_ref()
+                .is_some_and(|[name, _]| name == "documents");
+            named && seen.names() == entries
+        });
+        assert_eq!(seen.names(), entries);
+        let browser = host.app().browser();
+        assert_eq!(browser.location_at(1), None, "a single column");
+        let active = browser
+            .active_location()
+            .map(|location| location.display_name());
+        assert_eq!(active.as_deref(), Some("documents"));
+    });
+}
+
+#[test]
+fn return_opens_a_folder_in_place_in_icons() {
+    return_opens_a_folder_in_place(&ICONS, "return_opens_a_folder_in_place_in_icons");
+}
+
+#[test]
+fn return_opens_a_folder_in_place_in_list() {
+    return_opens_a_folder_in_place(&LIST, "return_opens_a_folder_in_place_in_list");
+}
+
+fn f2_opens_the_editor_and_f5_leaves_it(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, case.shape, folder.path());
+        press(&mut host, Key::End, Mods::default());
+
+        press(&mut host, Key::Function(2), Mods::default());
+        let editing = host.run_until(PATIENCE, |host| {
+            field(host).is_some_and(|(_, focused)| focused)
+        });
+        assert!(editing, "the field: {:?}", field(&host));
+        assert_eq!(
+            field(&host).map(|(text, _)| text).as_deref(),
+            Some("todo.txt")
+        );
+
+        press(&mut host, Key::Function(5), Mods::default());
+        host.run_until(std::time::Duration::from_millis(500), |_| false);
+        assert_eq!(field(&host).map(|(_, focused)| focused), Some(true));
+    });
+}
+
+#[test]
+fn f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there_in_icons() {
+    let name = "f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there_in_icons";
+    f2_opens_the_editor_and_f5_leaves_it(&ICONS, name);
+}
+
+#[test]
+fn f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there_in_list() {
+    let name = "f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there_in_list";
+    f2_opens_the_editor_and_f5_leaves_it(&LIST, name);
+}
+
+fn a_right_click_selects_or_keeps(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        let title = Location::local(folder.path()).display_name();
+        open(&mut host, case.shape, folder.path());
+        press(&mut host, Key::End, Mods::default());
+
+        let menu = right_click(&mut host, case.shape, "readme.md");
+        assert_eq!(menu.as_deref(), Some("readme.md"));
+        let held = browser_holds(&host);
+        assert_eq!(
+            held,
+            (vec!["readme.md".to_owned()], Some("readme.md".to_owned()))
+        );
+        press(&mut host, Key::Escape, Mods::default());
+
+        press(&mut host, Key::Home, Mods::default());
+        press(&mut host, case.next.clone(), shift());
+        let menu = right_click(&mut host, case.shape, "documents");
+        assert_eq!(menu.as_deref(), Some("documents"));
+        let (selected, _) = browser_holds(&host);
+        assert_eq!(selected, ["archive", "documents"]);
+        press(&mut host, Key::Escape, Mods::default());
+
+        let menu = right_click_blank(&mut host, case.shape);
+        assert_eq!(menu, Some(title));
+    });
+}
+
+#[test]
+fn a_right_click_selects_an_unselected_tile_and_keeps_a_selection_it_is_in() {
+    let name = "a_right_click_selects_an_unselected_tile_and_keeps_a_selection_it_is_in";
+    a_right_click_selects_or_keeps(&ICONS, name);
+}
+
+#[test]
+fn a_right_click_selects_an_unselected_row_and_keeps_a_selection_it_is_in() {
+    let name = "a_right_click_selects_an_unselected_row_and_keeps_a_selection_it_is_in";
+    a_right_click_selects_or_keeps(&LIST, name);
+}
+
+fn an_empty_folder_says_so(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = tempfile::tempdir().expect("folder");
+        let title = Location::local(folder.path()).display_name();
+        host.app().open(Location::local(folder.path()));
+
+        let empty = "This directory is empty".to_owned();
+        let seen = wait(&mut host, case.shape, "the empty folder's status", |seen| {
+            seen.list
+                .as_ref()
+                .is_some_and(|[_, described]| *described == empty)
+        });
+
+        assert_eq!(seen.list, Some([title, empty.clone()]));
+        assert!(seen.entries.is_empty());
+        assert!(seen.texts.contains(&empty), "{seen:#?}");
+        assert!(seen.keyboard, "the list has the keyboard: {seen:#?}");
+    });
+}
+
+#[test]
+fn an_empty_folder_says_so_in_icons() {
+    an_empty_folder_says_so(&ICONS, "an_empty_folder_says_so_in_icons");
+}
+
+#[test]
+fn an_empty_folder_says_so_in_list() {
+    an_empty_folder_says_so(&LIST, "an_empty_folder_says_so_in_list");
+}
+
+fn an_unreadable_folder_says_why(case: &Case, name: &str) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let folder = tempfile::tempdir().expect("folder");
+    let locked = folder.path().join("locked");
+    std::fs::create_dir(&locked).expect("folder");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("mode");
+    if std::fs::read_dir(&locked).is_ok() {
+        eprintln!("skipped: {} stays readable to this user", locked.display());
+        return;
+    }
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        host.app().open(Location::local(&locked));
+
+        let said = wait(&mut host, case.shape, "the folder's failure", |seen| {
+            seen.list
+                .as_ref()
+                .is_some_and(|[_, described]| !described.is_empty() && described != "Files")
+        });
+
+        let [_, message] = said.list.clone().expect("the list");
+        assert!(said.texts.contains(&message), "{said:#?}");
+    });
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).expect("mode");
+}
+
+#[test]
+fn an_unreadable_folder_says_why_in_icons() {
+    an_unreadable_folder_says_why(&ICONS, "an_unreadable_folder_says_why_in_icons");
+}
+
+#[test]
+fn an_unreadable_folder_says_why_in_list() {
+    an_unreadable_folder_says_why(&LIST, "an_unreadable_folder_says_why_in_list");
+}
+
+fn tab_moves_the_edit_on_with_the_keyboard(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, case.shape, folder.path());
+        press(&mut host, Key::End, Mods::default());
+        press(&mut host, case.previous.clone(), Mods::default());
+        press(&mut host, Key::Function(2), Mods::default());
+        let editing = host.run_until(PATIENCE, |host| {
+            field(host).is_some_and(|(text, focused)| focused && text == "readme.md")
+        });
+        assert!(editing, "the field: {:?}", field(&host));
+
+        press(&mut host, Key::Tab, Mods::default());
+        let moved = host.run_until(PATIENCE, |host| {
+            field(host).is_some_and(|(text, focused)| focused && text == "todo.txt")
+        });
+        assert!(moved, "the field after Tab: {:?}", field(&host));
+        assert_eq!(browser_holds(&host).0, ["todo.txt"]);
+
+        press(&mut host, Key::Tab, shift());
+        let back = host.run_until(PATIENCE, |host| {
+            field(host).is_some_and(|(text, focused)| focused && text == "readme.md")
+        });
+        assert!(back, "the field after Shift+Tab: {:?}", field(&host));
+        assert_eq!(browser_holds(&host).0, ["readme.md"]);
+
+        // Tab on the last entry commits and ends the edit, with no wrap (`advance_rename`).
+        press(&mut host, Key::Tab, Mods::default());
+        press(&mut host, Key::Tab, Mods::default());
+        let ended = host.run_until(PATIENCE, |host| field(host).is_none());
+        assert!(
+            ended,
+            "the field after Tab on the last entry: {:?}",
+            field(&host)
+        );
+        let seen = seen(&host, case.shape);
+        assert_eq!(seen.focused.as_deref(), Some("todo.txt"), "{seen:#?}");
+        assert_eq!(browser_holds(&host).0, ["todo.txt"]);
+    });
+}
+
+#[test]
+fn tab_moves_the_edit_on_with_the_keyboard_in_icons() {
+    let name = "tab_moves_the_edit_on_with_the_keyboard_in_icons";
+    tab_moves_the_edit_on_with_the_keyboard(&ICONS, name);
+}
+
+#[test]
+fn tab_moves_the_edit_on_with_the_keyboard_in_list() {
+    let name = "tab_moves_the_edit_on_with_the_keyboard_in_list";
+    tab_moves_the_edit_on_with_the_keyboard(&LIST, name);
+}
+
+fn the_menus_rename_opens_the_editor_with_the_keyboard(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, case.shape, folder.path());
+        right_click(&mut host, case.shape, "readme.md");
+
+        choose(&mut host, "Rename");
+
+        let editing = host.run_until(PATIENCE, |host| {
+            field(host).is_some_and(|(text, focused)| focused && text == "readme.md")
+        });
+        assert!(editing, "the field: {:?}", field(&host));
+        assert_eq!(browser_holds(&host).0, ["readme.md"]);
+    });
+}
+
+#[test]
+fn the_menus_rename_opens_the_editor_with_the_keyboard_in_icons() {
+    let name = "the_menus_rename_opens_the_editor_with_the_keyboard_in_icons";
+    the_menus_rename_opens_the_editor_with_the_keyboard(&ICONS, name);
+}
+
+#[test]
+fn the_menus_rename_opens_the_editor_with_the_keyboard_in_list() {
+    let name = "the_menus_rename_opens_the_editor_with_the_keyboard_in_list";
+    the_menus_rename_opens_the_editor_with_the_keyboard(&LIST, name);
+}
+
+fn a_folder_a_pointer_opened_starts_on_its_first_row(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, case.shape, folder.path());
+
+        double_click(&mut host, case.shape, "documents");
+
+        let first = wait(&mut host, case.shape, "the first row's cursor", |seen| {
+            let named = seen
+                .pane
+                .as_ref()
+                .is_some_and(|[name, _]| name == "documents");
+            named && seen.focused.is_some()
+        });
+        assert_eq!(first.focused.as_deref(), Some("notes.txt"));
+        assert!(first.selected.is_empty(), "{first:#?}");
+        press(&mut host, case.next.clone(), Mods::default());
+        assert_eq!(
+            seen(&host, case.shape).focused.as_deref(),
+            Some("report.md")
+        );
+    });
+}
+
+#[test]
+fn a_folder_a_pointer_opened_starts_on_its_first_row_in_icons() {
+    let name = "a_folder_a_pointer_opened_starts_on_its_first_row_in_icons";
+    a_folder_a_pointer_opened_starts_on_its_first_row(&ICONS, name);
+}
+
+#[test]
+fn a_folder_a_pointer_opened_starts_on_its_first_row_in_list() {
+    let name = "a_folder_a_pointer_opened_starts_on_its_first_row_in_list";
+    a_folder_a_pointer_opened_starts_on_its_first_row(&LIST, name);
+}
+
+/// A folder of `count` folders, as `return-restores-nested-scroll` builds one.
+fn folders(count: usize) -> tempfile::TempDir {
+    let folder = tempfile::tempdir().expect("folder");
+    for index in 0..count {
+        std::fs::create_dir(folder.path().join(format!("folder-{index:03}"))).expect("folder");
+    }
+    folder
+}
+
+fn listed<V: SinglePane>(host: &mut Offscreen, name: &str) {
+    let done = host.run_until(PATIENCE, |host| {
+        let pane = &V::single(host.app()).pane;
+        let named = pane
+            .listing()
+            .is_some_and(|listing| listing.title() == name);
+        named && pane.load() == Some(&crate::listing::Load::Listed)
+    });
+    assert!(done, "waited for {name} to be listed");
+    idle(host);
+}
+
+/// The pane's cursor.
+fn cursor<V: SinglePane>(host: &Offscreen) -> Option<EntryId> {
+    V::single(host.app()).pane.collection().selection.cursor()
+}
+
+/// Takes the pane's cursor away, as the browser's too, and scrolls the pane down by the wheel.
+fn scroll_with_no_cursor<V: SinglePane>(host: &mut Offscreen) {
+    host.runtime().update(|app, _| {
+        let (source, collection) = V::single_mut(app).pane.parts_mut();
+        let _ = collection.selection.restore(&Position::default());
+        collection.note_selection(source);
+        crate::shell::publish(app);
+    });
+    idle(host);
+    wheel(host, -40.0, 120);
+}
+
+fn back_keeps_a_scroll_left_with_no_cursor<V: SinglePane>(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = folders(300);
+        let root = Location::local(folder.path()).display_name();
+        host.app().open(Location::local(folder.path()));
+        listed::<V>(&mut host, &root);
+        scroll_with_no_cursor::<V>(&mut host);
+        let left = drawn(&host);
+        assert_ne!(
+            left.first().map(String::as_str),
+            Some("folder-000"),
+            "scrolled"
+        );
+        assert_eq!(cursor::<V>(&host), None, "no cursor");
+
+        // Opened by its location, as the location bar opens a folder: nothing focuses a row.
+        host.app()
+            .open(Location::local(folder.path().join("folder-030")));
+        listed::<V>(&mut host, "folder-030");
+        let alt = Mods {
+            alt: true,
+            ..Mods::default()
+        };
+        press(&mut host, Key::Left, alt);
+        listed::<V>(&mut host, &root);
+
+        assert_eq!(drawn(&host), left, "the entries drawn when it was left");
+        let came_from = V::single(host.app())
+            .pane
+            .listing()
+            .and_then(|listing| {
+                (0..listing.len()).find(|index| listing.entry(*index).name == "folder-030")
+            })
+            .map(|index| {
+                V::single(host.app())
+                    .pane
+                    .listing()
+                    .expect("a listing")
+                    .id_at(index)
+            });
+        assert_eq!(
+            cursor::<V>(&host),
+            came_from,
+            "the browser's cursor, not row 0's"
+        );
+        let (selected, focused) = browser_holds(&host);
+        assert!(selected.is_empty(), "nothing selected: {selected:?}");
+        assert_eq!(focused.as_deref(), Some("folder-030"), "the browser agrees");
+
+        press(&mut host, case.next.clone(), Mods::default());
+        assert_eq!(
+            seen(&host, case.shape).focused.as_deref(),
+            Some("folder-031"),
+            "the next key goes on from it"
+        );
+    });
+}
+
+#[test]
+fn back_keeps_a_scroll_left_with_no_cursor_in_icons() {
+    let name = "back_keeps_a_scroll_left_with_no_cursor_in_icons";
+    back_keeps_a_scroll_left_with_no_cursor::<crate::icons::Icons>(&ICONS, name);
+}
+
+#[test]
+fn back_keeps_a_scroll_left_with_no_cursor_in_list() {
+    let name = "back_keeps_a_scroll_left_with_no_cursor_in_list";
+    back_keeps_a_scroll_left_with_no_cursor::<crate::list::List>(&LIST, name);
+}
+
+fn a_file_icon_dims_as_the_view_does(mode: &'static str, shape: Shape, dims: bool, name: &str) {
+    hosted_in(MODULE, mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, shape, folder.path());
+        let file =
+            crate::test_support::view::icon_opacity(&mut host, "readme.md").expect("a file icon");
+        let folder =
+            crate::test_support::view::icon_opacity(&mut host, "archive").expect("a folder icon");
+
+        assert_eq!(folder, 1.0, "a folder's icon");
+        assert_eq!(file < 1.0, dims, "a file's icon at {file}");
+    });
+}
+
+#[test]
+fn a_file_icon_dims_in_columns() {
+    let shape = Shape {
+        described: "Columns view",
+        list: "list-box",
+        entry: "list-box-option",
+    };
+    a_file_icon_dims_as_the_view_does("columns", shape, true, "a_file_icon_dims_in_columns");
+}
+
+#[test]
+fn a_file_icon_does_not_dim_in_list() {
+    a_file_icon_dims_as_the_view_does(
+        "list",
+        LIST.shape,
+        false,
+        "a_file_icon_does_not_dim_in_list",
+    );
+}
+
+#[test]
+fn a_file_icon_dims_in_icons() {
+    a_file_icon_dims_as_the_view_does("icons", ICONS.shape, true, "a_file_icon_dims_in_icons");
+}
+
+mod filter;

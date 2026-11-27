@@ -11,16 +11,16 @@ use std::{
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Application, COMMAND_TIMEOUT, CONTROLLER_PANIC, DEFAULT_LAYOUT, DEFAULT_WAIT, Display,
-    LAUNCH_TIMEOUT, Launch, POLL_INTERVAL, STEP_IF, STEP_UNLESS, STEP_WHEN, WAIT_MARGIN,
-    baseline::compare_to_baseline,
+    Application, COMMAND_TIMEOUT, CONTROLLER_PANIC, DEFAULT_LAYOUT, DEFAULT_WAIT, LAUNCH_TIMEOUT,
+    Launch, POLL_INTERVAL, STEP_IF, STEP_UNLESS, STEP_WHEN, WAIT_MARGIN,
     fixture::Manifest,
     fs_check::{FsState, FsStep},
-    keyboard::switch,
     peer_steps::{PeerError, Peers, Relaunch, dbus_send, peer_step},
     run::Outcome,
     runner_steps::{EachStep, Kept, LogStep, ProcStep},
+    screen,
     steps::{flag_names, increment, parent, slice, stem, substitute_notes},
+    target,
     variables::unescape,
 };
 
@@ -28,11 +28,9 @@ pub(crate) struct Context<'a> {
     pub(crate) steps: &'a [(usize, Value)],
     pub(crate) initial_layout: &'a str,
     pub(crate) manifest: &'a Manifest,
-    pub(crate) display: &'a Display,
     pub(crate) fixture: &'a Path,
     pub(crate) fixture_time: SystemTime,
     pub(crate) screens: &'a Path,
-    pub(crate) artifacts: &'a Path,
     pub(crate) launch: &'a Launch<'a>,
 }
 
@@ -57,10 +55,8 @@ pub(crate) fn drive(
         outcome.errors.push(format!("launch: {error}"));
         return outcome;
     }
-    // Only now: the process read the US keymap at startup, and key names
-    // keep meaning US key positions under any layout.
     if context.initial_layout != DEFAULT_LAYOUT {
-        match switch(context.manifest, context.display, context.initial_layout) {
+        match launch_layout(application, context, &mut outcome) {
             Ok(()) => context.initial_layout.clone_into(layout),
             Err(error) => {
                 outcome.errors.push(format!("layout: {error}"));
@@ -112,7 +108,7 @@ pub(crate) fn drive(
         let step = &Value::Object(object.clone());
         if let Some(name) = object.get("layout") {
             let name = name.as_str().unwrap_or_default().to_owned();
-            match switch(context.manifest, context.display, &name) {
+            match change_layout(application, context, (&name, Some(*line)), &mut outcome) {
                 Ok(()) => *layout = name,
                 Err(error) => {
                     outcome.errors.push(format!("{label}: {error}"));
@@ -156,31 +152,10 @@ pub(crate) fn drive(
             let destination = context.screens.join(name.as_str().unwrap_or_default());
             let taken = fs::create_dir_all(context.screens)
                 .map_err(|error| error.to_string())
-                .and_then(|()| context.display.screenshot(&destination));
+                .and_then(|()| screen::take(application, &destination));
             if let Err(error) = taken {
                 outcome.errors.push(format!("{label}: {error}"));
                 return outcome;
-            }
-            continue;
-        }
-        if let Some(name) = object.get("baseline") {
-            let name = name.as_str().unwrap_or_default();
-            let capture = context.screens.join(format!("{name}.capture.png"));
-            let compared = fs::create_dir_all(context.screens)
-                .map_err(|error| error.to_string())
-                .and_then(|()| context.display.screenshot(&capture))
-                .and_then(|()| compare_to_baseline(name, &capture, context.screens));
-            match compared {
-                Ok(comparison) if comparison.matched => {}
-                Ok(comparison) => {
-                    let failure = comparison.failure(context.artifacts);
-                    file_failure(&mut outcome, *line, &label, &failure);
-                    return outcome;
-                }
-                Err(error) => {
-                    outcome.errors.push(format!("{label}: {error}"));
-                    return outcome;
-                }
             }
             continue;
         }
@@ -444,6 +419,36 @@ pub(crate) fn file_failure(outcome: &mut Outcome, line: usize, label: &str, erro
     }
 }
 
+fn change_layout(
+    application: &mut Application,
+    context: &Context,
+    (name, line): (&str, Option<usize>),
+    outcome: &mut Outcome,
+) -> Result<(), String> {
+    let layout = context
+        .manifest
+        .layouts
+        .get(name)
+        .ok_or_else(|| format!("no layout {name:?} in the manifest"))?;
+    let step = target::keymap_step(layout);
+    let reply = application.send(&step, COMMAND_TIMEOUT)?;
+    record(outcome, line, "layout", &step, reply)
+}
+
+/// The layout a run starts under, when it is not the US one the application launched with.
+fn launch_layout(
+    application: &mut Application,
+    context: &Context,
+    outcome: &mut Outcome,
+) -> Result<(), String> {
+    change_layout(
+        application,
+        context,
+        (context.initial_layout, None),
+        outcome,
+    )
+}
+
 fn record(
     outcome: &mut Outcome,
     line: Option<usize>,
@@ -499,6 +504,34 @@ fn record(
     }
 }
 
+/// Checks an `fs` step that held again until its `hold_ms` runs out.
+fn hold_fs(
+    step: &FsStep,
+    fixture: &Path,
+    fixture_time: SystemTime,
+    state: &mut FsState,
+) -> Result<(), String> {
+    let Some(hold) = step.hold_ms.map(Duration::from_millis) else {
+        return Ok(());
+    };
+    let held_from = Instant::now();
+    while held_from.elapsed() < hold {
+        std::thread::sleep(POLL_INTERVAL);
+        if let Err(actual) = step.fs.observe(fixture, fixture_time, state) {
+            return Err(format!(
+                "stopped holding after {} ms{}; {} {actual}",
+                held_from.elapsed().as_millis(),
+                step.message
+                    .as_deref()
+                    .map(|message| format!(" for {message}"))
+                    .unwrap_or_default(),
+                step.fs.path
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn wait_for_fs(
     step: &Value,
     fixture: &Path,
@@ -516,7 +549,7 @@ pub(crate) fn wait_for_fs(
     let deadline = Instant::now() + step.timeout_ms.map_or(DEFAULT_WAIT, Duration::from_millis);
     loop {
         match step.fs.observe(fixture, fixture_time, state) {
-            Ok(()) => return Ok(()),
+            Ok(()) => return hold_fs(&step, fixture, fixture_time, state),
             Err(_) if state.fatal.is_some() => {
                 return Err(format!(
                     "{} {}",

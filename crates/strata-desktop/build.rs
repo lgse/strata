@@ -62,8 +62,6 @@ fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// The application's version is the root package's, which the release workflow rewrites;
-/// this crate's own version says nothing about a release.
 fn application_version() -> String {
     let manifest =
         fs::read_to_string(workspace_root().join("Cargo.toml")).expect("read the root manifest");
@@ -82,8 +80,6 @@ fn application_version() -> String {
         .expect("the root package declares its version")
 }
 
-/// Distribution packages set `STRATA_UPDATER=disabled` so their package manager
-/// owns updates. Any other value is rejected rather than shipping an updater by accident.
 fn configure_updater() {
     let Some(value) = env::var_os("STRATA_UPDATER") else {
         return;
@@ -95,9 +91,6 @@ fn configure_updater() {
     }
 }
 
-/// Store-based packages (Nix, Guix) set `STRATA_INTEGRATIONS=package` because every
-/// path the runtime installers would record changes on update. The package ships the
-/// portal, D-Bus service, and udiskie files instead.
 fn configure_integrations() {
     let Some(value) = env::var_os("STRATA_INTEGRATIONS") else {
         return;
@@ -109,9 +102,6 @@ fn configure_integrations() {
     }
 }
 
-/// Embeds every integration under `integrations/` so releases carry the catalog
-/// without packaging changes. Directories starting with `.` or `_` and
-/// documentation files are left out.
 fn write_integration_bundle() {
     let root = workspace_root().join("integrations");
     let mut directories: Vec<PathBuf> = fs::read_dir(&root)

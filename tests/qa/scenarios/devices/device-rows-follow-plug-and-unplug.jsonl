@@ -1,0 +1,15 @@
+{"scenario":"device-rows-follow-plug-and-unplug","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"session_bus":true,"volume_monitor":true,"setup":[{"fs":{"path":"$environment/media/stick","mkdir":true,"parents":true}},{"fs":{"path":"$environment/media/stick/photo-list.txt","write":"stick\n"}},{"fs":{"path":"$environment/media/backup","mkdir":true,"parents":true}},{"fs":{"path":"$environment/media/backup/archive-list.txt","write":"backup\n"}}],"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Live DEVICES rows and heading follow monitor Add/Remove; unit tests stop at device_count, only this covers the rebuild"}}
+{"wait":{"panes":["$root"]},"message":"the fixture to be listed"}
+{"expect":{"absent":{"role":"button","name":"DEVICES"}},"timeout_ms":1000,"hold_ms":300,"message":"no DEVICES heading while no device is plugged in"}
+{"dbus_send":["--print-reply","--dest=org.strata.QaVolumeMonitor","/org/strata/QaVolumeMonitor","org.strata.QaVolumeMonitor.Add","string:{\"id\":\"stick\",\"name\":\"QA Stick\",\"root\":\"$environment/media/stick\"}"]}
+{"wait":{"present":{"sidebar":"QA Stick"}},"message":"plugging in a stick to add its row without a restart"}
+{"wait":{"description":{"target":{"role":"button","name":"DEVICES"},"text":"1 item"}},"message":"the DEVICES heading to count one device"}
+{"dbus_send":["--print-reply","--dest=org.strata.QaVolumeMonitor","/org/strata/QaVolumeMonitor","org.strata.QaVolumeMonitor.Add","string:{\"id\":\"backup\",\"name\":\"Backup Disk\",\"root\":\"$environment/media/backup\",\"mounted\":true}"]}
+{"wait":{"present":{"sidebar":"Backup Disk"}},"message":"plugging in a mounted disk to add its row"}
+{"wait":{"description":{"target":{"role":"button","name":"DEVICES"},"text":"2 items"}},"message":"the DEVICES heading to count two devices"}
+{"dbus_send":["--print-reply","--dest=org.strata.QaVolumeMonitor","/org/strata/QaVolumeMonitor","org.strata.QaVolumeMonitor.Remove","string:stick"]}
+{"wait":{"absent":{"sidebar":"QA Stick"}},"message":"unplugging the stick to remove its row"}
+{"expect":[{"present":{"sidebar":"Backup Disk"}},{"description":{"target":{"role":"button","name":"DEVICES"},"text":"1 item"}}],"message":"the disk still plugged in to keep its row and the count"}
+{"dbus_send":["--print-reply","--dest=org.strata.QaVolumeMonitor","/org/strata/QaVolumeMonitor","org.strata.QaVolumeMonitor.Remove","string:backup"]}
+{"wait":{"absent":{"sidebar":"Backup Disk"}},"message":"unplugging the disk to remove its row"}
+{"wait":{"absent":{"role":"button","name":"DEVICES"}},"message":"the DEVICES heading to go once the last device is unplugged"}

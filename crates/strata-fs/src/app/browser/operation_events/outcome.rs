@@ -204,7 +204,10 @@ impl Browser {
             }
             _ => return,
         };
-        self.emit(BrowserEvent::ArchiveCompleted { select_name });
+        self.emit(BrowserEvent::ArchiveCompleted {
+            select_name,
+            cancelled: false,
+        });
     }
 
     fn publish_entry_outcome(self: &Rc<Self>, outcome: &Outcome<'_>, event: OperationEvent) {
@@ -228,8 +231,6 @@ impl Browser {
         self.refresh_unmonitored_operation_locations(context, None);
     }
 
-    /// An unmonitored folder shows what a restore put back, or failed to,
-    /// only after a reload.
     fn refresh_unmonitored_restore_locations(
         self: &Rc<Self>,
         context: &OperationContext,
@@ -317,6 +318,7 @@ impl Browser {
         if outcome.completion.archiving {
             self.emit(BrowserEvent::ArchiveCompleted {
                 select_name: String::new(),
+                cancelled: true,
             });
         }
         self.emit(BrowserEvent::OperationCancelled {

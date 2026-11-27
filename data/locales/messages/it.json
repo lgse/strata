@@ -204,6 +204,7 @@
   "Cannot permanently delete the filesystem root": "Impossibile eliminare definitivamente la radice del file system",
   "Cannot restore the filesystem root": "Impossibile ripristinare la radice del file system",
   "Can’t compress these items": "Impossibile comprimere questi elementi",
+  "Can’t extract these items": "Impossibile estrarre questi elementi",
   "Can’t create items here": "Impossibile creare elementi qui",
   "Can’t cut these items": "Impossibile tagliare questi elementi",
   "Can’t move these items": "Impossibile spostare questi elementi",
@@ -421,6 +422,7 @@
   "Extract the archive here / to a typed folder": "Estrai l’archivio qui / in una cartella digitata",
   "Extract the archive to a folder": "Estrai l’archivio in una cartella",
   "Extracted entries remain in “%{folder}”.": "Gli elementi estratti rimangono in “%{folder}”.",
+  "Extracting archive %{current} of %{total}": "Estrazione dell’archivio %{current} di %{total}",
   "Extraction destination must use an absolute path": "La destinazione di estrazione deve usare un percorso assoluto",
   "Extraction stopped unexpectedly": "L’estrazione si è interrotta in modo imprevisto",
   "Failed after %{elapsed}": "Operazione non riuscita dopo %{elapsed}",
@@ -1151,5 +1153,6 @@
   "Press the new key for “%{action}”": "Premi il nuovo tasto per “%{action}”",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} annulla e %{backspace} rimuove tutti i tasti di questa azione.",
   "“%{group}” has no key, so this action cannot run.": "“%{group}” non ha un tasto, quindi questa azione non può essere eseguita.",
-  "Custom action %{number}": "Azione personalizzata %{number}"
+  "Custom action %{number}": "Azione personalizzata %{number}",
+  "Volume": "Volume"
 }

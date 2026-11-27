@@ -1,0 +1,373 @@
+// SPDX-License-Identifier: MIT
+
+use std::rc::Rc;
+
+use rune::{El, Tx};
+use strata_components::{
+    collection::{
+        element::{CollectionState, Intent, RowMarks},
+        keyboard::{KeyHandle, NothingToSelect},
+        selection::{Listing, Position, Selection},
+    },
+    contract::{Direction, EntryId, EntrySource},
+    filter_bar::filter::status as status_line,
+    icons_grid::{IconsGridState, autoscroll_background},
+    scroll::{Autoscroll, AutoscrollPointer, ScrollFeed},
+};
+
+use super::{hits::HitsUpdate, place::Where};
+use crate::{App, handover, listing::Column, menus, shell, slots::Worn};
+
+pub(crate) const SEARCH_RESULTS: &str = "Search results";
+
+/// The results a pane shows in the place of its listing, while it shows them.
+pub(crate) struct PaneHits {
+    hits: Option<Column>,
+    collection: CollectionState,
+    pub(crate) keys_handle: KeyHandle,
+    /// The Icons results' grid.
+    pub(crate) grid: IconsGridState,
+    autoscroll: Autoscroll,
+    list_feed: ScrollFeed,
+    /// Moves each time results are shown or dropped, so two sets never share a version.
+    swaps: u64,
+    /// Whether the results come from the subfolders too: each then shows its path.
+    pub(crate) recursive: bool,
+}
+
+impl PaneHits {
+    pub(crate) fn collect_ids(&self, out: &mut impl Extend<EntryId>) {
+        if let Some(hits) = &self.hits {
+            hits.collect_ids(out);
+        }
+    }
+}
+
+/// What a pane shows while it has no results.
+struct Nothing;
+
+impl EntrySource for Nothing {
+    fn len(&self) -> usize {
+        0
+    }
+
+    fn id_at(&self, index: usize) -> EntryId {
+        unreachable!("no result {index}")
+    }
+
+    fn index_of(&self, _: EntryId) -> Option<usize> {
+        None
+    }
+
+    fn entry(&self, index: usize) -> strata_components::contract::Entry<'_> {
+        unreachable!("no result {index}")
+    }
+}
+
+impl PaneHits {
+    pub(crate) fn new() -> Self {
+        Self {
+            hits: None,
+            collection: CollectionState::new(),
+            keys_handle: KeyHandle::new(),
+            grid: IconsGridState::new(),
+            autoscroll: Autoscroll::new(),
+            list_feed: ScrollFeed::new(),
+            swaps: 0,
+            recursive: false,
+        }
+    }
+
+    pub(crate) fn autoscroll(&self) -> &Autoscroll {
+        &self.autoscroll
+    }
+
+    pub(crate) fn list_feed(&self) -> &ScrollFeed {
+        &self.list_feed
+    }
+
+    /// Whether results show.
+    pub(crate) fn shows(&self) -> bool {
+        self.hits.is_some()
+    }
+
+    /// The results and their selection, while they show.
+    pub(crate) fn shown_with_selection(&self) -> Option<(&dyn EntrySource, &Selection)> {
+        let hits: &dyn EntrySource = self.hits.as_ref()?;
+        Some((hits, &self.collection.selection))
+    }
+
+    /// The results as the collection reads them.
+    pub(crate) fn source(&self) -> &dyn EntrySource {
+        match &self.hits {
+            Some(hits) => hits,
+            None => &Nothing,
+        }
+    }
+
+    pub(crate) fn collection(&self) -> &CollectionState {
+        &self.collection
+    }
+
+    pub(crate) fn in_band(&self) -> bool {
+        self.collection.selection.in_band()
+    }
+
+    /// The results' rows, while they show: read for hover tooltips and QA invariants.
+    pub(crate) fn hits(&self) -> Option<&Column> {
+        self.hits.as_ref()
+    }
+
+    pub(crate) fn parts_mut(&mut self) -> (&dyn EntrySource, &mut CollectionState) {
+        let source: &dyn EntrySource = match &self.hits {
+            Some(hits) => hits,
+            None => &Nothing,
+        };
+        (source, &mut self.collection)
+    }
+
+    pub(crate) fn version(&self) -> u64 {
+        let version = self.hits.as_ref().map_or(0, Column::version);
+        self.swaps.wrapping_shl(40) ^ version
+    }
+
+    pub(crate) fn thumb_version(&self) -> u64 {
+        let version = self.hits.as_ref().map_or(0, Column::thumb_version);
+        (1_u64 << 63) ^ self.swaps.wrapping_shl(40) ^ version
+    }
+
+    pub(crate) fn set_worn(&mut self, worn: &Rc<Worn>) {
+        if let Some(hits) = &mut self.hits {
+            hits.set_worn(worn);
+        }
+    }
+
+    pub(crate) fn show(&mut self, place: Where, update: HitsUpdate, tx: &mut Tx) {
+        let scope = place.view_key();
+        let first = self.hits.is_none();
+        let revealed = (!first).then(|| self.relocate_before(&update)).flatten();
+        self.swaps = self.swaps.wrapping_add(1);
+        let hits = self.hits.insert(update.hits);
+        if first {
+            let is_list = place == Where::List;
+            let handle = KeyHandle::new();
+            let mut collection = crate::single::results_state(is_list, handle.clone());
+            self.keys_handle = handle;
+            let inner = collection.controllers.pointer.take();
+            let feed = if is_list {
+                self.list_feed.clone()
+            } else {
+                self.grid.feed().clone()
+            };
+            let mut pointer = AutoscrollPointer::new(inner, self.autoscroll.clone(), scope, feed);
+            if !is_list {
+                pointer = pointer.background(autoscroll_background);
+            }
+            collection.controllers.pointer = Some(Box::new(pointer));
+            self.collection = collection;
+            let _ = self
+                .collection
+                .enter(scope, &*hits, None, Listing::Complete, tx);
+        } else {
+            if update.clear {
+                let _ = self.collection.selection.clear();
+            }
+            let _ = self
+                .collection
+                .sync(scope, &*hits, handover::sync_rule(hits), tx);
+        }
+        self.collection.note_selection(&*hits);
+        if let Some(index) = revealed.and_then(|id| hits.index_of(id)) {
+            self.collection.reveal(scope, hits, index, tx);
+        }
+    }
+
+    fn relocate_before(&mut self, update: &HitsUpdate) -> Option<EntryId> {
+        let (from, to) = update.relocation(self.hits.as_ref()?)?;
+        let moved = self.collection.selection.relocate(from, to);
+        (moved.selection || moved.cursor).then_some(to)
+    }
+
+    /// Gives the listing its place back.
+    pub(crate) fn drop_hits(&mut self) {
+        self.autoscroll.stop_gone(None);
+        self.grid.reset();
+        self.keys_handle.end_range();
+        if self.hits.take().is_some() {
+            self.swaps = self.swaps.wrapping_add(1);
+        }
+    }
+
+    /// The results taken out, with their selection, for the view a switch shows.
+    pub(crate) fn take(&mut self) -> Option<(Column, Position)> {
+        self.autoscroll.stop_gone(None);
+        self.grid.reset();
+        self.keys_handle.end_range();
+        let position = self.collection.selection.position(self.hits.as_ref()?);
+        let hits = self.hits.take()?;
+        self.swaps = self.swaps.wrapping_add(1);
+        Some((hits, position))
+    }
+
+    /// The selection a switch carried over, on the results now shown.
+    pub(crate) fn restore(&mut self, position: &Position) {
+        let Some(hits) = &self.hits else {
+            return;
+        };
+        let _ = self.collection.selection.restore(position);
+        self.collection.note_selection(hits);
+    }
+
+    pub(crate) fn reveal_index(&self, scope: &str, index: usize, tx: &mut Tx) {
+        if let Some(hits) = &self.hits {
+            self.collection.reveal(scope, hits, index, tx);
+        }
+    }
+
+    /// The cursor on result `id`, which alone is selected, kept in view.
+    pub(crate) fn land(&mut self, scope: &str, id: EntryId, tx: &mut Tx) {
+        let Some(hits) = &self.hits else {
+            return;
+        };
+        let Some(index) = hits.index_of(id) else {
+            return;
+        };
+        let _ = self.collection.selection.select_only(hits, index);
+        self.collection.note_selection(hits);
+        self.collection.reveal(scope, hits, index, tx);
+    }
+}
+
+/// The pane the filter is open in, while it is open in the view shown.
+fn open_place(app: &App) -> Option<Where> {
+    let open = app.filter.open_in.as_ref()?;
+    let shown = Where::shown(app)?;
+    (shown == open.place && shown != Where::Columns && app.filter.state.is_open()).then_some(shown)
+}
+
+/// The filter's field, in a band under the pane's header while it is open there.
+pub(crate) fn band(app: &App) -> Option<El> {
+    open_place(app)?;
+    super::bar(app).build(app, &app.look)
+}
+
+pub(crate) fn toggle(app: &App, view: &str) -> Option<El> {
+    let place = Where::shown(app).filter(|place| *place != Where::Columns)?;
+    let look = &app.look;
+    let built = strata_components::header::action(
+        look,
+        strata_kit::icons::IconName::Filter,
+        &super::name_in(place),
+    )
+    .on_press_tx(|app: &mut App, tx: &mut Tx| toggled(app, tx))
+    .build(&look.accent_icon_kit())
+    .checked(open_place(app).is_some());
+    Some(crate::buttons::on_return(format!("{view}-filter"), built))
+}
+
+fn toggled(app: &mut App, tx: &mut Tx) {
+    if open_place(app).is_some() {
+        let polled = app.filter.state.close();
+        super::route(app, polled, tx);
+        return;
+    }
+    super::open(app, None, tx);
+}
+
+pub(crate) fn marks(app: &App, id: EntryId) -> RowMarks {
+    match &app.filter.open_in {
+        Some(open) => super::marks(app, open.depth, id),
+        None => RowMarks::default(),
+    }
+}
+
+pub(crate) fn status(app: &App) -> Option<El> {
+    let said = super::status(app)?;
+    Some(status_line(&app.look, "filter-status", said))
+}
+
+pub(crate) fn heard(app: &mut App, intent: Intent, tx: &mut Tx) {
+    let Some(depth) = app.filter.open_in.as_ref().map(|open| open.depth) else {
+        return;
+    };
+    shell::publish(app);
+    if let Intent::BeginDrag { ids, .. } = intent {
+        begin_drag(app, depth, ids, tx);
+        return;
+    }
+    if !super::hit_intent(app, depth, &intent, tx) {
+        match intent {
+            Intent::ContextMenu { target, anchor } => {
+                let request = menus::Request {
+                    depth,
+                    entry: target,
+                    anchor,
+                };
+                menus::open(app, request, tx);
+            }
+            // A slow second click on a result's name.
+            Intent::BeginRename { id } => crate::rename::begin_on(app, depth, id, tx),
+            Intent::Edge(Direction::Left) => {
+                if !shell::preferences(app).tenxer_mode
+                    || !app
+                        .filter
+                        .open_in
+                        .as_ref()
+                        .is_some_and(|open| open.place == Where::List)
+                {
+                    shell::leave_view_at_start(app, tx);
+                }
+            }
+            Intent::Other(other) if other.downcast_ref::<NothingToSelect>().is_some() => {
+                crate::tenxer::flash_nothing_to_select(app, tx);
+            }
+            // Drags and new tabs are not yet here.
+            _ => {}
+        }
+    }
+    shell::settle(app, tx);
+}
+
+/// A drag from the results carries the entries they stand for, drawn at the shown view's scale.
+fn begin_drag(app: &mut App, depth: usize, ids: Vec<EntryId>, tx: &mut Tx) {
+    let entries: Vec<_> = ids
+        .into_iter()
+        .filter_map(|id| super::targets::at(app, depth, id))
+        .collect();
+    let scale = match Where::shown(app) {
+        Some(Where::Icons) => app.icons.single.scale(),
+        Some(Where::List) => app.list.single.scale(),
+        _ => 1.0,
+    };
+    crate::dnd::begin_entries(app, entries, scale, tx);
+    shell::settle(app, tx);
+}
+
+/// Result `id` alone selected, with the cursor: a menu's row on it asks.
+pub(crate) fn select_only<V: crate::single::SinglePane>(app: &mut App, id: EntryId, tx: &mut Tx) {
+    app.filter.pane.land(V::KEY, id, tx);
+    super::picked(app);
+}
+
+/// Scrolls result `id` into view.
+pub(crate) fn reveal<V: crate::single::SinglePane>(app: &App, id: EntryId, tx: &mut Tx) {
+    let hits = &app.filter.pane;
+    if let Some(index) = hits.source().index_of(id) {
+        hits.reveal_index(V::KEY, index, tx);
+    }
+}
+
+pub(crate) fn relative_path_of(app: &App, id: EntryId) -> Option<&std::path::Path> {
+    if !app.filter.pane.recursive {
+        return None;
+    }
+    let open = app.filter.open_in.as_ref()?;
+    let root = open.folder.native_path()?;
+    let entry = app.filter.found.get(&id)?;
+    let path = entry.location.native_path()?;
+    Some(path.strip_prefix(root).unwrap_or(path))
+}
+
+pub(crate) fn path_of(app: &App, id: EntryId) -> Option<String> {
+    relative_path_of(app, id).map(|path| path.to_string_lossy().into_owned())
+}

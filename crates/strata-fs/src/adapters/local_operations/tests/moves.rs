@@ -159,8 +159,6 @@ fn rewrite(path: &Path, contents: &'static [u8]) -> super::fs_quirks::Racer {
     Box::new(move || fs::write(&path, contents).expect("rewrite the source"))
 }
 
-/// A rewrite within one change-time tick of `than` (10 ms on exFAT) would keep
-/// its change time.
 fn wait_for_a_later_change_time(probe: &Path, than: &fs::Metadata) {
     loop {
         fs::write(probe, b"probe").expect("write the probe");
@@ -195,8 +193,6 @@ fn assert_pasted(events: &RefCell<Vec<OperationEvent>>, row: &str) {
     );
 }
 
-/// An hour before now, in seconds since the epoch: settled times a rewrite
-/// shows in on any kernel.
 fn an_hour_ago() -> Result<u64, Box<dyn Error>> {
     Ok(SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
@@ -204,8 +200,6 @@ fn an_hour_ago() -> Result<u64, Box<dyn Error>> {
         - 3600)
 }
 
-/// Sets the access and modification times of `path` back to the
-/// modification time `before` recorded.
 fn put_times_back(path: &Path, before: &fs::Metadata) -> rustix::io::Result<()> {
     let modified = rustix::fs::Timespec {
         tv_sec: before.mtime(),

@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Where Trash is unavailable, a merge moves each original it overwrites
-//! into one hidden folder inside the merge target, under its relative path,
-//! and deletes that folder only once the merge has succeeded and is on
-//! disk. An original whose name the merge left free goes back to it first.
-
 use std::{
     collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
@@ -353,8 +348,6 @@ impl MergeAside {
         })
     }
 
-    /// Moves each original whose name the merge left free back to it: the
-    /// incoming item was left out, or kept at its source by a move.
     fn put_back_unreplaced(&mut self) -> Result<(), PlaceError> {
         let mut failure = Ok(());
         self.moved.retain(|moved| {

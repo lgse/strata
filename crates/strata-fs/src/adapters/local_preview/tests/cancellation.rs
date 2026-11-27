@@ -2,8 +2,6 @@
 
 use super::*;
 
-/// Signals `started`, then blocks the worker until `finish` releases it, so
-/// the test can cancel the load while the helper is still running.
 fn gated_renderer(
     started: oneshot::Sender<()>,
     finish: std::sync::mpsc::Receiver<()>,

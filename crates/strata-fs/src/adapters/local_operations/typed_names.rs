@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Names the user types for an item, refused before anything changes where
-//! the location would store another name.
-
 use std::path::Path;
 
 use super::{
@@ -56,8 +53,6 @@ pub fn rename_taken(current: &Path, wanted: &Path) -> bool {
         .is_none_or(|(dir, name)| placement::alias_of(fs(), Entry::new(&dir, &name), to).is_none())
 }
 
-/// The first of `folders` below `start` that is held by something other than
-/// a folder, which the rename would refuse.
 pub fn blocked_folder(start: &Path, folders: &[String]) -> Option<String> {
     let mut path = start.to_path_buf();
     folders.iter().find_map(|folder| {
@@ -68,8 +63,6 @@ pub fn blocked_folder(start: &Path, folders: &[String]) -> Option<String> {
     })
 }
 
-/// Its code point where it shows nothing of its own: control and format characters, spaces,
-/// marks that join the character before, and private-use or unassigned code points.
 fn shown(character: char) -> String {
     use glib::{Unichar, UnicodeType};
     if matches!(

@@ -11,12 +11,8 @@ use super::{
     wire::{self, Operation, Response},
 };
 
-/// Decodes one input for the worker. The binary that hosts the worker supplies it, because
-/// the decoders link native libraries that this launcher does not.
 pub type Decoder = fn(&Path, Operation) -> Response;
 
-/// This process parses only the private control protocol, never media. Decoders
-/// receive a source on stdin and a one-way output pipe, not the control socket.
 pub fn run(decoder: Decoder) -> Result<(), String> {
     restrict_mutations()?;
     let socket = UnixStream::from(rustix::io::dup(std::io::stdin()).map_err(|e| e.to_string())?);
@@ -62,9 +58,6 @@ pub fn run(decoder: Decoder) -> Result<(), String> {
 
 pub(super) const PROBE_RESTRICTED: i32 = 2;
 
-/// Some hosts deny nested namespaces to every bubblewrap child, for example
-/// AppArmor's `unpriv_bwrap` profile, so every job would fail. Only a permission
-/// denial counts: transient failures stay errors so the parent retries later.
 fn namespaces_restricted() -> Result<bool, String> {
     match process::fork().map_err(|e| e.to_string())? {
         Some(child) => match process::exit_code(child).map_err(|e| e.to_string())? {

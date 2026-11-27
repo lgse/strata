@@ -1,25 +1,29 @@
 // SPDX-License-Identifier: MIT
 
-//! The protocol of the scripted QA mode: what a step, a target and a predicate are, and how
-//! each is parsed. The application and the runner in `tests/qa.rs` both use it, so the runner
-//! rejects a malformed step when it loads a scenario instead of the process rejecting it mid-run.
-
 use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value;
 
+mod backend;
 mod checks;
 mod chord;
 mod command;
+mod engine;
 mod expr;
+mod geometry;
 mod matchers;
 mod offset;
+mod outcome;
 mod predicate;
+mod scroll;
+mod shape;
+mod snapshot;
 mod target;
 
 pub use self::{
-    checks::*, chord::*, command::*, expr::*, matchers::*, offset::*, predicate::*, target::*,
+    backend::*, checks::*, chord::*, command::*, engine::*, expr::*, geometry::*, matchers::*,
+    offset::*, outcome::*, predicate::*, scroll::*, shape::*, snapshot::*, target::*,
 };
 
 pub const DEFAULT_WAIT: Duration = Duration::from_millis(15_000);
@@ -62,3 +66,6 @@ pub fn changed_keys(previous: Option<&Value>, current: &Value) -> Vec<String> {
         .map(|(key, _)| key.clone())
         .collect()
 }
+
+#[cfg(test)]
+mod tests;

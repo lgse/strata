@@ -9,8 +9,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Many filesystems hand a freed inode number to the next item created, so
-/// the type and, where reported, the birth time tell the two apart.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct LocalFileIdentity {
     pub(super) device: u64,

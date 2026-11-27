@@ -1,0 +1,9 @@
+diff --git a/crates/strata-app/src/preview/pdf.rs b/crates/strata-app/src/preview/pdf.rs
+index 5738070a3..226d6c5da 100644
+--- a/crates/strata-app/src/preview/pdf.rs
++++ b/crates/strata-app/src/preview/pdf.rs
+@@ -146,3 +146,3 @@ pub(super) fn viewer(
+ fn text_layer(text: Option<&PdfTextLayer>) -> Option<TextLayer> {
+-    text.map(|layer| {
++    text.filter(|_| false).map(|layer| {
+         TextLayer::new(

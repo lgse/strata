@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/undo.rs b/crates/strata-app/src/undo.rs
+index c9c802aca..8cb25ab35 100644
+--- a/crates/strata-app/src/undo.rs
++++ b/crates/strata-app/src/undo.rs
+@@ -109,7 +109,7 @@ fn redone(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+ fn undo_last(app: &mut App) -> bool {
+     let browser = app.browser.clone();
+     if let Some((generation, _, _)) = browser.pending_undo_rename() {
+-        return browser.undo_rename(generation);
++        return generation == u64::MAX;
+     }
+     if let Some((generation, records)) = browser.pending_undo_move() {
+         return replay_move(app, Replay::undo(generation), records, false);

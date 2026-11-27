@@ -36,12 +36,7 @@ impl StagingLoad {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum DepartureEvidence {
     RemovalReport,
-    /// Reloading it failed, which also covers a removal report that a monitor burst or a
-    /// reload superseded. The read error stays unless the folder is confirmed gone.
     FailedLoad,
-    /// A deeper column reported its own removal. The open columns' monitors report every
-    /// rename between them, so unless that column was removed, an ancestor of this folder
-    /// was: a folder that remains is left as it is.
     DeeperRemovalReport,
 }
 
@@ -178,16 +173,12 @@ impl Browser {
             || self.transfer_operation.get().is_some()
     }
 
-    /// Deeper columns are entries of the parent column, whose monitor reports their
-    /// removal or rename.
     fn parent_column_watches(&self, depth: usize, watched: &Location) -> bool {
         depth.checked_sub(1).is_some_and(|parent| {
             self.column_has_monitor(parent) && self.location_at(parent) == watched.parent()
         })
     }
 
-    /// Checks that the first column of the chain that ends at `depth`, each column watched
-    /// by its parent column, is still where it was: no open monitor reports a rename above it.
     fn check_watching_columns_remain(self: &Rc<Self>, depth: usize) {
         if self.departure_check_pending() || self.file_operation_defers_changes() {
             return;
@@ -205,8 +196,6 @@ impl Browser {
         }
     }
 
-    /// Reacts to the open folder at `depth` reporting its own removal, which is all its
-    /// monitor says about a deletion, a rename or a move.
     pub(super) fn handle_root_departure(
         self: &Rc<Self>,
         depth: usize,
@@ -244,9 +233,6 @@ impl Browser {
         }
     }
 
-    /// A folder that exists again reloads in place, which also renews its monitor. A
-    /// folder renamed within its parent is followed; otherwise the nearest existing
-    /// ancestor is restored. Neither adds a history entry.
     pub(super) fn check_departed_directory(
         self: &Rc<Self>,
         depth: usize,
@@ -424,8 +410,6 @@ impl Browser {
         self.keep_departure_probe(generation, &answered, probe);
     }
 
-    /// Keeps pane filters, and any search sharing their index, in step with the listing
-    /// of `watched`. A move also rebases indexes rooted at or below the moved entry.
     pub(super) fn refresh_search_indexes_for(watched: &Location, change: Option<&DirectoryChange>) {
         if watched.is_recent_root() {
             return;

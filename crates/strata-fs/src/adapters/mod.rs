@@ -18,7 +18,9 @@ pub mod trash_restore;
 pub mod trash_support;
 mod volume;
 
-pub use file_manager1::{RevealRequest, export_file_manager};
+pub use file_manager1::{
+    Method as RevealMethod, RevealRequest, export_file_manager, reveal_requests,
+};
 pub use gio_location::{
     CONTENT_TYPE_ATTRIBUTES, content_type_of, gio_file_for_location, location_for_file,
     reveal_target_for_file,
@@ -51,7 +53,7 @@ pub use local_preview::LocalPreviewProvider;
 pub use volume::set_mountinfo_for_isolated_test;
 pub use volume::{DropVolumeQuery, DropVolumes, lookup_drop_volumes};
 pub use volume::{
-    MountTable, RemovableRoot, invalidate_mount_snapshot, mount_can_unplug, mount_is_removable,
-    volume_can_unplug, with_mount_snapshot,
+    MountTable, RemovableRoot, block_device_is_exclusively_held, invalidate_mount_snapshot,
+    mount_can_unplug, mount_is_removable, volume_can_unplug, with_mount_snapshot,
 };
 pub use volume::{mount_lanes, mount_watch};

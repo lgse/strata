@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Moves an item to the relative path typed while naming it. Folders
-//! are made or reused one directory at a time without following links, the item
-//! is moved without replacing anything, and a failure removes the folders this
-//! placement made again.
-
 use super::{
     cancelled_event,
     fs_ops::{Entry, FsOps, fs},
@@ -198,8 +193,6 @@ impl Placement<'_> {
         Ok(path.folders.len() - made_folders)
     }
 
-    /// Removes the new file named as a folder, only while it is still empty,
-    /// and returns its mode.
     fn remove_empty(&self, source_name: &OsStr, name: &str) -> Result<u32, String> {
         let source = Entry::new(&self.source_dir, source_name);
         let stat = self
@@ -236,8 +229,6 @@ impl Placement<'_> {
         }
     }
 
-    /// Removes only folders that are still empty, so nothing anyone put in
-    /// them meanwhile is lost.
     fn roll_back(&mut self) {
         for (dir, name) in self.made.drain(..).rev() {
             let _ = self.fs.unlink(

@@ -1,0 +1,149 @@
+// SPDX-License-Identifier: MIT
+
+use std::borrow::Cow;
+use std::rc::Rc;
+
+use rune::{El, Tx};
+use strata_kit::icons::IconName;
+use strata_kit::look::Look;
+use strata_kit::slots::tabs as slot;
+
+use super::drops::{self, Access, Ctx, Emit, OpensFn};
+use super::intent::{DropSite, TabOpen, TabsIntent};
+use super::{BrowserTabsState, new_tab_key};
+use crate::contract::dnd::{Dnd, DropHover, DropOffer};
+use crate::header;
+
+/// The words the strip says, for the host to translate.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TabsLabels {
+    /// The tab list's accessible name.
+    pub list: Cow<'static, str>,
+    /// The New tab button's accessible name.
+    pub new_tab: Cow<'static, str>,
+    /// Its tooltip, with the host's shortcut.
+    pub new_tab_help: Cow<'static, str>,
+}
+
+impl Default for TabsLabels {
+    fn default() -> Self {
+        TabsLabels {
+            list: Cow::Borrowed("Tabs"),
+            new_tab: Cow::Borrowed("New tab"),
+            new_tab_help: Cow::Borrowed("New tab (Ctrl+T)"),
+        }
+    }
+}
+
+pub struct NewTabButton<'a, S: 'static> {
+    state: &'a BrowserTabsState,
+    access: Access<S>,
+    len: usize,
+    key: Option<String>,
+    dnd: Dnd<S>,
+    opens: Option<OpensFn<S>>,
+    labels: TabsLabels,
+    emit: Emit<S>,
+}
+
+impl<'a, S: 'static> NewTabButton<'a, S> {
+    pub fn new(state: &'a BrowserTabsState, access: Access<S>, len: usize) -> Self {
+        NewTabButton {
+            state,
+            access,
+            len,
+            key: None,
+            dnd: Dnd::rune(),
+            opens: None,
+            labels: TabsLabels::default(),
+            emit: Rc::new(|_, _, _| {}),
+        }
+    }
+
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    /// The host's drag-and-drop binder (default Rune's).
+    pub fn dnd(mut self, dnd: Dnd<S>) -> Self {
+        self.dnd = dnd;
+        self
+    }
+
+    /// Which drags open tabs: convenience wrapper for [`NewTabButton::tab_open`].
+    pub fn opens_tabs(mut self, f: impl Fn(&S, &DropOffer) -> bool + 'static) -> Self {
+        self.opens = Some(Rc::new(move |s, offer| {
+            f(s, offer).then_some(TabOpen::AtGap)
+        }));
+        self
+    }
+
+    /// How an in-process drag opens tabs: see [`super::BrowserTabs::tab_open`].
+    pub fn tab_open(mut self, f: impl Fn(&S, &DropOffer) -> Option<TabOpen> + 'static) -> Self {
+        self.opens = Some(Rc::new(f));
+        self
+    }
+
+    pub fn labels(mut self, labels: TabsLabels) -> Self {
+        self.labels = labels;
+        self
+    }
+
+    pub fn on_intent(mut self, f: impl Fn(&mut S, TabsIntent, &mut Tx) + 'static) -> Self {
+        self.emit = Rc::new(f);
+        self
+    }
+
+    pub fn build(self, look: &Look) -> El {
+        let cx = Ctx {
+            access: self.access,
+            emit: self.emit,
+            action: None,
+            opens: self.opens,
+            guard_none: false,
+            content: &[],
+            spring: None,
+            len: self.len,
+        };
+        let key = self.key.unwrap_or_else(|| new_tab_key(self.state.key()));
+        button(
+            &cx,
+            self.state,
+            ButtonSpec {
+                dnd: &self.dnd,
+                labels: &self.labels,
+                key,
+            },
+            look,
+        )
+    }
+}
+
+pub(super) struct ButtonSpec<'a, S> {
+    pub dnd: &'a Dnd<S>,
+    pub labels: &'a TabsLabels,
+    pub key: String,
+}
+
+pub(super) fn button<S: 'static>(
+    cx: &Ctx<S>,
+    state: &BrowserTabsState,
+    spec: ButtonSpec<'_, S>,
+    look: &Look,
+) -> El {
+    let emit = cx.emit.clone();
+    let mut el = header::action(look, IconName::Plus, &spec.labels.new_tab_help)
+        .label(spec.labels.new_tab.clone().into_owned())
+        .on_press_tx(move |s: &mut S, tx: &mut Tx| emit(s, TabsIntent::New, tx))
+        .build(&look.accent_icon_kit())
+        .key(spec.key.clone())
+        .press_on_return();
+    let hovered = state.drop_hover() == Some((DropSite::NewTab, DropHover::Accepting));
+    if hovered || state.open_drag() {
+        // Strata's `.tab-drop-hover`: the header action's radius, an accent ground.
+        el = el.fill(slot::new_drop_fill(look)).radius(look.round(5.0));
+    }
+    spec.dnd
+        .drop_zone_keyed(el, spec.key, drops::opener(cx, DropSite::NewTab))
+}

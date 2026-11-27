@@ -1,0 +1,408 @@
+// SPDX-License-Identifier: MIT
+
+//! The bar on the offscreen host: where the keyboard goes when an edit ends.
+
+use gio::prelude::FileExt;
+use rune::{Cursor, Key, KeyEvent, Mods, Tx};
+use strata_core::model::Location;
+
+use crate::{
+    App,
+    commands::{self, On, Outcome},
+    host::offscreen::Offscreen,
+    shell,
+    test_support::{PATIENCE, folder_of, hosted, send_key, view},
+};
+
+const MODULE: &str = "location::tests";
+
+fn act<T>(host: &mut Offscreen, act: impl FnOnce(&mut App, &mut Tx) -> T) -> T {
+    let mut said = None;
+    host.runtime().update(|app, tx| said = Some(act(app, tx)));
+    idle(host);
+    said.expect("the update ran")
+}
+
+fn idle(host: &mut Offscreen) {
+    while host.turn() {
+        host.runtime().settle_all();
+    }
+}
+
+fn focused(host: &mut Offscreen) -> Option<String> {
+    act(host, |_, tx| tx.focused().map(str::to_owned))
+}
+
+/// Opens a folder and waits until the bar names it.
+fn open(host: &mut Offscreen) -> tempfile::TempDir {
+    let folder = folder_of(&["one.txt"]);
+    host.app().open(Location::local(folder.path()));
+    let named = host.run_until(PATIENCE, |host| host.app().location.shown.is_some());
+    assert!(named, "the bar never named the folder");
+    idle(host);
+    folder
+}
+
+/// Ctrl+L's command, and the entry with the keyboard.
+fn edit(host: &mut Offscreen) {
+    let ran = act(host, |app, tx| {
+        commands::run(app, "location", On::Focus, tx)
+    });
+    assert_eq!(ran, Outcome::Ran);
+    let state = &host.app().location.state;
+    assert!(state.entry_focused(), "the entry did not take the keyboard");
+}
+
+#[test]
+fn a_press_elsewhere_leaves_the_keyboard_there_and_escape_gives_it_to_the_view() {
+    hosted(
+        MODULE,
+        "a_press_elsewhere_leaves_the_keyboard_there_and_escape_gives_it_to_the_view",
+        |mut host| {
+            let _folder = open(&mut host);
+
+            edit(&mut host);
+            act(&mut host, |_, tx| tx.focus("header-search", true));
+            assert!(!host.app().location.state.editing(), "the edit stayed open");
+            assert_eq!(focused(&mut host).as_deref(), Some("header-search"));
+
+            edit(&mut host);
+            let escape = KeyEvent {
+                key: Key::Escape,
+                mods: Mods::default(),
+            };
+            send_key(&mut host, escape);
+            idle(&mut host);
+            assert!(
+                !host.app().location.state.editing(),
+                "Escape left the edit open"
+            );
+            let view = shell::view_focus(host.app()).map(str::to_owned);
+            assert_eq!(focused(&mut host), view);
+        },
+    );
+}
+
+/// The name of the first dialog in the tree.
+fn dialog_name(node: &serde_json::Value) -> Option<String> {
+    if node["role"] == "dialog" {
+        return node["name"].as_str().map(str::to_owned);
+    }
+    let children = node["children"].as_array().map_or(&[][..], Vec::as_slice);
+    children.iter().find_map(dialog_name)
+}
+
+#[test]
+fn a_typed_location_refused_at_once_is_reported() {
+    hosted(
+        MODULE,
+        "a_typed_location_refused_at_once_is_reported",
+        |mut host| {
+            let _folder = open(&mut host);
+            edit(&mut host);
+            act(&mut host, |app, _| {
+                let mut typed = rune::TextEdit::new("not/absolute");
+                typed.focused = true;
+                app.location.state.edit = typed;
+            });
+
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Enter,
+                    mods: Mods::default(),
+                },
+            );
+
+            let reported = host.run_until(PATIENCE, |host| dialog_name(&host.tree()).is_some());
+            assert!(reported, "no dialog");
+            let name = dialog_name(&host.tree());
+            assert_eq!(name.as_deref(), Some("Unable to open location"));
+            // The dialog holds the keyboard; it goes back where it was, the view, once closed.
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Escape,
+                    mods: Mods::default(),
+                },
+            );
+            let closed = host.run_until(PATIENCE, |host| dialog_name(&host.tree()).is_none());
+            assert!(closed, "the dialog stayed");
+            idle(&mut host);
+            let view = shell::view_focus(host.app()).map(str::to_owned);
+            assert_eq!(focused(&mut host), view, "the keyboard back on the view");
+        },
+    );
+}
+
+/// The middle of the element keyed `key`, with the pointer moved there.
+fn hover(host: &mut Offscreen, key: &str) -> (f32, f32) {
+    let elements = host.runtime().elements();
+    let target = elements
+        .iter()
+        .find(|element| !element.exiting && element.key.as_deref() == Some(key));
+    let [x, y, w, h] = target.unwrap_or_else(|| panic!("{key} is drawn")).visible;
+    let (x, y) = (x + w / 2.0, y + h / 2.0);
+    host.runtime().pointer_move(x, y);
+    idle(host);
+    (x, y)
+}
+
+/// Presses at the middle of the element keyed `key`.
+fn click(host: &mut Offscreen, key: &str) {
+    let (x, y) = hover(host, key);
+    host.runtime().pointer_down(x, y);
+    host.turn();
+    host.runtime().pointer_up(x, y);
+    idle(host);
+}
+
+#[test]
+fn a_press_on_the_strip_but_on_a_crumb_opens_the_entry() {
+    hosted(
+        MODULE,
+        "a_press_on_the_strip_but_on_a_crumb_opens_the_entry",
+        |mut host| {
+            let _folder = open(&mut host);
+            let tree = host.tree();
+            let ancestors = view::all(&tree, &|node| {
+                view::text(node, "key").starts_with("location-crumb-")
+            });
+            let current = format!("location-item-{}", ancestors.len());
+            let keys = [
+                "location-gap-1",
+                "location-sep-1",
+                current.as_str(),
+                "location-crumbs-space",
+            ];
+            for key in keys {
+                click(&mut host, key);
+                let state = &host.app().location.state;
+                assert!(state.entry_focused(), "a press on {key} opened the entry");
+                send_key(
+                    &mut host,
+                    KeyEvent {
+                        key: Key::Escape,
+                        mods: Mods::default(),
+                    },
+                );
+                idle(&mut host);
+                assert!(
+                    !host.app().location.state.entry_focused(),
+                    "Escape closed it"
+                );
+            }
+
+            click(&mut host, "location-copy");
+            let state = &host.app().location.state;
+            assert!(!state.entry_focused(), "Copy path takes its own press");
+        },
+    );
+}
+
+#[test]
+fn the_strip_shows_a_text_cursor_and_its_buttons_a_pointer() {
+    hosted(
+        MODULE,
+        "the_strip_shows_a_text_cursor_and_its_buttons_a_pointer",
+        |mut host| {
+            let _folder = open(&mut host);
+            let tree = host.tree();
+            let ancestors = view::all(&tree, &|node| {
+                view::text(node, "key").starts_with("location-crumb-")
+            });
+            let current = format!("location-item-{}", ancestors.len());
+            let shapes = [
+                ("location-gap-1", Cursor::Text),
+                ("location-sep-1", Cursor::Text),
+                (current.as_str(), Cursor::Text),
+                ("location-crumbs-space", Cursor::Text),
+                ("location-crumb-1", Cursor::Pointer),
+                ("location-copy", Cursor::Pointer),
+            ];
+            for (key, shape) in shapes {
+                hover(&mut host, key);
+                assert_eq!(host.runtime().cursor(), shape, "the pointer over {key}");
+            }
+        },
+    );
+}
+
+fn press(host: &mut Offscreen, key: Key) {
+    let event = KeyEvent {
+        key,
+        mods: Mods::default(),
+    };
+    send_key(host, event);
+    idle(host);
+}
+
+/// Ctrl+L, `text` in the entry, and Enter.
+fn submit(host: &mut Offscreen, text: &str) {
+    edit(host);
+    let text = text.to_owned();
+    act(host, move |app, _| {
+        let mut typed = rune::TextEdit::new(&text);
+        typed.focused = true;
+        app.location.state.edit = typed;
+    });
+    press(host, Key::Enter);
+}
+
+/// Escape on the error dialog.
+fn dismiss(host: &mut Offscreen) {
+    let shown = host.run_until(PATIENCE, |host| dialog_name(&host.tree()).is_some());
+    assert!(shown, "no dialog");
+    press(host, Key::Escape);
+    let closed = host.run_until(PATIENCE, |host| dialog_name(&host.tree()).is_none());
+    assert!(closed, "the dialog stayed");
+}
+
+/// The entry's text on the next Ctrl+L, with the edit then cancelled.
+fn reopened(host: &mut Offscreen) -> String {
+    edit(host);
+    let text = host.app().location.state.edit.text.clone();
+    press(host, Key::Escape);
+    text
+}
+
+#[test]
+fn a_location_that_could_not_be_opened_is_the_next_edits_text() {
+    hosted(
+        MODULE,
+        "a_location_that_could_not_be_opened_is_the_next_edits_text",
+        |mut host| {
+            let folder = open(&mut host);
+            let inner = folder.path().join("inner");
+            std::fs::create_dir(&inner).expect("the inner folder");
+            let path = |path: &std::path::Path| path.display().to_string();
+            let missing = path(&folder.path().join("missing"));
+
+            submit(&mut host, &missing);
+            dismiss(&mut host);
+            assert_eq!(reopened(&mut host), missing, "kept for the next Ctrl+L");
+            assert_eq!(
+                reopened(&mut host),
+                path(folder.path()),
+                "Escape forgets it"
+            );
+
+            submit(&mut host, &missing);
+            dismiss(&mut host);
+            host.app().open(Location::local(&inner));
+            let opened = host.run_until(PATIENCE, |host| {
+                host.app().location.shown == Some(Location::local(&inner))
+            });
+            assert!(opened, "the inner folder opened");
+            idle(&mut host);
+            assert_eq!(
+                reopened(&mut host),
+                path(&inner),
+                "another folder forgets it"
+            );
+
+            // One that opens is forgotten as its columns change: the entry names the folder.
+            submit(&mut host, &format!("{}/", path(folder.path())));
+            let opened = host.run_until(PATIENCE, |host| {
+                host.app().location.shown == Some(Location::local(folder.path()))
+            });
+            assert!(opened, "the folder opened again");
+            idle(&mut host);
+            assert_eq!(reopened(&mut host), path(folder.path()), "opened: not kept");
+
+            submit(&mut host, "not/absolute");
+            dismiss(&mut host);
+            assert_eq!(
+                reopened(&mut host),
+                path(folder.path()),
+                "refused at once: not kept"
+            );
+        },
+    );
+}
+
+#[test]
+fn the_hierarchy_menu_holds_the_keyboard_while_it_is_open() {
+    hosted(
+        MODULE,
+        "the_hierarchy_menu_holds_the_keyboard_while_it_is_open",
+        |mut host| {
+            let _folder = open(&mut host);
+            let holds = |host: &Offscreen| {
+                let app = host.app();
+                let parts = shell::parts(app);
+                let holds: Vec<_> = parts
+                    .active()
+                    .filter_map(|part| (part.keyboard)(app))
+                    .collect();
+                holds
+            };
+            assert_eq!(holds(&host), []);
+
+            let (x, y) = hover(&mut host, "location-crumbs");
+            host.runtime().secondary_down(x, y);
+            host.turn();
+            host.runtime().secondary_up(x, y);
+            idle(&mut host);
+
+            assert!(
+                host.app().location.state.menu().is_some(),
+                "the menu opened"
+            );
+            assert_eq!(holds(&host), [commands::Holds::Menu]);
+        },
+    );
+}
+
+#[test]
+fn typed_location_strips_outer_quotes_from_uris_and_passes_local_paths_through() {
+    assert_eq!(
+        super::intents::typed(" 'smb://alice:secret@host/share' "),
+        Ok("smb://alice@host/share".to_owned())
+    );
+    assert_eq!(
+        super::intents::typed(r#" "file:///tmp/my%20docs" "#),
+        Ok("file:///tmp/my%20docs".to_owned())
+    );
+    assert_eq!(
+        super::intents::typed(r"/tmp/my\ docs"),
+        Ok(r"/tmp/my\ docs".to_owned())
+    );
+}
+
+#[test]
+fn pasted_shell_paths_and_file_uris_open_from_the_location_bar() {
+    hosted(
+        MODULE,
+        "pasted_shell_paths_and_file_uris_open_from_the_location_bar",
+        |mut host| {
+            let folder = open(&mut host);
+            let target = folder.path().join("my docs");
+            std::fs::create_dir(&target).expect("target folder");
+            let target_loc = Location::local(&target);
+            let escaped = format!("{}/my\\ docs", folder.path().display());
+            let quoted = format!("'{}'", target.display());
+            let uri = gio::File::for_path(&target).uri().to_string();
+
+            for pasted in [escaped, quoted, uri] {
+                host.app().open(Location::local(folder.path()));
+                assert!(host.run_until(PATIENCE, |h| {
+                    h.app().location.shown == Some(Location::local(folder.path()))
+                }));
+                idle(&mut host);
+
+                submit(&mut host, &pasted);
+                assert!(
+                    host.run_until(PATIENCE, |h| h.app().location.shown.as_ref()
+                        == Some(&target_loc)),
+                    "location bar opened {pasted}"
+                );
+                idle(&mut host);
+            }
+
+            submit(&mut host, "file://other-host/tmp");
+            dismiss(&mut host);
+            assert_eq!(host.app().location.shown.as_ref(), Some(&target_loc));
+        },
+    );
+}

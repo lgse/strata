@@ -1,0 +1,210 @@
+// SPDX-License-Identifier: MIT
+
+use std::rc::Rc;
+
+use rune::{El, KeyEvent, LiveRegion, TextEdit, Tx, col, icon, row, text};
+use rune_kit::{Button, ButtonVariant, TextInput};
+use strata_kit::icons::IconName;
+use strata_kit::look::Look;
+
+/// The prompt's field and its last error.
+#[derive(Debug)]
+pub struct PromptState {
+    pub edit: TextEdit,
+    error: Option<String>,
+    /// How many errors have been set: the error node's key, so each one is a new live node.
+    attempt: u64,
+}
+
+impl Default for PromptState {
+    fn default() -> Self {
+        PromptState {
+            edit: TextEdit::new("").secure(),
+            error: None,
+            attempt: 0,
+        }
+    }
+}
+
+impl PromptState {
+    /// Asks for keyboard focus on the field, once.
+    pub fn focus(&mut self) {
+        self.edit.focused = true;
+    }
+
+    pub fn set_error(&mut self, error: Option<String>) {
+        if error.is_some() {
+            self.edit.clear();
+            self.attempt += 1;
+        }
+        self.error = error;
+    }
+
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+}
+
+/// The words the prompt shows.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct PromptLabels {
+    pub heading: String,
+    pub detail: String,
+    pub placeholder: String,
+    pub unlock: String,
+}
+
+impl Default for PromptLabels {
+    fn default() -> Self {
+        PromptLabels {
+            heading: "Password-protected archive".into(),
+            detail: "Enter the password to preview the archive contents".into(),
+            placeholder: "Password".into(),
+            unlock: "Unlock".into(),
+        }
+    }
+}
+
+type UnlockFn<S> = Rc<dyn Fn(&mut S, String, &mut Tx)>;
+type FieldKeyFn<S> = Rc<dyn Fn(&mut S, &KeyEvent, &mut Tx) -> bool>;
+
+/// The prompt: `ArchivePrompt::new(&s.prompt, access).on_unlock(..).build(look)`.
+pub struct ArchivePrompt<'a, S> {
+    state: &'a PromptState,
+    access: fn(&mut S) -> &mut PromptState,
+    key: String,
+    labels: PromptLabels,
+    on_unlock: Option<UnlockFn<S>>,
+    on_field_key: Option<FieldKeyFn<S>>,
+}
+
+impl<'a, S: 'static> ArchivePrompt<'a, S> {
+    pub fn new(state: &'a PromptState, access: fn(&mut S) -> &mut PromptState) -> Self {
+        ArchivePrompt {
+            state,
+            access,
+            key: "archive-prompt".into(),
+            labels: PromptLabels::default(),
+            on_unlock: None,
+            on_field_key: None,
+        }
+    }
+
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = key.into();
+        self
+    }
+
+    pub fn labels(mut self, labels: PromptLabels) -> Self {
+        self.labels = labels;
+        self
+    }
+
+    /// Unlock or Enter, with the password typed. The field keeps it until the host answers.
+    pub fn on_unlock(mut self, f: impl Fn(&mut S, String, &mut Tx) + 'static) -> Self {
+        self.on_unlock = Some(Rc::new(f));
+        self
+    }
+
+    /// Key hook on the password field, offered before `TextInput` consumes keys such as Escape.
+    pub fn on_field_key(
+        mut self,
+        f: impl Fn(&mut S, &KeyEvent, &mut Tx) -> bool + 'static,
+    ) -> Self {
+        self.on_field_key = Some(Rc::new(f));
+        self
+    }
+
+    pub fn build(self, look: &Look) -> El {
+        let k = &look.kit;
+        let controls = self.controls(look);
+        let key = self.key;
+        let mut body = col()
+            .key(key.clone())
+            .w_full()
+            .h_full()
+            .padding(look.space.xl)
+            .gap(look.space.md)
+            .center()
+            .child(
+                icon(look.icon(IconName::Lock), 34.0)
+                    .color(k.c.icon_accent)
+                    .a11y_hidden(),
+            )
+            .child(
+                text(self.labels.heading)
+                    .key(format!("{key}-heading"))
+                    .font(look.ty.title)
+                    .color(k.c.text_base)
+                    .wrap()
+                    .align(rune::Align::Center),
+            )
+            .child(
+                text(self.labels.detail)
+                    .key(format!("{key}-detail"))
+                    .font(k.ty.ui)
+                    .color(k.c.text_muted)
+                    .wrap()
+                    .align(rune::Align::Center),
+            )
+            .child(controls);
+        if let Some(error) = self.state.error() {
+            body = body.child(
+                text(error.to_owned())
+                    .key(format!("{key}-error-{}", self.state.attempt))
+                    .live_region(LiveRegion::Polite)
+                    .font(k.ty.small)
+                    .color(k.c.danger.fg)
+                    .wrap()
+                    .align(rune::Align::Center),
+            );
+        }
+        body
+    }
+
+    fn controls(&self, look: &Look) -> El {
+        let k = &look.kit;
+        let key = &self.key;
+        let access = self.access;
+        let unlock = move |f: &Option<UnlockFn<S>>| {
+            let f = f.clone();
+            move |s: &mut S, tx: &mut Tx| {
+                let password = access(s).edit.text.clone();
+                if let Some(f) = &f {
+                    f(s, password, tx);
+                }
+            }
+        };
+        let mut field = TextInput::new(&self.state.edit)
+            .secure()
+            .invalid(self.state.error.is_some())
+            .placeholder(self.labels.placeholder.clone())
+            .label(self.labels.placeholder.clone())
+            .width(Some(look.space.xxl * 8.0))
+            .on_edit(move |s: &mut S| &mut access(s).edit)
+            .on_submit(unlock(&self.on_unlock));
+        if let Some(error) = self.state.error() {
+            field = field.description(error);
+        }
+        if let Some(on_key) = self.on_field_key.clone() {
+            field = field.on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| on_key(s, ev, tx));
+        }
+        let field = field
+            .build(k)
+            .key(format!("{key}-field"))
+            .shrink()
+            .min_w(look.space.xxl * 3.0);
+        let button = Button::new(self.labels.unlock.clone())
+            .variant(ButtonVariant::Submit)
+            .on_press_tx(unlock(&self.on_unlock))
+            .build(k)
+            .key(format!("{key}-unlock"));
+        row()
+            .gap(look.space.sm)
+            .center_y()
+            .max_w(look.space.xxl * 14.0)
+            .child(field)
+            .child(button)
+    }
+}

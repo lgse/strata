@@ -1,0 +1,83 @@
+[package]
+name = "strata-app"
+description = "Strata's interface on Rune: the application state, its view and the loops that host it"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+# UnRAR for archive browsing and RAR-based covers, on by default as in the GTK application's
+# default build (the root package's `rar`). A build without UnRAR is `--no-default-features`.
+default = ["rar"]
+rar = ["strata-core/rar", "strata-fs/rar", "strata-preview/rar"]
+# The scripted `--qa` mode (docs/rune/slice/V7-rune-qa-backend.md), on the offscreen host
+# or, in a compositor, on the session host, whose input goes through Wayland's virtual
+# keyboard and pointer. Never in a release build.
+qa = [
+    "dep:rustix",
+    "dep:strata-qa",
+    "dep:unicode-segmentation",
+    "dep:wayland-client",
+    "dep:wayland-protocols-misc",
+    "dep:wayland-protocols-wlr",
+    "dep:xkbcommon",
+    "strata-core/qa",
+]
+# Exact but slow consistency checks; tests and QA builds turn them on.
+invariant-checks = ["strata-fs/invariant-checks"]
+# Test hooks and test-only items of the workspace crates.
+test-support = [
+    "strata-core/test-support",
+    "strata-desktop/test-support",
+    "strata-fs/test-support",
+    "strata-preview/test-support",
+]
+
+# The one crate that knows both sides: Strata's shared crates and the Rune side
+# (docs/workspace.md). It never depends on gtk4, gdk4, sourceview5 or the `strata` package.
+[dependencies]
+rune.workspace = true
+rune-fx.workspace = true
+rune-kit.workspace = true
+wgpu.workspace = true
+strata-components.workspace = true
+strata-core.workspace = true
+strata-desktop = { workspace = true, features = ["xkb-keys"] }
+strata-fs.workspace = true
+strata-kit.workspace = true
+strata-platform = { workspace = true, features = ["clipboard", "dnd", "foreign-parent", "glib-loop", "single-instance"] }
+# The sandbox's thumbnail workers, by the owner's ruling of 2026-11-12 ("in strata-rune until E4").
+strata-preview.workspace = true
+gio.workspace = true
+gio-unix.workspace = true
+glib.workspace = true
+image.workspace = true
+rust-i18n.workspace = true
+rustix = { workspace = true, optional = true }
+serde_json.workspace = true
+strata-qa = { workspace = true, optional = true }
+tracing.workspace = true
+unicode-segmentation = { workspace = true, optional = true }
+wayland-client = { workspace = true, optional = true }
+wayland-protocols-misc = { workspace = true, features = ["client"], optional = true }
+wayland-protocols-wlr = { workspace = true, features = ["client"], optional = true }
+xkbcommon = { workspace = true, optional = true }
+
+[dev-dependencies]
+rune = { workspace = true, features = ["embedded-fonts"] }
+# The catalog's listed constants, for the shortcut reference's coverage test.
+strata-desktop = { workspace = true, features = ["xkb-keys", "test-support"] }
+# `single_instance::CommandLine::unanswered`, for the launch tests of `application`.
+strata-platform = { workspace = true, features = ["single-instance", "test-support"] }
+# The fixture streams that stand in for the sandboxed media decoder.
+strata-preview = { workspace = true, features = ["test-support"] }
+strata-test-support.workspace = true
+tempfile.workspace = true
+toml.workspace = true

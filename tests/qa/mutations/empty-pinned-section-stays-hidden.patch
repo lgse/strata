@@ -1,0 +1,10 @@
+diff --git a/crates/strata-app/src/sidebar/width.rs b/crates/strata-app/src/sidebar/width.rs
+--- a/crates/strata-app/src/sidebar/width.rs
++++ b/crates/strata-app/src/sidebar/width.rs
+@@ -50,5 +50,5 @@ fn save(settings: &mut Preferences, step: Step) {
+             settings.sidebar_expanded = true;
+         }
+-        Step::Rail => settings.sidebar_compact = true,
++        Step::Rail => {}
+         Step::Hidden => settings.sidebar_expanded = false,
+     }

@@ -1,4 +1,4 @@
-{"scenario":"return-restores-nested-scroll","modes":["icons","list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"folder-{000..059}":{}},"quality":{"impact":2,"coverage":4,"criticality":4,"diagnostic":3,"score":38,"note":"Alt+Left and Alt+Up restore nested viewport, selection and cursor after pointer and keyboard entry; alt-up-and-history never checks scroll"}}
+{"scenario":"return-restores-nested-scroll","modes":["icons","list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"folder-{000..059}":{}},"quality":{"impact":2,"coverage":4,"criticality":4,"diagnostic":3,"score":38,"note":"Alt+Left and Alt+Up restore nested viewport, selection and cursor; only viewport check; alt-up-and-history never checks scroll"}}
 {"key":"End"}
 {"wait":{"focused":"folder-059"},"message":"End to scroll the listing to its last folder"}
 {"note":"middle_visible","unless_first":"folder-000","until_found":true,"message":"a scrolled directory viewport","as":"first"}

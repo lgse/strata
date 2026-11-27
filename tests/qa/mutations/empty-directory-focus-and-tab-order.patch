@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/surface.rs b/crates/strata-app/src/surface.rs
+index de0af1e06..dbb0254d3 100644
+--- a/crates/strata-app/src/surface.rs
++++ b/crates/strata-app/src/surface.rs
+@@ -117,6 +117,6 @@ impl Surface {
+             Load::Failed(message) => Some((Cow::Owned(unreadable(message)), true)),
+             _ if reading(listing) && announced => Some((Cow::Borrowed(&self.loading), false)),
+             _ if reading(listing) => Some((Cow::Borrowed(""), false)),
+-            _ => Some((Cow::Borrowed(&self.empty), true)),
++            _ => Some((Cow::Borrowed(&self.loading), true)),
+         }
+     }

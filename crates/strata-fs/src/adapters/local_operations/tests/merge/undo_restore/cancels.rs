@@ -42,8 +42,6 @@ fn a_cancelled_merge_undo_reports_everything_not_attempted() -> Result<(), Box<d
     Ok(())
 }
 
-/// Two merged files whose undo is cut off by a cancel at `check` of the
-/// first: none is Trash's, then the comparison's and the delete's.
 fn check_cut_off_undo(row: &str, check: Option<usize>) -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     let created = ["first.txt", "second.txt"].map(|name| root.path().join(name));
@@ -94,8 +92,6 @@ fn check_cut_off_undo(row: &str, check: Option<usize>) -> Result<(), Box<dyn Err
 fn a_merge_undo_cut_off_counts_an_item_as_not_attempted_only_when_it_left_it_whole()
 -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // Without Trash, the first check is Trash's, the second the comparison's
-    // and the third the delete's.
     for (row, check) in [("Trash", None), ("compare", Some(1)), ("delete", Some(2))] {
         check_cut_off_undo(row, check)?;
     }
@@ -150,8 +146,6 @@ fn a_merge_undo_never_counts_an_item_it_could_not_check_as_undone() -> Result<()
     let placed = placed_now(&[&first, &second]);
     let _scope = FsQuirks::install(root.path(), without_trash(Quirks::default()));
 
-    // The cancel runs ahead of the reply to the next item's check, which is
-    // then in flight.
     let parts = (
         vec![
             Location::local(&first),
@@ -179,9 +173,6 @@ fn a_merge_undo_never_counts_an_item_it_could_not_check_as_undone() -> Result<()
     Ok(())
 }
 
-/// Whether the merge's copy is still at the last path, which the undo
-/// deletes before it restores the original, and whether the cut-off copy
-/// of the original cannot be removed.
 fn check_restore_cut_off(incoming: bool, stuck: bool) -> Result<(), Box<dyn Error>> {
     let row = format!("{incoming}, {stuck}");
     let root = tempfile::tempdir()?;
@@ -324,8 +315,6 @@ fn check_path_checked(case: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// The undo names why the unreadable path failed its check, and leaves the
-/// second original staged.
 fn assert_unreadable_left_staged(message: &str, trash: &Path, second: &Path) -> io::Result<()> {
     let check = gio::File::for_uri(UNREADABLE)
         .query_info(
@@ -346,8 +335,6 @@ fn assert_unreadable_left_staged(message: &str, trash: &Path, second: &Path) -> 
 #[test]
 fn a_merge_undo_restores_an_original_only_over_a_path_it_checked() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
-    // The second path's check fails, a cancel cuts it off, or the merge's
-    // copy is already gone from it.
     for case in ["failed", "cancelled", "missing"] {
         check_path_checked(case)?;
     }

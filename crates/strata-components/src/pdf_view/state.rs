@@ -1,0 +1,1011 @@
+// SPDX-License-Identifier: MIT
+
+use std::collections::BTreeMap;
+use std::ops::Range;
+use std::time::Duration;
+
+use rune::{Drag, Phase, Tx};
+
+use super::find::{Find, Hit, SearchSource};
+use super::layer::PlainText;
+use super::model::{
+    Content, PageReply, PdfDocument, RenderCaps, RenderKind, RenderRequest, Shared, Ticket,
+};
+use super::page_nav::PageNav;
+use super::queue::{Held, Landed, Queue, Want};
+use super::selection::{Selection, Unit};
+use super::zoom::{self, GAP, LIMITS, SETTLE};
+use crate::preview_drawer::{FindStatus, HostedPreview};
+use crate::scroll::{Bar, ScrollFeed};
+
+/// What a primary drag is doing.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) enum Gesture {
+    #[default]
+    Idle,
+    /// Panning from the scroll offset the press found.
+    Pan([f32; 2]),
+    Select,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Anchor {
+    pub page: usize,
+    pub down: f32,
+    pub across: f32,
+    /// The host's clock when it was taken.
+    pub at: f64,
+}
+
+/// How long a zoom's anchor stays cached across consecutive zoom frames before it's let go.
+const ANCHOR_WAIT: f64 = 0.25;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Reveal {
+    pub page: usize,
+    pub at: [f32; 2],
+}
+
+pub struct PdfState {
+    key: String,
+    pub(crate) doc: PdfDocument,
+    pub(crate) content: Content,
+    pub(crate) queue: Queue,
+    pub(crate) level: f32,
+    pub(crate) zoom_gen: u32,
+    pub(crate) scale: f32,
+    /// The scroll viewport's rect in window points, from its last layout.
+    pub(crate) viewport: Option<[f32; 4]>,
+    /// Each mounted page's rect in window points, from its last layout.
+    pub(crate) rects: BTreeMap<usize, [f32; 4]>,
+    pub(crate) visible: Range<usize>,
+    forward: bool,
+    /// The page under the viewport's centre.
+    pub(crate) current: usize,
+    pub(crate) selection: Selection,
+    pub(crate) gesture: Gesture,
+    /// The pointer is over text: the I-beam shows.
+    pub(crate) over_text: bool,
+    pub(crate) find: Find,
+    searchable: bool,
+    /// Per-page plain text supplied in one pass for searching unrendered pages.
+    page_texts: Vec<Option<PlainText>>,
+    /// True once the host has supplied the document's single-pass text index.
+    text_index_loaded: bool,
+    /// Busy label while the host is building the single-pass text index.
+    text_index_busy: Option<String>,
+    pub(crate) anchor: Option<Anchor>,
+    pub(crate) reveal: Option<Reveal>,
+    /// The host's clock at its last [`PdfState::tick`].
+    clock: f64,
+    settle_at: Option<f64>,
+    /// Bumped when requests are waiting, to mount the element that wakes the host.
+    pub(crate) wake: u64,
+    idle: bool,
+    /// A zoom the host asked for ([`PdfState::set_level`]), applied from a layout report.
+    level_request: Option<f32>,
+    pointer: Option<[f32; 2]>,
+    pub(crate) feed: ScrollFeed,
+    pub(crate) bar: Bar,
+    pub(crate) sideways: Bar,
+    pub(crate) page_nav: PageNav,
+}
+
+impl std::fmt::Debug for PdfState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PdfState")
+            .field("key", &self.key)
+            .field("pages", &self.doc.pages())
+            .field("content", &self.content)
+            .field("level", &self.level)
+            .field("visible", &self.visible)
+            .field("selection", &self.selection.ranges)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Default for PdfState {
+    fn default() -> Self {
+        PdfState::new("pdf")
+    }
+}
+
+impl PdfState {
+    /// An empty preview keyed `key`: its parts are keyed `{key}-…`.
+    pub fn new(key: impl Into<String>) -> Self {
+        PdfState {
+            key: key.into(),
+            doc: PdfDocument::new(0, [612.0, 792.0]),
+            content: Content::Pages,
+            queue: Queue::default(),
+            level: 1.0,
+            zoom_gen: 0,
+            scale: 1.0,
+            viewport: None,
+            rects: BTreeMap::new(),
+            visible: 0..0,
+            forward: true,
+            current: 0,
+            selection: Selection::default(),
+            gesture: Gesture::Idle,
+            over_text: false,
+            find: Find::default(),
+            searchable: false,
+            page_texts: Vec::new(),
+            text_index_loaded: false,
+            text_index_busy: None,
+            anchor: None,
+            reveal: None,
+            clock: 0.0,
+            settle_at: None,
+            wake: 0,
+            idle: true,
+            level_request: None,
+            pointer: None,
+            feed: ScrollFeed::new(),
+            bar: Bar::new(),
+            sideways: Bar::new(),
+            page_nav: PageNav::new(1),
+        }
+    }
+
+    pub fn open(&mut self, doc: PdfDocument) {
+        self.queue.reset(doc.pages());
+        self.doc = doc;
+        self.content = Content::Pages;
+        self.level = 1.0;
+        self.zoom_gen = self.zoom_gen.wrapping_add(1);
+        self.rects.clear();
+        self.visible = 0..0;
+        self.current = 0;
+        self.page_nav.reset(1);
+        self.selection.clear();
+        self.gesture = Gesture::Idle;
+        self.find.clear();
+        self.page_texts.clear();
+        self.text_index_loaded = false;
+        self.text_index_busy = None;
+        self.anchor = None;
+        self.reveal = (self.viewport.is_some() && self.doc.pages() > 0).then_some(Reveal {
+            page: 0,
+            at: [0.5, 0.0],
+        });
+        self.settle_at = None;
+        self.idle = true;
+        // A new document opens at fitted width, as Strata's viewer does.
+        self.level_request = None;
+    }
+
+    pub fn open_with(&mut self, doc: PdfDocument, page: usize, reply: PageReply) {
+        self.open(doc);
+        let ticket = Ticket {
+            generation: self.queue.generation,
+            serial: 0,
+            page: page as u32,
+            kind: RenderKind::Page,
+        };
+        self.complete(ticket, reply);
+    }
+
+    pub fn locked(&mut self) {
+        self.open(PdfDocument::new(0, [1.0, 1.0]));
+        self.content = Content::Locked;
+    }
+
+    /// Shows "Preview unavailable" and `message`, with no Open button (a damaged PDF).
+    pub fn failed(&mut self, message: impl Into<String>) {
+        self.open(PdfDocument::new(0, [1.0, 1.0]));
+        self.content = Content::Failed(message.into());
+    }
+
+    pub fn content(&self) -> &Content {
+        &self.content
+    }
+
+    pub fn document(&self) -> &PdfDocument {
+        &self.doc
+    }
+
+    pub fn set_searchable(&mut self, on: bool) {
+        self.searchable = on;
+        if !on {
+            self.find.clear();
+            self.text_index_busy = None;
+        }
+    }
+
+    pub fn set_text_index_loading(&mut self, label: Option<String>) {
+        self.text_index_busy = label;
+        let want = self.want();
+        self.queue.reconcile(&self.doc, &want);
+        self.wake_if_idle();
+    }
+
+    pub fn set_page_texts(&mut self, texts: Vec<Option<String>>) -> bool {
+        let n = self.doc.pages();
+        self.page_texts = texts
+            .into_iter()
+            .take(n)
+            .map(|opt| opt.filter(|s| !s.is_empty()).map(PlainText::new))
+            .collect();
+        let was_loading = self.text_index_busy.take().is_some();
+        self.text_index_loaded = true;
+        let want = self.want();
+        self.queue.reconcile(&self.doc, &want);
+        let updated = self.apply_page_texts_to_find();
+        was_loading || updated
+    }
+
+    fn apply_page_texts_to_find(&mut self) -> bool {
+        if !self.find.active() {
+            return false;
+        }
+        let prev = (self.find.hits.len(), self.find.current);
+        let mut became_current = false;
+        for page in 0..self.doc.pages() {
+            if self
+                .queue
+                .slots
+                .get(page)
+                .is_some_and(|s| s.layer.is_some())
+            {
+                continue;
+            }
+            let source = self
+                .page_texts
+                .get(page)
+                .and_then(Option::as_ref)
+                .map(SearchSource::Plain);
+            if self.find.add(page, source) {
+                became_current = true;
+            }
+        }
+        if became_current {
+            self.select_hit();
+        }
+        became_current || (self.find.hits.len(), self.find.current) != prev
+    }
+
+    pub fn needs_text_index(&self) -> bool {
+        if !self.searchable
+            || !self.find.active()
+            || self.text_index_loaded
+            || self.text_index_busy.is_some()
+        {
+            return false;
+        }
+        let n = self.doc.pages();
+        if n <= 1 && self.queue.slots.first().is_some_and(|s| s.held.is_some()) {
+            return false;
+        }
+        self.queue.slots.iter().any(|s| s.layer.is_none())
+    }
+
+    /// Busy label while the host is indexing document text for find.
+    pub fn busy(&self) -> Option<&str> {
+        self.text_index_busy.as_deref()
+    }
+
+    pub fn set_caps(&mut self, caps: RenderCaps) {
+        self.queue.caps = caps;
+    }
+
+    pub fn set_budgets(&mut self, images: usize, text: usize) {
+        self.queue.image_budget = images;
+        self.queue.text_budget = text;
+    }
+
+    /// Bytes held: images, then text layers.
+    pub fn held_bytes(&self) -> (usize, usize) {
+        (self.queue.image_bytes(), self.queue.text_bytes())
+    }
+
+    /// The zoom level: 1 is fitted width, up to 4.
+    pub fn level(&self) -> f32 {
+        self.level
+    }
+
+    /// The page under the viewport's centre, from 0.
+    pub fn current_page(&self) -> usize {
+        self.current
+    }
+
+    /// The pages Rune reports visible.
+    pub fn visible(&self) -> Range<usize> {
+        self.visible.clone()
+    }
+
+    /// What Ctrl+C would copy now.
+    pub fn selected_text(&self) -> String {
+        self.selection.text(|p| self.layer(p))
+    }
+
+    /// The viewport's latest [`rune::ScrollPos`].
+    pub fn scroll_pos(&self) -> rune::ScrollPos {
+        self.feed.get()
+    }
+
+    /// The viewport's vertical scroll offset, as Rune last reported it.
+    pub fn scroll_offset(&self) -> f32 {
+        self.feed.get().offset[1]
+    }
+
+    /// Drops any cached zoom anchor before an external scroll jump.
+    pub fn clear_anchor(&mut self) {
+        self.anchor = None;
+    }
+
+    /// Whether any loaded page currently holds selectable text.
+    pub fn has_selectable_text(&self) -> bool {
+        self.queue
+            .slots
+            .iter()
+            .any(|slot| slot.layer.as_ref().is_some_and(|layer| layer.has_text()))
+    }
+
+    pub fn has_selection(&self) -> bool {
+        !self.selection.is_empty()
+    }
+
+    /// The image page `page` holds: its pixel size.
+    pub fn held(&self, page: usize) -> Option<[u32; 2]> {
+        self.slot_held(page).map(|h| [h.width, h.height])
+    }
+
+    fn slot_held(&self, page: usize) -> Option<Held> {
+        self.queue.slots.get(page).and_then(|s| s.held)
+    }
+
+    pub(crate) fn layer(&self, page: usize) -> Option<&Shared> {
+        self.queue.slots.get(page).and_then(|s| s.layer.as_ref())
+    }
+
+    fn plain_text(&self, page: usize) -> Option<&PlainText> {
+        self.page_texts.get(page).and_then(Option::as_ref)
+    }
+
+    fn page_search_source(&self, page: usize) -> Option<SearchSource<'_>> {
+        self.layer(page)
+            .map(SearchSource::Layer)
+            .or_else(|| self.plain_text(page).map(SearchSource::Plain))
+    }
+
+    pub(crate) fn key(&self) -> &str {
+        &self.key
+    }
+
+    pub fn scroll_key(&self) -> String {
+        format!("{}-scroll", self.key)
+    }
+
+    pub fn page_input_key(&self) -> String {
+        format!("{}-page-input", self.key)
+    }
+
+    pub fn page_prev_key(&self) -> String {
+        format!("{}-page-prev", self.key)
+    }
+
+    pub fn page_next_key(&self) -> String {
+        format!("{}-page-next", self.key)
+    }
+
+    pub fn is_page_input_focused(&self) -> bool {
+        self.page_nav.is_focused()
+    }
+
+    pub fn hold_page_input(&mut self, held: bool) {
+        self.page_nav.hold(held);
+    }
+
+    pub fn page_input_text(&self) -> &str {
+        &self.page_nav.edit.text
+    }
+
+    pub(crate) fn list_key(&self) -> String {
+        format!("{}-pages", self.key)
+    }
+
+    pub(crate) fn row_key(&self, page: usize) -> String {
+        format!("{}-z{}-p{page}", self.key, self.zoom_gen)
+    }
+
+    /// The drawn page width in points.
+    pub(crate) fn page_width(&self) -> f32 {
+        zoom::drawn_width(self.pane_width(), self.level)
+    }
+
+    pub(crate) fn pane_width(&self) -> f32 {
+        self.viewport.map_or(800.0, |v| v[2])
+    }
+
+    pub(crate) fn page_height(&self, page: usize) -> f32 {
+        zoom::drawn_height(self.page_width(), self.doc.size(page))
+    }
+
+    /// The height Rune places a row it hasn't laid out at: the default page's.
+    pub(crate) fn row_estimate(&self) -> f32 {
+        let n = self.doc.pages().max(1);
+        let w = self.page_width();
+        let sum: f32 = (0..n)
+            .map(|p| zoom::drawn_height(w, self.doc.size(p)))
+            .sum();
+        (sum / n as f32).round() + GAP
+    }
+
+    /// The content's width: the pages and their gaps, or the pane.
+    pub(crate) fn content_width(&self) -> f32 {
+        (self.page_width() + 2.0 * GAP).max(self.pane_width())
+    }
+
+    fn want(&self) -> Want {
+        let n = self.doc.pages();
+        Want {
+            visible: self.visible.start.min(n)..self.visible.end.min(n),
+            centre: self.current,
+            forward: self.forward,
+            width_px: self.page_width() * self.scale,
+            settled: self.settle_at.is_none(),
+            text_lane: self.searchable
+                && self.find.active()
+                && !self.text_index_loaded
+                && self.text_index_busy.is_none(),
+            search: self.find.generation,
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<RenderRequest> {
+        if self.content != Content::Pages || self.viewport.is_none() {
+            return None;
+        }
+        let want = self.want();
+        let next = self.queue.pop(&self.doc, &want);
+        self.idle = next.is_none();
+        next
+    }
+
+    /// Requests handed out that are no longer wanted: the host may stop them.
+    pub fn take_cancelled(&mut self) -> Vec<Ticket> {
+        self.queue.take_cancelled()
+    }
+
+    /// Whether a request handed out is still wanted.
+    pub fn is_wanted(&self, ticket: Ticket) -> bool {
+        self.queue.is_wanted(ticket)
+    }
+
+    /// Takes a render's reply. Return [`Landed::commits`] from the host's poll.
+    pub fn complete(&mut self, ticket: Ticket, reply: PageReply) -> Landed {
+        let page = ticket.page();
+        let had_layer = self.layer(page).is_some();
+        let answered = self.queue.is_wanted(ticket);
+        let landed = self.queue.complete(&mut self.doc, ticket, reply);
+        if (answered || landed != Landed::Dropped)
+            && self.find.active()
+            && let Some(slot) = self.queue.slots.get_mut(page)
+        {
+            slot.searched = self.find.generation;
+        }
+        if landed == Landed::Shown {
+            self.reconcile_page_find_and_selection(page, had_layer);
+        }
+        let want = self.want();
+        let ranges = &self.selection.ranges;
+        let evicted = self.queue.enforce(&want, |p| ranges.contains_key(&p));
+        if evicted && landed != Landed::Shown {
+            return Landed::Shown;
+        }
+        landed
+    }
+
+    pub fn tick(&mut self, now: f64) -> bool {
+        self.clock = now;
+        if self.anchor.is_some_and(|a| now - a.at > ANCHOR_WAIT) {
+            // Its page never laid out (the jump was clamped, or something else scrolled).
+            self.anchor = None;
+        }
+        if let Some(at) = self.settle_at
+            && now + 1e-6 >= at
+        {
+            self.settle_at = None;
+            let want = self.want();
+            self.queue.reconcile(&self.doc, &want);
+        }
+        self.page_nav.reconcile_focus(self.current + 1)
+    }
+
+    pub fn flush(&mut self, tx: &mut Tx) -> bool {
+        let nav = self.page_nav.reconcile_focus(self.current + 1);
+        if self.reveal.is_none() || self.viewport.is_none() {
+            return nav;
+        }
+        self.place_reveal(tx);
+        true
+    }
+
+    /// Scrolls the revealed match or page to the viewport's centre in one step.
+    pub(crate) fn place_reveal(&mut self, tx: &mut Tx) {
+        let Some(vp) = self.viewport else {
+            return;
+        };
+        let Some(r) = self.reveal.take() else {
+            return;
+        };
+        self.anchor = None;
+        let h = self.page_height(r.page);
+        tx.scroll_key_to(self.row_key(r.page), vp[3] / 2.0 - (GAP + r.at[1] * h));
+        if self.content_width() > vp[2] + 0.5 {
+            let x = GAP
+                + (self.content_width() - 2.0 * GAP - self.page_width()) / 2.0
+                + r.at[0] * self.page_width();
+            tx.scroll_to_x(self.scroll_key(), (x - vp[2] / 2.0).max(0.0));
+        }
+    }
+
+    pub fn select(&mut self, from: (usize, usize), to: (usize, usize)) {
+        self.selection.clear();
+        self.selection.anchor = Some(from);
+        let q = &self.queue;
+        self.selection.extend(
+            |p| q.slots.get(p).and_then(|s| s.layer.as_ref()),
+            to.0,
+            to.1,
+        );
+    }
+
+    pub fn show_page(&mut self, page: usize, down: f32) {
+        if page < self.doc.pages() {
+            self.reveal = Some(Reveal {
+                page,
+                at: [0.5, down.clamp(0.0, 1.0)],
+            });
+        }
+    }
+
+    /// Jumps to 0-based `page` (clamped to `0..pages`), updating `current` and scrolling it into view.
+    pub fn jump_to_page(&mut self, page: usize, tx: &mut Tx) -> bool {
+        let pages = self.doc.pages();
+        if self.content != Content::Pages || pages == 0 {
+            return false;
+        }
+        let target = page.min(pages - 1);
+        self.current = target;
+        self.page_nav.set_page_text(target + 1);
+        let down = self.viewport.map_or(0.0, |vp| {
+            let h = self.page_height(target).max(1.0);
+            ((vp[3] / 2.0 - GAP) / h).clamp(0.0, 0.5)
+        });
+        self.show_page(target, down);
+        self.place_reveal(tx);
+        true
+    }
+
+    pub fn set_level(&mut self, level: f32) {
+        self.level_request = Some(level);
+        self.wake = self.wake.wrapping_add(1);
+    }
+
+    /// From the wake element's layout: a zoom the host asked for.
+    pub(crate) fn apply_level_request(&mut self, tx: &mut Tx) -> bool {
+        match self.level_request.take() {
+            Some(level) => self.zoom_to(level, tx),
+            None => false,
+        }
+    }
+
+    // ---- From the view's handlers ----
+
+    pub(crate) fn set_visible(&mut self, r: Range<usize>) -> bool {
+        if r != self.visible {
+            if r.start != self.visible.start {
+                self.forward = r.start > self.visible.start;
+            }
+            self.visible = r;
+        }
+        let want = self.want();
+        let retried = self.queue.reconcile(&self.doc, &want);
+        let ranges = &self.selection.ranges;
+        let evicted = self.queue.enforce(&want, |p| ranges.contains_key(&p));
+        let woke = self.wake_if_idle();
+        woke || evicted || retried
+    }
+
+    fn wake_if_idle(&mut self) -> bool {
+        if !self.idle || (!self.queue.has_work(&self.doc, &self.want()) && !self.needs_text_index())
+        {
+            return false;
+        }
+        self.idle = false;
+        self.wake = self.wake.wrapping_add(1);
+        true
+    }
+
+    pub(crate) fn set_viewport(&mut self, rect: [f32; 4], scale: f32, tx: &mut Tx) -> bool {
+        let old = self.viewport;
+        let rescaled = old.is_some() && self.scale != scale;
+        self.scale = scale;
+        let widened = old.is_some_and(|o| (o[2] - rect[2]).abs() > 0.25);
+        if widened {
+            let anchor = self.pending_anchor().or_else(|| self.anchor_now());
+            self.viewport = Some(rect);
+            self.rezoom(self.level, anchor, tx);
+            return true;
+        }
+        self.viewport = Some(rect);
+        if old.is_none() {
+            // The rows mount now, at the pane's width.
+            self.zoom_gen = self.zoom_gen.wrapping_add(1);
+            self.place_reveal(tx);
+            self.wake = self.wake.wrapping_add(1);
+            return true;
+        }
+        if rescaled {
+            let vis = self.visible();
+            self.set_visible(vis);
+            tx.wake_after(Duration::ZERO);
+            return true;
+        }
+        old.is_some_and(|o| (o[3] - rect[3]).abs() > 0.25)
+    }
+
+    pub(crate) fn page_laid_out(&mut self, page: usize, zoom_gen: u32, rect: [f32; 4]) -> bool {
+        if zoom_gen != self.zoom_gen {
+            return false;
+        }
+        self.rects.insert(page, rect);
+        self.clear_landed_anchor(page, rect);
+        // Text scrolled under a still pointer, or away from it: the I-beam follows.
+        let cursor = self.pointer.is_some_and(|p| self.hover(p));
+        let Some(vp) = self.viewport else {
+            return cursor;
+        };
+        let cy = vp[1] + vp[3] / 2.0;
+        if row_contains(rect, cy) && self.current != page {
+            self.current = page;
+            self.page_nav.sync_unfocused(page + 1);
+            return true;
+        }
+        cursor
+    }
+
+    fn clear_landed_anchor(&mut self, page: usize, rect: [f32; 4]) {
+        let Some(a) = self.anchor.filter(|a| a.page == page) else {
+            return;
+        };
+        let Some(vp) = self.viewport else {
+            return;
+        };
+        let placed = (rect[1] + a.down * rect[3] - (vp[1] + vp[3] / 2.0)).abs() <= 1.5;
+        if placed {
+            self.anchor = None;
+        }
+    }
+
+    fn shown(&self) -> impl Iterator<Item = (usize, [f32; 4])> + '_ {
+        self.rects
+            .range(self.visible.clone())
+            .map(|(&p, &r)| (p, r))
+    }
+
+    /// The last zoom's anchor, while it waits for its page.
+    fn pending_anchor(&self) -> Option<Anchor> {
+        self.anchor.filter(|a| self.clock - a.at <= ANCHOR_WAIT)
+    }
+
+    /// The point under the viewport's centre, from the pages laid out last.
+    fn anchor_now(&self) -> Option<Anchor> {
+        let vp = self.viewport?;
+        let cy = vp[1] + vp[3] / 2.0;
+        let shown: Vec<(usize, [f32; 4])> = self.shown().collect();
+        let (page, rect) = shown
+            .iter()
+            .find(|(_, r)| r[1] - GAP <= cy && cy < r[1] + r[3])
+            .or_else(|| shown.iter().find(|(_, r)| cy < r[1]))
+            .copied()?;
+        let down = ((cy - rect[1]) / rect[3].max(1.0)).clamp(0.0, 1.0);
+        let off = self.feed.get().offset[0];
+        let across = ((off + vp[2] / 2.0) / self.content_width()).clamp(0.0, 1.0);
+        Some(Anchor {
+            page,
+            down,
+            across,
+            at: self.clock,
+        })
+    }
+
+    /// Zooms by Ctrl+wheel `dy` (a wheel turned away zooms in), about the view's centre.
+    pub(crate) fn zoom_wheel(&mut self, dy: f32, tx: &mut Tx) -> bool {
+        let next = zoom::after_wheel(self.level, dy);
+        self.zoom_to(next, tx)
+    }
+
+    pub fn reset_zoom(&mut self, tx: &mut Tx) -> bool {
+        self.zoom_to(LIMITS.min, tx)
+    }
+
+    fn zoom_to(&mut self, level: f32, tx: &mut Tx) -> bool {
+        let level = LIMITS.clamp(level);
+        if (level - self.level).abs() < 1e-4 || self.content != Content::Pages {
+            return false;
+        }
+        let anchor = self.pending_anchor().or_else(|| self.anchor_now());
+        self.rezoom(level, anchor, tx);
+        self.settle_at = Some(self.clock + SETTLE);
+        tx.wake_after(Duration::from_secs_f64(SETTLE));
+        true
+    }
+
+    fn rezoom(&mut self, level: f32, anchor: Option<Anchor>, tx: &mut Tx) {
+        self.level = level;
+        self.zoom_gen = self.zoom_gen.wrapping_add(1);
+        self.rects.clear();
+        let (Some(a), Some(vp)) = (anchor, self.viewport) else {
+            return;
+        };
+        let at = vp[3] / 2.0 - (GAP + a.down * self.page_height(a.page));
+        let x = a.across * self.content_width() - vp[2] / 2.0;
+        tx.scroll_to_x(self.scroll_key(), x.max(0.0));
+        tx.scroll_key_to(self.row_key(a.page), at);
+        self.anchor = Some(Anchor {
+            at: self.clock,
+            ..a
+        });
+    }
+
+    /// The text under window point `p`: a visible page, and the point in its layer's pixels.
+    pub(crate) fn text_at(&self, p: [f32; 2]) -> Option<(usize, f32, f32)> {
+        self.shown().find_map(|(page, r)| {
+            let layer = self.layer(page)?;
+            let (x, y) = to_layer(layer, &r, p);
+            let inside = (0.0..=layer.width).contains(&x) && (0.0..=layer.height).contains(&y);
+            (inside && layer.hit_text(x, y)).then_some((page, x, y))
+        })
+    }
+
+    /// The nearest point on any visible page with text to window point `p`.
+    fn text_near(&self, p: [f32; 2]) -> Option<(usize, f32, f32)> {
+        let mut best: Option<((usize, f32, f32), f32)> = None;
+        for (page, r) in self.shown() {
+            let Some(layer) = self.layer(page) else {
+                continue;
+            };
+            let (x, y) = to_layer(layer, &r, p);
+            let (cx, cy) = (x.clamp(0.0, layer.width), y.clamp(0.0, layer.height));
+            let k = r[2] / layer.width;
+            let d = ((cx - x) * k).powi(2) + ((cy - y) * k).powi(2);
+            if best.is_none_or(|(_, b)| d < b) {
+                best = Some(((page, cx, cy), d));
+            }
+        }
+        best.map(|(at, _)| at)
+    }
+
+    pub(crate) fn drag(&mut self, d: &Drag, shift: bool, tx: &mut Tx) -> bool {
+        let p = d.window_point();
+        match d.phase {
+            Phase::Down => {
+                if let Some((page, x, y)) = self.text_at(p) {
+                    self.gesture = Gesture::Select;
+                    let Some(layer) = self.layer(page).cloned() else {
+                        return false;
+                    };
+                    let caret = layer.caret_at(x, y);
+                    if shift && self.selection.anchor.is_some() {
+                        self.selection.unit = Unit::Char;
+                        let q = &self.queue;
+                        self.selection.extend(
+                            |p| q.slots.get(p).and_then(|s| s.layer.as_ref()),
+                            page,
+                            caret,
+                        );
+                    } else {
+                        self.selection
+                            .press(&layer, page, caret, Unit::of_clicks(d.clicks));
+                    }
+                    return true;
+                }
+                self.anchor = None;
+                self.gesture = Gesture::Pan(self.feed.get().offset);
+                self.selection.clear();
+                true
+            }
+            Phase::Move => match self.gesture {
+                Gesture::Select => {
+                    let Some((page, x, y)) = self.text_near(p) else {
+                        return false;
+                    };
+                    let Some(layer) = self.layer(page) else {
+                        return false;
+                    };
+                    let caret = layer.caret_at(x, y);
+                    let q = &self.queue;
+                    self.selection.extend(
+                        |p| q.slots.get(p).and_then(|s| s.layer.as_ref()),
+                        page,
+                        caret,
+                    )
+                }
+                Gesture::Pan(o) => {
+                    tx.scroll_to_instant(self.scroll_key(), o[0] - d.dx, o[1] - d.dy);
+                    false
+                }
+                Gesture::Idle => false,
+            },
+            Phase::Up => {
+                let was = self.gesture;
+                self.gesture = Gesture::Idle;
+                let cursor = self.hover(p);
+                matches!(was, Gesture::Pan(_)) || cursor
+            }
+        }
+    }
+
+    /// The pointer left the view: text scrolling under where it was no longer moves the I-beam.
+    pub(crate) fn leave(&mut self) {
+        self.pointer = None;
+    }
+
+    /// The pointer moved over the view: true when the I-beam turns on or off.
+    pub(crate) fn hover(&mut self, p: [f32; 2]) -> bool {
+        self.pointer = Some(p);
+        if self.gesture != Gesture::Idle {
+            // A drag shows its own cursor; the I-beam is worked out again on release.
+            return false;
+        }
+        let over = self.text_at(p).is_some();
+        if over == self.over_text {
+            return false;
+        }
+        self.over_text = over;
+        true
+    }
+
+    pub fn select_all(&mut self) -> bool {
+        let q = &self.queue;
+        let layers = q
+            .slots
+            .iter()
+            .enumerate()
+            .filter_map(|(p, s)| s.layer.as_ref().map(|l| (p, l)));
+        self.selection.all(layers);
+        !self.selection.is_empty()
+    }
+
+    fn select_hit(&mut self) {
+        let Some(h) = self.find.current_hit() else {
+            return;
+        };
+        self.selection.clear();
+        self.selection.anchor = Some((h.page, h.start));
+        self.selection.ranges.insert(h.page, (h.start, h.end));
+        let at = self.layer(h.page).and_then(|l| {
+            let runs = l.selection_runs(h.start, h.end);
+            let r = runs.first()?;
+            Some([
+                (r[0] + r[2]) / 2.0 / l.width,
+                (r[1] + r[3]) / 2.0 / l.height,
+            ])
+        });
+        self.reveal = Some(Reveal {
+            page: h.page,
+            at: at.unwrap_or([0.5, 0.0]),
+        });
+    }
+
+    pub(crate) fn hits_on(&self, page: usize) -> &[Hit] {
+        if self.find.active() {
+            self.find.on_page(page)
+        } else {
+            &[]
+        }
+    }
+
+    fn reconcile_page_find_and_selection(&mut self, page: usize, had_layer: bool) {
+        let layer = self.layer(page).cloned();
+        let prev_hit = self.find.current_hit();
+        let source = layer.as_ref().map(SearchSource::Layer).or_else(|| {
+            self.page_texts
+                .get(page)
+                .and_then(Option::as_ref)
+                .map(SearchSource::Plain)
+        });
+        let became_current = self.find.add(page, source);
+        let current_hit = self.find.current_hit();
+        let upgraded_current =
+            !had_layer && layer.is_some() && current_hit.is_some_and(|h| h.page == page);
+        if became_current || current_hit != prev_hit || upgraded_current {
+            self.select_hit();
+        }
+        if let Some(&(_, end)) = self.selection.ranges.get(&page)
+            && layer.as_ref().is_none_or(|l| end > l.len())
+        {
+            self.selection.ranges.remove(&page);
+        }
+    }
+
+    /// The pages whose glyph layers or plain-text fallback find searches.
+    fn search_sources(&self) -> impl Iterator<Item = (usize, SearchSource<'_>)> {
+        (0..self.doc.pages()).filter_map(|p| self.page_search_source(p).map(|s| (p, s)))
+    }
+
+    /// Whether the content overflows sideways and isn't at its left edge.
+    pub(crate) fn can_pan_left(&self) -> bool {
+        self.feed.get().offset[0] > 0.5
+    }
+
+    pub(crate) fn can_pan_right(&self) -> bool {
+        let p = self.feed.get();
+        p.offset[0] < p.max[0] - 0.5
+    }
+}
+
+fn row_contains(rect: [f32; 4], y: f32) -> bool {
+    rect[1] - GAP <= y && y < rect[1] + rect[3]
+}
+
+fn to_layer(layer: &Shared, r: &[f32; 4], p: [f32; 2]) -> (f32, f32) {
+    let kx = layer.width / r[2].max(1.0);
+    let ky = layer.height / r[3].max(1.0);
+    ((p[0] - r[0]) * kx, (p[1] - r[1]) * ky)
+}
+
+impl HostedPreview for PdfState {
+    fn searchable(&self) -> bool {
+        self.searchable && self.content == Content::Pages && self.doc.pages() > 0
+    }
+
+    fn find(&mut self, query: &str) {
+        if !self.searchable {
+            return;
+        }
+        // Each edit to the query clears the selection; the first match then takes it.
+        self.selection.clear();
+        self.reveal = None;
+        let mut find = std::mem::take(&mut self.find);
+        find.run(query, self.search_sources());
+        self.find = find;
+        if self.find.active() {
+            let generation = self.find.generation;
+            for s in self.queue.slots.iter_mut().filter(|s| s.layer.is_some()) {
+                s.searched = generation;
+            }
+        }
+        self.select_hit();
+        let want = self.want();
+        self.queue.reconcile(&self.doc, &want);
+        self.wake_if_idle();
+    }
+
+    fn find_step(&mut self, forward: bool) {
+        if self.find.step(forward).is_some() {
+            self.select_hit();
+        }
+    }
+
+    fn find_status(&self) -> Option<FindStatus> {
+        self.searchable.then(|| FindStatus {
+            current: self.find.current.map(|c| c + 1),
+            total: self.find.hits.len(),
+        })
+    }
+
+    fn find_end(&mut self) {
+        // The selected match stays selected for Ctrl+C.
+        self.find.clear();
+        self.text_index_busy = None;
+        self.reveal = None;
+        let want = self.want();
+        self.queue.reconcile(&self.doc, &want);
+    }
+
+    fn busy(&self) -> Option<&str> {
+        PdfState::busy(self)
+    }
+}
+
+pub fn page_row_identity(key: &str) -> Option<String> {
+    let (head, page) = key.rsplit_once("-p")?;
+    let (base, generation) = head.rsplit_once("-z")?;
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    (digits(page) && digits(generation)).then(|| format!("{base}-p{page}"))
+}

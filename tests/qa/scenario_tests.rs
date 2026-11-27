@@ -11,8 +11,8 @@ use crate::{
     fixture::manifest,
     harness,
     scenario::{
-        Quality, Scenario, check_folder, check_quality, load_scenario, planned_tests,
-        scenario_files, scenario_name,
+        Quality, Scenario, check_folder, check_quality, load_scenario, plan, scenario_files,
+        scenario_name,
     },
     steps::run_steps,
     variables::{placeholders, run_name, runs, variables},
@@ -42,7 +42,7 @@ pub(crate) fn every_scenario_file_is_planned_and_well_formed() {
         })
         .collect();
     expected.sort();
-    let mut planned: Vec<String> = planned_tests()
+    let mut planned: Vec<String> = plan(&files, false)
         .into_iter()
         .filter(|test| test.group.is_some())
         .map(|test| test.name)
@@ -146,6 +146,27 @@ pub(crate) fn a_skipped_scenario_names_a_reason_and_no_mutation_or_known_bug() {
     ] {
         assert!(load(bad).is_err(), "{bad} should be rejected");
     }
+}
+
+pub(crate) fn a_volume_monitor_run_needs_the_session_bus() {
+    let directory = tempfile::tempdir().expect("a scratch directory");
+    let path = directory.path().join("example.jsonl");
+    let load = |extra: &str| {
+        fs::write(
+            &path,
+            format!(
+                "{{\"scenario\":\"example\",\"modes\":[\"columns\"],\"mutation\":null,\
+                 \"known_bug\":null,{extra}}}\n{{\"key\":\"Escape\"}}\n"
+            ),
+        )
+        .expect("the scenario should be written");
+        load_scenario(&path).map(|scenario| scenario.header.volume_monitor)
+    };
+    assert_eq!(
+        load(r#""session_bus":true,"volume_monitor":true"#),
+        Ok(true)
+    );
+    assert!(load(r#""volume_monitor":true"#).is_err());
 }
 
 pub(crate) fn a_cost_gives_each_run_label_a_positive_number() {
@@ -415,6 +436,54 @@ pub(crate) fn the_harness_starts_costly_runs_first_and_names_select_whole_scenar
             "{bad:?} should be rejected"
         );
     }
+}
+
+pub(crate) fn smoke_list_names_active_scenarios() {
+    let smoke_path = Path::new(REPOSITORY).join("tests/qa/smoke.txt");
+    let text = fs::read_to_string(&smoke_path).expect("tests/qa/smoke.txt should be readable");
+    let scenarios: BTreeMap<String, Scenario> = scenario_files()
+        .into_iter()
+        .map(|path| {
+            let name = scenario_name(&path);
+            let scenario =
+                load_scenario(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            (name, scenario)
+        })
+        .collect();
+    let mut seen = BTreeMap::new();
+    for (index, raw) in text.lines().enumerate() {
+        let entry = raw.split('#').next().unwrap_or_default().trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let line_no = index + 1;
+        assert!(
+            seen.insert(entry.to_owned(), line_no).is_none(),
+            "{}:{line_no}: duplicate smoke scenario {entry:?}",
+            smoke_path.display()
+        );
+        let scenario = scenarios.get(entry).unwrap_or_else(|| {
+            panic!(
+                "{}:{line_no}: unknown smoke scenario {entry:?}",
+                smoke_path.display()
+            )
+        });
+        assert!(
+            scenario.header.skip.is_none(),
+            "{}:{line_no}: smoke scenario {entry:?} must not be skipped",
+            smoke_path.display()
+        );
+        assert!(
+            scenario.header.known_bug.is_none(),
+            "{}:{line_no}: smoke scenario {entry:?} must not be a known_bug",
+            smoke_path.display()
+        );
+    }
+    assert!(
+        !seen.is_empty(),
+        "{}: smoke list must contain at least one scenario",
+        smoke_path.display()
+    );
 }
 
 pub(crate) fn no_test_attribute_hides_a_runner_test() {

@@ -237,8 +237,6 @@ impl KeptRefresh {
     }
 }
 
-/// Kept rows and loads, (loads, following, spinner follows the load) once answering,
-/// the final names, and reloads or failures.
 type KeptOutcome = (
     (Vec<String>, usize),
     (usize, bool, bool),

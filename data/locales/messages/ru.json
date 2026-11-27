@@ -204,6 +204,7 @@
   "Cannot permanently delete the filesystem root": "Нельзя безвозвратно удалить корень файловой системы",
   "Cannot restore the filesystem root": "Нельзя восстановить корень файловой системы",
   "Can’t compress these items": "Не удалось сжать эти элементы",
+  "Can’t extract these items": "Не удалось извлечь эти элементы",
   "Can’t create items here": "Здесь нельзя создавать элементы",
   "Can’t cut these items": "Не удалось вырезать эти элементы",
   "Can’t move these items": "Не удалось переместить эти элементы",
@@ -421,6 +422,7 @@
   "Extract the archive here / to a typed folder": "Извлечь архив сюда / в указанную папку",
   "Extract the archive to a folder": "Извлечь архив в папку",
   "Extracted entries remain in “%{folder}”.": "Извлечённые элементы остаются в «%{folder}».",
+  "Extracting archive %{current} of %{total}": "Извлечение архива %{current} из %{total}",
   "Extraction destination must use an absolute path": "Место извлечения должно задаваться абсолютным путём",
   "Extraction stopped unexpectedly": "Извлечение неожиданно прервалось",
   "Failed after %{elapsed}": "Сбой через %{elapsed}",
@@ -1151,5 +1153,6 @@
   "Press the new key for “%{action}”": "Нажмите новую клавишу для «%{action}»",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} отменяет, а %{backspace} удаляет все клавиши этого действия.",
   "“%{group}” has no key, so this action cannot run.": "У «%{group}» нет клавиши, поэтому это действие не может сработать.",
-  "Custom action %{number}": "Пользовательское действие %{number}"
+  "Custom action %{number}": "Пользовательское действие %{number}",
+  "Volume": "Громкость"
 }

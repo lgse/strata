@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/filter/descent.rs b/crates/strata-app/src/filter/descent.rs
+--- a/crates/strata-app/src/filter/descent.rs
++++ b/crates/strata-app/src/filter/descent.rs
+@@ -23,7 +23,7 @@ pub(super) fn trailing_slash(before: &str, now: &str) -> Option<&str> {
+         .map(|(kept, _)| kept.len_utf8())
+         .sum();
+     let suffix = suffix.min(now.len().saturating_sub(1));
+-    (&now[..now.len() - suffix] == "/").then_some(before)
++    (&now[..now.len() - suffix] == "/").then_some(before).filter(|_| false)
+ }
+ 
+ pub(super) fn finish(app: &mut App, tx: &mut Tx) {

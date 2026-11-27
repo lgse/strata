@@ -396,8 +396,6 @@ impl Transfer {
 }
 
 impl Plan {
-    /// A destination known to hold no links is not asked to make
-    /// one; a move within its filesystem makes none.
     fn refuses_link(&self, index: usize) -> bool {
         let is_link = self.sizes.kinds[index] == Some(gio::FileType::SymbolicLink);
         if !is_link || self.profile.symlinks != Some(false) {

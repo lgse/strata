@@ -97,6 +97,18 @@ impl Browser {
         }
     }
 
+    /// The finished archive's name while the view that started it still shows its folder.
+    fn revealable_archive(&self, context: &OperationContext, archive_name: String) -> String {
+        let can_reveal = self.last_started_operation() == Some(context.request_id)
+            && self.validation_generation.get() == context.navigation_generation
+            && self.active_location() == context.origin;
+        if can_reveal {
+            archive_name
+        } else {
+            String::new()
+        }
+    }
+
     pub fn cancel_operation(&self, request_id: OperationRequestId) {
         let job = self
             .background_operations
@@ -277,15 +289,10 @@ impl Browser {
                             Some(ReplacedOriginal::Deleted) => {}
                             None => push_background_undo(UndoEntry::Copy(vec![archive])),
                         }
-                        let can_reveal = self.last_started_operation() == Some(context.request_id)
-                            && self.validation_generation.get() == context.navigation_generation
-                            && self.active_location() == context.origin;
+                        let select_name = self.revealable_archive(context, archive_name);
                         emit(BrowserEvent::ArchiveCompleted {
-                            select_name: if can_reveal {
-                                archive_name
-                            } else {
-                                String::new()
-                            },
+                            select_name,
+                            cancelled: false,
                         });
                     }
                     OperationEvent::Cancelled { result, .. } => {

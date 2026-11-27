@@ -201,10 +201,7 @@ impl NavigationState {
     pub fn selection_anchor_position(&self, depth: usize) -> Option<usize> {
         let column = self.columns.get(depth)?;
         let anchor = column.selection_anchor.as_ref()?;
-        column
-            .entries
-            .iter()
-            .position(|entry| &entry.location == anchor)
+        column.location_position(anchor)
     }
 
     pub fn set_selection_anchor(&mut self, depth: usize, position: usize) -> bool {
@@ -216,6 +213,12 @@ impl NavigationState {
         };
         column.selection_anchor = Some(entry.location.clone());
         true
+    }
+
+    pub fn clear_selection_anchor(&mut self, depth: usize) {
+        if let Some(column) = self.columns.get_mut(depth) {
+            column.selection_anchor = None;
+        }
     }
 
     pub fn selected_positions(&self, depth: usize) -> Vec<usize> {
@@ -259,8 +262,6 @@ impl NavigationState {
             .collect()
     }
 
-    /// The pane's committed fill in listing order. A load cursor is not a fill,
-    /// and another pane's open-path marker is never a target.
     pub fn filled_entries(&self, depth: usize) -> Vec<FileEntry> {
         let Some(column) = self.columns.get(depth) else {
             return Vec::new();
@@ -343,9 +344,6 @@ enum ReportedFill {
 }
 
 impl ColumnState {
-    /// Repeating the fill is a widget echo, as is a report of only the cursor
-    /// while a different fill remains. After a clear, that cursor report is the
-    /// click on the still-focused file, so it becomes the selection.
     fn classify_reported_fill(&mut self, positions: &[usize]) -> ReportedFill {
         let Some(cursor) = self.selected.and_then(|cursor| self.entries.get(cursor)) else {
             return ReportedFill::Changed(None);
@@ -360,8 +358,6 @@ impl ColumnState {
         ReportedFill::Echo
     }
 
-    /// Whether `positions` match the fill, with the locations they name when
-    /// the fill keeps no positions to compare against.
     fn compare_reported_fill(&self, positions: &[usize]) -> (bool, Option<HashSet<Location>>) {
         if let Some(previous) = self
             .selected_locations

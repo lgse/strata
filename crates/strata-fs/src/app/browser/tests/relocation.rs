@@ -324,8 +324,6 @@ fn removing_the_root_with_open_child_columns_returns_to_the_nearest_existing_anc
         .borrow_mut()
         .extend([source.root.clone(), open_child.clone()]);
 
-    // `rm -r` reports the open child and the root itself in one batch; the child's
-    // removal reloads the root before the root's own removal is handled.
     for removed in [open_child, source.root.clone()] {
         browser.handle_directory_change(0, &source.root, DirectoryChange::Remove(removed));
     }

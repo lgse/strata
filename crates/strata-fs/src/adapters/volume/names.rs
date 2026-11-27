@@ -25,8 +25,6 @@ pub(crate) enum Strip {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Reserved {
     None,
-    /// Those Windows 11 reserves: a bare device name, and `NUL` before any
-    /// extension.
     Bare,
     /// A device name before any extension, as every Windows version reserves.
     Full,
@@ -40,8 +38,6 @@ pub(crate) enum NameEncoding {
     Ascii,
 }
 
-/// Private-use characters an SMB client stores for characters Windows
-/// refuses, and so reads back as those characters.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PrivateUse {
     /// `mapposix`, the Services for Mac mapping.
@@ -55,8 +51,6 @@ pub(crate) enum PrivateUse {
 pub(crate) struct NameLimit {
     pub bytes: Option<u16>,
     pub units: Option<u16>,
-    /// Folders must also fit within this many bytes, where a server
-    /// creates them under a longer temporary name.
     pub folder_bytes: Option<u16>,
 }
 
@@ -69,8 +63,6 @@ pub(crate) struct NameProfile {
     pub mapped: Option<PrivateUse>,
     pub limit: NameLimit,
     pub folds: bool,
-    /// Whether names the mount refuses may teach it stricter rules, where
-    /// nothing it reports shows its rules.
     pub learns: bool,
 }
 
@@ -117,20 +109,12 @@ impl Strictness {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum MountNames {
     Profile(NameProfile),
-    /// The GVfs FUSE bridge, whose mount point is this many folders deep:
-    /// the folder below it names the backend whose rules apply inside.
-    PerBackend {
-        depth: u16,
-    },
+    PerBackend { depth: u16 },
 }
 
 const WINDOWS_UNITS: u16 = 255;
-/// Samba creates a folder as `.::TMPNAME:D:<pid>%<u64>:<name>` first, which
-/// takes up to 42 of the server's 255 bytes.
 const SAMBA_FOLDER_BYTES: u16 = 213;
 const SAMBA_BYTES: u16 = 255;
-/// MTP strings count their terminator in one byte, and libmtp sends an
-/// empty name for anything longer instead of failing.
 const MTP_UNITS: u16 = 254;
 const MTP_BYTES: u16 = 255;
 const SFTP_BYTES: u16 = 255;
@@ -169,9 +153,6 @@ impl NameProfile {
         }
     }
 
-    /// A share without POSIX extensions: the server's Windows rules, in the
-    /// bytes it stores and the UTF-16 units SMB carries, with names that
-    /// differ only in case taken for one, as Windows and Samba do by default.
     pub(crate) fn smb(bytes: Option<u16>) -> Self {
         Self {
             limit: NameLimit {
@@ -184,8 +165,6 @@ impl NameProfile {
         }
     }
 
-    /// A share with POSIX extensions, which still creates folders under
-    /// Samba's temporary names and cannot carry malformed UTF-8.
     pub(crate) fn smb_posix(bytes: Option<u16>) -> Self {
         Self {
             encoding: NameEncoding::Utf8,
@@ -259,8 +238,6 @@ impl NameProfile {
     }
 }
 
-/// `f_namelen` as a byte limit: 0 means unknown, and a FUSE daemon may
-/// report anything.
 pub(crate) fn byte_limit(name_max: u32) -> Option<u16> {
     (name_max != 0).then(|| name_max.clamp(64, 4095) as u16)
 }
@@ -282,8 +259,6 @@ pub(crate) fn gvfs_profile(backend: &str) -> NameProfile {
     }
 }
 
-/// Where the backend is unknown, the strictest rules a backend needs apply, and refusals teach
-/// the rest.
 pub(crate) fn gvfs_bridge_profile(backend_folder: Option<&OsStr>) -> NameProfile {
     let scheme = backend_folder.and_then(|folder| {
         let folder = folder.as_encoded_bytes();

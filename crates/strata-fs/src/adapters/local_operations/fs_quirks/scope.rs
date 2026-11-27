@@ -65,9 +65,6 @@ impl FsQuirks {
         MountKey::Test(self.scope.id)
     }
 
-    /// Loses a writeback in this scope, from a racer: as errseq does,
-    /// `syncfs` reports it once through each folder opened before, and
-    /// never through one opened after.
     pub fn writeback_loser(&self) -> impl Fn() + Send + Sync + 'static {
         let scope = self.scope.clone();
         move || scope.state().writebacks_lost += 1
@@ -151,8 +148,6 @@ pub struct Logged<'a> {
     pub forced: bool,
 }
 
-/// Takes the first entry due for `op` on `names`, or counts down the
-/// matches it still skips.
 pub fn take_due<T>(
     due: &mut Vec<(Op, &'static str, usize, T)>,
     op: Op,
@@ -273,8 +268,6 @@ impl Scope {
         result
     }
 
-    /// Logs `call`, failing it on an unplugged device, and takes the racer
-    /// due before it.
     fn log(&self, call: Logged<'_>) -> Result<Option<Racer>, Errno> {
         let mut state = self.state();
         state.calls.push(Call {

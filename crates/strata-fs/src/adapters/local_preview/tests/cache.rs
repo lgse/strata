@@ -63,8 +63,6 @@ fn assert_cache_holds(cache: &PreviewCache, entries: usize, bytes: usize) {
     );
 }
 
-/// Writes one PNG page into the shared thumbnail cache and returns the page,
-/// which differs from the thumbnail the cache now holds.
 fn store_shared_thumbnail(path: &Path) -> Vec<u8> {
     let surface =
         cairo::ImageSurface::create(cairo::Format::ARgb32, 640, 800).expect("page surface");
@@ -222,4 +220,75 @@ fn preview_content_size_computes_accurately() {
     ] {
         assert_eq!(preview_content_size(&content), size, "{content:?}");
     }
+}
+
+#[test]
+fn preview_cache_evict_path_and_clear_keep_accounting_consistent() {
+    let mut cache = empty_cache();
+    let doc_p0 = pdf_page_key(0, PdfRenderSize::new(640, 800));
+    let doc_p0_zoomed = pdf_page_key(0, PdfRenderSize::new(1280, 1800));
+    let other = cache_key("photo.png", 10);
+
+    cache.insert(doc_p0.clone(), pdf_page(vec![1; 100], 0, 5));
+    cache.insert(doc_p0_zoomed.clone(), pdf_page(vec![2; 250], 0, 5));
+    cache.insert(
+        other.clone(),
+        PreviewContent::Rasterized { png: vec![3; 40] },
+    );
+    assert_cache_holds(&cache, 3, 390);
+
+    cache.evict_path(Path::new("doc.pdf"));
+    assert_eq!(cache.get(&doc_p0), None);
+    assert_eq!(cache.get(&doc_p0_zoomed), None);
+    assert!(cache.get(&other).is_some());
+    assert_cache_holds(&cache, 1, 40);
+    assert_eq!(cache.recent.len(), 1);
+
+    cache.clear();
+    assert_cache_holds(&cache, 0, 0);
+    assert!(cache.recent.is_empty());
+}
+
+#[test]
+fn pdf_pages_beyond_first_skip_preview_cache_and_evict_clears_first_page() {
+    with_default_main_context(|provider, context| {
+        let dir = tempfile::tempdir().expect("pdf cache fixture");
+        let path = dir.path().join("book.pdf");
+        fs::write(&path, b"%PDF-1.4\n").expect("pdf bytes");
+        provider.evict(&path);
+
+        let mut request = preview_request(crate::model::Location::local(&path), "book.pdf");
+        request.entry.modified_unix_seconds = crate::model::MetadataValue::Known(42);
+
+        // Page 1 is never cached in PREVIEW_CACHE; a second request renders again.
+        request.pdf_page = 1;
+        let renders = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        for _ in 0..2 {
+            let count = renders.clone();
+            let events = load_until_first_event(
+                provider,
+                context,
+                request.clone(),
+                move |_, _, page, _, _| {
+                    count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    Ok(parse_output(vec![7; 32], page, 10))
+                },
+            );
+            assert!(matches!(events.first(), Some(PreviewEvent::Ready(_))));
+        }
+        assert_eq!(
+            renders.load(std::sync::atomic::Ordering::Relaxed),
+            2,
+            "pdf_page > 0 must not populate PREVIEW_CACHE"
+        );
+
+        // Page 0 caches until evicted.
+        request.pdf_page = 0;
+        let _ = load_rendered_page(provider, context, &request, &[9; 16], false);
+        let _ = load_rendered_page(provider, context, &request, &[9; 16], true);
+
+        provider.evict(&path);
+        let _ = load_rendered_page(provider, context, &request, &[9; 16], false);
+        provider.evict(&path);
+    });
 }

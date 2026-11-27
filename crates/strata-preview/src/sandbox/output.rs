@@ -48,6 +48,7 @@ pub(super) fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
         ParseOperation::PreviewDocument(_) => {
             crate::services::docx::RichTextData::from_json(data).is_ok()
         }
+        ParseOperation::PreviewPdfText => crate::services::PdfTextIndex::from_json(data).is_ok(),
         ParseOperation::RawMetadata => raw_metadata::RawMetadata::from_json(data).is_ok(),
         ParseOperation::AudioTags => metadata::AudioTags::from_json(data).is_ok(),
         ParseOperation::MediaMetadata => {

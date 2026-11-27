@@ -27,18 +27,17 @@ pub mod raw_metadata;
 pub mod runtime;
 
 mod command;
-mod decoders;
 mod operation;
 mod output;
 mod process;
 
+pub use browser::clear_preview_cache;
 #[cfg(test)]
 use command::polaris_gpu_available_at;
 #[cfg(any(test, feature = "rar"))]
 use command::sandbox_input_path;
 use command::{SandboxCommand, runtime_command, sandbox_command};
 pub use command::{gpu_devices, numbered_name, polaris_gpu_available, sandbox_tool};
-pub use decoders::decodes_animated_webp;
 pub use operation::{
     CoverFormat, DocumentFormat, MediaPreviewBackend, PDF_PASSWORD_PROTECTED, ParseOperation,
     PdfPreviewError, PdfRenderSize,
@@ -115,6 +114,21 @@ pub fn parse(
         cancellation,
     };
     parse_with_progress(request, &|_| {})
+}
+
+/// Extracts plain text for all pages of a PDF in one sandboxed Poppler pass.
+pub fn extract_pdf_text(
+    input: &Path,
+    cancellation: &Cancellation,
+) -> Result<crate::services::PdfTextIndex, String> {
+    let output = parse(
+        input,
+        ParseOperation::PreviewPdfText,
+        0,
+        MediaPreviewBackend::Software,
+        cancellation,
+    )?;
+    crate::services::PdfTextIndex::from_json(&output.data)
 }
 
 pub fn parse_with_progress(
@@ -300,11 +314,15 @@ fn reports_failure(operation: &ParseOperation) -> bool {
             | ParseOperation::InspectImage
             | ParseOperation::ConvertImage
             | ParseOperation::PreviewPdf(_)
+            | ParseOperation::PreviewPdfText
     )
 }
 
 fn reported_failure(operation: &ParseOperation, data: Vec<u8>) -> Option<String> {
-    if !matches!(operation, ParseOperation::PreviewPdf(_)) {
+    if !matches!(
+        operation,
+        ParseOperation::PreviewPdf(_) | ParseOperation::PreviewPdfText
+    ) {
         return String::from_utf8(data).ok();
     }
     matches!(

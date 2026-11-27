@@ -331,9 +331,6 @@ fn extract(
     }
 }
 
-/// Unknown hosts are also reported as Unix, so a mode without file-type bits
-/// is not trusted. Older formats store DOS local time, which UnRAR would
-/// convert with this sandbox's zone (UTC), so it is passed on unconverted.
 fn member_metadata(header: &native::HeaderDataEx) -> wire::WireMetadata {
     let modified = if header.unp_ver >= RAR5_UNPACK_VERSION {
         let filetime = (u64::from(header.mtime_low) << 32) | u64::from(header.dir_target);

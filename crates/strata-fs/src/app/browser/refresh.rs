@@ -79,8 +79,6 @@ impl Browser {
         }
     }
 
-    /// A Recent or camera view in `rescanning` reloads once the operation
-    /// ends, so a bulk removal leaves it to that reload.
     pub(super) fn remove_deleted_locations(
         self: &Rc<Self>,
         locations: &[Location],

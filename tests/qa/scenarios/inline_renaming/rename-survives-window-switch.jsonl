@@ -1,0 +1,23 @@
+{"scenario":"rename-survives-window-switch","modes":["columns"],"layout":"us","mutation":null,"known_bug":"Rune QA hosts drive one browser window and refuse activate_window (#2683)","known_bug_step":11,"session_bus":true,"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":3,"score":45,"note":"Rename stays open and keys follow the active window across a second window; only rename-over-window-switch route, path-completion is a different editor"}}
+{"select_with_keyboard":"todo.txt"}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus"}
+{"remember":{"field":true},"as":"rename"}
+{"key":"ctrl+a"}
+{"type":"draft"}
+{"wait":{"field":{"of":"rename","text":"draft"}},"message":"typing to replace the name"}
+{"launch":["$fixture/pictures"]}
+{"wait":{"windows":{"title":"Strata","count":2}},"message":"a second window to open"}
+{"activate_window":{"title":"pictures — Strata"},"message":"the second window to take the keyboard"}
+{"key":"ctrl+t"}
+{"wait":{"compare":{"left":{"count":{"role":"page tab"}},"op":"==","right":2}},"message":"Ctrl+T to open a tab in the active window"}
+{"type":"x"}
+{"expect":[{"field":{"of":"rename","text":"draft","showing":true}},{"some_window":{"title":"$root — Strata","holds":{"compare":{"left":{"count":{"role":"page tab"}},"op":"<","right":2}}}}],"message":"keys in the active window to leave the inactive window's rename and tabs alone"}
+{"fs":{"path":"todo.txt","is":"file"},"timeout_ms":0,"message":"the inactive window's rename not to commit"}
+{"activate_window":{"title":"$root — Strata"},"message":"the first window to take the keyboard back"}
+{"type":"-final"}
+{"wait":{"field":{"of":"rename","text":"draft-final"}},"message":"typing to reach the kept rename"}
+{"key":"Return"}
+{"fs":{"path":"draft-final","exists":true},"message":"the rename on disk"}
+{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0}
+{"expect":{"some_window":{"title":"pictures — Strata","holds":{"compare":{"left":{"count":{"role":"page tab"}},"op":"==","right":2}}}},"message":"Return in the first window to leave the second window's tabs alone"}

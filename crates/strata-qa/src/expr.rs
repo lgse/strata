@@ -210,3 +210,16 @@ impl Serialize for Expr {
         self.to_json().serialize(serializer)
     }
 }
+
+/// A whole number is reported as an integer, as Python prints it.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "only whole numbers well inside the i64 range are converted"
+)]
+pub fn number_json(number: f64) -> Value {
+    if number.fract() == 0.0 && number.abs() < 1e15 {
+        serde_json::json!(number as i64)
+    } else {
+        serde_json::json!(number)
+    }
+}

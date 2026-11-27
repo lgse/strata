@@ -91,7 +91,7 @@ pub(crate) fn percent_decoded(path: &str) -> Result<Vec<u8>, String> {
 
 pub(crate) fn cached_thumbnail(cache: &Path, source: &Path) -> PathBuf {
     let uri = file_uri(source);
-    let digest = gtk::glib::compute_checksum_for_string(gtk::glib::ChecksumType::Md5, &uri)
+    let digest = glib::compute_checksum_for_string(glib::ChecksumType::Md5, &uri)
         .map(|digest| digest.to_string())
         .unwrap_or_default();
     cache.join(format!("{digest}.png"))
@@ -122,23 +122,35 @@ pub(crate) fn write_thumbnail(
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_err(|error| error.to_string())?
         .as_secs();
-    let width = i32::try_from(thumbnail.width).map_err(|error| error.to_string())?;
-    let height = i32::try_from(thumbnail.height).map_err(|error| error.to_string())?;
-    let pixbuf =
-        gtk::gdk_pixbuf::Pixbuf::new(gtk::gdk_pixbuf::Colorspace::Rgb, false, 8, width, height)
-            .ok_or("cannot make the thumbnail's pixels")?;
-    let [red, green, blue] = thumbnail.rgb;
-    pixbuf.fill(u32::from_be_bytes([red, green, blue, 0xff]));
     let uri = file_uri(source);
-    let bytes = pixbuf
-        .save_to_bufferv(
-            "png",
-            &[
-                ("tEXt::Thumb::URI", uri.as_str()),
-                ("tEXt::Thumb::MTime", &seconds.to_string()),
-            ],
-        )
-        .map_err(|error| error.to_string())?;
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, thumbnail.width, thumbnail.height);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder
+            .add_text_chunk("Thumb::URI".to_owned(), uri)
+            .map_err(|error| error.to_string())?;
+        encoder
+            .add_text_chunk("Thumb::MTime".to_owned(), seconds.to_string())
+            .map_err(|error| error.to_string())?;
+        let mut writer = encoder.write_header().map_err(|error| error.to_string())?;
+        let pixel_count = usize::try_from(thumbnail.width)
+            .ok()
+            .and_then(|width| {
+                usize::try_from(thumbnail.height)
+                    .ok()
+                    .and_then(|height| width.checked_mul(height))
+            })
+            .ok_or("thumbnail dimensions overflow")?;
+        let mut data = Vec::with_capacity(pixel_count * 3);
+        for _ in 0..pixel_count {
+            data.extend_from_slice(&thumbnail.rgb);
+        }
+        writer
+            .write_image_data(&data)
+            .map_err(|error| error.to_string())?;
+    }
     fs::write(cached_thumbnail(cache, source), bytes).map_err(|error| error.to_string())
 }
 
@@ -154,7 +166,7 @@ pub(crate) fn modified_nanos(path: &Path) -> Result<u128, String> {
 pub(crate) fn local_epoch(
     [year, month, day, hour, minute, second]: [i32; 6],
 ) -> Result<i64, String> {
-    gtk::glib::DateTime::from_local(year, month, day, hour, minute, f64::from(second))
+    glib::DateTime::from_local(year, month, day, hour, minute, f64::from(second))
         .map(|time| time.to_unix())
         .map_err(|error| error.to_string())
 }

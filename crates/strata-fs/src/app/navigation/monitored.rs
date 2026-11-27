@@ -379,8 +379,6 @@ impl RemovedEntries {
     }
 }
 
-/// Drops the removed locations from the fill, and returns whether a removed
-/// cursor entry hands the cursor to a neighbour.
 fn forget_removed(
     selectionless_removals: &mut HashSet<Location>,
     column: &mut ColumnState,
@@ -415,8 +413,6 @@ impl ColumnState {
             .map(|entry| entry.location.clone())
     }
 
-    /// Moves the fill and load targets from `from` onto `follow`, or drops them
-    /// when the moved entry leaves the view.
     fn follow_moved_selection(&mut self, from: &Location, follow: Option<&Location>) {
         match follow {
             Some(to) => self.selected_locations.relocate(from, to.clone()),
@@ -544,8 +540,6 @@ impl<'a> MonitoredChange<'a> {
     }
 }
 
-/// A move that kept the file's kind, size, modification time and extension
-/// still describes the same content.
 fn same_file_moved(previous: &FileEntry, entry: &FileEntry) -> bool {
     previous.kind == entry.kind
         && matches!(entry.size, MetadataValue::Known(_))

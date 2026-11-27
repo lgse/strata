@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Puts what a copy wrote on its device before anything only the copy holds
-//! is deleted, the way the destination's filesystem family reaches it.
-
 use std::{
     ffi::OsStr,
     os::fd::{AsFd, BorrowedFd, OwnedFd},
@@ -90,11 +87,6 @@ pub(in crate::adapters::local_operations) struct Barrier {
 }
 
 impl Barrier {
-    /// `syncfs` reports only the writeback errors that follow the open of
-    /// its descriptor, so this must come before the copy writes. A folder
-    /// others may only write into cannot be opened for reading, but any
-    /// folder above it on the same mount serves, and so does an unnamed file
-    /// made in it where only the filesystem is flushed.
     pub(super) fn open(fs: &dyn FsOps, path: &Path) -> Result<Self, glib::Error> {
         let could_not_open = |error: Errno| {
             io_error(rust_i18n::t!(

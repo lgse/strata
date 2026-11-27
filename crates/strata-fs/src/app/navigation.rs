@@ -91,6 +91,7 @@ pub struct ColumnState {
     pub(crate) surfaced_leftovers: Cell<usize>,
     // Providers may list a location twice.
     each_location_once: OnceCell<bool>,
+    location_index: OnceCell<HashMap<Location, usize>>,
     metadata_positions: Option<HashMap<Location, usize>>,
     pub selected: Option<usize>,
     selected_locations: SelectedLocations,
@@ -101,25 +102,13 @@ pub struct ColumnState {
     selection_from_reveal: bool,
     pub load_state: LoadState,
     pub truncated: bool,
-    /// Whether entries here can be moved to Trash, resolved from a listed entry
-    /// when the directory loads (see `DirectoryEvent::Finished`). `None` before
-    /// the first load finishes, for an empty directory, or when the capability
-    /// couldn't be answered; treated as "assume trashable" by consumers.
     pub can_trash: Option<bool>,
-    /// Whether entries here can be permanently deleted, resolved the same way
-    /// as `can_trash`. `None` carries the same "assume deletable" meaning.
     pub can_delete: Option<bool>,
     preferences: ViewPreferences,
     request_id: RequestId,
     select_first_on_load: bool,
-    /// Soft load target: selected if it arrives, otherwise the first visible entry
-    /// once the listing is complete. Never reveals hidden files or reports failure.
     preferred_on_load: Option<Location>,
-    /// The folder this column has open, for a cursor Left asked for before the
-    /// listing arrived: committed if it lists visibly, otherwise nothing is selected.
     open_child_on_load: Option<Location>,
-    /// Cursor position before a reload; the cursor moves to its neighbour when the
-    /// entry is gone.
     reload_cursor: Option<usize>,
     // Auto-selection must not redirect paste into the first folder.
     load_cursor: Option<Location>,
@@ -152,8 +141,6 @@ impl NavigationPath {
     }
 }
 
-/// The flag is true when a column opens the folder, which counts as using it;
-/// re-syncs pass false.
 pub type FolderSortResolver = Rc<dyn Fn(&Location, bool) -> FolderSort>;
 
 #[derive(Default)]
@@ -165,7 +152,6 @@ pub struct NavigationState {
     forward_history: Vec<NavigationPath>,
     preferences: ViewPreferences,
     folder_sorts: Option<FolderSortResolver>,
-    // GTK focus/rebuild selection echoes must not arm paste-into.
     selection_commit: bool,
     selectionless_removals: HashSet<Location>,
     preserve_fill_on_removal: bool,
@@ -173,8 +159,6 @@ pub struct NavigationState {
     type_grouping: bool,
 }
 
-/// A walked range over one pane in displayed order. The fill is recomputed from
-/// `base` on every cursor move, so contracting the range restores what it covered.
 pub struct VisualRange {
     depth: usize,
     directory: Location,
@@ -327,11 +311,7 @@ impl NavigationState {
 
     pub fn active_child_position(&self, depth: usize) -> Option<usize> {
         let child = &self.columns.get(depth + 1)?.location;
-        self.columns
-            .get(depth)?
-            .entries
-            .iter()
-            .position(|entry| &entry.location == child)
+        self.columns.get(depth)?.location_position(child)
     }
 
     pub fn cursor_entry(&self, depth: usize) -> Option<FileEntry> {
@@ -351,9 +331,6 @@ impl NavigationState {
         Some((depth, position, entry))
     }
 
-    /// The folder the active column lists, as its parent column's entry, when the
-    /// active column is the deepest one. An ancestor column with its own child open
-    /// never stands for the folder its parent has open.
     pub fn entered_folder(&self) -> Option<(usize, usize, FileEntry)> {
         let depth = self.active_column?;
         if depth + 1 != self.columns.len() {
@@ -407,9 +384,36 @@ impl ColumnState {
     }
 
     fn position_of(&self, location: &Location) -> Option<usize> {
-        self.entries
-            .iter()
-            .position(|entry| entry.location == *location)
+        self.location_position(location)
+    }
+
+    pub(super) fn location_position(&self, location: &Location) -> Option<usize> {
+        const INDEX_THRESHOLD: usize = 128;
+        if let Some(position) = self.selected.filter(|&pos| {
+            self.entries
+                .get(pos)
+                .is_some_and(|e| e.location == *location)
+        }) && self.entries[..position]
+            .first()
+            .is_none_or(|first| first.location != *location)
+            && *self.each_location_once.get().unwrap_or(&false)
+        {
+            return Some(position);
+        }
+        if self.entries.len() < INDEX_THRESHOLD {
+            return self
+                .entries
+                .iter()
+                .position(|entry| entry.location == *location);
+        }
+        let index = self.location_index.get_or_init(|| {
+            let mut map = HashMap::with_capacity(self.entries.len());
+            for (position, entry) in self.entries.iter().enumerate() {
+                map.entry(entry.location.clone()).or_insert(position);
+            }
+            map
+        });
+        index.get(location).copied()
     }
 
     /// A finished or monitored listing is empty or ready.
@@ -438,6 +442,7 @@ impl ColumnState {
     fn invalidate_spliced_entry_indexes(&mut self) {
         self.entry_counts.set(None);
         self.leftovers.take();
+        self.location_index.take();
         self.metadata_positions = None;
         self.selected_locations.forget_positions();
     }
@@ -450,10 +455,11 @@ impl ColumnState {
     }
 
     fn selected_positions(&self) -> &[usize] {
-        self.selected_locations
-            .positions(&self.entries, self.selected, || {
-                lists_each_location_once(&self.entries, &self.each_location_once)
-            })
+        self.selected_locations.positions(
+            &self.entries,
+            self.selected,
+            self.each_location_once.get().copied(),
+        )
     }
 }
 

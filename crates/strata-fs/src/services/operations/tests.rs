@@ -198,9 +198,6 @@ fn an_item_saved_under_several_names_in_turn_is_reported_once_from_its_first_nam
         saved_as: Location::local(format!("/copy/{saved_as}")),
         cause,
     };
-    // A fixed name, which the destination took for another's, numbered as an
-    // alias whose number a merge then found taken, reported in any order
-    // beside entries of other items.
     let links = [
         item("a:b", "a_b", RenameCause::Invalid),
         item("a_b", "a_b (1)", RenameCause::Alias),

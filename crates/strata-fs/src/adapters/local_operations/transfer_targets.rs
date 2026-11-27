@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Where a paste would put each of its items, which the conflict prompt
-//! shows before the paste starts.
-
 use std::{
     collections::HashSet,
     ffi::{OsStr, OsString},
@@ -48,8 +45,6 @@ impl Collision {
         }
     }
 
-    /// A folder holding the incoming folder cannot merge it: staging what the merge overwrites
-    /// would take the incoming folder's own files, which then never arrive.
     fn holding_incoming(self) -> Self {
         Self {
             mergeable: false,
@@ -66,8 +61,6 @@ impl Collision {
     }
 }
 
-/// Nothing collides with a link the paste leaves out, as the destination is known not to hold
-/// links.
 pub async fn transfer_targets(
     destination: &Location,
     sources: &[Location],
@@ -289,8 +282,6 @@ fn item_kinds(
     Ok((kinds, filesystems))
 }
 
-/// Up to this many names are looked up one by one; more are first looked
-/// for in the folder's listing.
 pub(super) const LOOKUPS_WITHOUT_LISTING: usize = 32;
 
 fn existing_folders(path: &Path, names: &[Option<OsString>]) -> Vec<Option<bool>> {

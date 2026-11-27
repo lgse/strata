@@ -307,7 +307,7 @@ unsent; neither is replayed. Disconnect updates retire only requests from the
 failed session; requests admitted afterward keep their outcome tracking across
 restart. Ordinary on-demand/unrecognized files stay unbadged.
 
-The GTK thread does not perform provider socket or subprocess I/O. It applies
+The UI thread does not perform provider socket or subprocess I/O. It applies
 completed bounded batches on its main loop. Each provider cache holds at most
 2,048 path answers and 32 menu selections; at most 1,024 live thumbnail slots are
 tracked. Only mapped slots are queried. Unmapped slots lose their decoration and

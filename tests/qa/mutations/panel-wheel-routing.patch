@@ -1,0 +1,10 @@
+diff --git a/crates/strata-app/src/popover.rs b/crates/strata-app/src/popover.rs
+--- a/crates/strata-app/src/popover.rs
++++ b/crates/strata-app/src/popover.rs
+@@ -224,4 +224,5 @@ fn scrim(
+         .on_wheel(move |app: &mut App, wheel: WheelEvent, tx: &mut Tx| {
++            let _ = (listing, wheel);
+             on_wheel.close(app, tx);
+-            !listing.is_some_and(|rect| inside(rect, wheel.x, wheel.y))
++            true
+         })
