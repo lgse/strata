@@ -180,9 +180,9 @@ pub(in crate::adapters::local_operations) fn permanently_delete_local_path_if_un
     cancellable: gio::Cancellable,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
-        delete_local_path(
-            path,
-            expected,
+        let root = pinned_root(path, expected).await?;
+        delete_roots(
+            vec![root],
             cancellable,
             DeleteWorkers {
                 count: None,
@@ -190,40 +190,28 @@ pub(in crate::adapters::local_operations) fn permanently_delete_local_path_if_un
             },
         )
         .await
-        .map_err(|error| error.error)
+        .map_err(LocalDeleteError::into_gio)
     })
 }
 
-async fn delete_local_path(
+async fn pinned_root(
     path: PathBuf,
     expected: Option<Recorded>,
-    cancellable: gio::Cancellable,
-    workers: DeleteWorkers,
-) -> Result<(), TrashError> {
+) -> Result<PinnedEntry, glib::Error> {
     let Some(parent_path) = path.parent().map(Path::to_path_buf) else {
-        return Err(TrashError::permanent(translated_io_error(
+        return Err(translated_io_error(
             "Cannot permanently delete the filesystem root",
-        )));
+        ));
     };
     let Some(name) = path.file_name().map(OsStr::to_os_string) else {
-        return Err(TrashError::permanent(translated_io_error(
-            "Invalid delete target",
-        )));
+        return Err(translated_io_error("Invalid delete target"));
     };
-    let parent = run_local_delete_step(move || open_local_parent_directory(&parent_path))
-        .await
-        .map_err(TrashError::permanent)?;
-    delete_roots(
-        vec![PinnedEntry {
-            parent: Arc::new(parent),
-            name,
-            identity: expected,
-        }],
-        cancellable,
-        workers,
-    )
-    .await
-    .map_err(LocalDeleteError::into_trash_error)
+    let parent = run_local_delete_step(move || open_local_parent_directory(&parent_path)).await?;
+    Ok(PinnedEntry {
+        parent: Arc::new(parent),
+        name,
+        identity: expected,
+    })
 }
 
 pub(in crate::adapters::local_operations) async fn local_file_identity(
@@ -274,7 +262,12 @@ pub(super) async fn permanently_delete_maybe_local_with_workers(
     workers: DeleteWorkers,
 ) -> Result<(), TrashError> {
     if let Some(path) = file.path().filter(|_| file.is_native()) {
-        return delete_local_path(path, None, cancellable, workers).await;
+        let root = pinned_root(path, None)
+            .await
+            .map_err(TrashError::permanent)?;
+        return delete_roots(vec![root], cancellable, workers)
+            .await
+            .map_err(LocalDeleteError::into_trash_error);
     }
     permanently_delete_counted(file, directory, cancellable, workers.deadline).await
 }

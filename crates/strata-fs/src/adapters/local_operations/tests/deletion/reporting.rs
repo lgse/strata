@@ -172,6 +172,35 @@ fn a_delete_through_gio_reports_the_nested_entry_it_failed_on() -> Result<(), Bo
 }
 
 #[test]
+fn a_cleanup_delete_names_the_nested_entry_it_could_not_remove() -> Result<(), Box<dyn Error>> {
+    let _serial = serial()?;
+    let fixture = tempfile::tempdir()?;
+    let root = fixture.path().join("moved-source");
+    fs::create_dir_all(root.join("nested"))?;
+    fs::write(root.join("nested/blocked.txt"), b"keep")?;
+    let _quirks = FsQuirks::install(
+        fixture.path(),
+        Quirks {
+            fail: vec![(Op::Unlink, "blocked.txt", 0, rustix::io::Errno::ACCESS)],
+            ..Quirks::ext4()
+        },
+    );
+    let error = glib::MainContext::default()
+        .block_on(permanently_delete_local_path_if_unchanged(
+            root,
+            None,
+            gio::Cancellable::new(),
+        ))
+        .expect_err("the refused file keeps its folders");
+    assert!(
+        error.message().contains("blocked.txt"),
+        "{}",
+        error.message()
+    );
+    Ok(())
+}
+
+#[test]
 fn large_deletion_progress_reports_every_completed_location() -> Result<(), Box<dyn Error>> {
     let _serial = serial()?;
     let root = tempfile::tempdir()?;
