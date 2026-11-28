@@ -10,39 +10,10 @@ use super::{
     driver::Input,
     pointer::Aimed,
     protocol::{self, At, Failure, Modifier, Predicate, Repeat, StateName, Target},
-    settle,
     targets::{self, Aim, LookupError},
 };
 
 impl Controller {
-    pub(super) async fn adopt(
-        &self,
-        title: &str,
-        timeout: Duration,
-        message: Option<&str>,
-    ) -> Outcome {
-        let deadline = Instant::now() + timeout;
-        loop {
-            if let Some(window) = targets::window_titled(title, None) {
-                self.main.set(Some(&window));
-                settle(Some(&window)).await;
-                return Outcome::default();
-            }
-            if Instant::now() >= deadline {
-                return Outcome {
-                    failures: vec![Failure {
-                        predicate: json!({ "adopt": title }),
-                        actual: json!(false),
-                        message: message.map(str::to_owned),
-                    }],
-                    error: Some(format!("timed out after {} ms", timeout.as_millis())),
-                    ..Outcome::default()
-                };
-            }
-            glib::timeout_future(POLL_INTERVAL).await;
-        }
-    }
-
     /// A late startup focus change can close the menu as it opens, so it is re-clicked each second.
     pub(super) async fn open_menu(
         &self,

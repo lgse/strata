@@ -6,14 +6,14 @@ use serde_json::Value;
 
 use super::super::{Chord, DEFAULT_WAIT, Modifier, Predicate, StateName, Target};
 use super::{
-    Accessor, ActivateFields, AdoptFields, ButtonDownFields, ButtonUpFields, COMMANDS,
-    CaptureFields, ClickFields, ClickResultRowsFields, ClipboardFields, ClipboardSetFields,
-    Command, DragFields, DropSamplesFields, DuringCheck, DuringFields, ExpectFields, HoldsFields,
-    KeepFields, KeyDownFields, KeyFields, KeyUpFields, KeysUntilFields, MeasureTextFields,
-    MoveByFields, MoveFields, NoteFields, OpenMenuFields, PressCheck, PressStepFields, QueryFields,
-    RememberFields, Repeat, ResizeFields, RevealControlFields, RevealFields, RowStates,
-    SelectFields, SelectWithKeyboardFields, SetScrollbarFields, SettleFields, SleepFields,
-    TypeFields, WaitFields, WheelDirection, WheelFields,
+    Accessor, ActivateFields, ActivateWindowFields, AdoptFields, ButtonDownFields, ButtonUpFields,
+    COMMANDS, CaptureFields, ClickFields, ClickResultRowsFields, ClipboardFields,
+    ClipboardSetFields, Command, DragFields, DropSamplesFields, DuringCheck, DuringFields,
+    ExpectFields, HoldsFields, KeepFields, KeyDownFields, KeyFields, KeyUpFields, KeysUntilFields,
+    MeasureTextFields, MoveByFields, MoveFields, NoteFields, OpenMenuFields, PressCheck,
+    PressStepFields, QueryFields, RememberFields, Repeat, ResizeFields, RevealControlFields,
+    RevealFields, RowStates, SelectFields, SelectWithKeyboardFields, SetScrollbarFields,
+    SettleFields, SleepFields, TypeFields, WaitFields, WheelDirection, WheelFields,
 };
 
 fn modifiers(names: &[String]) -> Result<Vec<Modifier>, String> {
@@ -94,19 +94,7 @@ pub fn parse_command(line: &str) -> Result<Command, String> {
                 exhausted: fields.exhausted,
             })
         }
-        "adopt" => {
-            let fields: AdoptFields = serde_json::from_value(fields).map_err(invalid)?;
-            if fields.adopt.is_empty() {
-                return Err("adopt needs a window title".to_owned());
-            }
-            Ok(Command::Adopt {
-                title: fields.adopt,
-                timeout: fields
-                    .timeout_ms
-                    .map_or(DEFAULT_WAIT, Duration::from_millis),
-                message: fields.message,
-            })
-        }
+        "adopt" | "activate_window" => adoption(name, fields),
         "keep" => {
             let fields: KeepFields = serde_json::from_value(fields).map_err(invalid)?;
             if fields.name.is_empty() {
@@ -586,4 +574,30 @@ fn press_checks(
             message,
         }]),
     }
+}
+
+/// `adopt` and `activate_window` name a window by title alike; the second activates it too.
+fn adoption(name: &str, fields: Value) -> Result<Command, String> {
+    let invalid = |error: serde_json::Error| format!("invalid {name} command: {error}");
+    let (title, activate, timeout_ms, message) = if name == "adopt" {
+        let fields: AdoptFields = serde_json::from_value(fields).map_err(invalid)?;
+        (fields.adopt, false, fields.timeout_ms, fields.message)
+    } else {
+        let fields: ActivateWindowFields = serde_json::from_value(fields).map_err(invalid)?;
+        (
+            fields.activate_window.title,
+            true,
+            fields.timeout_ms,
+            fields.message,
+        )
+    };
+    if title.is_empty() {
+        return Err(format!("{name} needs a window title"));
+    }
+    Ok(Command::Adopt {
+        title,
+        activate,
+        timeout: timeout_ms.map_or(DEFAULT_WAIT, Duration::from_millis),
+        message,
+    })
 }

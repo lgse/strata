@@ -20,10 +20,7 @@ pub(crate) use self::{
         editable_fields, editable_focused, editable_texts, field, focused_field, text_content,
     },
     locate::{locate, presented_target},
-    lookup::{
-        find_presented, open_dialog, presented, result_rows, search_results, window_titled,
-        windows_titled,
-    },
+    lookup::{find_presented, open_dialog, presented, result_rows, search_results, windows_titled},
     naming::{accessible_description, accessible_name, role_name},
     states::states,
     wanted::{Wanted, has_state},

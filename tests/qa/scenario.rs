@@ -67,6 +67,8 @@ pub(crate) struct Header {
     #[serde(default)]
     pub(crate) portal: bool,
     pub(crate) input_method: Option<String>,
+    #[serde(default)]
+    pub(crate) volume_monitor: bool,
     pub(crate) fixture_root: Option<String>,
     pub(crate) skip: Option<String>,
     pub(crate) cost: Option<BTreeMap<String, f64>>,
@@ -295,7 +297,11 @@ pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
     {
         let parsed: FsStep = serde_json::from_value(step.clone())
             .map_err(|error| format!("setup {}: invalid fs step: {error}", index + 1))?;
-        if !parsed.fs.acts() || parsed.timeout_ms.is_some() || parsed.message.is_some() {
+        if !parsed.fs.acts()
+            || parsed.timeout_ms.is_some()
+            || parsed.hold_ms.is_some()
+            || parsed.message.is_some()
+        {
             return Err(format!(
                 "setup {}: setup takes fs actions only, such as write or chmod",
                 index + 1
@@ -310,7 +316,11 @@ pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
     {
         let parsed: FsStep = serde_json::from_value(step.clone())
             .map_err(|error| format!("teardown {}: invalid fs step: {error}", index + 1))?;
-        if !parsed.fs.acts() || parsed.timeout_ms.is_some() || parsed.message.is_some() {
+        if !parsed.fs.acts()
+            || parsed.timeout_ms.is_some()
+            || parsed.hold_ms.is_some()
+            || parsed.message.is_some()
+        {
             return Err(format!(
                 "teardown {}: teardown takes fs actions only, such as chmod",
                 index + 1
@@ -331,6 +341,9 @@ pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
     }
     if header.input_method.is_some() && !header.session_bus {
         return Err("an input_method run needs the header's session_bus".to_owned());
+    }
+    if header.volume_monitor && !header.session_bus {
+        return Err("a volume_monitor run needs the header's session_bus".to_owned());
     }
     if let Some(root) = &header.fixture_root
         && fixed_fixture_name(root).is_none()
